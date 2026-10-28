@@ -2386,6 +2386,11 @@ pub async fn cancel_editor_mix_export(
 }
 
 #[tauri::command]
+pub async fn media_library(app: AppHandle, payload: Value) -> AppResult<Value> {
+    run_worker_with_payload(&app, "media_library", Some(payload))
+}
+
+#[tauri::command]
 pub async fn start_audio_tool(
     app: AppHandle,
     state: State<'_, AppState>,

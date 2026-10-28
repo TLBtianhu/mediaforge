@@ -109,6 +109,15 @@ def _is_image(meta: dict) -> bool:
     return any(token in fmt for token in ("image2", "jpeg_pipe", "png_pipe", "webp_pipe", "gif"))
 
 
+def kind_of(meta: dict) -> str:
+    """Return the normalized media kind for a probe result."""
+    return "image" if _is_image(meta) else ("video" if meta.get("video") else "audio")
+
+
+def ffmpeg_path() -> str:
+    return _find_tool("ffmpeg")
+
+
 def _output_path(src: Path, output_dir: Path, fmt: str) -> Path:
     dst = output_dir / f"{src.stem}.{fmt}"
     if dst.resolve() == src.resolve() or dst.exists():

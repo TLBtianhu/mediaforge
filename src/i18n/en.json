@@ -26,7 +26,8 @@
     "workflow-node-editor": "Node Editor",
     "debug": "Diagnostics",
     "plugins": "Plugins",
-    "factory": "Media Factory"
+    "factory": "Media Factory",
+    "assets": "Media Shelf"
   },
   "factory": {
     "title": "Media Factory",
@@ -51,6 +52,32 @@
     "hint": "Supports MP4 / MKV / WebM / MP3 / WAV / FLAC / JPG / PNG / GIF. Files are processed locally.",
     "selectFirst": "Choose input files first",
     "selectOutput": "Choose an output directory"
+  },
+  "assets": {
+    "title": "Media Shelf",
+    "subtitle": "Local media index, thumbnails, and task entry points",
+    "importFiles": "Import files",
+    "importFolder": "Import folder",
+    "search": "Search name, path, or tags…",
+    "all": "All",
+    "image": "Images",
+    "video": "Videos",
+    "audio": "Audio",
+    "empty": "Your media shelf is empty",
+    "emptyHint": "Drop images, videos, or audio here so you do not have to keep reopening Explorer.",
+    "openFolder": "Show in folder",
+    "toFactory": "Open in Factory",
+    "remove": "Remove",
+    "removeConfirm": "Remove this item from the shelf? The original file will not be deleted.",
+    "total": "{count} items",
+    "importing": "Importing…",
+    "imported": "Imported {count}",
+    "noThumbnail": "No thumbnail",
+    "database": "Index location",
+    "imageCount": "Images {count}",
+    "videoCount": "Videos {count}",
+    "audioCount": "Audio {count}",
+    "unknown": "Unknown"
   },
   "common": {
     "cancel": "Cancel",

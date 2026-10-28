@@ -136,6 +136,9 @@ def run_command(command: str, payload: dict) -> int:
             activate_optional_packages()
         from worker_tools import cmd_audio_tools
         return cmd_audio_tools(payload)
+    if command == "media_library":
+        from media_ops.library_worker import cmd_media_library
+        return cmd_media_library(payload)
     if command == "infer":
         from worker_infer import cmd_infer
         return cmd_infer(payload)

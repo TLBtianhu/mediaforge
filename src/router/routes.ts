@@ -11,6 +11,7 @@ export const appRoutes: RouteRecordRaw[] = [
   { path: '/results', name: 'results', component: () => import('@/views/ResultsView.vue') },
   { path: '/tools', name: 'tools', component: () => import('@/views/ToolsView.vue') },
   { path: '/factory', name: 'factory', component: () => import('@/views/FactoryView.vue') },
+  { path: '/assets', name: 'assets', component: () => import('@/views/AssetsView.vue') },
   { path: '/plugins', name: 'plugins', component: () => import('@/views/PluginsView.vue') },
   { path: '/plugin-view/:plugin/:viewId', name: 'plugin-view', component: () => import('@/views/PluginWorkspaceView.vue') },
   { path: '/debug', name: 'debug', component: () => import('@/views/DebugView.vue') },

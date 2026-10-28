@@ -26,7 +26,8 @@
     "workflow-node-editor": "节点编辑器",
     "debug": "诊断",
     "plugins": "插件",
-    "factory": "格式工厂"
+    "factory": "格式工厂",
+    "assets": "素材台"
   },
   "factory": {
     "title": "格式工厂",
@@ -51,6 +52,32 @@
     "hint": "支持 MP4 / MKV / WebM / MP3 / WAV / FLAC / JPG / PNG / GIF。文件在本机处理。",
     "selectFirst": "请先选择输入文件",
     "selectOutput": "请选择输出目录"
+  },
+  "assets": {
+    "title": "素材台",
+    "subtitle": "本机媒体索引、缩略图与任务入口",
+    "importFiles": "导入文件",
+    "importFolder": "导入文件夹",
+    "search": "搜索名称、路径或标签…",
+    "all": "全部",
+    "image": "图片",
+    "video": "视频",
+    "audio": "音频",
+    "empty": "素材台还是空的",
+    "emptyHint": "把图片、视频或音频拖进来，之后就不用来回开资源管理器了。",
+    "openFolder": "打开位置",
+    "toFactory": "去格式工厂",
+    "remove": "移除",
+    "removeConfirm": "从素材台移除这个文件？不会删除原文件。",
+    "total": "共 {count} 个素材",
+    "importing": "正在导入…",
+    "imported": "已导入 {count} 个",
+    "noThumbnail": "无缩略图",
+    "database": "索引位置",
+    "imageCount": "图片 {count}",
+    "videoCount": "视频 {count}",
+    "audioCount": "音频 {count}",
+    "unknown": "未知"
   },
   "common": {
     "cancel": "取消",

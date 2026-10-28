@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
+import { useRoute } from 'vue-router'
 import {
   CloseCircleOutline,
   DocumentOutline,
@@ -37,6 +38,7 @@ type WorkerEvent = {
 
 const { t } = useI18n()
 const message = useMessage()
+const route = useRoute()
 const settings = useSettingsStore()
 
 const inputs = ref<string[]>([])
@@ -159,6 +161,8 @@ async function openOutput() {
 }
 
 onMounted(async () => {
+  const requested = route.query.asset
+  if (typeof requested === 'string' && requested) addInputs([requested])
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   try {
     unlisten = await listen<WorkerEvent>('pymss://worker-event', event => {

@@ -11,10 +11,10 @@
 - [x] `/factory` 格式工厂页面：文件选择、输出格式、CRF/预设、进度、结果
 - [x] 复用 PyMSS worker 事件协议（`audio_tool_progress` / `audio_tool_result`）
 - [x] Tauri release 构建通过
-- [ ] 素材台（Media Shelf）
+- [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
+- [ ] 模型目录 `modality` 泛化（audio / image / video）
 - [ ] 图像超分/去水印适配器（Real-ESRGAN / LaMa）
 - [ ] 视频抽帧修复管线（超分/去水印 + 音频回封）
-- [ ] 模型目录 `modality` 泛化（audio / image / video）
 
 ## 已实现能力
 
@@ -34,9 +34,22 @@
 ```text
 python/media_ops/
 ├─ ffmpeg.py      # ffprobe / ffmpeg 封装
+├─ library.py     # SQLite 素材索引 + 缩略图
 ├─ worker.py      # worker 命令与事件
 └─ __init__.py
 ```
+
+### 素材台
+
+页面：`#/assets`
+
+- SQLite 索引（默认 `%APPDATA%/MediaForge/library.db`）
+- 缩略图缓存（`%APPDATA%/MediaForge/thumbnails`）
+- 导入文件/文件夹，支持拖拽
+- 搜索名称/路径/标签，按图片/视频/音频筛选
+- 一键「去格式工厂」带着素材跳转
+- 移除只删索引，不删原文件
+- 后端命令：`media_library`（`list` / `import` / `remove` / `tags` / `stats`）
 
 ### 保留的 PyMSS 能力
 
@@ -73,6 +86,7 @@ python worker.py audio_tools --payload payload.json
 ```text
 src/                     Vue 3 前端
 src/views/FactoryView.vue
+src/views/AssetsView.vue
 src/router/routes.ts
 src/components/SideNav.vue
 src/i18n/                zh-CN / en
