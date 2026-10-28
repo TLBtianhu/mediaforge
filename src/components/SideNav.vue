@@ -14,6 +14,7 @@ import {
   TerminalOutline,
   SwapHorizontalOutline,
   ImagesOutline,
+  SparklesOutline,
 } from '@vicons/ionicons5'
 
 const route = useRoute()
@@ -22,6 +23,7 @@ const settings = useSettingsStore()
 const mainItems = computed(() => [
   { name: 'separate', path: '/', icon: MusicalNotesOutline, label: t('nav.separate') },
   { name: 'assets', path: '/assets', icon: ImagesOutline, label: t('nav.assets') },
+  { name: 'image', path: '/image', icon: SparklesOutline, label: t('nav.image') },
   { name: 'models', path: '/models', icon: CubeOutline, label: t('nav.models') },
   { name: 'workflows', path: '/workflows', icon: GitNetworkOutline, label: t('nav.workflows') },
   { name: 'results', path: '/results', icon: FolderOpenOutline, label: t('nav.results') },

@@ -27,7 +27,8 @@
     "debug": "Diagnostics",
     "plugins": "Plugins",
     "factory": "Media Factory",
-    "assets": "Media Shelf"
+    "assets": "Media Shelf",
+    "image": "Image Restore"
   },
   "factory": {
     "title": "Media Factory",
@@ -53,6 +54,35 @@
     "selectFirst": "Choose input files first",
     "selectOutput": "Choose an output directory"
   },
+  "image": {
+    "title": "Image Restore",
+    "subtitle": "Super-resolution, watermark removal, and target resolution",
+    "mode": "Mode",
+    "upscale": "Upscale only",
+    "watermark": "Remove watermark",
+    "watermarkUpscale": "Remove watermark + upscale",
+    "scale": "Scale",
+    "target": "Target resolution",
+    "original": "Original size",
+    "custom": "Custom",
+    "width": "Width",
+    "height": "Height",
+    "fit": "Fit",
+    "contain": "Contain",
+    "pad": "Pad",
+    "stretch": "Stretch",
+    "cover": "Cover",
+    "conf": "Watermark threshold",
+    "expand": "Mask expand",
+    "compare": "Before / after",
+    "before": "Before",
+    "after": "After",
+    "resultInfo": "Result info",
+    "detectorHint": "Watermarks are detected automatically. Lower the threshold if nothing is found.",
+    "modelDir": "Model directory",
+    "modelDirPlaceholder": "Leave empty to use models/ or MEDIAFORGE_MODEL_DIR",
+    "modelDirHint": "Requires watermark_yolo11x.pt, big-lama.pt, RealESRGAN_x2plus.pth, and RealESRGAN_x4plus.pth."
+  },
   "assets": {
     "title": "Media Shelf",
     "subtitle": "Local media index, thumbnails, and task entry points",
@@ -67,6 +97,7 @@
     "emptyHint": "Drop images, videos, or audio here so you do not have to keep reopening Explorer.",
     "openFolder": "Show in folder",
     "toFactory": "Open in Factory",
+    "toImage": "Restore image",
     "remove": "Remove",
     "removeConfirm": "Remove this item from the shelf? The original file will not be deleted.",
     "total": "{count} items",

@@ -13,7 +13,7 @@
 - [x] Tauri release 构建通过
 - [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
 - [ ] 模型目录 `modality` 泛化（audio / image / video）
-- [ ] 图像超分/去水印适配器（Real-ESRGAN / LaMa）
+- [x] 图像超分/去水印：Real-ESRGAN + YOLO + LaMa，支持目标分辨率与前后对比
 - [ ] 视频抽帧修复管线（超分/去水印 + 音频回封）
 
 ## 已实现能力
@@ -33,9 +33,11 @@
 
 ```text
 python/media_ops/
-├─ ffmpeg.py      # ffprobe / ffmpeg 封装
-├─ library.py     # SQLite 素材索引 + 缩略图
-├─ worker.py      # worker 命令与事件
+├─ ffmpeg.py        # ffprobe / ffmpeg 封装
+├─ library.py       # SQLite 素材索引 + 缩略图
+├─ image_ops.py     # Real-ESRGAN / YOLO / LaMa
+├─ image_worker.py  # 图像任务命令
+├─ worker.py        # worker 命令与事件
 └─ __init__.py
 ```
 
@@ -50,6 +52,27 @@ python/media_ops/
 - 一键「去格式工厂」带着素材跳转
 - 移除只删索引，不删原文件
 - 后端命令：`media_library`（`list` / `import` / `remove` / `tags` / `stats`）
+
+### 图像修复
+
+页面：`#/image`
+
+- 三种模式：仅超分、仅去水印、去水印 + 超分
+- Real-ESRGAN 2× / 4×，或 1080p / 2K / 4K / 自定义目标分辨率
+- 适配方式：等比、留黑边、拉伸、裁剪填满
+- YOLO11x 水印检测 + LaMa 修复，阈值/遮罩扩展可调
+- 前后对比滑块、处理信息（输出尺寸、检测框、耗时、设备）
+- 支持从素材台带图进入
+- 模型目录可单独指定，留空使用 `models/` 或 `MEDIAFORGE_MODEL_DIR`
+
+需要的权重：
+
+```text
+watermark_yolo11x.pt
+big-lama.pt
+RealESRGAN_x2plus.pth
+RealESRGAN_x4plus.pth
+```
 
 ### 保留的 PyMSS 能力
 
@@ -87,6 +110,7 @@ python worker.py audio_tools --payload payload.json
 src/                     Vue 3 前端
 src/views/FactoryView.vue
 src/views/AssetsView.vue
+src/views/ImageView.vue
 src/router/routes.ts
 src/components/SideNav.vue
 src/i18n/                zh-CN / en

@@ -39,6 +39,11 @@ def cmd_media_tool(payload: dict[str, Any]) -> int:
     operation = str(payload.get("operation") or "").strip().lower()
     request_id = _request_id(payload)
     try:
+        if operation == "media_image":
+            from .image_worker import cmd_media_image
+
+            return cmd_media_image(payload)
+
         if operation == "media_probe":
             inputs = [str(item) for item in (payload.get("inputs") or []) if str(item).strip()]
             if not inputs:

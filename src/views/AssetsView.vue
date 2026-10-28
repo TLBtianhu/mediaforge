@@ -11,6 +11,7 @@ import {
   ImagesOutline,
   MusicalNotesOutline,
   RefreshOutline,
+  SparklesOutline,
   SwapHorizontalOutline,
   TrashOutline,
   VideocamOutline,
@@ -200,6 +201,10 @@ function openInFactory(asset: Asset) {
   void router.push({ name: 'factory', query: { asset: asset.path } })
 }
 
+function openInImage(asset: Asset) {
+  void router.push({ name: 'image', query: { asset: asset.path } })
+}
+
 watch([query, kind], () => { void refresh() })
 
 onMounted(async () => {
@@ -274,6 +279,10 @@ onBeforeUnmount(() => {
               <n-button text size="small" @click="openInFactory(asset)">
                 <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
                 {{ t('assets.toFactory') }}
+              </n-button>
+              <n-button v-if="asset.kind === 'image'" text size="small" @click="openInImage(asset)">
+                <template #icon><n-icon :component="SparklesOutline" /></template>
+                {{ t('assets.toImage') }}
               </n-button>
               <n-button text size="small" @click="revealAsset(asset)">
                 <template #icon><n-icon :component="FolderOpenOutline" /></template>
