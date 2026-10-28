@@ -48,6 +48,13 @@ results/
 outputs/
 *.tmp
 
+# Model weights (download with download_models.py)
+models/*.pt
+models/*.pth
+models/*.bin
+models/*.onnx
+models/*.safetensors
+
 # Environment
 .env
 .env.*

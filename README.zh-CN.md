@@ -80,6 +80,18 @@ RealESRGAN_x4plus.pth
 - 任务队列、工作流、音轨编辑器
 - 音频工具：转换、检测、响度、ASR、MIDI、切片、合并
 
+## 模型下载
+
+图像修复需要约 430MB 权重：
+
+```bash
+python download_models.py
+# 国内网络
+python download_models.py --proxy http://127.0.0.1:7897
+```
+
+下载到 `models/`。也可以在图像页选择其他模型目录。权重不随仓库分发，请遵守各自许可证。
+
 ## 开发
 
 前置：
