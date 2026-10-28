@@ -15,7 +15,7 @@ from typing import Callable, Iterable
 
 VIDEO_FORMATS = {"mp4", "mkv", "mov", "webm", "avi"}
 AUDIO_FORMATS = {"mp3", "wav", "flac", "m4a", "aac", "ogg"}
-IMAGE_FORMATS = {"jpg", "jpeg", "png", "webp"}
+IMAGE_FORMATS = {"jpg", "jpeg", "png", "webp", "gif"}
 SUPPORTED_FORMATS = VIDEO_FORMATS | AUDIO_FORMATS | IMAGE_FORMATS
 
 ProgressCallback = Callable[[float, str], None]
@@ -106,7 +106,7 @@ def _kind(path: str | Path) -> str:
 
 def _is_image(meta: dict) -> bool:
     fmt = str(meta.get("format") or "").lower()
-    return any(token in fmt for token in ("image2", "jpeg_pipe", "png_pipe", "webp_pipe"))
+    return any(token in fmt for token in ("image2", "jpeg_pipe", "png_pipe", "webp_pipe", "gif"))
 
 
 def _output_path(src: Path, output_dir: Path, fmt: str) -> Path:
@@ -155,7 +155,9 @@ def _build_command(src: Path, dst: Path, src_kind: str, fmt: str, crf: int, pres
     if src_kind == "image" and fmt in VIDEO_FORMATS:
         cmd += ["-loop", "1", "-t", "3"]
     cmd += ["-i", str(src)]
-    if fmt in VIDEO_FORMATS:
+    if fmt == "gif":
+        cmd += ["-vf", "fps=12", "-loop", "0"]
+    elif fmt in VIDEO_FORMATS:
         # libx264 requires even dimensions; pad odd media by one pixel.
         cmd += ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"]
         cmd += _video_args(fmt, crf, preset)
@@ -218,7 +220,7 @@ def convert_one(
     return {
         "path": str(dst),
         "source": str(source),
-        "kind": "video" if target_format in VIDEO_FORMATS else ("audio" if target_format in AUDIO_FORMATS else "image"),
+        "kind": "image" if target_format in IMAGE_FORMATS else ("video" if target_format in VIDEO_FORMATS else "audio"),
         "format": target_format,
         "size": dst.stat().st_size if dst.exists() else 0,
     }
