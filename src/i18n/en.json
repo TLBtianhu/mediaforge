@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Pymss Studio",
+    "name": "MediaForge",
     "bootPreparing": "Initializing workspace...",
     "workerConnectionFailed": "Background connection failed",
     "workerConnectionFailedDetail": "Tasks can still be submitted, but progress and completion updates may be delayed. Reconnect before continuing.",
@@ -1149,7 +1149,7 @@
     "recordingPlaybackFailed": "Recording accompaniment could not start. Check the audio output and plugin status, then try again.",
     "recordingPlaybackChanged": "Plugin playback changed while recording was being prepared. Start recording again.",
     "recordingWriteBacklog": "Recording storage cannot keep up with the audio input. Capture has stopped; check free space and the storage device.",
-    "recordingPermissionDenied": "Microphone access was denied. Allow Pymss Studio to use the microphone in system privacy settings, then try again.",
+    "recordingPermissionDenied": "Microphone access was denied. Allow MediaForge to use the microphone in system privacy settings, then try again.",
     "recordingTargetMissing": "The recording target track no longer exists.",
     "recordingTimelinePreview": "Recording {time}",
     "clipTrimStart": "Drag to trim the clip start",
@@ -1900,7 +1900,7 @@
     "currentModelDir": "Model files",
     "currentOutputDir": "Separated audio",
     "dataDirReady": "Default directories are saved persistently and can be changed in Settings.",
-    "projectHeadline": "Pymss Studio is free and open source",
+    "projectHeadline": "MediaForge is free and open source",
     "projectNotice": "If you purchased this software or related services from a third party, those purchases are not affiliated with the official project.",
     "projectDownloadHint": "Use the official channels to download the software and get updates for free.",
     "projectRepositoryLabel": "Official project repository",
@@ -1908,7 +1908,7 @@
     "projectLinkFailed": "Could not open the link. Open the repository address in your browser.",
     "runtimeRocmLinux": "Requires ROCm 7.1 compatible drivers and a supported AMD GPU.",
     "welcomeTitle": "Welcome",
-    "welcomeHeadline": "Welcome to Pymss Studio",
+    "welcomeHeadline": "Welcome to MediaForge",
     "welcomeDescription": "Separate vocals and instruments, edit audio, and build workflows. Prepare your workspace with a few settings.",
     "appearanceTitle": "Appearance",
     "appearanceDescription": "Choose a theme and accent color. The workspace updates as you make your selections.",
@@ -1941,7 +1941,7 @@
     "setUpLater": "Set up later",
     "manageRuntime": "Open runtime management",
     "runtimeManageHint": "Install or activate environments and view progress and logs in runtime management. Installation runs in the background.",
-    "startUsing": "Start using Pymss Studio",
+    "startUsing": "Start using MediaForge",
     "readyToUse": "Your environment is ready. Open the workspace to get started."
   },
   "toast": {
