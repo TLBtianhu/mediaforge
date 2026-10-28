@@ -12,6 +12,7 @@ import {
   ExtensionPuzzleOutline,
   SettingsOutline,
   TerminalOutline,
+  SwapHorizontalOutline,
 } from '@vicons/ionicons5'
 
 const route = useRoute()
@@ -23,6 +24,7 @@ const mainItems = computed(() => [
   { name: 'workflows', path: '/workflows', icon: GitNetworkOutline, label: t('nav.workflows') },
   { name: 'results', path: '/results', icon: FolderOpenOutline, label: t('nav.results') },
   { name: 'tools', path: '/tools', icon: ConstructOutline, label: t('nav.tools') },
+  { name: 'factory', path: '/factory', icon: SwapHorizontalOutline, label: t('nav.factory') },
   { name: 'plugins', path: '/plugins', icon: ExtensionPuzzleOutline, label: t('nav.plugins') },
 ])
 const bottomItems = computed(() => [

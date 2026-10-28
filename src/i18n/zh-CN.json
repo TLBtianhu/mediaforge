@@ -25,7 +25,32 @@
     "workflows": "工作流",
     "workflow-node-editor": "节点编辑器",
     "debug": "诊断",
-    "plugins": "插件"
+    "plugins": "插件",
+    "factory": "格式工厂"
+  },
+  "factory": {
+    "title": "格式工厂",
+    "subtitle": "音视频/图片转码、提取与批量处理",
+    "input": "输入素材",
+    "chooseFiles": "选择媒体文件",
+    "addFiles": "继续添加",
+    "noFiles": "还没有选择文件",
+    "remove": "移除",
+    "output": "输出设置",
+    "outputDir": "输出目录",
+    "browse": "浏览",
+    "format": "输出格式",
+    "crf": "视频质量 CRF",
+    "preset": "编码预设",
+    "start": "开始转换",
+    "processing": "正在转换…",
+    "completed": "转换完成",
+    "failed": "转换失败",
+    "outputs": "输出文件",
+    "openFolder": "打开输出目录",
+    "hint": "支持 MP4 / MKV / WebM / MP3 / WAV / FLAC / JPG / PNG / GIF。文件在本机处理。",
+    "selectFirst": "请先选择输入文件",
+    "selectOutput": "请选择输出目录"
   },
   "common": {
     "cancel": "取消",

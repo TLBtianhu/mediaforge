@@ -25,7 +25,32 @@
     "workflows": "Workflows",
     "workflow-node-editor": "Node Editor",
     "debug": "Diagnostics",
-    "plugins": "Plugins"
+    "plugins": "Plugins",
+    "factory": "Media Factory"
+  },
+  "factory": {
+    "title": "Media Factory",
+    "subtitle": "Transcode, extract audio, and batch-process media",
+    "input": "Input media",
+    "chooseFiles": "Choose media files",
+    "addFiles": "Add more",
+    "noFiles": "No files selected yet",
+    "remove": "Remove",
+    "output": "Output settings",
+    "outputDir": "Output directory",
+    "browse": "Browse",
+    "format": "Output format",
+    "crf": "Video quality CRF",
+    "preset": "Encoder preset",
+    "start": "Start conversion",
+    "processing": "Converting…",
+    "completed": "Conversion complete",
+    "failed": "Conversion failed",
+    "outputs": "Output files",
+    "openFolder": "Open output folder",
+    "hint": "Supports MP4 / MKV / WebM / MP3 / WAV / FLAC / JPG / PNG / GIF. Files are processed locally.",
+    "selectFirst": "Choose input files first",
+    "selectOutput": "Choose an output directory"
   },
   "common": {
     "cancel": "Cancel",
