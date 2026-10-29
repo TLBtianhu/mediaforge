@@ -194,6 +194,12 @@ go through the Operation Kernel phase.
 The stdio and HTTP bridge modes write the same state, so DSH and the app see
 the same task list when they use the same `MEDIAFORGE_DATA_DIR`.
 
+Smoke test (temporary profile, no user data):
+
+```powershell
+.\scripts\smoke-mcp.ps1
+```
+
 Current limitations, intentionally explicit:
 
 - The stdio bridge is a separate headless worker process. It shares the data

@@ -136,6 +136,12 @@ mcp__mediaforge__models_list
 
 MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Agent 是下一阶段。
 
+协议冒烟测试（临时 profile，不碰用户数据）：
+
+```powershell
+.\scripts\smoke-mcp.ps1
+```
+
 页面：`#/agent`
 
 - 读取 `agent-jobs/index.json` 和 `agent-workspace.json`
