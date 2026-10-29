@@ -11,15 +11,14 @@ next step. The final artifact is copied into outputDir with a stable name.
 from __future__ import annotations
 
 import os
-import shutil
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 from worker_protocol import emit, emit_error
 
-from . import capabilities, image_ops, video_ops
+import worker_paths
+from . import capabilities, image_ops, video_ops, video_step
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -28,16 +27,8 @@ def _request_id(payload: dict[str, Any]) -> str | None:
 
 
 def _suffix(steps: list[dict[str, Any]]) -> str:
-    names = []
-    for step in steps:
-        capability = str(step.get("capability") or "")
-        if capability == "watermark_removal":
-            names.append("clean")
-        elif capability == "upscale":
-            names.append("sr")
-        else:
-            names.append(capability or "step")
-    return "_".join(names) or "workflow"
+    # 后缀归注册表管（clean / sr），不再在这里长第二个 if/elif
+    return video_step.suffix_for_steps(str(step.get("capability") or "") for step in steps)
 
 
 def _progress(request_id: str | None, fraction: float, current: str, completed: int, total: int) -> None:
@@ -106,93 +97,83 @@ def _run_video(
     index: int,
     total: int,
 ) -> dict[str, Any]:
-    work = Path(tempfile.mkdtemp(prefix="mfworkflow_"))
-    device_name = "cuda"
-    try:
-        current = source
-        step_infos: list[dict[str, Any]] = []
-        for step_index, step in enumerate(steps):
-            capability = str(step.get("capability") or "")
-            params = step.get("params") if isinstance(step.get("params"), dict) else {}
-            bindings = step.get("bindings") if isinstance(step.get("bindings"), dict) else {}
+    """把工作流所有步骤压进**一次**解码 + **一次**编码。
 
-            def report(fraction: float, message: str, _step=step_index) -> None:
-                # Keep room for the remaining steps and inputs.
-                base = (index + (_step + max(0.0, min(1.0, fraction))) / max(len(steps), 1)) / max(total, 1)
-                _progress(request_id, base, f"{message} {source.name}", index, total)
-
-            step_output = work / f"step{step_index + 1}"
-            if capability == "watermark_removal":
-                mode = "watermark"
-                detect_mode = str(params.get("detectMode") or payload.get("detectMode") or "fixed")
-                conf = float(params.get("conf") or payload.get("conf") or 0.25)
-                expand = int(params.get("expand") or payload.get("expand") or 8)
-                scale = 1.0
-                preferred_scale = None
-            elif capability == "upscale":
-                mode = "upscale"
-                detect_mode = "fixed"
-                conf = 0.25
-                expand = 8
-                scale = float(params.get("scale") or payload.get("scale") or 2.0)
-                upscaler = str(bindings.get("upscaler") or "")
-                preferred_scale = 4 if "x4" in upscaler else 2
-            else:
-                raise ValueError(f"unsupported video workflow capability: {capability}")
-
-            target = image_ops.resolve_target(
-                str(params.get("target") or "none"),
-                int(params.get("width") or payload.get("width") or 0),
-                int(params.get("height") or payload.get("height") or 0),
-            )
-            model_paths: dict[str, str] = {}
-            if capability == "watermark_removal":
-                model_paths["detector"] = str(capabilities.model_path(str(bindings["detector"])))
-                model_paths["inpainter"] = str(capabilities.model_path(str(bindings["inpainter"])))
-            elif capability == "upscale":
-                upscaler = str(bindings["upscaler"])
-                key = "upscaler_x4" if preferred_scale == 4 else "upscaler_x2"
-                model_paths[key] = str(capabilities.model_path(upscaler))
-            restorer = image_ops.ImageRestorer(model_paths=model_paths)
-            device_name = restorer.device
-            result = video_ops.process_video(
-                current,
-                step_output,
-                mode=mode,
-                scale=scale,
+    2026-10-29 改：原来每步调一次 `process_video`，N 步 = N 次 H.264 编解码
+    （代际损失 × N）、每步还新建一个 `ImageRestorer` 把模型重新加载一遍。
+    现在步骤被翻译成 `FrameStep`，一帧跑完所有步骤再进编码器。
+    """
+    merged_paths: dict[str, str] = {}
+    frame_steps: list[video_ops.FrameStep] = []
+    step_meta: list[dict[str, Any]] = []
+    for step in steps:
+        capability = str(step.get("capability") or "")
+        params = step.get("params") if isinstance(step.get("params"), dict) else {}
+        bindings = step.get("bindings") if isinstance(step.get("bindings"), dict) else {}
+        # 能力分派归注册表（video_step），这里只负责把每一步翻成逐帧操作
+        step_plan = video_step.plan(
+            video_step.StepInputs(capability=capability, params=params, bindings=bindings, payload=payload)
+        )
+        merged_paths.update(step_plan.model_paths)
+        target = image_ops.resolve_target(
+            str(params.get("target") or "none"),
+            int(params.get("width") or payload.get("width") or 0),
+            int(params.get("height") or payload.get("height") or 0),
+        )
+        frame_steps.append(
+            video_ops.FrameStep(
+                mode=step_plan.mode,
+                scale=step_plan.scale,
                 target=target,
                 fit=str(params.get("fit") or payload.get("fit") or "contain"),
-                conf=conf,
-                expand=expand,
-                detect_mode=detect_mode,
-                preferred_scale=preferred_scale,
-                preview_seconds=float(payload.get("previewSeconds") or 0),
-                crf=int(payload.get("crf") or 18),
-                preset=str(payload.get("preset") or "fast"),
-                restorer=restorer,
-                progress=report,
+                conf=step_plan.conf,
+                expand=step_plan.expand,
+                detect_mode=step_plan.detect_mode,
+                preferred_scale=step_plan.preferred_scale,
             )
-            current = Path(result["path"])
-            step_infos.append({"capability": capability, "model": dict(bindings), "info": result.get("info")})
+        )
+        step_meta.append({"capability": capability, "model": dict(bindings)})
 
-        final = output_dir / f"{source.stem}_workflow_{_suffix(steps)}.mp4"
-        if final.resolve() != current.resolve():
-            shutil.copy2(current, final)
-        return {
-            "path": str(final),
-            "source": str(source),
-            "mode": "workflow",
-            "steps": [step["capability"] for step in steps],
-            "info": {
-                "device": device_name,
-                "workflow_steps": step_infos,
-                "elapsed": round(sum(float((item.get("info") or {}).get("elapsed") or 0) for item in step_infos), 2),
-                "output_path": str(final),
-            },
-            "size": final.stat().st_size,
-        }
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    # 模型只加载一次：把各步需要的权重合并到一个 ImageRestorer
+    restorer = image_ops.ImageRestorer(model_paths=merged_paths)
+
+    def report(fraction: float, message: str) -> None:
+        base = (index + max(0.0, min(1.0, fraction))) / max(total, 1)
+        _progress(request_id, base, f"{message} {source.name}", index, total)
+
+    result = video_ops.process_video_steps(
+        source,
+        output_dir,
+        steps=frame_steps,
+        suffix=_suffix(steps),
+        preview_seconds=float(payload.get("previewSeconds") or 0),
+        crf=int(payload.get("crf") or 18),
+        preset=str(payload.get("preset") or "fast"),
+        restorer=restorer,
+        progress=report,
+    )
+    info = result.get("info") or {}
+    step_infos = [
+        {**meta, "info": detail}
+        for meta, detail in zip(step_meta, info.get("steps") or [])
+    ]
+    return {
+        "path": result["path"],
+        "source": str(source),
+        "mode": "workflow",
+        "steps": [step["capability"] for step in steps],
+        "info": {
+            "device": restorer.device,
+            "workflow_steps": step_infos,
+            # 单次编解码：耗时/帧数/尺寸都是整条工作流的，不再按步累加
+            "elapsed": info.get("elapsed"),
+            "frames": info.get("frames"),
+            "input_size": info.get("input_size"),
+            "output_size": info.get("output_size"),
+            "output_path": result["path"],
+        },
+        "size": result["size"],
+    }
 
 
 def cmd_media_workflow(payload: dict[str, Any]) -> int:
@@ -214,7 +195,7 @@ def cmd_media_workflow(payload: dict[str, Any]) -> int:
             return emit_error("MEDIA_WORKFLOW_INVALID", "Workflow requires at least one step", request_id=request_id)
         model_dir = str(payload.get("modelDir") or "").strip()
         if model_dir:
-            os.environ["MEDIAFORGE_MODEL_DIR"] = model_dir
+            worker_paths.export_model_root(model_dir)
         _validate_models(steps)
 
         started = time.perf_counter()
