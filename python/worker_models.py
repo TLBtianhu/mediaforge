@@ -21,6 +21,8 @@ except ImportError:  # bootstrap Python may not have PyYAML; model listing does 
 from worker_inference_constraints import chunk_size_constraint
 from worker_protocol import WORKER_VERSION, _as_bool, _as_float, _as_int, emit, emit_error, import_available
 
+import worker_paths
+
 
 def package_version(distribution: str) -> str | None:
     try:
@@ -486,13 +488,12 @@ def _debug_catalog_status(base_data: dict[str, Any] | None = None) -> dict[str, 
 
 
 def _default_model_dir() -> Path:
-    env_value = os.environ.get("PYMSS_MODEL_DIR")
-    if env_value:
-        return Path(env_value)
-    repo_models = _model_catalog_path().parent.parent.parent / "all_models"
-    if repo_models.is_dir():
-        return repo_models
-    return Path.home() / ".cache" / "pymss" / "models"
+    """模型根目录。解析规则只有一份，在 `worker_paths.model_root()`。
+
+    2026-10-29 之前这里复制了 pymss 自己的兜底（`PYMSS_MODEL_DIR` → 仓库 `all_models`
+    → `~/.cache/pymss/models`），于是「模型放哪」在缓存/下载/导入三处各有答案。
+    """
+    return worker_paths.model_root()
 
 
 def _load_yaml_config(config_path: Path) -> dict[str, Any]:
@@ -889,9 +890,40 @@ def cmd_health() -> int:
     return 0
 
 
+def _runtime_manifest() -> dict[str, Any]:
+    """读 `python/runtime-manifest.json`（打包运行时的声明）。读不到就返回空。
+
+    为什么要读它：产品声明的解释器版本（manifest 的 `python`）和**开发机实际跑的解释器**
+    可能不一致——2026-10-29 就发生过：manifest 写 3.12，开发 venv 却是宿主 Python 3.11，
+    于是"只在 3.11 上出现"的问题（比如 `Path.is_junction` 不存在）本地看不到、
+    CI 也测不出来。把这个差异变成 env_info 里的两个字段，比写进文档有用。
+    """
+    path = Path(__file__).with_name("runtime-manifest.json")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _python_matches_manifest(expected: Any, version_info: Any) -> bool:
+    """`expected` 形如 "3.12"；只比 major.minor，补丁版本不参与。"""
+    try:
+        wanted = tuple(int(part) for part in str(expected or "").split(".")[:2])
+    except ValueError:
+        return False
+    if len(wanted) != 2:
+        return False
+    return tuple(int(part) for part in version_info[:2]) == wanted
+
+
 def cmd_env_info() -> int:
+    manifest = _runtime_manifest()
+    expected_python = str(manifest.get("python") or "")
     payload: dict[str, Any] = {
         "pythonVersion": sys.version.split()[0],
+        "expectedPython": expected_python or None,
+        "runtimeMatchesManifest": _python_matches_manifest(expected_python, sys.version_info),
+        "runtimeManifestVersion": manifest.get("manifestVersion"),
         "platform": platform.platform(),
         "workerVersion": WORKER_VERSION,
         "pymssAvailable": False,

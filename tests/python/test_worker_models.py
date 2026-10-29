@@ -100,6 +100,17 @@ class LightweightModelDiscoveryTests(unittest.TestCase):
     def tearDown(self):
         worker_models._model_catalog_path.cache_clear()
 
+    def test_bundled_catalog_wins_when_present(self):
+        """MediaForge 自带一份钉死的 catalog：它存在时不再去问 pymss。
+
+        2026-10-29 补：原测试默认"总是走 importlib.metadata"，但 `_model_catalog_path()`
+        早已改成"先看仓库里的 audio_catalog.json"，那条断言再也不可能成立
+        （测试比实现旧了一版，于是常红）。
+        """
+        bundled = Path(worker_models.__file__).with_name("audio_catalog.json")
+        self.assertTrue(bundled.is_file(), "仓库里应当有 python/audio_catalog.json")
+        self.assertEqual(worker_models._model_catalog_path(), bundled)
+
     def test_catalog_path_uses_distribution_metadata_without_importing_pymss(self):
         catalog = self.root / "pymss" / "resources" / "model_catalog.json"
         catalog.parent.mkdir(parents=True)
@@ -108,8 +119,16 @@ class LightweightModelDiscoveryTests(unittest.TestCase):
         distribution = mock.Mock(files=[package_file])
         distribution.locate_file.return_value = catalog
 
-        with mock.patch("importlib.metadata.distribution", return_value=distribution) as locate:
-            resolved = worker_models._model_catalog_path()
+        # 把 __file__ 指到一个**没有** audio_catalog.json 的目录，才会真的走到 pymss 分支。
+        isolated = self.root / "isolated" / "worker_models.py"
+        isolated.parent.mkdir(parents=True)
+        worker_models._model_catalog_path.cache_clear()
+        try:
+            with mock.patch.object(worker_models, "__file__", str(isolated)):
+                with mock.patch("importlib.metadata.distribution", return_value=distribution) as locate:
+                    resolved = worker_models._model_catalog_path()
+        finally:
+            worker_models._model_catalog_path.cache_clear()
 
         self.assertEqual(resolved, catalog.resolve())
         locate.assert_called_once_with("pymss")

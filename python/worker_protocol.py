@@ -558,7 +558,10 @@ def load_payload(payload_arg: str | None) -> dict[str, Any]:
         return {}
     path = Path(payload_arg)
     if path.is_file():
-        return json.loads(path.read_text(encoding="utf-8"))
+        # utf-8-sig：PowerShell 5.1 的 Set-Content -Encoding UTF8 会写 BOM，
+        # 而 json.loads 见 BOM 直接抛“Unexpected UTF-8 BOM”。payload 文件常由脚本、
+        # 手工或第三方工具生成，读端必须容忍——否则表现是 worker 一声不响地崩掉。
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     return json.loads(payload_arg)
 
 
