@@ -101,6 +101,69 @@ class ResultContractTests(unittest.TestCase):
             )
 
 
+class SlotVocabularyTests(unittest.TestCase):
+    """契约里的槽位词汇表就是 UI 用的那一份：同一份参数语义喂两边。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.contract = agent_contract.build_contract()
+
+    def test_contract_exposes_the_slot_vocabulary(self) -> None:
+        from media_ops import interface as model_interface
+
+        self.assertEqual(set(self.contract["slots"]), set(model_interface.SLOT_DEFAULTS))
+        self.assertGreaterEqual(len(self.contract["slots"]), 20)
+
+    def test_task_slots_reference_known_slots(self) -> None:
+        vocabulary = set(self.contract["slots"])
+        for task, slots in self.contract["taskSlots"].items():
+            with self.subTest(task=task):
+                self.assertTrue(set(slots) <= vocabulary, f"{task} 引用了未知槽位")
+
+    def test_capability_params_stay_inside_the_vocabulary_or_are_declared(self) -> None:
+        from media_ops import capabilities
+
+        declared = set()
+        for cap in capabilities.CAPABILITIES:
+            declared.update((cap.get("params") or {}).keys())
+        for tool in self.contract["tools"]:
+            schema = tool.get("paramsSchema")
+            if not schema:
+                continue
+            unknown = set(schema) - declared - set(self.contract["slots"])
+            self.assertEqual(unknown, set(), f"{tool['name']} 的步骤参数既不在能力声明也不在词汇表：{unknown}")
+
+
+class StepParamTests(unittest.TestCase):
+    def _media(self, name: str, params: dict) -> list[str]:
+        capability = name.rsplit(".", 1)[1]
+        return agent_contract.validate_arguments(
+            name,
+            {
+                "modality": "image",
+                "inputs": ["a.png"],
+                "outputDir": "out",
+                "steps": [{"capability": capability, "params": params}],
+            },
+        )
+
+    def test_known_step_params_pass(self) -> None:
+        self.assertEqual(self._media("media.image.upscale", {"scale": 2}), [])
+        self.assertEqual(self._media("media.image.watermark_removal", {"conf": 0.3, "expand": 8}), [])
+
+    def test_unknown_step_param_is_rejected_with_its_path(self) -> None:
+        problems = self._media("media.image.upscale", {"bogus": 1})
+        self.assertTrue(any("steps[0].params.bogus" in problem for problem in problems), problems)
+
+    def test_out_of_range_step_param_is_rejected(self) -> None:
+        problems = self._media("media.image.watermark_removal", {"conf": 2.5})
+        self.assertTrue(any("conf must be <= 1.0" in problem for problem in problems), problems)
+
+    def test_wrong_type_step_param_is_rejected(self) -> None:
+        problems = self._media("media.image.upscale", {"scale": "2x"})
+        self.assertTrue(any("scale should be integer" in problem for problem in problems), problems)
+
+
 class ApprovalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

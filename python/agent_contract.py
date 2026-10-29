@@ -101,6 +101,7 @@ def _tool(
     produces: str | None = None,
     evaluate: str | None = None,
     available: bool = True,
+    params_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if approval not in APPROVAL_LEVELS:
         raise ValueError(f"unknown approval level {approval!r} for {name}")
@@ -119,11 +120,61 @@ def _tool(
         "inputSchema": input_schema or _schema(),
         "produces": produces,
         "evaluate": evaluate,
+        # 步骤参数的可接受范围（能力声明的 params，范围与槽位词汇表对齐）
+        "paramsSchema": params_schema,
         "resultEvent": _result_event(name, command, operation),
         "available": bool(available),
         # 已经在桥接里以别的名字暴露过的话，这里记下来（避免重复上表）
         "bridgeTool": BRIDGE_ALIASES.get(name),
     }
+
+
+def load_task_slots() -> dict[str, Any]:
+    try:
+        from media_ops import registry
+
+        return registry.tasks()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _slot_vocabulary() -> dict[str, dict[str, Any]]:
+    try:
+        from media_ops import interface as model_interface
+
+        return model_interface.vocabulary()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _capability_params(capability_id: str) -> dict[str, Any]:
+    """一个能力的步骤参数声明。
+
+    能力参数是"任务假设"（水印位置、目标尺寸），槽位是"模型运行点"（scale/tile）——
+    同名的部分（conf/expand/scale/multiplier）共用槽位的范围，避免两处漂移。
+    """
+    from media_ops import capabilities
+
+    declaration = next((cap for cap in capabilities.CAPABILITIES if cap["id"] == capability_id), None)
+    if declaration is None:
+        return {}
+    vocabulary = _slot_vocabulary()
+    schema: dict[str, Any] = {}
+    for name, spec in (declaration.get("params") or {}).items():
+        entry: dict[str, Any] = {"type": spec.get("type") or "string"}
+        if "default" in spec:
+            entry["default"] = spec["default"]
+        slot = vocabulary.get(name)
+        if slot:
+            if slot.get("kind") in {"int", "enum"}:
+                entry["type"] = "integer"
+            elif slot.get("kind") in {"float"}:
+                entry["type"] = "number"
+            for key, target in (("min", "minimum"), ("max", "maximum")):
+                if slot.get(key) is not None:
+                    entry[target] = slot[key]
+        schema[name] = entry
+    return schema
 
 
 # ── 媒体能力：从 capabilities.json 派生，不在这里写死 model id ──────────────────
@@ -184,6 +235,7 @@ def _media_tools() -> list[dict[str, Any]]:
                     produces="file",
                     evaluate="media.evaluate",
                     available=is_available,
+                    params_schema=_capability_params(capability["id"]),
                 )
             )
     return tools
@@ -387,10 +439,17 @@ def build_contract() -> dict[str, Any]:
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
         raise ValueError(f"duplicate tool names in contract: {duplicates}")
+    vocabulary = _slot_vocabulary()
     return {
         "version": CONTRACT_VERSION,
         "approvalLevels": APPROVAL_LEVELS,
         "costLevels": COST_LEVELS,
+        # 槽位词汇表：UI 与 agent 共用同一份参数语义
+        "slots": vocabulary,
+        "taskSlots": {
+            task: [slot for slot in (spec.get("slots") or []) if slot in vocabulary]
+            for task, spec in (load_task_slots() or {}).items()
+        },
         "tools": tools,
         "audit": audit_contract(tools),
     }
@@ -462,6 +521,36 @@ def validate_arguments(tool_name: str, arguments: Any) -> list[str]:
         unknown = sorted(set(arguments) - set(properties))
         if unknown:
             problems.append("unknown arguments: " + ", ".join(unknown))
+    # 媒体工具的步骤参数按能力声明校验：未知键直接报，别让 worker 深处才炸
+    params_schema = tool.get("paramsSchema") or {}
+    steps = arguments.get("steps")
+    if params_schema and isinstance(steps, list):
+        for index, step in enumerate(steps):
+            if not isinstance(step, dict):
+                continue
+            step_params = step.get("params")
+            if not isinstance(step_params, dict):
+                continue
+            for key, value in step_params.items():
+                spec = params_schema.get(key)
+                if not isinstance(spec, dict):
+                    problems.append(f"steps[{index}].params.{key} is not accepted by {tool_name}")
+                    continue
+                expected = str(spec.get("type") or "")
+                if expected == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
+                    problems.append(f"steps[{index}].params.{key} should be integer")
+                elif expected == "number" and (isinstance(value, bool) or not isinstance(value, (int, float))):
+                    problems.append(f"steps[{index}].params.{key} should be number")
+                elif expected == "string" and not isinstance(value, str):
+                    problems.append(f"steps[{index}].params.{key} should be string")
+                minimum = spec.get("minimum")
+                maximum = spec.get("maximum")
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    if isinstance(minimum, (int, float)) and value < minimum:
+                        problems.append(f"steps[{index}].params.{key} must be >= {minimum}")
+                    if isinstance(maximum, (int, float)) and value > maximum:
+                        problems.append(f"steps[{index}].params.{key} must be <= {maximum}")
+
     for key, value in arguments.items():
         spec = properties.get(key)
         if not isinstance(spec, dict) or value is None:

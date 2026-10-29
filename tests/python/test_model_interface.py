@@ -22,6 +22,13 @@ from media_ops import registry as reg  # noqa: E402
 SLOTS_TS = ROOT / "src" / "litegraph" / "slots.ts"
 
 
+def frontend_slot_kinds() -> dict[str, str]:
+    """从 TS 词汇表解析 id → kind，用来和后端默认值对照。"""
+    source = SLOTS_TS.read_text(encoding="utf-8")
+    body = source[source.index("export const SLOTS"):]
+    return dict(re.findall(r"  ([a-z_][a-z0-9_]*): \{\n    id: '[a-z0-9_]+',\n    kind: '([a-z]+)'", body))
+
+
 def frontend_slot_ids() -> set[str]:
     """从 TS 词汇表里数出槽位 id（数据在 TS，检查放在 Python，避免两边各自漂移）。"""
     source = SLOTS_TS.read_text(encoding="utf-8")
@@ -35,6 +42,14 @@ class VocabularyParityTests(unittest.TestCase):
         backend = set(iface.SLOT_DEFAULTS)
         frontend = frontend_slot_ids()
         self.assertEqual(frontend, backend, f"前端缺 {backend - frontend}，后端多 {frontend - backend}")
+
+    def test_slot_kinds_match_the_frontend(self) -> None:
+        """同一个槽位在前后端必须是同一种控件类型，否则 UI 与校验会打架。"""
+        backend = {slot: spec.get("kind") for slot, spec in iface.SLOT_DEFAULTS.items()}
+        frontend = frontend_slot_kinds()
+        self.assertEqual(set(frontend), set(backend), "前后端槽位集合不一致")
+        mismatched = {slot: (backend[slot], frontend[slot]) for slot in backend if backend[slot] != frontend[slot]}
+        self.assertEqual(mismatched, {}, f"kind 不一致：{mismatched}")
 
     def test_every_registry_slot_is_known_to_the_backend(self) -> None:
         used = {slot for model in reg.models() for slot in model.get("slots") or []}

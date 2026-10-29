@@ -25,34 +25,34 @@ from . import registry
 #: 每个槽位的默认绑定与范围。值只是"起点"，架构模板可以覆盖。
 SLOT_DEFAULTS: dict[str, dict[str, Any]] = {
     # 音频
-    "chunk_size": {"bind": "chunk_size", "min": 64, "max": 8192, "step": 64, "default": 1024,
+    "chunk_size": {"kind": "int", "bind": "chunk_size", "min": 64, "max": 8192, "step": 64, "default": 1024,
                    "derive": "chunk_size_constraint"},
-    "overlap": {"bind": "overlap", "min": 0, "max": 8, "step": 1, "default": 2},
-    "stems": {"bind": "stems", "default": "vocals"},
-    "batch_size": {"bind": "batch_size", "min": 1, "max": 32, "step": 1, "default": 1},
-    "overlap_count": {"bind": "num_overlap", "min": 0, "max": 128, "step": 1, "default": 4},
-    "window_size": {"bind": "window_size", "min": 0, "max": 4096, "step": 64, "default": 512},
-    "aggression": {"bind": "aggression", "min": 0, "max": 100, "step": 1, "default": 5},
-    "post_process": {"bind": "enable_post_process", "default": True},
-    "high_end_process": {"bind": "high_end_process", "default": False},
-    "post_process_threshold": {"bind": "post_process_threshold", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.3},
-    "standardize": {"bind": "standardize", "default": False},
+    "overlap": {"kind": "int", "bind": "overlap", "min": 0, "max": 8, "step": 1, "default": 2},
+    "stems": {"kind": "multi", "bind": "stems", "default": "vocals"},
+    "batch_size": {"kind": "int", "bind": "batch_size", "min": 1, "max": 32, "step": 1, "default": 1},
+    "overlap_count": {"kind": "int", "bind": "num_overlap", "min": 0, "max": 128, "step": 1, "default": 4},
+    "window_size": {"kind": "int", "bind": "window_size", "min": 0, "max": 4096, "step": 64, "default": 512},
+    "aggression": {"kind": "int", "bind": "aggression", "min": 0, "max": 100, "step": 1, "default": 5},
+    "post_process": {"kind": "bool", "bind": "enable_post_process", "default": True},
+    "high_end_process": {"kind": "bool", "bind": "high_end_process", "default": False},
+    "post_process_threshold": {"kind": "float", "bind": "post_process_threshold", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.3},
+    "standardize": {"kind": "bool", "bind": "standardize", "default": False},
     # 图像 / 视频
-    "scale": {"bind": "scale", "min": 1, "max": 4, "step": 1, "default": 2},
-    "tile": {"bind": "tile", "min": 0, "max": 1024, "step": 32, "default": 0},
-    "denoise_strength": {"bind": "denoise_strength", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.5},
-    "strength": {"bind": "strength", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.5},
-    "fidelity": {"bind": "fidelity", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.7},
-    "expand": {"bind": "expand", "min": 0, "max": 64, "step": 1, "default": 10},
-    "steps": {"bind": "steps", "min": 1, "max": 100, "step": 1, "default": 20},
-    "upscale": {"bind": "upscale", "min": 1, "max": 4, "step": 1, "default": 2},
-    "threshold": {"bind": "threshold", "min": 0.0, "max": 1.0, "step": 0.01, "default": 0.5},
-    "conf": {"bind": "conf", "min": 0.0, "max": 1.0, "step": 0.01, "default": 0.25},
-    "iou": {"bind": "iou", "min": 0.0, "max": 1.0, "step": 0.01, "default": 0.45},
-    "multiplier": {"bind": "multiplier", "min": 2, "max": 8, "step": 1, "default": 2},
-    "scene_cut": {"bind": "scene_cut", "default": True},
-    "neighbor_frames": {"bind": "neighbor_frames", "min": 2, "max": 20, "step": 1, "default": 10},
-    "fp16": {"bind": "fp16", "default": True},
+    "scale": {"kind": "int", "bind": "scale", "min": 1, "max": 4, "step": 1, "default": 2},
+    "tile": {"kind": "int", "bind": "tile", "min": 0, "max": 1024, "step": 32, "default": 0},
+    "denoise_strength": {"kind": "float", "bind": "denoise_strength", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.5},
+    "strength": {"kind": "float", "bind": "strength", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.5},
+    "fidelity": {"kind": "float", "bind": "fidelity", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.7},
+    "expand": {"kind": "int", "bind": "expand", "min": 0, "max": 64, "step": 1, "default": 10},
+    "steps": {"kind": "int", "bind": "steps", "min": 1, "max": 100, "step": 1, "default": 20},
+    "upscale": {"kind": "int", "bind": "upscale", "min": 1, "max": 4, "step": 1, "default": 2},
+    "threshold": {"kind": "float", "bind": "threshold", "min": 0.0, "max": 1.0, "step": 0.01, "default": 0.5},
+    "conf": {"kind": "float", "bind": "conf", "min": 0.0, "max": 1.0, "step": 0.01, "default": 0.25},
+    "iou": {"kind": "float", "bind": "iou", "min": 0.0, "max": 1.0, "step": 0.01, "default": 0.45},
+    "multiplier": {"kind": "enum", "bind": "multiplier", "min": 2, "max": 8, "step": 1, "default": 2},
+    "scene_cut": {"kind": "bool", "bind": "scene_cut", "default": True},
+    "neighbor_frames": {"kind": "int", "bind": "neighbor_frames", "min": 2, "max": 20, "step": 1, "default": 10},
+    "fp16": {"kind": "bool", "bind": "fp16", "default": True},
 }
 
 #: 按架构覆盖默认值。单位是"架构"，不是模型——326 个音频模型只有 12 种架构。
@@ -92,6 +92,15 @@ ARCH_SLOT_OVERRIDES: dict[str, dict[str, dict[str, Any]]] = {
 VR_ONLY_SLOTS = ["window_size", "aggression", "post_process", "high_end_process", "post_process_threshold", "overlap_count"]
 
 FORBIDDEN_INTERFACE_KEYS = {"order", "group", "section", "sections", "width", "row", "column", "collapsed", "index"}
+
+
+def vocabulary() -> dict[str, dict[str, Any]]:
+    """槽位词汇表（后端视角）：kind / 范围 / 默认 / 派生约束。
+
+    前端 `src/litegraph/slots.ts` 是同一份词汇表的 UI 视角（unit/help/diagram），
+    两边的 id 与 kind 由测试强制一致。
+    """
+    return {slot: dict(spec) for slot, spec in SLOT_DEFAULTS.items()}
 
 
 def _task_slots(task: str) -> list[str]:
