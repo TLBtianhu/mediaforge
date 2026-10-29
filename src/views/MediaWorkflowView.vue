@@ -110,7 +110,7 @@ async function start() {
 onMounted(async () => {
   unlisten = await listen<WorkerEvent>('pymss://worker-event', event => {
     const payload = event.payload
-    const id = payload?.requestId || null
+    const id = payload?.requestId || payload?.taskId || null
     if (!requestId || id !== requestId) return
     if (payload?.type === 'audio_tool_progress' && payload.payload) {
       onProgress(payload.payload)

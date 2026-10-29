@@ -173,7 +173,7 @@ def _run_video(
                 progress=report,
             )
             current = Path(result["path"])
-            step_infos.append({"capability": capability, "path": str(current), "info": result.get("info")})
+            step_infos.append({"capability": capability, "model": dict(bindings), "info": result.get("info")})
 
         final = output_dir / f"{source.stem}_workflow_{_suffix(steps)}.mp4"
         if final.resolve() != current.resolve():
