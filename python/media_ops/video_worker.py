@@ -63,7 +63,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             upscaler_id = str(upscale_step["bindings"]["upscaler"])
             preferred_scale = capabilities.model_scale(upscaler_id)
             model_paths["upscaler_x2" if preferred_scale == 2 else "upscaler_x4"] = str(capabilities.model_path(upscaler_id))
-        restorer = image_ops.ImageRestorer(model_paths=model_paths)
+        restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, model_paths=model_paths)
         target = image_ops.resolve_target(
             str(payload.get("target") or "none"),
             int(payload.get("width") or 0),
