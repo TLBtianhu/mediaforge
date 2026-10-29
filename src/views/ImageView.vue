@@ -264,7 +264,11 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlisten?.()
 })
-const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('pipeline.stepInput') }, { title: t('plan.title'), text: t('pipeline.stepCompose') }, { title: t('image.compare'), text: pipelineSummary.value }])
+const workbenchSteps = computed(() => [
+  { title: t('factory.input'), text: t('pipeline.stepInput') },
+  { title: t('plan.title'), text: t('pipeline.stepCompose') },
+  { title: t('image.compare'), text: pipelineSummary.value },
+])
 </script>
 
 <template>
@@ -365,7 +369,7 @@ const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('pip
         </n-space>
       </WorkbenchCard>
 
-    <WorkbenchCard v-if="firstOutput" class="workbench-result" index="04" :title="t('image.compare')">
+    <WorkbenchCard v-if="firstOutput" class="workbench-result" index="03" :title="t('image.compare')">
       <div class="image-compare">
         <img class="compare-base" :src="resultSrc" :alt="t('image.after')" />
         <img class="compare-top" :src="originalSrc" :alt="t('image.before')" :style="{ clipPath: `inset(0 ${100 - compare}% 0 0)` }" />

@@ -270,7 +270,11 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlisten?.()
 })
-const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('pipeline.stepInput') }, { title: t('plan.title'), text: t('pipeline.stepCompose') }, { title: t('video.result'), text: pipelineSummary.value }])
+const workbenchSteps = computed(() => [
+  { title: t('factory.input'), text: t('pipeline.stepInput') },
+  { title: t('plan.title'), text: t('pipeline.stepCompose') },
+  { title: t('video.result'), text: pipelineSummary.value },
+])
 </script>
 
 <template>
@@ -371,7 +375,7 @@ const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('pip
         </n-space>
       </WorkbenchCard>
 
-    <WorkbenchCard v-if="firstOutput" class="workbench-result" index="04" :title="t('video.result')">
+    <WorkbenchCard v-if="firstOutput" class="workbench-result" index="03" :title="t('video.result')">
       <video class="video-player" :src="videoSrc" controls />
       <div class="video-info">
         <n-tag v-for="row in resultInfo" :key="row.label" size="small" :bordered="false">{{ row.label }}: {{ row.value }}</n-tag>
