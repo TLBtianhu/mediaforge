@@ -77,6 +77,40 @@ class PlanTests(unittest.TestCase):
             embedded_loop.plan_for({"kind": "make_coffee", "inputs": ["a.png"], "outputDir": "out"})
 
 
+class MultiStepPlanTests(unittest.TestCase):
+    def test_two_capabilities_switch_to_the_workflow_tool(self) -> None:
+        plan = embedded_loop.plan_for(
+            {
+                "modality": "image",
+                "inputs": ["a.png"],
+                "outputDir": "out",
+                "steps": [{"capability": "watermark_removal"}, {"capability": "upscale", "params": {"scale": 2}}],
+            }
+        )
+        self.assertEqual(plan["tool"], "media.image.workflow")
+        self.assertEqual([step["capability"] for step in plan["arguments"]["steps"]], ["watermark_removal", "upscale"])
+        # 每一步都补齐默认绑定
+        for step in plan["arguments"]["steps"]:
+            self.assertTrue(step["bindings"])
+
+    def test_video_workflow_uses_the_video_tool(self) -> None:
+        plan = embedded_loop.plan_for(
+            {"modality": "video", "inputs": ["a.mp4"], "outputDir": "out",
+             "steps": [{"capability": "upscale"}, {"capability": "upscale"}]}
+        )
+        self.assertEqual(plan["tool"], "media.video.workflow")
+
+    def test_step_without_capability_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            embedded_loop.plan_for({"modality": "image", "inputs": ["a.png"], "outputDir": "out", "steps": [{}]})
+
+    def test_single_step_keeps_the_single_capability_tool(self) -> None:
+        plan = embedded_loop.plan_for(
+            {"modality": "image", "inputs": ["a.png"], "outputDir": "out", "steps": [{"capability": "upscale"}]}
+        )
+        self.assertEqual(plan["tool"], "media.image.upscale")
+
+
 class GateTests(unittest.TestCase):
     def test_explicit_approval_blocks_by_default(self) -> None:
         result = embedded_loop.run({"tool": "model.download", "arguments": {"modelId": "media:lama"}})
@@ -145,6 +179,25 @@ class ConvergenceTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["blocked"], "execution_failed")
         self.assertEqual(result["recovery"]["code"], "out_of_memory")
+
+    def test_media_result_with_failed_entries_reports_the_reason(self) -> None:
+        outcome = {
+            "ok": False,
+            "code": 0,
+            "events": [],
+            "result": {
+                "type": "audio_tool_result",
+                "payload": {
+                    "outputs": [],
+                    "completed": 0,
+                    "failed": [{"path": "a.png", "error": "没有检测到水印", "recovery": {"code": "no_watermark", "retryable": False, "actions": []}}],
+                },
+            },
+        }
+        result = embedded_loop.run(self._goal(), dispatch=lambda *a, **k: outcome)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["blocked"], "execution_failed")
+        self.assertIn("没有检测到水印", result["summary"])
 
     def test_recovery_attempts_are_reported(self) -> None:
         output = write_pattern(self.root / "out2.png", (64, 48))

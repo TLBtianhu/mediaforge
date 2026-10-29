@@ -189,11 +189,19 @@ class MediaToolTests(unittest.TestCase):
         cls.tools = {tool["name"]: tool for tool in agent_contract.build_contract()["tools"]}
 
     def _capability_tools(self) -> dict[str, dict]:
-        """按 operation 认能力工具，别按名字前缀——`media.metadata` 也是 media.*。"""
+        """按 operation + 能力 id 认能力工具。
+
+        不能只看 operation：`media.image.workflow` 也用 media_workflow，
+        但它是编排工具，不是某个能力。
+        """
+        from media_ops import capabilities
+
+        capability_ids = {cap["id"] for cap in capabilities.CAPABILITIES}
         return {
             name: tool
             for name, tool in self.tools.items()
             if tool["operation"] in {"media_image", "media_workflow"}
+            and name.rsplit(".", 1)[-1] in capability_ids
         }
 
     def test_media_tools_follow_the_capability_manifest(self) -> None:

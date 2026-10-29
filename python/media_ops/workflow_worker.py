@@ -18,7 +18,7 @@ from typing import Any
 from worker_protocol import emit, emit_error
 
 import worker_paths
-from . import capabilities, evaluation, image_ops, video_ops, video_step
+from . import capabilities, evaluation, failures, image_ops, video_ops, video_step
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -64,8 +64,12 @@ def _run_image(
     request_id: str | None,
     index: int,
     total: int,
+    *,
+    device: str | None = None,
+    tile: int = 512,
 ) -> dict[str, Any]:
-    restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, tile=int(payload.get("tile") or 0) or 512)
+    # 设备与分块由调用方传入：`_run_image` 没有 payload 作用域（这个坑真实调用才暴露）
+    restorer = image_ops.ImageRestorer(device=device, tile=tile)
     name = source.name
 
     def report(fraction: float, message: str) -> None:
@@ -207,7 +211,18 @@ def cmd_media_workflow(payload: dict[str, Any]) -> int:
                 if not source.is_file():
                     raise FileNotFoundError(f"input not found: {source}")
                 if modality == "image":
-                    outputs.append(_run_image(source, output_dir, steps, request_id, index, total))
+                    outputs.append(
+                        _run_image(
+                            source,
+                            output_dir,
+                            steps,
+                            request_id,
+                            index,
+                            total,
+                            device=str(payload.get("device") or "") or None,
+                            tile=int(payload.get("tile") or 0) or 512,
+                        )
+                    )
                 else:
                     outputs.append(_run_video(source, output_dir, steps, payload, request_id, index, total))
             except Exception as exc:  # noqa: BLE001

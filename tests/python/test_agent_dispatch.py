@@ -93,3 +93,23 @@ class DispatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_media_result_with_failures_is_not_ok(self) -> None:
+        """媒体命令返回 0 但 failed[] 非空时不能算成功。"""
+        import worker
+
+        def fake_run(command: str, payload: dict) -> int:
+            worker_protocol.emit(
+                "audio_tool_result",
+                {"outputs": [], "completed": 0, "failed": [{"path": "a.png", "error": "no watermark"}]},
+            )
+            return 0
+
+        with mock.patch.object(worker, "run_command", side_effect=fake_run):
+            outcome = agent_contract.dispatch("media.image.upscale", {
+                "modality": "image",
+                "inputs": ["a.png"],
+                "outputDir": "out",
+                "steps": [{"capability": "upscale", "bindings": {"upscaler": "media:real-esrgan-x2"}}],
+            })
+        self.assertFalse(outcome["ok"])

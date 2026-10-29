@@ -33,9 +33,10 @@ def plan_for(goal: dict[str, Any]) -> dict[str, Any]:
     if "tool" in goal:
         return {"tool": str(goal["tool"]), "arguments": dict(goal.get("arguments") or {})}
 
+    plan_steps = goal.get("steps")
     kind = str(goal.get("kind") or "").strip()
-    capability = CAPABILITY_FOR_KIND.get(kind)
-    if capability is None:
+    capability = CAPABILITY_FOR_KIND.get(kind) if kind else None
+    if capability is None and not (isinstance(plan_steps, list) and plan_steps):
         raise ValueError(f"unsupported goal kind: {kind or '(missing)'}")
     modality = str(goal.get("modality") or "image").strip().lower()
     if modality not in {"image", "video"}:
@@ -47,21 +48,38 @@ def plan_for(goal: dict[str, Any]) -> dict[str, Any]:
     if not output_dir:
         raise ValueError("goal needs an outputDir")
 
-    bindings = dict(goal.get("bindings") or {})
-    if not bindings:
-        bindings = agent_contract_bindings(capability)
-    step: dict[str, Any] = {"capability": capability, "bindings": bindings}
-    if goal.get("params"):
-        step["params"] = dict(goal["params"])
+    # 单能力与多能力的差别只在 steps 长度：worker 侧单步走 media_image/media_video，
+    # 多步必须走 media_workflow（image_worker/video_worker 会拒绝多步）。
+    plan_steps = goal.get("steps")
+    if isinstance(plan_steps, list) and plan_steps:
+        steps = [dict(step) for step in plan_steps if isinstance(step, dict)]
+        for step in steps:
+            if not step.get("capability"):
+                raise ValueError("each step needs a capability")
+            if not step.get("bindings"):
+                step["bindings"] = agent_contract_bindings(str(step["capability"]))
+        if not steps:
+            raise ValueError("goal steps are empty")
+    else:
+        bindings = dict(goal.get("bindings") or {})
+        if not bindings:
+            bindings = agent_contract_bindings(capability)
+        step = {"capability": capability, "bindings": bindings}
+        if goal.get("params"):
+            step["params"] = dict(goal["params"])
+        steps = [step]
+
     arguments: dict[str, Any] = {
         "modality": modality,
         "inputs": inputs,
         "outputDir": output_dir,
-        "steps": [step],
+        "steps": steps,
     }
     if goal.get("modelDir"):
         arguments["modelDir"] = str(goal["modelDir"])
-    return {"tool": f"media.{modality}.{capability}", "arguments": arguments}
+    if len(steps) > 1:
+        return {"tool": f"media.{modality}.workflow", "arguments": arguments}
+    return {"tool": f"media.{modality}.{steps[0]['capability']}", "arguments": arguments}
 
 
 def agent_contract_bindings(capability: str) -> dict[str, str]:
@@ -154,14 +172,17 @@ def run(
         "attempts": outcome.get("recoveryAttempts") or [],
         "retryBlocked": outcome.get("retryBlocked"),
     }
+    terminal = outcome.get("result") or {}
+    payload = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}
+    failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
     if not step["ok"]:
-        payload = (outcome.get("result") or {}).get("payload") or {}
+        first = failed[0] if failed and isinstance(failed[0], dict) else {}
         return {
             "ok": False,
             "tool": tool,
             "blocked": "execution_failed",
-            "summary": str(payload.get("message") or "执行失败"),
-            "recovery": payload.get("recovery"),
+            "summary": str(first.get("error") or payload.get("message") or "执行失败"),
+            "recovery": first.get("recovery") or payload.get("recovery"),
             "steps": [step],
         }
 

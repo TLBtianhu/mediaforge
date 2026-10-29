@@ -382,6 +382,13 @@ def _native_tools() -> list[dict[str, Any]]:
               input_schema=_schema({"inputs": inputs_array}, ["inputs"])),
         _tool("media.library", "媒体库", "列出/刷新媒体库。", "media", "media_library"),
         # 自评价
+        # 多步编排：worker 侧 media_image/media_video 只接受单步，多步必须走 media_workflow
+        _tool("media.image.workflow", "图像多步工作流", "按顺序执行多个能力（如先去水印再放大），一次调用完成编排。",
+              "media", "audio_tools", operation="media_workflow", approval="confirm", cost="seconds",
+              input_schema=_MEDIA_STEPS_SCHEMA, produces="file", evaluate="media.evaluate"),
+        _tool("media.video.workflow", "视频多步工作流", "按顺序执行多个能力；视频耗时按分钟计，走作业台账。",
+              "media", "audio_tools", operation="media_workflow", approval="confirm", cost="minutes",
+              long_running=True, input_schema=_MEDIA_STEPS_SCHEMA, produces="file", evaluate="media.evaluate"),
         _tool("media.evaluate", "评估产物质量", "对产物做客观评估（尺寸/锐度/是否真的变化），供 agent 自检与重试。",
               "media", "evaluate_media", approval="none", cost="seconds",
               input_schema=_schema({"inputs": inputs_array, "reference": {"type": "string"}}, ["inputs"])),
@@ -685,10 +692,15 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
         worker_protocol.set_event_sink(None)
 
     terminal = events[-1] if events else None
+    payload = terminal.get("payload") if isinstance(terminal, dict) else None
+    failed = payload.get("failed") if isinstance(payload, dict) else None
+    # 媒体结果是"部分失败也能返回 0"：只要 failed[] 非空就不算成功，
+    # 否则调用方会以为跑通了（内嵌 loop 真跑时踩到过）
+    ok = bool(terminal and terminal["type"] != "error" and not failed)
     return {
         "tool": tool_name,
         "code": code,
         "events": events,
-        "ok": bool(terminal and terminal["type"] != "error"),
+        "ok": ok,
         "result": terminal,
     }
