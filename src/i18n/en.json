@@ -17,7 +17,7 @@
   "nav": {
     "separate": "Audio Processing",
     "models": "Audio Models",
-    "mediaModels": "Media Models",
+    "mediaModels": "Image/Video",
     "results": "Results",
     "tools": "Tools",
     "projects": "Projects",
@@ -30,7 +30,11 @@
     "factory": "Media Factory",
     "assets": "Media Shelf",
     "image": "Image Processing",
-    "video": "Video Processing"
+    "video": "Video Processing",
+    "groupWorkspace": "Workspace",
+    "groupModels": "Models",
+    "groupFlow": "Workflow",
+    "groupExtras": "Extensions"
   },
   "factory": {
     "title": "Media Factory",
@@ -99,7 +103,7 @@
     "detectorHint": "Fixed mask detects the first frame only; use per-frame for moving watermarks."
   },
   "mediaModels": {
-    "title": "Media Models",
+    "title": "Image / Video Models",
     "subtitle": "Image/video processing models, dependencies, and download status",
     "modelDir": "Model directory",
     "modelDirPlaceholder": "Leave empty to use models/ or MEDIAFORGE_MODEL_DIR",
@@ -113,7 +117,7 @@
     "downloading": "Downloading…",
     "ready": "All ready",
     "notReady": "Some models are missing",
-    "required": "The four models required by restore",
+    "required": "The four models required by processing",
     "openFolder": "Open model folder",
     "license": "License",
     "size": "Size",
@@ -806,8 +810,8 @@
     "statusCancelled": "Cancelled"
   },
   "models": {
-    "title": "Model Library",
-    "subtitle": "Source separation models and download management",
+    "title": "Audio Models",
+    "subtitle": "Separation models and download management",
     "search": "Search by model name, architecture, type, or note...",
     "downloadedOnly": "Downloaded Only",
     "load": "Load Model List",

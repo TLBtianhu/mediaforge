@@ -12,8 +12,8 @@
 - [x] 复用 PyMSS worker 事件协议（`audio_tool_progress` / `audio_tool_result`）
 - [x] Tauri release 构建通过
 - [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
-- [x] 媒体模型目录：图像/视频模型清单、依赖检查、下载状态
-- [ ] 音频模型与媒体模型合并为统一检索
+- [x] 图像/视频模型目录：图像/视频模型清单、依赖检查、下载状态
+- [ ] 音频模型与图像/视频模型合并为统一检索
 - [x] 图像超分/去水印：Real-ESRGAN + YOLO + LaMa，支持目标分辨率与前后对比
 - [x] 视频抽帧修复管线（超分/去水印 + 音频回封）
 
@@ -92,11 +92,11 @@ RealESRGAN_x4plus.pth
 - 输出 MP4，AAC 音频，保留原始帧率
 - 支持从素材台带视频进入
 
-### 媒体模型
+### 图像/视频模型
 
 页面：`#/media-models`
 
-- 统一管理 Real-ESRGAN / LaMa / YOLO11x 四个媒体模型
+- 统一管理 Real-ESRGAN / LaMa / YOLO11x 四个图像/视频模型
 - 检查 torch / spandrel / ultralytics / opencv / pillow / ffmpeg 依赖
 - 显示已下载 / 未下载 / 文件不完整
 - 应用内下载，进度实时显示
