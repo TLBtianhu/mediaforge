@@ -740,7 +740,17 @@ fn build_worker_command(
         .map(|python| active_runtime_overlay_path(app, python))
         .transpose()?
         .flatten();
-    let python = select_worker_python(command, &bootstrap_python, active_runtime_python)?;
+    let python = select_worker_python(command, &bootstrap_python, active_runtime_python).map_err(|error| {
+        // 这条错误信息要能自证：它找的是哪个目录、那里有没有 active-runtime.json，
+        // 否则用户只能看到"没有运行时"，而不知道应用到底在哪儿找。
+        let envs = storage::runtime_envs_dir(app)
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| "<unresolved>".into());
+        let record = storage::active_runtime_file(app)
+            .map(|file| format!("{} (exists={})", file.display(), file.is_file()))
+            .unwrap_or_else(|_| "<unresolved>".into());
+        AppError::Worker(format!("{error} [runtime-envs={envs}; record={record}]"))
+    })?;
     let python_for_log = python.clone();
     let worker_for_log = worker.clone();
     let mut cmd = Command::new(&python);
