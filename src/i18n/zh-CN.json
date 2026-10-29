@@ -1,4 +1,9 @@
 {
+  "section": {
+    "quality": "画质",
+    "speed": "速度",
+    "advanced": "高级"
+  },
   "app": {
     "name": "MediaForge",
     "bootPreparing": "正在初始化工作环境…",

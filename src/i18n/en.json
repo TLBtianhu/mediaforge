@@ -1,4 +1,9 @@
 {
+  "section": {
+    "quality": "Quality",
+    "speed": "Speed",
+    "advanced": "Advanced"
+  },
   "app": {
     "name": "MediaForge",
     "bootPreparing": "Initializing workspace...",

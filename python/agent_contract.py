@@ -244,6 +244,8 @@ def _native_tools() -> list[dict[str, Any]]:
         # 模型库
         _tool("model.list", "列出模型", "统一模型库（音频 + 图像 + 视频）及下载状态。", "model", "list_models",
               input_schema=_schema({"query": {"type": "string"}, "modality": {"type": "string"}})),
+        _tool("model.interface", "模型槽位接口", "返回一个模型支持的槽位（范围/默认/派生约束），不含任何布局信息。", "model",
+              "model_interface", input_schema=_schema({"model": {"type": "string"}}, ["model"])),
         _tool("model.inspect", "模型详情", "单个模型的元数据与本地状态。", "model", "model_info",
               input_schema=_schema({"model": {"type": "string"}}, ["model"])),
         _tool("model.download", "下载模型", "下载一个模型（可能几百 MB 到数 GB）。", "model", "download_model",
@@ -341,6 +343,7 @@ INTERNAL_COMMANDS: dict[str, str] = {
     "health": "由 system.health 覆盖。",
     "list_models": "由 model.list 覆盖。",
     "model_info": "由 model.inspect 覆盖。",
+    "model_interface": "由 model.interface 覆盖。",
     "download_model": "由 model.download 覆盖。",
     "delete_model": "由 model.delete 覆盖。",
     "import_custom_model": "由 model.import_custom 覆盖。",

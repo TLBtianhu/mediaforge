@@ -76,6 +76,9 @@ def run_command(command: str, payload: dict) -> int:
     if command == "evaluate_media":
         from media_eval import cmd_evaluate_media
         return cmd_evaluate_media(payload)
+    if command == "model_interface":
+        from worker_models import cmd_model_interface
+        return cmd_model_interface(payload)
     if command == "list_models":
         from worker_models import cmd_list_models
         return cmd_list_models(payload)

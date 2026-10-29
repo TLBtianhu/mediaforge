@@ -1206,6 +1206,24 @@ def cmd_debug_model_config(payload: dict[str, Any]) -> int:
         return emit_error("DEBUG_MODEL_CONFIG_FAILED", str(exc), traceback.format_exc())
 
 
+def cmd_model_interface(payload: dict[str, Any]) -> int:
+    """返回某个模型的槽位接口（不含任何布局信息）。
+
+    UI 与 agent 都从这里拿"这个模型支持哪些可调槽位"，布局由前端布局档决定。
+    """
+    from media_ops import interface as model_interface
+
+    model_id = str(payload.get("model") or payload.get("modelId") or "").strip()
+    if not model_id:
+        return emit_error("MODEL_INTERFACE_INVALID", "Missing model id")
+    interface = model_interface.interface_for(model_id)
+    if interface is None:
+        return emit_error("MODEL_INTERFACE_NOT_FOUND", f"Unknown model: {model_id}")
+    problems = model_interface.validate_interface(interface)
+    emit("model_interface", {"interface": interface, "problems": problems})
+    return 0
+
+
 def cmd_list_models(payload: dict[str, Any]) -> int:
     category = payload.get("category") or None
     supported_only = bool(payload.get("supportedOnly", True))
