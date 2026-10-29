@@ -30,7 +30,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "sha256": "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb"
     },
     {
       "id": "real-esrgan-x4",
@@ -61,7 +62,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1"
     },
     {
       "id": "lama",
@@ -92,7 +94,8 @@
           "minimum": 0,
           "maximum": 64
         }
-      }
+      },
+      "sha256": "344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9"
     },
     {
       "id": "watermark-yolo11x",
@@ -115,7 +118,8 @@
       ],
       "roles": [
         "detector"
-      ]
+      ],
+      "sha256": "6ac71b6ab8db27ec7928b5176e60a359c65e1579a5c1d58cf2f98df30cf3085e"
     },
     {
       "id": "rife-v46",

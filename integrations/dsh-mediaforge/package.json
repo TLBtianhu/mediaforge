@@ -1,6 +1,6 @@
 {
   "name": "@local/mediaforge-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -9,8 +9,12 @@
   },
   "files": [
     "cordis.patch.yml",
+    "launcher.template.cmd",
+    "setup.ps1",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "README.md",
+    "NOTES.md"
   ],
   "dsh": {
     "bundle": {

@@ -70,6 +70,8 @@ def _media_files(item: dict) -> list[dict]:
         "path": worker_paths.media_model_relpath(item.get("name") or ""),
         "size": int(item.get("size") or 0),
         "url": str(item.get("url") or ""),
+        # catalog 里给了 sha256 就校验（下坏了/被替换都能发现）；没给就只比大小
+        "sha256": str(item.get("sha256") or ""),
     }]
 
 

@@ -83,3 +83,54 @@ class DownloadIntegrityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MediaFilesTests(unittest.TestCase):
+    """catalog → _media_files → 下载器：sha256 必须一路传到，否则校验形同虚设。"""
+
+    def test_media_files_propagates_the_declared_checksum(self) -> None:
+        from model_hub import _media_files
+
+        record = {
+            "id": "demo",
+            "name": "Demo.pth",
+            "size": 10,
+            "url": "https://example.invalid/Demo.pth",
+            "sha256": "abc123",
+        }
+        files = _media_files(record)
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]["sha256"], "abc123")
+
+    def test_missing_checksum_stays_empty(self) -> None:
+        from model_hub import _media_files
+
+        files = _media_files({"id": "demo", "name": "Demo.pth", "url": "u"})
+        self.assertEqual(files[0]["sha256"], "")
+
+    def test_shipped_catalog_checksums_match_the_declared_files(self) -> None:
+        """声明的 sha256 必须和同名权重对得上（本地有文件时才比）。"""
+        import hashlib
+        import json
+        from pathlib import Path as _Path
+
+        import worker_paths
+        from model_hub import _media_files
+
+        catalog = json.loads(
+            (_Path(__file__).resolve().parents[2] / "python" / "media_ops" / "media_catalog.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        root = worker_paths.model_root()
+        checked = 0
+        for model in catalog["models"]:
+            for entry in _media_files(model):
+                target = root / entry["path"]
+                if not entry["sha256"] or not target.is_file():
+                    continue
+                digest = hashlib.sha256(target.read_bytes()).hexdigest()
+                self.assertEqual(digest, entry["sha256"], f"{model['id']} 的权重与 catalog 声明不一致")
+                checked += 1
+        # 本机没下模型时允许为 0；有文件就必须通过
+        self.assertGreaterEqual(checked, 0)
