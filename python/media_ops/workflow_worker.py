@@ -18,7 +18,7 @@ from typing import Any
 from worker_protocol import emit, emit_error
 
 import worker_paths
-from . import capabilities, image_ops, video_ops, video_step
+from . import capabilities, evaluation, image_ops, video_ops, video_step
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -213,6 +213,7 @@ def cmd_media_workflow(payload: dict[str, Any]) -> int:
             except Exception as exc:  # noqa: BLE001
                 failed.append({"path": str(source), "error": str(exc)})
 
+        evaluation.attach(outputs)
         emit(
             "audio_tool_result",
             {

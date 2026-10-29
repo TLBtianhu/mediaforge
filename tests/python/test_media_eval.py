@@ -36,6 +36,22 @@ def _write_pattern(path: Path, size: tuple[int, int] = (64, 48)) -> Path:
     return path
 
 
+class CompareTests(unittest.TestCase):
+    def test_video_comparison_does_not_mention_sharpness(self) -> None:
+        """视频没有锐度指标，不能输出"参考图过于平坦"这种误导性说明。"""
+        produced = {"kind": "video", "bytes": 10, "metrics": {"pixels": 100, "width": 10, "height": 10}}
+        reference = {"kind": "video", "bytes": 20, "metrics": {"pixels": 25, "width": 5, "height": 5}}
+        notes = media_eval.compare(produced, reference)
+        self.assertTrue(any("尺寸放大" in note for note in notes), notes)
+        self.assertFalse(any("锐度" in note for note in notes), notes)
+
+    def test_identical_bytes_is_reported_for_any_kind(self) -> None:
+        produced = {"kind": "audio", "bytes": 42, "metrics": {"duration": 1.0}}
+        reference = {"kind": "audio", "bytes": 42, "metrics": {"duration": 1.0}}
+        notes = media_eval.compare(produced, reference)
+        self.assertTrue(any("字节完全相同" in note for note in notes), notes)
+
+
 @unittest.skipUnless(PIL_AVAILABLE, "需要 numpy + Pillow")
 class ImageMetricsTests(unittest.TestCase):
     def setUp(self) -> None:

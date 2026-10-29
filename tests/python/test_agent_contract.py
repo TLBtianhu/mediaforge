@@ -81,6 +81,26 @@ class CoverageTests(unittest.TestCase):
         self.assertIn("brand_new_command", audit["missing"])
 
 
+class ResultContractTests(unittest.TestCase):
+    """`resultEvent` 是输出契约：调用方据此判断拿到的是不是想要的结果。"""
+
+    def test_result_events_are_declared_for_known_tools(self) -> None:
+        tools = {tool["name"]: tool for tool in agent_contract.build_contract()["tools"]}
+        self.assertEqual(tools["system.health"]["resultEvent"], "health")
+        self.assertEqual(tools["system.contract"]["resultEvent"], "agent_contract")
+        self.assertEqual(tools["media.image.upscale"]["resultEvent"], "audio_tool_result")
+
+    def test_declared_result_event_matches_what_dispatch_returns(self) -> None:
+        import agent_contract as contract
+
+        for name in ("system.health", "system.contract", "model.list"):
+            tool = contract.find_tool(name)
+            outcome = contract.dispatch(name, {})
+            self.assertEqual(
+                outcome["result"]["type"], tool["resultEvent"], f"{name} 的输出契约与实际不一致"
+            )
+
+
 class ApprovalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

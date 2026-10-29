@@ -125,20 +125,28 @@ def _compare(produced: dict[str, Any], reference: dict[str, Any]) -> list[str]:
             notes.append("尺寸未变化")
         else:
             notes.append(f"尺寸缩小：{rm.get('width')}x{rm.get('height')} -> {pm.get('width')}x{pm.get('height')}")
-    ps, rs = pm.get("sharpnessNorm"), rm.get("sharpnessNorm")
-    if ps and rs:
-        ratio = ps / rs
-        notes.append(f"锐度比 {ratio:.2f}")
-        if ratio < SOFT_RATIO:
-            notes.append("锐度下降：放大后变糊，可能模型或参数不合适")
-    elif not rs:
-        # 参考图本身没有高频细节（纯色/极平滑），比值没有意义——说清楚，别让人以为漏了。
-        notes.append("参考图过于平坦，锐度对比已跳过")
+    # 锐度只在两张图之间才有意义：视频/音频没有这个指标，
+    # 不然会输出一句"参考图过于平坦"，把"没这项指标"误导成"参考图有问题"。
+    if produced.get("kind") == "image" and reference.get("kind") == "image":
+        ps, rs = pm.get("sharpnessNorm"), rm.get("sharpnessNorm")
+        if ps and rs:
+            ratio = ps / rs
+            notes.append(f"锐度比 {ratio:.2f}")
+            if ratio < SOFT_RATIO:
+                notes.append("锐度下降：放大后变糊，可能模型或参数不合适")
+        elif not rs:
+            # 参考图本身没有高频细节（纯色/极平滑），比值没有意义——说清楚，别让人以为漏了。
+            notes.append("参考图过于平坦，锐度对比已跳过")
     for key, label in (("darkClipped", "暗部"), ("brightClipped", "高光")):
         value = pm.get(key)
         if isinstance(value, (int, float)) and value > 0.25:
             notes.append(f"{label}裁切过多（{value:.0%}），检查是否过曝/欠曝")
     return notes
+
+
+def compare(produced: dict[str, Any], reference: dict[str, Any]) -> list[str]:
+    """公开的比较入口（`evaluation.attach` 用它把判断附到产物上）。"""
+    return _compare(produced, reference)
 
 
 def evaluate(inputs: list[str], reference: str | None = None) -> dict[str, Any]:

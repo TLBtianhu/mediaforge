@@ -684,6 +684,10 @@ class Bridge:
             tool = agent_contract.find_tool(name)
         except KeyError:
             raise ValueError(f"unknown tool: {name}") from None
+        # 先按契约校验参数：宁可在这里回一句"缺 modelId"，也别让 worker 深处抛 KeyError
+        problems = agent_contract.validate_arguments(name, arguments or {})
+        if problems:
+            return {"ok": False, "tool": name, "error": "; ".join(problems), "problems": problems}
         payload = dict(arguments or {})
         if tool["operation"]:
             payload.setdefault("operation", tool["operation"])

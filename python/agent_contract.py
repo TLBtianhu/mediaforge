@@ -49,6 +49,29 @@ BRIDGE_ALIASES: dict[str, str] = {
     "media.evaluate": "evaluate_media",
 }
 
+#: 每个工具的**输出契约**：成功时终止事件的类型名。
+#: 调用方据此判断"我拿到的是不是我要的那种结果"，而不是解析 payload 猜来猜去。
+RESULT_EVENTS: dict[str, str] = {
+    "system.health": "health",
+    "system.contract": "agent_contract",
+    "system.env": "env_info",
+    "model.list": "models",
+    "model.hub": "models",
+    "graph.operations": "operations_list",
+    "graph.operation_spec": "operation_spec",
+    "media.evaluate": "media_evaluation",
+}
+
+
+def _result_event(name: str, command: str, operation: str | None) -> str | None:
+    explicit = RESULT_EVENTS.get(name)
+    if explicit:
+        return explicit
+    # 媒体与音频工具都经 audio_tools 收口，终止事件统一是它
+    if command == "audio_tools":
+        return "audio_tool_result"
+    return None
+
 _WORKER = Path(__file__).with_name("worker.py")
 
 
@@ -96,6 +119,7 @@ def _tool(
         "inputSchema": input_schema or _schema(),
         "produces": produces,
         "evaluate": evaluate,
+        "resultEvent": _result_event(name, command, operation),
         "available": bool(available),
         # 已经在桥接里以别的名字暴露过的话，这里记下来（避免重复上表）
         "bridgeTool": BRIDGE_ALIASES.get(name),
@@ -405,6 +429,60 @@ def find_tool(tool_name: str) -> dict[str, Any]:
     raise KeyError(f"unknown tool: {tool_name}")
 
 
+_JSON_TYPES: dict[str, Any] = {
+    "string": str,
+    "integer": int,
+    "number": (int, float),
+    "boolean": bool,
+    "array": list,
+    "object": dict,
+}
+
+
+def validate_arguments(tool_name: str, arguments: Any) -> list[str]:
+    """按契约的 `inputSchema` 校验参数，返回问题列表（空 = 通过）。
+
+    为什么要在执行器前面拦一道：worker 深处的报错通常是
+    `KeyError: 'modelId'` 或一句含糊的 ValueError，agent 看不出该补什么。
+    这里直接给出"缺哪个参数 / 哪个参数类型不对"，这也是契约存在的意义之一。
+    """
+    tool = find_tool(tool_name)
+    schema = tool["inputSchema"] or {}
+    if not isinstance(arguments, dict):
+        return ["arguments must be a JSON object"]
+    problems: list[str] = []
+    properties = schema.get("properties") or {}
+    for key in schema.get("required") or []:
+        if key not in arguments or arguments[key] in (None, ""):
+            problems.append(f"missing required argument: {key}")
+    if schema.get("additionalProperties") is False:
+        unknown = sorted(set(arguments) - set(properties))
+        if unknown:
+            problems.append("unknown arguments: " + ", ".join(unknown))
+    for key, value in arguments.items():
+        spec = properties.get(key)
+        if not isinstance(spec, dict) or value is None:
+            continue
+        expected = spec.get("type")
+        if not expected:
+            continue
+        python_type = _JSON_TYPES.get(str(expected))
+        if python_type is None:
+            continue
+        # bool 是 int 的子类，别把 true 当成合法的 integer
+        if isinstance(value, bool) and expected in {"integer", "number"}:
+            problems.append(f"{key} should be {expected}, got boolean")
+            continue
+        if not isinstance(value, python_type):
+            problems.append(f"{key} should be {expected}")
+            continue
+        if expected == "array":
+            minimum = spec.get("minItems")
+            if isinstance(minimum, int) and len(value) < minimum:
+                problems.append(f"{key} needs at least {minimum} item(s)")
+    return problems
+
+
 def dispatch(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     """**进程内**执行一个工具：不起子进程、不走管道、不需要端口。
 
@@ -421,6 +499,24 @@ def dispatch(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[st
         raise ValueError(
             f"{tool_name} is long-running; submit it through the job ledger instead of dispatch()"
         )
+    problems = validate_arguments(tool_name, arguments or {})
+    if problems:
+        return {
+            "tool": tool_name,
+            "code": 1,
+            "events": [],
+            "ok": False,
+            "result": {
+                "type": "error",
+                "payload": {
+                    "code": "INVALID_ARGUMENTS",
+                    "message": "; ".join(problems),
+                    "detail": None,
+                    "recoverable": True,
+                    "problems": problems,
+                },
+            },
+        }
     payload = dict(arguments or {})
     if tool["operation"]:
         payload.setdefault("operation", tool["operation"])

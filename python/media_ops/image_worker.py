@@ -10,6 +10,7 @@ from worker_protocol import emit, emit_error
 import worker_paths
 from . import image_ops
 from . import capabilities
+from . import evaluation
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -100,6 +101,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             except Exception as exc:  # noqa: BLE001
                 failed.append({"path": str(source), "error": str(exc)})
 
+        evaluation.attach(outputs)
         emit(
             "audio_tool_result",
             {
