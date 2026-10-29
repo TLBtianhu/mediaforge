@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -110,6 +111,13 @@ function addInputs(paths: string[]) {
   const current = new Set(inputs.value)
   inputs.value = [...inputs.value, ...paths.filter(path => path && !current.has(path))]
 }
+
+useMediaDrop({
+  onFiles: paths => addInputs(paths),
+  onDirectory: (_zone, folder) => { outputDir.value = folder },
+  scanImages: false,
+  accept: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'flv', 'wmv', 'm4v'],
+})
 
 async function pickFiles() {
   try {
@@ -327,7 +335,7 @@ const workbenchSteps = computed(() => [
         <n-space vertical :size="12">
           <div>
             <label class="video-label">{{ t('factory.outputDir') }}</label>
-            <div class="video-path">
+            <div class="video-path" data-drop-zone="outputDir">
               <n-input :value="outputDir" readonly :placeholder="t('factory.outputDir')" />
               <n-button secondary :disabled="busy" @click="pickOutput">
                 <template #icon><n-icon :component="FolderOpenOutline" /></template>

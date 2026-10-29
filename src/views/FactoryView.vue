@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -84,6 +85,12 @@ function addInputs(paths: string[]) {
   const current = new Set(inputs.value)
   inputs.value = [...inputs.value, ...paths.filter(path => path && !current.has(path))]
 }
+
+useMediaDrop({
+  onFiles: paths => addInputs(paths),
+  onDirectory: (_zone, folder) => { outputDir.value = folder },
+  scanImages: false,
+})
 
 async function pickFiles() {
   try {
@@ -284,7 +291,7 @@ const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('fac
       <WorkbenchCard class="workbench-output" index="02" :title="t('factory.output')" :subtitle="t('factory.outputDir')">
         <div class="mf-form-section">
           <label class="mf-form-label">{{ t('factory.outputDir') }}</label>
-          <div class="factory-path">
+          <div data-drop-zone="outputDir" class="factory-path">
             <n-input :value="outputDir" readonly :placeholder="t('factory.outputDir')" />
             <n-button secondary :disabled="busy" @click="pickOutput"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('factory.browse') }}</n-button>
           </div>
