@@ -134,6 +134,8 @@ python download_models.py --proxy http://127.0.0.1:7897
 
 ## 三套运行环境
 
+> 强制规则见 [DEVELOPMENT.md](DEVELOPMENT.md)。
+
 | 环境 | 启动方式 | 数据 / 缓存 | 用途 |
 | --- | --- | --- | --- |
 | 开发 | `.\scripts\dev.ps1` | `.dev-data/`、`.dev-webview/` | 日常改代码、看实际效果 |
