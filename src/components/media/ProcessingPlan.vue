@@ -41,6 +41,8 @@ const { t } = useI18n()
 const router = useRouter()
 const capabilities = ref<Capability[]>([])
 const loading = ref(false)
+// 查询失败时把原因留下：静默清空会让界面只剩"没有可用模型"，无从排查
+const loadError = ref('')
 
 const available = computed(() => capabilities.value.filter(item => item.implemented && item.modalities.includes(props.modality)))
 const current = computed(() => capabilities.value.find(item => item.id === props.modelValue?.capability))
@@ -118,8 +120,12 @@ async function load() {
       payload: { modelDir: props.modelDir || null },
     })
     capabilities.value = result.capabilities || []
+    loadError.value = ''
     if (!props.modelValue?.capability && available.value[0]) emit('update:modelValue', buildStep(available.value[0]))
-  } catch {
+  } catch (error) {
+    // 静默清空会让界面只剩"没有可用模型"，查不出为什么
+    loadError.value = error instanceof Error ? error.message : String(error)
+    console.error('[media_capabilities]', error)
     capabilities.value = []
   } finally {
     loading.value = false
@@ -149,6 +155,7 @@ onMounted(load)
       <span class="plan-empty__glyph"><n-icon :component="CubeOutline" /></span>
       <strong>{{ t('plan.noModelTitle') }}</strong>
       <p>{{ t('plan.noModelHint') }}</p>
+      <p v-if="loadError" class="plan-load-error">{{ loadError }}</p>
       <n-button secondary @click="openModels">{{ t('plan.openModels') }}</n-button>
     </div>
     <template v-else>

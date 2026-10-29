@@ -3146,6 +3146,64 @@ fn stable_dedup(paths: Vec<String>) -> Vec<String> {
     deduped
 }
 
+/// 图片扩展名：与 `scan_media_paths` 的音视频集合分开，
+/// 否则把一张 png 拖进图片页会被判成"不支持的文件"。
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"];
+
+fn is_image_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+fn collect_image_files(dir: &Path, results: &mut Vec<String>, warnings: &mut Vec<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            warnings.push(format!("{}: {}", dir.display(), error));
+            return;
+        }
+    };
+    for entry in entries {
+        match entry {
+            Ok(entry) => {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_image_files(&path, results, warnings);
+                } else if path.is_file() && is_image_file(&path) {
+                    results.push(path.to_string_lossy().to_string());
+                }
+            }
+            Err(error) => warnings.push(format!("{}: {}", dir.display(), error)),
+        }
+    }
+}
+
+/// 拖放/选择到的路径 → 图片文件列表（目录会递归展开）。
+#[tauri::command]
+pub async fn scan_image_paths(paths: Vec<String>) -> AppResult<ScanAudioPathsResult> {
+    let mut files = Vec::new();
+    let mut warnings = Vec::new();
+    for raw in paths {
+        let target = Path::new(&raw);
+        if target.is_file() {
+            if is_image_file(target) {
+                files.push(target.to_string_lossy().to_string());
+            } else {
+                warnings.push(format!("unsupported image file: {}", target.display()));
+            }
+        } else if target.is_dir() {
+            collect_image_files(target, &mut files, &mut warnings);
+        } else {
+            warnings.push(format!("path not found: {}", raw));
+        }
+    }
+    files.sort();
+    files.dedup();
+    Ok(ScanAudioPathsResult { files, warnings })
+}
+
 #[tauri::command]
 pub async fn scan_audio_paths(paths: Vec<String>) -> AppResult<ScanAudioPathsResult> {
     let mut files = Vec::new();

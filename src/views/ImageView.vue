@@ -2,6 +2,7 @@
 import { dropSkippedSteps, precheckPlan, summarizePrecheck } from '../utils/mediaPrecheck.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
@@ -80,6 +81,8 @@ const planStep = ref<PlanStep>({
 })
 const planAvailable = ref(true)
 let unlisten: UnlistenFn | undefined
+let unlistenDrop: UnlistenFn | undefined
+const dragging = ref(false)
 
 const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 const pipelineSteps = computed(() => [planStep.value])
@@ -228,6 +231,33 @@ async function openOutput() {
 }
 
 onMounted(async () => {
+  // 拖入图片或文件夹：目录会被 Rust 侧递归展开
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    try {
+      unlistenDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
+        const type = event.payload.type
+        if (type === 'over' || type === 'enter') {
+          dragging.value = true
+          return
+        }
+        dragging.value = false
+        if (type !== 'drop') return
+        const paths = (event.payload as { paths?: string[] }).paths || []
+        if (!paths.length) return
+        const result = await invoke<{ files: string[]; warnings: string[] }>('scan_image_paths', { paths })
+        const files = result.files || []
+        if (files.length) {
+          addInputs(files)
+          message.success(t('factory.fileCount', { count: files.length }))
+        } else {
+          message.warning(t('factory.noFiles'))
+        }
+      })
+    } catch {
+      // 浏览器预览里没有原生拖放，静默降级
+    }
+  }
+
   const requested = route.query.asset
   if (typeof requested === 'string' && requested) addInputs([requested])
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
@@ -278,6 +308,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  unlistenDrop?.()
   unlisten?.()
 })
 const workbenchSteps = computed(() => [
