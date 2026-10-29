@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -58,6 +59,12 @@ function addInputs(paths: string[]) {
   const seen = new Set(inputs.value)
   inputs.value = [...inputs.value, ...paths.filter(path => path && !seen.has(path))]
 }
+
+useMediaDrop({
+  onFiles: paths => addInputs(paths),
+  onDirectory: (_zone, folder) => { outputDir.value = folder },
+  scanImages: false,
+})
 async function pickInputs() {
   const selected = await open({ multiple: true, filters: [{ name: modality.value === 'image' ? 'Images' : 'Videos', extensions: modality.value === 'image' ? ['png', 'jpg', 'jpeg', 'webp', 'gif'] : ['mp4', 'mkv', 'mov', 'webm', 'avi'] }] })
   if (typeof selected === 'string') addInputs([selected])
@@ -174,7 +181,7 @@ onBeforeUnmount(() => unlisten?.())
           </div>
           <div>
             <label class="mf-form-label">{{ t('mediaWorkflow.outputDir') }}</label>
-            <div class="media-workflow-path">
+            <div class="media-workflow-path" data-drop-zone="outputDir">
               <n-input :value="outputDir" readonly :placeholder="t('mediaWorkflow.outputDir')" />
               <n-button secondary :disabled="busy" @click="pickOutput"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('factory.browse') }}</n-button>
             </div>
