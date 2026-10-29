@@ -270,6 +270,18 @@ with per-role model selectors; `custom` mode sends those steps to the worker.
 - Cards share the rail-card visual tokens: 18px radius, 17/18px padding,
   `--surface-1`, inset outline, and `--shadow-panel`.
 
+### Reusable workbench UI
+
+- `src/components/media/WorkbenchCard.vue` owns the rail-card surface:
+  18px radius, 17/18px padding, numbered/icon header, subtitle, actions slot.
+- `src/components/media/WorkbenchSteps.vue` owns the 01/02/03 step strip.
+- `src/components/media/ProcessingPlan.vue` owns capability, primary model,
+  schema-driven params, and the no-model state.
+- `src/features/media-ui/media-ui.css` owns the shared `.media-workbench` grid
+  (420px rail, 16px gap, input/output left and plan right).
+- Image, video, and format factory must use these pieces instead of adding
+  page-local card/step CSS.
+
 ## 打包前检查
 
 - [ ] `data/` 不存在或已清理
