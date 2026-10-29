@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { CubeOutline } from '@vicons/ionicons5'
 
 defineOptions({ name: 'ProcessingPlan' })
 
@@ -33,7 +35,9 @@ const props = withDefaults(defineProps<{
 })
 const emit = defineEmits<{ 'update:modelValue': [value: PlanStep] }>()
 const { t } = useI18n()
+const router = useRouter()
 const capabilities = ref<Capability[]>([])
+const loading = ref(false)
 
 const available = computed(() => capabilities.value.filter(item => item.implemented && item.modalities.includes(props.modality)))
 const current = computed(() => capabilities.value.find(item => item.id === props.modelValue?.capability))
@@ -50,6 +54,7 @@ const modelOptions = computed(() => {
     .filter(model => model.roles.includes(displayRole.value) && model.implemented)
     .map(model => ({ label: `${model.label}${model.downloaded ? '' : ' · ' + t('pipeline.notDownloaded')}`, value: model.id }))
 })
+const hasUsableModel = computed(() => Boolean(current.value?.models.some(model => model.downloaded && model.implemented && model.roles.includes(displayRole.value))))
 const selectedModel = computed(() => current.value && displayRole.value ? props.modelValue?.bindings[displayRole.value] || '' : '')
 const paramEntries = computed(() => Object.entries(current.value?.params || {}))
 
@@ -88,13 +93,20 @@ function setParam(key: string, value: unknown) {
 
 async function load() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+  loading.value = true
   try {
     const result = await invoke<{ capabilities: Capability[] }>('media_capabilities')
     capabilities.value = result.capabilities || []
     if (!props.modelValue?.capability && available.value[0]) emit('update:modelValue', buildStep(available.value[0]))
   } catch {
     capabilities.value = []
+  } finally {
+    loading.value = false
   }
+}
+
+function openModels() {
+  router.push({ path: '/models', query: { modality: props.modality } })
 }
 
 watch(() => props.modality, () => {
@@ -109,61 +121,74 @@ onMounted(load)
 
 <template>
   <section class="processing-plan">
-    <div class="processing-plan__head">
-      <span>{{ t('plan.oneModel') }}</span>
-      <n-tag size="small" :type="modelOptions.length ? 'success' : 'warning'" :bordered="false">
-        {{ modelOptions.length }} {{ t('plan.models') }}
-      </n-tag>
+    <n-spin v-if="loading" :show="true" class="processing-plan__loading" />
+    <div v-else-if="!hasUsableModel" class="plan-empty">
+      <span class="plan-empty__glyph"><n-icon :component="CubeOutline" /></span>
+      <strong>{{ t('plan.noModelTitle') }}</strong>
+      <p>{{ t('plan.noModelHint') }}</p>
+      <n-button secondary @click="openModels">{{ t('plan.openModels') }}</n-button>
     </div>
+    <template v-else>
+      <div class="processing-plan__head">
+        <span>{{ t('plan.oneModel') }}</span>
+        <n-tag size="small" type="success" :bordered="false">{{ modelOptions.length }} {{ t('plan.models') }}</n-tag>
+      </div>
 
-    <div class="processing-plan__field">
-      <label>{{ t('plan.capability') }}</label>
-      <n-select
-        :value="modelValue?.capability"
-        :options="available.map(item => ({ label: item.label, value: item.id }))"
-        :disabled="busy"
-        @update:value="selectCapability"
-      />
-    </div>
-
-    <div class="processing-plan__field">
-      <label>{{ t('plan.model') }}</label>
-      <n-select :value="selectedModel" :options="modelOptions" :disabled="busy" @update:value="selectModel" />
-    </div>
-
-    <div v-if="paramEntries.length" class="processing-plan__params">
-      <div v-for="[key, spec] in paramEntries" :key="key" class="processing-plan__field">
-        <label>{{ key }}</label>
+      <div class="processing-plan__field">
+        <label>{{ t('plan.capability') }}</label>
         <n-select
-          v-if="spec.enum"
-          :value="modelValue?.params?.[key]"
-          :options="(spec.enum || []).map(value => ({ label: value, value }))"
+          :value="modelValue?.capability"
+          :options="available.map(item => ({ label: item.label, value: item.id }))"
           :disabled="busy"
-          @update:value="(value: unknown) => setParam(key, value)"
-        />
-        <n-input-number
-          v-else-if="spec.type === 'integer' || spec.type === 'number'"
-          :value="Number(modelValue?.params?.[key] ?? 0)"
-          :disabled="busy"
-          @update:value="(value: number | null) => setParam(key, value ?? 0)"
-        />
-        <n-input
-          v-else
-          :value="String(modelValue?.params?.[key] ?? '')"
-          :disabled="busy"
-          @update:value="(value: string) => setParam(key, value)"
+          @update:value="selectCapability"
         />
       </div>
-    </div>
 
-    <div class="processing-plan__note">
-      {{ t('plan.workflowHint') }}
-    </div>
+      <div class="processing-plan__field">
+        <label>{{ t('plan.model') }}</label>
+        <n-select :value="selectedModel" :options="modelOptions" :disabled="busy" @update:value="selectModel" />
+      </div>
+
+      <div v-if="paramEntries.length" class="processing-plan__params">
+        <div v-for="[key, spec] in paramEntries" :key="key" class="processing-plan__field">
+          <label>{{ key }}</label>
+          <n-select
+            v-if="spec.enum"
+            :value="modelValue?.params?.[key]"
+            :options="(spec.enum || []).map(value => ({ label: value, value }))"
+            :disabled="busy"
+            @update:value="(value: unknown) => setParam(key, value)"
+          />
+          <n-input-number
+            v-else-if="spec.type === 'integer' || spec.type === 'number'"
+            :value="Number(modelValue?.params?.[key] ?? 0)"
+            :disabled="busy"
+            @update:value="(value: number | null) => setParam(key, value ?? 0)"
+          />
+          <n-input
+            v-else
+            :value="String(modelValue?.params?.[key] ?? '')"
+            :disabled="busy"
+            @update:value="(value: string) => setParam(key, value)"
+          />
+        </div>
+      </div>
+
+      <div class="processing-plan__note">
+        {{ t('plan.workflowHint') }}
+      </div>
+    </template>
   </section>
 </template>
 
 <style scoped>
 .processing-plan { display: grid; gap: 12px; }
+.processing-plan__loading { display: grid; min-height: 240px; place-items: center; }
+.plan-empty { display: flex; min-height: 280px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px; text-align: center; }
+.plan-empty__glyph { display: grid; width: 56px; height: 56px; margin-bottom: 4px; place-items: center; border-radius: 16px; color: var(--primary-strong); background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 26%, transparent); font-size: 26px; }
+.plan-empty strong { color: var(--on-surface-heading); font-size: 14px; }
+.plan-empty p { max-width: 320px; margin: 0; color: var(--on-surface-muted); font-size: 12px; line-height: 1.5; }
+.plan-empty :deep(.n-button) { margin-top: 8px; }
 .processing-plan__head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
 .processing-plan__head > div { display: flex; flex-direction: column; gap: 3px; }
 .processing-plan__head span { color: var(--on-surface-muted); font-size: 10.5px; }
