@@ -11,7 +11,6 @@ projects can share the same model weights and behavior.
 from __future__ import annotations
 
 import gc
-import os
 import time
 from pathlib import Path
 
@@ -27,17 +26,6 @@ PRESETS: dict[str, tuple[int, int]] = {
     "4k": (3840, 2160),
     "8k": (7680, 4320),
 }
-
-
-def model_dir() -> Path:
-    override = os.environ.get("MEDIAFORGE_MODEL_DIR")
-    if override:
-        return Path(override)
-    return Path(__file__).resolve().parents[2] / "models"
-
-
-def model_path(name: str) -> Path:
-    return model_dir() / name
 
 
 def pick_device() -> str:
@@ -358,11 +346,14 @@ class ImageRestorer:
     def __init__(self, device: str | None = None, max_side: int = 2048, model_paths: dict[str, str] | None = None):
         self.device = device or pick_device()
         self.max_side = int(max_side)
+        # 默认值也走 catalog + 唯一路径解析（`capabilities.model_path`），
+        # 不再硬编码文件名：名字是投影，路径规则只有一份。
+        watermark = capabilities.default_bindings("watermark_removal")
         self.model_paths = {
-            "detector": str(model_path("watermark_yolo11x.pt")),
-            "inpainter": str(model_path("big-lama.pt")),
-            "upscaler_x2": str(model_path("RealESRGAN_x2plus.pth")),
-            "upscaler_x4": str(model_path("RealESRGAN_x4plus.pth")),
+            "detector": str(capabilities.model_path(watermark["detector"])),
+            "inpainter": str(capabilities.model_path(watermark["inpainter"])),
+            "upscaler_x2": str(capabilities.model_path(capabilities.default_model_by_scale("upscale", 2))),
+            "upscaler_x4": str(capabilities.model_path(capabilities.default_model_by_scale("upscale", 4))),
             **(model_paths or {}),
         }
         self._detector: WatermarkDetector | None = None
@@ -442,8 +433,9 @@ class ImageRestorer:
             if capability == "watermark_removal":
                 if progress:
                     progress(fraction * 0.35, "检测水印…")
-                detector_path = str(capabilities.model_path(str(bindings.get("detector") or "media:watermark-yolo11x")))
-                inpainter_path = str(capabilities.model_path(str(bindings.get("inpainter") or "media:lama")))
+                watermark_defaults = capabilities.default_bindings("watermark_removal")
+                detector_path = str(capabilities.model_path(str(bindings.get("detector") or watermark_defaults["detector"])))
+                inpainter_path = str(capabilities.model_path(str(bindings.get("inpainter") or watermark_defaults["inpainter"])))
                 boxes, scores, mask = self.detector_for(detector_path).detect(
                     image,
                     conf=float(params.get("conf") or 0.25),
@@ -460,8 +452,8 @@ class ImageRestorer:
             elif capability == "upscale":
                 if progress:
                     progress(fraction, "Real-ESRGAN 超分中…")
-                model_id = str(bindings.get("upscaler") or "media:real-esrgan-x2")
-                model_scale = 4 if "x4" in model_id else 2
+                model_id = str(bindings.get("upscaler") or capabilities.default_bindings("upscale")["upscaler"])
+                model_scale = capabilities.model_scale(model_id)
                 upscaler = self.upscaler_for(self.model_paths["upscaler_x2"], self.model_paths["upscaler_x4"])
                 image, actual = upscaler.upscale(
                     image,

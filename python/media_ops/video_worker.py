@@ -7,6 +7,7 @@ from typing import Any
 
 from worker_protocol import emit, emit_error
 
+import worker_paths
 from . import image_ops, video_ops
 from . import capabilities
 
@@ -34,7 +35,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             return emit_error("MEDIA_VIDEO_INVALID", f"Unknown detection mode: {detect_mode}", request_id=request_id)
         model_dir = str(payload.get("modelDir") or "").strip()
         if model_dir:
-            os.environ["MEDIAFORGE_MODEL_DIR"] = model_dir
+            worker_paths.export_model_root(model_dir)
         raw_steps = payload.get("steps")
         if raw_steps:
             steps = capabilities.normalize_steps(raw_steps)
@@ -58,7 +59,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             model_paths["inpainter"] = str(capabilities.model_path(watermark_step["bindings"]["inpainter"]))
         if upscale_step:
             upscaler_id = str(upscale_step["bindings"]["upscaler"])
-            preferred_scale = 4 if "x4" in upscaler_id else 2
+            preferred_scale = capabilities.model_scale(upscaler_id)
             model_paths["upscaler_x2" if preferred_scale == 2 else "upscaler_x4"] = str(capabilities.model_path(upscaler_id))
         restorer = image_ops.ImageRestorer(model_paths=model_paths)
         target = image_ops.resolve_target(

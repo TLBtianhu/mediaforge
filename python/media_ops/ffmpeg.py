@@ -21,26 +21,46 @@ SUPPORTED_FORMATS = VIDEO_FORMATS | AUDIO_FORMATS | IMAGE_FORMATS
 ProgressCallback = Callable[[float, str], None]
 
 
-def _find_tool(name: str) -> str:
+def _find_tool(name: str, root: Path | None = None) -> str:
+    """定位 ffmpeg / ffprobe。
+
+    2026-10-29 修：安装包把工具放在 `<install>/bin/`（`release-windows.yml` 里
+    `Copy-Item ... "$stage/bin/ffmpeg.exe"`，安装器整目录拷进 `{app}`），而这里原来只
+    找 `<root>/tools/...`，**从不看 `bin/`**。开发机通常有系统 ffmpeg 在 PATH 上，
+    所以本地一直正常；干净机器上则直接 `ffmpeg not found`——视频抽帧、回封、探测全废。
+
+    查找顺序（先自带，后系统）：
+    1. `MEDIAFORGE_FFMPEG` / `MEDIAFORGE_FFPROBE` 显式指定
+    2. `<root>/bin/<name>.exe` —— 打包版的真实位置
+    3. `<root>/tools/...` —— 旧的便携布局，保留兼容
+    4. 系统 PATH
+
+    自带工具排在 PATH 之前是有意的：装了什么版本就用什么版本，不让用户机器上
+    另一份 ffmpeg 决定行为。
+    """
     env_name = "MEDIAFORGE_FFMPEG" if name == "ffmpeg" else "MEDIAFORGE_FFPROBE"
     explicit = os.environ.get(env_name)
     if explicit and Path(explicit).is_file():
         return explicit
-    found = shutil.which(name)
-    if found:
-        return found
-    # PyMSS portable builds keep helper binaries under <root>/tools/.
-    root = Path(__file__).resolve().parents[2]
+
+    base = Path(root) if root is not None else Path(__file__).resolve().parents[2]
     candidates = [
-        root / "tools" / "ffmpeg" / "bin" / f"{name}.exe",
-        root / "tools" / f"{name}.exe",
-        root / "tools" / name,
+        base / "bin" / f"{name}.exe",
+        base / "bin" / name,
+        base / "tools" / "ffmpeg" / "bin" / f"{name}.exe",
+        base / "tools" / f"{name}.exe",
+        base / "tools" / name,
     ]
     for candidate in candidates:
         if candidate.is_file():
             return str(candidate)
+
+    found = shutil.which(name)
+    if found:
+        return found
     raise RuntimeError(
-        f"{name} not found. Install FFmpeg or set {env_name} to its executable."
+        f"{name} not found. Expected it next to the app at {base / 'bin' / f'{name}.exe'}"
+        f" (the installer ships it there), on PATH, or set {env_name} to its executable."
     )
 
 

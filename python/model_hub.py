@@ -6,13 +6,15 @@ inference runtime.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
-import os
 import shutil
 import time
 import urllib.parse
 import urllib.request
+
+import worker_paths
 from pathlib import Path
 from typing import Any, Callable
 
@@ -35,16 +37,8 @@ def _load(path: Path) -> list[dict]:
 
 
 def model_dir(override: str | None = None) -> Path:
-    value = str(override or "").strip()
-    if value:
-        root = Path(value).expanduser()
-    else:
-        explicit = os.environ.get("MEDIAFORGE_MODEL_DIR") or os.environ.get("PYMSS_MODEL_DIR")
-        if explicit:
-            root = Path(explicit).expanduser()
-        else:
-            data_root = os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
-            root = (Path(data_root).expanduser() / "models") if data_root else (Path.home() / ".mediaforge" / "models")
+    """模型根目录。解析规则只有一份，在 `worker_paths.model_root()`。"""
+    root = worker_paths.model_root(override)
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -73,7 +67,7 @@ def _audio_files(item: dict, source: str) -> list[dict]:
 
 def _media_files(item: dict) -> list[dict]:
     return [{
-        "path": str(item.get("name") or ""),
+        "path": worker_paths.media_model_relpath(item.get("name") or ""),
         "size": int(item.get("size") or 0),
         "url": str(item.get("url") or ""),
     }]
@@ -159,12 +153,15 @@ def list_models(
     root: str | None = None,
 ) -> dict:
     model_root = model_dir(root)
+    media_items = _load(MEDIA_CATALOG)
+    # 老布局（权重在根下）先搬到 media/，否则老用户会看到"模型未下载"。
+    worker_paths.migrate_media_models(model_root, [item.get("name") for item in media_items])
     records = [
         _audio_record(item, model_root, source)
         for item in _load(AUDIO_CATALOG)
         if item.get("supported", True)
     ]
-    records.extend(_media_record(item, model_root) for item in _load(MEDIA_CATALOG))
+    records.extend(_media_record(item, model_root) for item in media_items)
     text = str(query or "").strip().lower()
     if text:
         records = [
@@ -194,9 +191,37 @@ def list_models(
     }
 
 
-def _download_file(url: str, target: Path, expected: int, progress: Progress | None, label: str) -> dict:
-    if target.is_file() and (not expected or target.stat().st_size == expected):
-        return {"path": str(target), "skipped": True, "size": target.stat().st_size}
+def _sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _download_file(
+    url: str,
+    target: Path,
+    expected: int,
+    progress: Progress | None,
+    label: str,
+    expected_sha256: str = "",
+) -> dict:
+    """下载一个文件：`.part` 落盘 → 大小校验 → 内容校验 → 原子改名。
+
+    内容校验（2026-10-29 补）：只比大小挡不住"被代理改写""服务端回了错误页但长度凑巧对上"
+    这类损坏——坏文件会安静地留在 models/ 里，等到 `torch.load` 才炸，报错和"下载"毫无关系。
+    catalog 里给了 `sha256` 才校验；没给就仍然只比大小（向后兼容，也不会误杀）。
+    """
+    if target.is_file():
+        size_ok = not expected or target.stat().st_size == expected
+        hash_ok = True
+        if size_ok and expected_sha256:
+            hash_ok = _sha256_of(target).lower() == expected_sha256.lower()
+        if size_ok and hash_ok:
+            return {"path": str(target), "skipped": True, "size": target.stat().st_size}
+        # 大小对但内容不对：这是"看起来下载完了"的坏文件，必须重下。
+        target.unlink(missing_ok=True)
     target.parent.mkdir(parents=True, exist_ok=True)
     part = target.with_suffix(target.suffix + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": "MediaForge/0.1"})
@@ -217,6 +242,14 @@ def _download_file(url: str, target: Path, expected: int, progress: Progress | N
     if expected and actual != expected:
         part.unlink(missing_ok=True)
         raise RuntimeError(f"{target.name} size mismatch: {actual} != {expected}")
+    if expected_sha256:
+        actual_hash = _sha256_of(part)
+        if actual_hash.lower() != expected_sha256.lower():
+            part.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"{target.name} checksum mismatch: got {actual_hash[:16]}... "
+                f"expected {expected_sha256[:16]}... (已删除半成品，重新下载即可)"
+            )
     part.replace(target)
     return {"path": str(target), "skipped": False, "size": actual}
 
@@ -243,6 +276,13 @@ def download_model(
             if progress:
                 progress((_index + max(0.0, min(1.0, fraction))) / total, message)
         results.append(
-            _download_file(file["url"], model_root / file["path"], int(file.get("size") or 0), report, record["label"])
+            _download_file(
+                file["url"],
+                model_root / file["path"],
+                int(file.get("size") or 0),
+                report,
+                record["label"],
+                str(file.get("sha256") or ""),
+            )
         )
     return {"model": record, "files": results, "modelDir": str(model_root)}

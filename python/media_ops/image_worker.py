@@ -7,6 +7,7 @@ from typing import Any
 
 from worker_protocol import emit, emit_error
 
+import worker_paths
 from . import image_ops
 from . import capabilities
 
@@ -41,7 +42,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
         expand = int(payload.get("expand") or 6)
         model_dir = str(payload.get("modelDir") or "").strip()
         if model_dir:
-            os.environ["MEDIAFORGE_MODEL_DIR"] = model_dir
+            worker_paths.export_model_root(model_dir)
 
         raw_steps = payload.get("steps")
         if raw_steps:

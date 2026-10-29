@@ -14,12 +14,9 @@ import argparse
 import json
 import os
 import secrets
-import subprocess
 import sys
-import tempfile
 import threading
 import time
-import traceback
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,6 +28,7 @@ VERSION = "0.1.0"
 
 sys.path.insert(0, str(ROOT))
 import model_hub  # noqa: E402
+import worker_paths  # noqa: E402
 from media_ops import capabilities  # noqa: E402
 
 
@@ -69,8 +67,10 @@ class Bridge:
         runtime_envs = Path(os.environ.get("PYMSS_STUDIO_RUNTIME_ENVS_DIR") or data_root / "runtime-envs")
         self.python_path = _active_runtime_python(runtime_envs)
         self.jobs = OperationKernel(data_root, self.python_path)
-        explicit_model = os.environ.get("MEDIAFORGE_MODEL_DIR") or os.environ.get("PYMSS_MODEL_DIR")
-        self.model_root = Path(explicit_model).expanduser() if explicit_model else data_root / "models"
+        # 模型根：规则只有一份，在 worker_paths.model_root()。
+        # `data_root` 作为参数传进去——桥接可能用 --data-root 指定了另一处，
+        # 那时候环境变量不一定跟着变，所以不能只靠 env。
+        self.model_root = worker_paths.model_root(data_root=data_root)
         self.model_root.mkdir(parents=True, exist_ok=True)
         self.feedback_path = data_root / "agent-feedback.jsonl"
         self._feedback_lock = threading.Lock()
@@ -339,7 +339,8 @@ class Bridge:
         for step in steps:
             kind = str(step.get("type") or "").strip()
             if kind in {"video.remove_watermark", "image.remove_watermark"}:
-                for model_id in ("media:watermark-yolo11x", "media:lama"):
+                # 模型清单来自 capabilities.json 的声明，不再在这里硬编码 id
+                for model_id in capabilities.default_bindings("watermark_removal").values():
                     model = by_id.get(model_id)
                     if model is None:
                         missing.append(model_id)
@@ -347,7 +348,7 @@ class Bridge:
                         not_ready.append(model_id)
                     plan.append({"step": f"{kind}:{model_id}", "model": model_id, "downloaded": bool(model and model["downloaded"])})
             elif kind in {"video.upscale", "image.upscale"}:
-                model_id = str(step.get("model") or "media:real-esrgan-x4")
+                model_id = str(step.get("model") or capabilities.default_bindings("upscale")["upscaler"])
                 model = by_id.get(model_id)
                 if model is None:
                     missing.append(model_id)
