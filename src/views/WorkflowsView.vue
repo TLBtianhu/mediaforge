@@ -19,6 +19,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { storeToRefs } from 'pinia'
 import WorkflowCreateChooser from '@/components/workflow/WorkflowCreateChooser.vue'
 import WorkflowOverviewPreview from '@/components/workflow/WorkflowOverviewPreview.vue'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useModelStore } from '@/stores/model'
 import {
   WorkflowRevisionConflictError,
@@ -727,7 +728,7 @@ watch([workflows, selectedWorkflowId], () => {
 </script>
 
 <template>
-  <div class="page workflows-page">
+  <div class="page mf-page workflows-page" data-tone="violet">
     <input
       ref="importFileInputRef"
       class="wf-hidden-file-input"
@@ -736,28 +737,24 @@ watch([workflows, selectedWorkflowId], () => {
       @change="handleImportWorkflow"
     >
 
-    <header class="page-header-compact">
-      <div>
-        <h1>{{ t('workflows.title') }}</h1>
-        <p>{{ t('workflows.subtitle') }}</p>
-      </div>
+    <MediaPageHeader
+      :title="t('workflows.title')"
+      :subtitle="t('workflows.subtitle')"
+      :icon="GitNetworkOutline"
+      eyebrow="WORKFLOWS"
+      tone="violet"
+    >
       <div class="workflows-page__header-actions" data-guide="workflow-actions">
         <n-button secondary @click="triggerImportWorkflow">
           <template #icon><n-icon :component="OpenOutline" /></template>
           {{ t('workflows.importWorkflow') }}
         </n-button>
-        <n-button
-          class="workflow-create-button"
-          :type="themeIsDark ? 'default' : 'primary'"
-          :secondary="themeIsDark"
-          :disabled="isAnyEditorOpen"
-          @click="openWorkflowCreateChooser"
-        >
+        <n-button class="workflow-create-button" :type="themeIsDark ? 'default' : 'primary'" :secondary="themeIsDark" :disabled="isAnyEditorOpen" @click="openWorkflowCreateChooser">
           <span class="workflow-create-button__mark" aria-hidden="true" />
           {{ t('workflows.newWorkflow') }}
         </n-button>
       </div>
-    </header>
+    </MediaPageHeader>
 
     <div class="console">
       <aside class="console__rail">
