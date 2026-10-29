@@ -2379,17 +2379,6 @@ onMounted(async () => {
   max-width: var(--page-max-width-reading);
 }
 
-.page-header-compact {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.page-header-compact__main {
-  min-width: 0;
-}
-
 .settings-shell {
   display: grid;
   grid-template-columns: minmax(200px, 220px) minmax(0, 1fr);
@@ -4182,10 +4171,6 @@ onMounted(async () => {
 
   .about-hero__title {
     font-size: 24px;
-  }
-
-  .page-header-compact {
-    flex-direction: column;
   }
 
 
