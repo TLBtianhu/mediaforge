@@ -736,11 +736,22 @@ class Bridge:
             tool = agent_contract.find_tool(name)
         except KeyError:
             raise ValueError(f"unknown tool: {name}") from None
-        # 先按契约校验参数：宁可在这里回一句"缺 modelId"，也别让 worker 深处抛 KeyError
-        problems = agent_contract.validate_arguments(name, arguments or {})
+        # 确认标记不是工具参数：先摘掉，再按契约校验，最后才判断审批
+        arguments = dict(arguments or {})
+        confirmed = bool(arguments.pop("confirmExplicit", False))
+        problems = agent_contract.validate_arguments(name, arguments)
         if problems:
             return {"ok": False, "tool": name, "error": "; ".join(problems), "problems": problems}
-        payload = dict(arguments or {})
+        # 审批等级不能只是文档：`explicit`（下载/安装/删除）必须显式确认才执行
+        if str(tool.get("approval")) == "explicit" and not confirmed:
+            return {
+                "ok": False,
+                "tool": name,
+                "approval": "explicit",
+                "requiresConfirmation": True,
+                "error": f"{name} downloads, installs or deletes data; call it again with confirmExplicit=true after the user agrees",
+            }
+        payload = dict(arguments)
         if tool["operation"]:
             payload.setdefault("operation", tool["operation"])
         if tool["longRunning"]:
