@@ -275,8 +275,8 @@ onBeforeUnmount(() => {
       eyebrow="IMAGE PROCESSING"
       tone="violet"
     >
-      <router-link to="/media-models">
-        <n-button quaternary size="small">{{ t('nav.mediaModels') }}</n-button>
+      <router-link to="/models?modality=image">
+        <n-button quaternary size="small">{{ t('nav.models') }}</n-button>
       </router-link>
       <n-tag type="success" :bordered="false">Real-ESRGAN · LaMa</n-tag>
     </MediaPageHeader>

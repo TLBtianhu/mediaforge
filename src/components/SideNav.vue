@@ -18,7 +18,6 @@ import {
   ImagesOutline,
   SparklesOutline,
   VideocamOutline,
-  LayersOutline,
 } from '@vicons/ionicons5'
 
 const route = useRoute()
@@ -96,7 +95,6 @@ const mainGroups = computed(() => [
     label: t('nav.groupModels'),
     items: [
       { name: 'models', path: '/models', icon: CubeOutline, label: t('nav.models') },
-      { name: 'mediaModels', path: '/media-models', icon: LayersOutline, label: t('nav.mediaModels') },
     ],
   },
   {

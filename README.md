@@ -12,9 +12,9 @@
 - [x] 复用 PyMSS worker 事件协议（`audio_tool_progress` / `audio_tool_result`）
 - [x] Tauri release 构建通过
 - [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
-- [x] 图像/视频模型目录：图像/视频模型清单、依赖检查、下载状态
+- [x] 统一模型库：音频 326 + 图像/视频 4，统一检索、状态与下载
+- [x] 音频模型与图像/视频模型合并为同一目录
 - [x] 侧栏常驻运行状态：任务进度、队列、设备、最近失败
-- [ ] 音频模型与图像/视频模型合并为统一检索
 - [x] 图像超分/去水印：Real-ESRGAN + YOLO + LaMa，支持目标分辨率与前后对比
 - [x] 视频抽帧修复管线（超分/去水印 + 音频回封）
 
@@ -42,8 +42,9 @@ python/media_ops/
 ├─ video_ops.py     # 抽帧 / 逐帧修复 / 合帧
 ├─ video_worker.py  # 视频任务命令
 ├─ media_catalog.json  # 图像/视频模型清单
-├─ media_models.py  # 模型状态与下载
-├─ model_worker.py  # 模型命令
+├─ audio_catalog.json  # 音频模型清单（pinned）
+├─ model_hub.py      # 统一模型目录 / 状态 / 下载
+├─ model_hub_worker.py # 模型库命令
 ├─ worker.py        # worker 命令与事件
 └─ __init__.py
 ```
@@ -93,16 +94,20 @@ RealESRGAN_x4plus.pth
 - 输出 MP4，AAC 音频，保留原始帧率
 - 支持从素材台带视频进入
 
-### 图像/视频模型
+### 模型库
 
-页面：`#/media-models`
+页面：`#/models`
 
-- 统一管理 Real-ESRGAN / LaMa / YOLO11x 四个图像/视频模型
-- 检查 torch / spandrel / ultralytics / opencv / pillow / ffmpeg 依赖
-- 显示已下载 / 未下载 / 文件不完整
-- 应用内下载，进度实时显示
-- 可切换模型目录，默认 `models/` 或 `MEDIAFORGE_MODEL_DIR`
-- 图像/视频处理页头部可直接进入模型页
+一个页面、一个目录、一个下载通道：
+
+- 音频 326 个模型 + 图像/视频 4 个模型
+- 按模态筛选：全部 / 音频 / 图像 / 视频
+- 搜索名称、分类、架构；仅看已下载
+- 统一显示下载状态、大小、许可证、运行依赖
+- 音频走 pymss 源，图像/视频走各自官方源
+- 浏览/状态/下载不需要 pymss 推理环境
+- 运行依赖不满足时只看不跑；安装 runtime 后才能推理
+- 旧音频高级管理页保留在 `/models/audio-legacy`
 
 ### 运行状态
 
@@ -239,7 +244,7 @@ src/views/FactoryView.vue
 src/views/AssetsView.vue
 src/views/ImageView.vue
 src/views/VideoView.vue
-src/views/MediaModelsView.vue
+src/views/ModelHubView.vue
 src/router/routes.ts
 src/components/SideNav.vue
 src/i18n/                zh-CN / en

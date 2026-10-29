@@ -16,7 +16,7 @@
   },
   "nav": {
     "separate": "音频处理",
-    "models": "音频模型",
+    "models": "模型库",
     "mediaModels": "图像/视频",
     "results": "结果",
     "tools": "工具",
@@ -101,6 +101,28 @@
     "result": "输出视频",
     "openVideo": "打开输出目录",
     "detectorHint": "固定遮罩只检测首帧，适合位置不变的水印；移动水印请用逐帧检测。"
+  },
+  "modelHub": {
+    "title": "模型库",
+    "subtitle": "音频、图像与视频模型，统一检索、状态与下载",
+    "all": "全部",
+    "audio": "音频",
+    "image": "图像",
+    "video": "视频",
+    "search": "搜索名称、分类、架构…",
+    "downloadedOnly": "仅显示已下载",
+    "modelDir": "模型目录",
+    "modelDirPlaceholder": "留空使用应用模型目录",
+    "openFolder": "打开模型目录",
+    "browse": "浏览",
+    "environment": "运行环境",
+    "download": "下载",
+    "downloading": "下载中…",
+    "downloaded": "已下载",
+    "missing": "未下载",
+    "partial": "文件不完整",
+    "downloadFailed": "下载失败",
+    "empty": "没有匹配的模型"
   },
   "mediaModels": {
     "title": "图像 / 视频模型",

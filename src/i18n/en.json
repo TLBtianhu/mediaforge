@@ -16,7 +16,7 @@
   },
   "nav": {
     "separate": "Audio Processing",
-    "models": "Audio Models",
+    "models": "Model Hub",
     "mediaModels": "Image/Video",
     "results": "Results",
     "tools": "Tools",
@@ -101,6 +101,28 @@
     "result": "Output video",
     "openVideo": "Open output folder",
     "detectorHint": "Fixed mask detects the first frame only; use per-frame for moving watermarks."
+  },
+  "modelHub": {
+    "title": "Model Hub",
+    "subtitle": "Audio, image, and video models with one catalog, status, and download flow",
+    "all": "All",
+    "audio": "Audio",
+    "image": "Image",
+    "video": "Video",
+    "search": "Search name, category, or architecture…",
+    "downloadedOnly": "Downloaded only",
+    "modelDir": "Model directory",
+    "modelDirPlaceholder": "Leave empty to use the app model directory",
+    "openFolder": "Open model folder",
+    "browse": "Browse",
+    "environment": "Runtime",
+    "download": "Download",
+    "downloading": "Downloading…",
+    "downloaded": "Downloaded",
+    "missing": "Missing",
+    "partial": "Incomplete",
+    "downloadFailed": "Download failed",
+    "empty": "No matching models"
   },
   "mediaModels": {
     "title": "Image / Video Models",

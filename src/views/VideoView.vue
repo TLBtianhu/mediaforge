@@ -287,8 +287,8 @@ onBeforeUnmount(() => {
       eyebrow="VIDEO PROCESSING"
       tone="amber"
     >
-      <router-link to="/media-models">
-        <n-button quaternary size="small">{{ t('nav.mediaModels') }}</n-button>
+      <router-link to="/models?modality=video">
+        <n-button quaternary size="small">{{ t('nav.models') }}</n-button>
       </router-link>
       <n-tag type="warning" :bordered="false">FFmpeg · Real-ESRGAN · LaMa</n-tag>
     </MediaPageHeader>

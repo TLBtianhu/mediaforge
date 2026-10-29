@@ -2391,12 +2391,12 @@ pub async fn media_library(app: AppHandle, payload: Value) -> AppResult<Value> {
 }
 
 #[tauri::command]
-pub async fn media_models(app: AppHandle, payload: Value) -> AppResult<Value> {
-    run_worker_with_payload(&app, "media_models", Some(payload))
+pub async fn model_hub(app: AppHandle, payload: Value) -> AppResult<Value> {
+    run_worker_with_payload(&app, "model_hub", Some(payload))
 }
 
 #[tauri::command]
-pub async fn start_media_model_download(
+pub async fn start_model_hub_download(
     app: AppHandle,
     state: State<'_, AppState>,
     payload: Value,
@@ -2406,9 +2406,9 @@ pub async fn start_media_model_download(
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| AppError::Worker("missing media model download request id".into()))?
+        .ok_or_else(|| AppError::Worker("missing model hub download request id".into()))?
         .to_string();
-    spawn_worker_background(app, state, "media_model_download", task_id.clone(), payload)?;
+    spawn_worker_background(app, state, "model_download", task_id.clone(), payload)?;
     Ok(serde_json::json!({ "taskId": task_id, "started": true }))
 }
 
