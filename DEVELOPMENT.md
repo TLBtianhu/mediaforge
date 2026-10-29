@@ -282,6 +282,17 @@ with per-role model selectors; `custom` mode sends those steps to the worker.
 - Image, video, and format factory must use these pieces instead of adding
   page-local card/step CSS.
 
+### Media workflow execution
+
+- `/media-workflow` builds an ordered list of `ProcessingPlan` steps.
+- Each step is one capability plus one primary model.
+- `media_ops/workflow_worker.py` runs image steps in memory and video steps
+  through intermediate files.
+- The whole workflow is one OperationKernel job, so queue persistence,
+  progress, cancellation, and results use the shared kernel.
+- MCP callers use `workflow_start`; single-task callers keep using
+  `pipeline_start`.
+
 ## 打包前检查
 
 - [ ] `data/` 不存在或已清理
