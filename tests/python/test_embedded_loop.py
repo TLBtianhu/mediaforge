@@ -208,7 +208,8 @@ class PrecheckTests(unittest.TestCase):
             check = embedded_loop.precheck(
                 [{"capability": "watermark_removal"}], [handle.name], detector_factory=boom
             )
-        self.assertIsNone(check, "预检不可用时不能拦住主流程")
+        # 预检不可用 → 不产生 block。"没预检成"和"预检通过"都不该拦住主流程
+        self.assertFalse(check and check.get("blocking"), "预检不可用时不能拦住主流程")
 
 
 class GateTests(unittest.TestCase):

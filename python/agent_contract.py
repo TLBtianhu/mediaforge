@@ -389,6 +389,13 @@ def _native_tools() -> list[dict[str, Any]]:
         _tool("media.video.workflow", "视频多步工作流", "按顺序执行多个能力；视频耗时按分钟计，走作业台账。",
               "media", "audio_tools", operation="media_workflow", approval="confirm", cost="minutes",
               long_running=True, input_schema=_MEDIA_STEPS_SCHEMA, produces="file", evaluate="media.evaluate"),
+        _tool("media.precheck", "计划预检", "先问后做：检查输入是否可用、目标尺寸是否比原图大、图上有没有水印，返回可跳过/需要中止的步骤。",
+              "media", "media_precheck", approval="none", cost="seconds",
+              input_schema=_schema(
+                  {"steps": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+                   "inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
+                  ["steps", "inputs"],
+              )),
         _tool("media.evaluate", "评估产物质量", "对产物做客观评估（尺寸/锐度/是否真的变化），供 agent 自检与重试。",
               "media", "evaluate_media", approval="none", cost="seconds",
               input_schema=_schema({"inputs": inputs_array, "reference": {"type": "string"}}, ["inputs"])),
@@ -444,6 +451,7 @@ INTERNAL_COMMANDS: dict[str, str] = {
     "env_info": "由 system.env 覆盖。",
     "agent_contract": "由 system.contract 覆盖。",
     "evaluate_media": "由 media.evaluate 覆盖。",
+    "media_precheck": "由 media.precheck 覆盖。",
     "audio_tools": "由 media.* / audio.* 覆盖（同一个命令，多种 operation）。",
     "media_capabilities": "由契约的 media.* 条目覆盖。",
 }

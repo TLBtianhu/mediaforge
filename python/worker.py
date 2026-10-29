@@ -70,6 +70,19 @@ def run_command(command: str, payload: dict) -> int:
     if command == "env_info":
         from worker_models import cmd_env_info
         return cmd_env_info()
+    if command == "media_precheck":
+        from media_ops.precheck import precheck
+
+        from worker_protocol import emit
+        steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
+        inputs = [str(value) for value in payload.get("inputs") or [] if str(value).strip()]
+        check = precheck(steps, inputs)
+        # 顶层 ok 表达"计划可行吗"，而不是"命令跑成功了吗"
+        emit(
+            "media_precheck_result",
+            {"ok": (check or {}).get("ok", True), "steps": steps, "inputs": inputs, "precheck": check},
+        )
+        return 0
     if command == "failure_stats":
         from failure_stats import collect
 
