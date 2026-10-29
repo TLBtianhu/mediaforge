@@ -12,11 +12,11 @@ use url::Url;
 //
 // 于是第三方镜像**默认关闭**：本项目的更新只来自它自己的发布页。
 // 确实需要国内镜像时，构建期设 `MEDIAFORGE_ENABLE_MODELSCOPE_MIRROR=1`，
-// 并先把 `MODELSCOPE_TREE` / `MODELSCOPE_ROOT` 换成自己的数据集。
+// 并在自己的数据集（TLBtianhu/MediaForge-Dist）上传发布包。
 const MODELSCOPE_TREE: &str =
-    "https://www.modelscope.cn/api/v1/datasets/huanlinoto/Pymss-Studio-Dist/repo/tree";
+    "https://www.modelscope.cn/api/v1/datasets/TLBtianhu/MediaForge-Dist/repo/tree";
 const MODELSCOPE_ROOT: &str =
-    "https://www.modelscope.cn/datasets/huanlinoto/Pymss-Studio-Dist/resolve/master";
+    "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master";
 const GITHUB_ROOT: &str = "https://github.com/TLBtianhu/mediaforge/releases/download";
 
 /// 第三方更新镜像是否启用。默认关闭——外发构建不应该依赖别人的数据集。
