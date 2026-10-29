@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "id": "real-esrgan-x2",
+      "name": "RealESRGAN_x2plus.pth",
+      "label": "Real-ESRGAN 2×",
+      "modality": "image",
+      "task": "super_resolution",
+      "size": 67061725,
+      "license": "BSD-3-Clause",
+      "description": "2× photo super-resolution, used by image and video restore.",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
+    },
+    {
+      "id": "real-esrgan-x4",
+      "name": "RealESRGAN_x4plus.pth",
+      "label": "Real-ESRGAN 4×",
+      "modality": "image",
+      "task": "super_resolution",
+      "size": 67040989,
+      "license": "BSD-3-Clause",
+      "description": "4× photo super-resolution, used for 2K/4K targets.",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
+    },
+    {
+      "id": "lama",
+      "name": "big-lama.pt",
+      "label": "LaMa Inpainting",
+      "modality": "image",
+      "task": "inpainting",
+      "size": 205669692,
+      "license": "Apache-2.0",
+      "description": "Mask-guided inpainting for watermark and object removal.",
+      "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt"
+    },
+    {
+      "id": "watermark-yolo11x",
+      "name": "watermark_yolo11x.pt",
+      "label": "YOLO11x Watermark",
+      "modality": "image",
+      "task": "watermark_detection",
+      "size": 114434898,
+      "license": "MIT (model card) / AGPL-3.0 (Ultralytics)",
+      "description": "Detects watermark and logo regions before LaMa repair.",
+      "url": "https://huggingface.co/corzent/yolo11x_watermark_detection/resolve/main/best.pt"
+    }
+  ]
+}

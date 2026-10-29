@@ -12,7 +12,8 @@
 - [x] 复用 PyMSS worker 事件协议（`audio_tool_progress` / `audio_tool_result`）
 - [x] Tauri release 构建通过
 - [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
-- [ ] 模型目录 `modality` 泛化（audio / image / video）
+- [x] 媒体模型目录：图像/视频模型清单、依赖检查、下载状态
+- [ ] 音频模型与媒体模型合并为统一检索
 - [x] 图像超分/去水印：Real-ESRGAN + YOLO + LaMa，支持目标分辨率与前后对比
 - [x] 视频抽帧修复管线（超分/去水印 + 音频回封）
 
@@ -39,6 +40,9 @@ python/media_ops/
 ├─ image_worker.py  # 图像任务命令
 ├─ video_ops.py     # 抽帧 / 逐帧修复 / 合帧
 ├─ video_worker.py  # 视频任务命令
+├─ media_catalog.json  # 图像/视频模型清单
+├─ media_models.py  # 模型状态与下载
+├─ model_worker.py  # 模型命令
 ├─ worker.py        # worker 命令与事件
 └─ __init__.py
 ```
@@ -87,6 +91,17 @@ RealESRGAN_x4plus.pth
 - 支持只处理前 N 秒预览
 - 输出 MP4，AAC 音频，保留原始帧率
 - 支持从素材台带视频进入
+
+### 媒体模型
+
+页面：`#/media-models`
+
+- 统一管理 Real-ESRGAN / LaMa / YOLO11x 四个媒体模型
+- 检查 torch / spandrel / ultralytics / opencv / pillow / ffmpeg 依赖
+- 显示已下载 / 未下载 / 文件不完整
+- 应用内下载，进度实时显示
+- 可切换模型目录，默认 `models/` 或 `MEDIAFORGE_MODEL_DIR`
+- 图像/视频修复页头部可直接进入模型页
 
 ### 保留的 PyMSS 能力
 
@@ -152,6 +167,7 @@ src/views/FactoryView.vue
 src/views/AssetsView.vue
 src/views/ImageView.vue
 src/views/VideoView.vue
+src/views/MediaModelsView.vue
 src/router/routes.ts
 src/components/SideNav.vue
 src/i18n/                zh-CN / en

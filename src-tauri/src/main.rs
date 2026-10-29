@@ -154,6 +154,7 @@ fn main() {
             commands::app_cmd::start_editor_mix_export,
             commands::app_cmd::cancel_editor_mix_export,
             commands::app_cmd::media_library,
+            commands::app_cmd::media_models,
             commands::app_cmd::start_audio_tool,
             commands::tempo_key::start_tempo_key_analysis,
             commands::app_cmd::start_operation_task,

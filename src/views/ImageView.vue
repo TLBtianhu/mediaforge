@@ -275,6 +275,9 @@ onBeforeUnmount(() => {
       eyebrow="IMAGE RESTORE"
       tone="violet"
     >
+      <router-link to="/media-models">
+        <n-button quaternary size="small">{{ t('nav.mediaModels') }}</n-button>
+      </router-link>
       <n-tag type="success" :bordered="false">Real-ESRGAN · LaMa</n-tag>
     </MediaPageHeader>
 

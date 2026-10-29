@@ -287,6 +287,9 @@ onBeforeUnmount(() => {
       eyebrow="VIDEO RESTORE"
       tone="amber"
     >
+      <router-link to="/media-models">
+        <n-button quaternary size="small">{{ t('nav.mediaModels') }}</n-button>
+      </router-link>
       <n-tag type="warning" :bordered="false">FFmpeg · Real-ESRGAN · LaMa</n-tag>
     </MediaPageHeader>
 

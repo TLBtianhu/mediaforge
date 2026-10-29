@@ -5,6 +5,7 @@ export const appRoutes: RouteRecordRaw[] = [
   { path: '/separate', redirect: { name: 'separate' } },
   { path: '/tasks', redirect: { name: 'results' } },
   { path: '/models', name: 'models', component: () => import('@/views/ModelsView.vue') },
+  { path: '/media-models', name: 'mediaModels', component: () => import('@/views/MediaModelsView.vue') },
   { path: '/workflows', name: 'workflows', component: () => import('@/views/WorkflowsView.vue') },
   { path: '/workflow-node-editor', name: 'workflow-node-editor', component: () => import('@/views/WorkflowNodeEditorView.vue') },
   { path: '/workflow-simple-editor', name: 'workflow-simple-editor', component: () => import('@/views/WorkflowSimpleEditorView.vue') },

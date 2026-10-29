@@ -16,6 +16,7 @@ import {
   ImagesOutline,
   SparklesOutline,
   VideocamOutline,
+  LayersOutline,
 } from '@vicons/ionicons5'
 
 const route = useRoute()
@@ -27,6 +28,7 @@ const mainItems = computed(() => [
   { name: 'image', path: '/image', icon: SparklesOutline, label: t('nav.image') },
   { name: 'video', path: '/video', icon: VideocamOutline, label: t('nav.video') },
   { name: 'models', path: '/models', icon: CubeOutline, label: t('nav.models') },
+  { name: 'mediaModels', path: '/media-models', icon: LayersOutline, label: t('nav.mediaModels') },
   { name: 'workflows', path: '/workflows', icon: GitNetworkOutline, label: t('nav.workflows') },
   { name: 'results', path: '/results', icon: FolderOpenOutline, label: t('nav.results') },
   { name: 'tools', path: '/tools', icon: ConstructOutline, label: t('nav.tools') },

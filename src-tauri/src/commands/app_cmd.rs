@@ -2391,6 +2391,11 @@ pub async fn media_library(app: AppHandle, payload: Value) -> AppResult<Value> {
 }
 
 #[tauri::command]
+pub async fn media_models(app: AppHandle, payload: Value) -> AppResult<Value> {
+    run_worker_with_payload(&app, "media_models", Some(payload))
+}
+
+#[tauri::command]
 pub async fn start_audio_tool(
     app: AppHandle,
     state: State<'_, AppState>,
