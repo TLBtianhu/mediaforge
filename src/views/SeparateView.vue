@@ -108,6 +108,9 @@ const {
   modelListSortMode,
   modelListPageSize: modelPageSize,
 } = storeToRefs(task)
+
+// The audio workbench is single-model only; legacy workflow mode is retired.
+runMode.value = 'model'
 const { selectedModel, downloadedModels, models: modelEntries, isLoading, modelsLoaded, detailLoading, modelPreferences, error: modelError } = storeToRefs(model)
 const { workflows, selectedWorkflow, selectedWorkflowId } = storeToRefs(workflow)
 
@@ -705,22 +708,17 @@ function handleSeparateContextMenuSelect(key: string | number) {
 }
 
 function workflowValidationError() {
-  if (runMode.value !== 'workflow' || !selectedWorkflow.value) return ''
-  return workflowDefinitionError(selectedWorkflow.value.definition)
+  return ''
 }
-const workflowStructureInvalid = computed(() => runMode.value === 'workflow' && Boolean(workflowValidationError()))
+const workflowStructureInvalid = computed(() => false)
 const startStatusText = computed(() => {
   const validationError = workflowValidationError()
   if (validationError) return validationError
-  if (runMode.value === 'workflow' && workflows.value.length && !runnableWorkflows.value.length) {
-    return t('separate.startHintNoRunnableWorkflow')
-  }
-  if (runMode.value === 'workflow' && !selectedWorkflow.value) return t('separate.startHintNoWorkflow')
   if (outputDirectoryError.value) return outputDirectoryError.value
   if (!inputFiles.value.length) return t('separate.outputDirectorySummary')
-  if (runMode.value === 'model' && ensembleEnabled.value && !ensembleReady.value) return t('separate.ensembleNotReady')
-  if (runMode.value === 'model' && !ensembleEnabled.value && !modelDownloaded.value) return t('separate.startHintModelMissing')
-  if (runMode.value === 'model' && !ensembleEnabled.value && !hasOutputStemSelection.value) {
+  if (ensembleEnabled.value && !ensembleReady.value) return t('separate.ensembleNotReady')
+  if (!ensembleEnabled.value && !modelDownloaded.value) return t('separate.startHintModelMissing')
+  if (!ensembleEnabled.value && !hasOutputStemSelection.value) {
     return t('separate.startHintNoOutputStems')
   }
   return t('separate.outputDirectorySummary')
@@ -783,16 +781,7 @@ const outputPreview = computed(() => {
   }
   return `${base}${separator}${t('separate.resultFolderPreview')}${separator}${previewName}`
 })
-const effectiveFormat = computed(() => {
-  if (runMode.value === 'workflow' && selectedWorkflow.value) {
-    return resolveWorkflowRuntimeDefaults(selectedWorkflow.value.definition, {
-      device: 'auto',
-      outputFormat: settings.defaultFormat || 'wav',
-      modelDir: settings.modelDir || null,
-    }).outputFormat
-  }
-  return String(settings.defaultFormat || 'wav').trim().toLowerCase() || 'wav'
-})
+const effectiveFormat = computed(() => String(settings.defaultFormat || 'wav').trim().toLowerCase() || 'wav')
 const formatLabel = computed(() => effectiveFormat.value.toUpperCase())
 const outputNamingPreviewFiles = computed(() => {
   const stems = orderedOutputStems.value.length ? orderedOutputStems.value : ['vocals']
@@ -805,16 +794,13 @@ const outputNamingPreviewParts = computed(() => {
     parts: formatOutputNamingPreviewParts(stem, index),
   }))
 })
-const outputSummaryPath = computed(() => runMode.value === 'workflow' ? normalizedOutputDir.value : outputPreview.value)
+const outputSummaryPath = computed(() => outputPreview.value)
 const canStart = computed(() => (
   !submittingJob.value
-  && !workflowStructureInvalid.value
   && !outputDirectoryError.value
-  && (runMode.value === 'workflow'
-    ? Boolean(selectedWorkflow.value) && inputFiles.value.length > 0
-    : ensembleEnabled.value
-      ? ensembleReady.value
-      : (modelDownloaded.value && inputFiles.value.length > 0 && hasOutputStemSelection.value))
+  && (ensembleEnabled.value
+    ? ensembleReady.value
+    : (modelDownloaded.value && inputFiles.value.length > 0 && hasOutputStemSelection.value))
 ))
 function isSeparationJob(job: SeparationJob) {
   return !job.primary.runConfig?.workbench
@@ -933,7 +919,6 @@ const inputCompactLine = computed(() => {
 })
 const modelCompactLine = computed(() => {
   if (currentTask.value?.model) return currentTask.value.model
-  if (runMode.value === 'workflow') return selectedWorkflow.value?.name || t('separate.noWorkflowSelected')
   const name = selectedModelName.value || t('separate.noModelSelected')
   const category = currentModelInfo.value ? categoryLabel(currentModelInfo.value) : ''
   return category ? `${name} · ${category}` : name
@@ -1256,9 +1241,7 @@ function formatOutputNamingPreviewFile(stem: string, stemIndex: number) {
 
 function formatOutputNamingPreviewParts(stem: string, stemIndex: number) {
   const inputPath = inputFiles.value[0] || t('separate.resultFolderPreview')
-  const modelName = runMode.value === 'workflow'
-    ? selectedWorkflow.value?.name || t('separate.workflow')
-    : ensembleEnabled.value ? 'Ensemble' : selectedModelName.value || t('separate.model')
+  const modelName = ensembleEnabled.value ? 'Ensemble' : selectedModelName.value || t('separate.model')
   const now = new Date()
   const values: Record<string, string> = {
     '%index%': padNumber(stemIndex + 1),
@@ -1552,7 +1535,6 @@ function handleSelectModel(item: (typeof listedDownloadedModels.value)[number]) 
 }
 
 function prefetchSelectedModelAdvancedParams() {
-  if (runMode.value !== 'model') return
   if (!shouldPrefetchAdvancedParams.value || detailLoading.value || isLoading.value || !selectedModelName.value) return
   model.selectModel(selectedModelName.value).catch(() => {})
 }
@@ -1908,12 +1890,8 @@ async function start() {
     message.warning(outputDirectoryError.value)
     return
   }
-  if (runMode.value === 'model' && ensembleEnabled.value && !ensembleReady.value) {
+  if (ensembleEnabled.value && !ensembleReady.value) {
     message.warning(t('separate.ensembleNotReady'))
-    return
-  }
-  if (runMode.value === 'workflow' && !selectedWorkflow.value) {
-    message.warning(t('separate.startHintNoWorkflow'))
     return
   }
   const validationError = workflowValidationError()
@@ -1925,28 +1903,26 @@ async function start() {
     message.warning(t('separate.startHintNoInput'))
     return
   }
-  if (runMode.value === 'model' && !ensembleEnabled.value && !modelDownloaded.value) {
+  if (!ensembleEnabled.value && !modelDownloaded.value) {
     message.warning(t('separate.startHintModelMissing'))
     return
   }
-  if (runMode.value === 'model' && !ensembleEnabled.value && currentChunkIssue.value) {
+  if (!ensembleEnabled.value && currentChunkIssue.value) {
     message.warning(t('inference.invalidChunkSize', currentChunkIssue.value))
     return
   }
-  if (runMode.value === 'model' && !ensembleEnabled.value && !hasOutputStemSelection.value) {
+  if (!ensembleEnabled.value && !hasOutputStemSelection.value) {
     message.warning(t('separate.startHintNoOutputStems'))
     return
   }
   submittingJob.value = true
   try {
-    const result = runMode.value === 'workflow' && selectedWorkflow.value
-      ? await task.startWorkflowInference(selectedWorkflow.value, { outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value })
-      : ensembleEnabled.value
-        ? await task.startWorkflowInference(buildEnsembleWorkflow(), { outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
-        : await task.startSeparation({ outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
+    const result = ensembleEnabled.value
+      ? await task.startWorkflowInference(buildEnsembleWorkflow(), { outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
+      : await task.startSeparation({ outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
     focusedSeparationJobId.value = result?.jobId || newestRunningJob.value?.id || focusedSeparationJobId.value
     composingNewJob.value = false
-    if (runMode.value === 'model' && ensembleEnabled.value && result) {
+    if (ensembleEnabled.value && result) {
       ensembleModels.value.forEach((name) => model.recordModelUse(name))
     }
     if (settings.clearInputAfterSubmit) task.clearInputFiles()
