@@ -31,6 +31,7 @@ CAPABILITIES: list[dict[str, Any]] = [
             "width": {"type": "integer", "default": 0},
             "height": {"type": "integer", "default": 0},
             "fit": {"type": "string", "default": "contain"},
+            "scale": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
         },
         "implemented": True,
     },
@@ -145,6 +146,7 @@ def list_capabilities() -> dict[str, Any]:
                     "roles": [role for role, spec in item["roles"].items() if spec.get("task") == record.get("task")],
                     "downloaded": path.is_file(),
                     "implemented": bool(record.get("implemented", True)),
+                    "params": record.get("params") or {},
                 }
             )
         result.append(
@@ -166,6 +168,7 @@ def normalize_steps(steps: Any) -> list[dict[str, Any]]:
     if not isinstance(steps, list) or not steps:
         raise ValueError("pipeline steps must be a non-empty array")
     normalized: list[dict[str, Any]] = []
+    catalog = _catalog()
     for raw in steps:
         if not isinstance(raw, dict):
             raise ValueError("pipeline step must be an object")
@@ -184,11 +187,17 @@ def normalize_steps(steps: Any) -> list[dict[str, Any]]:
             if model_id not in cap["modelIds"]:
                 raise ValueError(f"model {model_id} is not allowed for capability {cap['id']}")
             resolved[role] = model_id
+        defaults = {key: spec.get("default") for key, spec in cap["params"].items()}
+        for model_id in resolved.values():
+            record = catalog.get(model_id) or {}
+            for key, spec in (record.get("params") or {}).items():
+                if isinstance(spec, dict):
+                    defaults[key] = spec.get("default")
         normalized.append(
             {
                 "capability": cap["id"],
                 "bindings": resolved,
-                "params": {**{key: spec.get("default") for key, spec in cap["params"].items()}, **params},
+                "params": {**defaults, **params},
             }
         )
     return normalized

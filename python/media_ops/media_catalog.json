@@ -22,7 +22,15 @@
       ],
       "roles": [
         "upscaler"
-      ]
+      ],
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     },
     {
       "id": "real-esrgan-x4",
@@ -45,7 +53,15 @@
       ],
       "roles": [
         "upscaler"
-      ]
+      ],
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     },
     {
       "id": "lama",
@@ -68,7 +84,15 @@
       ],
       "roles": [
         "inpainter"
-      ]
+      ],
+      "params": {
+        "expand": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 0,
+          "maximum": 64
+        }
+      }
     },
     {
       "id": "watermark-yolo11x",

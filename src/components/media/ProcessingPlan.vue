@@ -14,7 +14,7 @@ type PlanStep = {
 }
 type RoleSpec = { label: string; task: string; required?: boolean }
 type ParamSpec = { type?: string; enum?: string[]; default?: unknown }
-type CapabilityModel = { id: string; label: string; roles: string[]; downloaded: boolean; implemented: boolean }
+type CapabilityModel = { id: string; label: string; roles: string[]; downloaded: boolean; implemented: boolean; params?: Record<string, ParamSpec> }
 type Capability = {
   id: string
   label: string
@@ -57,7 +57,12 @@ const modelOptions = computed(() => {
 const hasUsableModel = computed(() => Boolean(current.value?.models.some(model => model.downloaded && model.implemented && model.roles.includes(displayRole.value))))
 watch(hasUsableModel, value => emit('availability', value), { immediate: true })
 const selectedModel = computed(() => current.value && displayRole.value ? props.modelValue?.bindings[displayRole.value] || '' : '')
-const paramEntries = computed(() => Object.entries(current.value?.params || {}))
+const selectedModelSpec = computed(() => current.value?.models.find(model => model.id === selectedModel.value))
+const effectiveParams = computed<Record<string, ParamSpec>>(() => ({
+  ...(current.value?.params || {}),
+  ...(selectedModelSpec.value?.params || {}),
+}))
+const paramEntries = computed(() => Object.entries(effectiveParams.value))
 
 function modelForRole(cap: Capability, role: string, except?: string) {
   const model = cap.models.find(item => item.roles.includes(role) && item.implemented && item.id !== except)
@@ -72,7 +77,8 @@ function buildStep(cap: Capability, modelId?: string): PlanStep {
     bindings[key] = key === role ? chosen : modelForRole(cap, key, chosen)
   }
   const params: Record<string, unknown> = {}
-  for (const [key, spec] of Object.entries(cap.params)) params[key] = spec.default
+  const modelParams = cap.models.find(item => item.id === chosen)?.params || {}
+  for (const [key, spec] of Object.entries({ ...cap.params, ...modelParams })) params[key] = spec.default
   return { capability: cap.id, bindings, params }
 }
 
@@ -84,7 +90,7 @@ function selectCapability(capabilityId: string) {
 function selectModel(modelId: string) {
   const cap = current.value
   if (!cap) return
-  emit('update:modelValue', { ...buildStep(cap, modelId), params: { ...(props.modelValue?.params || {}) } })
+  emit('update:modelValue', buildStep(cap, modelId))
 }
 
 function paramLabel(key: string) {
