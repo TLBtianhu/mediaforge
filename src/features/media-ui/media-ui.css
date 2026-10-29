@@ -213,7 +213,7 @@
 }
 .mf-stat-pill strong { color: var(--mf-accent); }
 
-.mf-step-strip--top { margin-top: 0; }
+.mf-step-strip.mf-step-strip--top { margin-top: 0; }
 .pipeline-presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .pipeline-presets button { padding: 5px 9px; border: 1px solid var(--divider-color); border-radius: 999px; background: var(--action-color); color: var(--text-color-2); font-family: inherit; font-size: 10px; cursor: pointer; }
 .pipeline-presets button:hover { border-color: color-mix(in srgb, var(--mf-accent) 35%, var(--divider-color)); color: var(--mf-accent); }
