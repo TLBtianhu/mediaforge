@@ -35,6 +35,7 @@
     "title": "Media Factory",
     "subtitle": "Transcode, extract audio, and batch-process media",
     "input": "Input media",
+    "fileCount": "{count} files",
     "chooseFiles": "Choose media files",
     "addFiles": "Add more",
     "noFiles": "No files selected yet",

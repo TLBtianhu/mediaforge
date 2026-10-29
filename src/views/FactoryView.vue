@@ -12,6 +12,7 @@ import {
   FolderOpenOutline,
   SwapHorizontalOutline,
 } from '@vicons/ionicons5'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useSettingsStore } from '@/stores/settings'
 
 defineOptions({ name: 'FactoryView' })
@@ -214,43 +215,59 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page factory-page">
-    <div class="page-header-compact">
-      <div>
-        <h1>{{ t('factory.title') }}</h1>
-        <p>{{ t('factory.subtitle') }}</p>
-      </div>
+  <div class="page mf-page" data-tone="blue">
+    <MediaPageHeader
+      :title="t('factory.title')"
+      :subtitle="t('factory.subtitle')"
+      :icon="SwapHorizontalOutline"
+      eyebrow="FORMAT FACTORY"
+      tone="blue"
+    >
       <n-tag type="info" :bordered="false">FFmpeg</n-tag>
-    </div>
+    </MediaPageHeader>
 
-    <p class="factory-hint">{{ t('factory.hint') }}</p>
-
-    <div class="factory-grid">
-      <n-card :title="t('factory.input')" size="small">
-        <div class="factory-picker">
-          <n-button secondary :disabled="busy" @click="pickFiles">
-            <template #icon><n-icon :component="DocumentOutline" /></template>
-            {{ inputs.length ? t('factory.addFiles') : t('factory.chooseFiles') }}
-          </n-button>
-          <span class="factory-count">{{ inputs.length }}</span>
+    <div class="mf-page-grid">
+      <section class="mf-panel mf-panel--input">
+        <div class="mf-panel__head">
+          <span class="mf-panel__title">{{ t('factory.input') }}</span>
+          <span class="mf-panel__meta">{{ t('factory.fileCount', { count: inputs.length }) }}</span>
         </div>
-        <n-empty v-if="!inputs.length" :description="t('factory.noFiles')" size="small" />
-        <n-list v-else hoverable>
-          <n-list-item v-for="path in inputs" :key="path">
-            <span class="factory-file" :title="path">{{ fileName(path) }}</span>
-            <template #suffix>
+        <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
+          <span class="mf-dropzone__icon">
+            <n-icon :component="DocumentOutline" :size="26" />
+          </span>
+          <span class="mf-dropzone__title">{{ t('factory.chooseFiles') }}</span>
+          <span class="mf-dropzone__hint">{{ t('factory.hint') }}</span>
+          <div class="mf-dropzone__actions">
+            <n-button type="primary" :disabled="busy" @click.stop="pickFiles">
+              {{ t('factory.chooseFiles') }}
+            </n-button>
+          </div>
+        </div>
+        <template v-else>
+          <div class="mf-file-list">
+            <div v-for="path in inputs" :key="path" class="mf-file-row">
+              <n-icon :component="DocumentOutline" size="18" />
+              <span class="mf-file-row__name" :title="path">{{ fileName(path) }}</span>
               <n-button text :disabled="busy" @click="removeInput(path)">
                 <template #icon><n-icon :component="CloseCircleOutline" /></template>
               </n-button>
-            </template>
-          </n-list-item>
-        </n-list>
-      </n-card>
+            </div>
+          </div>
+          <n-button text class="mf-add-more" :disabled="busy" @click="pickFiles">
+            + {{ t('factory.addFiles') }}
+          </n-button>
+        </template>
+      </section>
 
-      <n-card :title="t('factory.output')" size="small">
+      <section class="mf-panel">
+        <div class="mf-panel__head">
+          <span class="mf-panel__title">{{ t('factory.output') }}</span>
+          <n-tag size="small" :bordered="false" type="info">local</n-tag>
+        </div>
         <n-space vertical :size="14">
-          <div>
-            <label class="factory-label">{{ t('factory.outputDir') }}</label>
+          <div class="mf-form-section">
+            <label class="mf-form-label">{{ t('factory.outputDir') }}</label>
             <div class="factory-path">
               <n-input :value="outputDir" readonly :placeholder="t('factory.outputDir')" />
               <n-button secondary :disabled="busy" @click="pickOutput">
@@ -260,23 +277,25 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="factory-row">
-            <div>
-              <label class="factory-label">{{ t('factory.format') }}</label>
-              <n-select v-model:value="format" :options="formatOptions" :disabled="busy" />
-            </div>
-            <div>
-              <label class="factory-label">{{ t('factory.preset') }}</label>
-              <n-select v-model:value="preset" :options="presetOptions" :disabled="busy || !isVideoFormat" />
+          <div class="mf-form-section">
+            <div class="mf-form-row mf-form-row--two">
+              <div>
+                <label class="mf-form-label">{{ t('factory.format') }}</label>
+                <n-select v-model:value="format" :options="formatOptions" :disabled="busy" />
+              </div>
+              <div>
+                <label class="mf-form-label">{{ t('factory.preset') }}</label>
+                <n-select v-model:value="preset" :options="presetOptions" :disabled="busy || !isVideoFormat" />
+              </div>
             </div>
           </div>
 
-          <div v-if="isVideoFormat">
-            <label class="factory-label">{{ t('factory.crf') }}</label>
+          <div v-if="isVideoFormat" class="mf-form-section">
+            <label class="mf-form-label">{{ t('factory.crf') }}</label>
             <n-select v-model:value="crf" :options="crfOptions" :disabled="busy" />
           </div>
 
-          <n-button type="primary" size="large" :loading="busy" :disabled="busy" @click="run">
+          <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="run">
             <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
             {{ t('factory.start') }}
           </n-button>
@@ -293,29 +312,35 @@ onBeforeUnmount(() => {
                 {{ t('factory.openFolder') }}
               </n-button>
             </div>
-            <n-list hoverable>
-              <n-list-item v-for="item in outputs" :key="item.path">
-                <span class="factory-file" :title="item.path">{{ fileName(item.path) }}</span>
-              </n-list-item>
-            </n-list>
+            <div class="mf-file-list">
+              <div v-for="item in outputs" :key="item.path" class="mf-file-row">
+                <span class="mf-file-row__name" :title="item.path">{{ fileName(item.path) }}</span>
+              </div>
+            </div>
           </div>
         </n-space>
-      </n-card>
+      </section>
+    </div>
+
+    <div class="mf-step-strip">
+      <div class="mf-step">
+        <span class="mf-step__num">01</span>
+        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('factory.chooseFiles') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">02</span>
+        <div><div class="mf-step__title">{{ t('factory.output') }}</div><div class="mf-step__text">{{ t('factory.hint') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">03</span>
+        <div><div class="mf-step__title">{{ t('factory.start') }}</div><div class="mf-step__text">FFmpeg · local</div></div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.factory-page { display: flex; flex-direction: column; gap: 12px; }
-.factory-hint { margin: 0; color: var(--text-color-3); font-size: 13px; }
-.factory-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.factory-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.factory-count { color: var(--text-color-3); font-size: 12px; }
-.factory-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.factory-label { display: block; margin-bottom: 6px; color: var(--text-color-2); font-size: 12px; font-weight: 600; }
 .factory-path { display: flex; gap: 8px; align-items: center; }
-.factory-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .factory-outputs { border-top: 1px solid var(--divider-color); padding-top: 12px; }
 .factory-outputs-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-@media (max-width: 900px) { .factory-grid { grid-template-columns: 1fr; } }
 </style>

@@ -6,6 +6,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import {
   FolderOpenOutline,
   ImagesOutline,
@@ -68,14 +69,6 @@ const kindOptions = computed(() => [
 ])
 
 const totalCount = computed(() => stats.value.total?.count ?? assets.value.length)
-const statsText = computed(() => {
-  const kinds = stats.value.kinds || {}
-  return [
-    t('assets.imageCount', { count: kinds.image?.count || 0 }),
-    t('assets.videoCount', { count: kinds.video?.count || 0 }),
-    t('assets.audioCount', { count: kinds.audio?.count || 0 }),
-  ].join(' · ')
-})
 
 function kindLabel(value: Asset['kind']) {
   return t(`assets.${value}`)
@@ -117,6 +110,7 @@ function thumbnailSrc(asset: Asset) {
 }
 
 async function refresh() {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   try {
     const result = await invoke<LibraryResult>('media_library', {
       payload: { operation: 'list', query: query.value, kind: kind.value, limit: 1000 },
@@ -231,55 +225,67 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page assets-page">
-    <div class="page-header-compact">
-      <div>
-        <h1>{{ t('assets.title') }}</h1>
-        <p>{{ t('assets.subtitle') }}</p>
-      </div>
-      <n-space>
-        <n-button secondary :loading="importing" :disabled="busy" @click="pickFiles">
-          <template #icon><n-icon :component="ImagesOutline" /></template>
-          {{ t('assets.importFiles') }}
-        </n-button>
-        <n-button secondary :loading="importing" :disabled="busy" @click="pickFolder">
-          <template #icon><n-icon :component="FolderOpenOutline" /></template>
-          {{ t('assets.importFolder') }}
-        </n-button>
-        <n-button quaternary :disabled="busy" @click="refresh">
-          <template #icon><n-icon :component="RefreshOutline" /></template>
-        </n-button>
-      </n-space>
-    </div>
+  <div class="page mf-page assets-page" data-tone="emerald">
+    <MediaPageHeader
+      :title="t('assets.title')"
+      :subtitle="t('assets.subtitle')"
+      :icon="ImagesOutline"
+      eyebrow="MEDIA SHELF"
+      tone="emerald"
+    >
+      <n-button secondary :loading="importing" :disabled="busy" @click="pickFiles">
+        <template #icon><n-icon :component="ImagesOutline" /></template>
+        {{ t('assets.importFiles') }}
+      </n-button>
+      <n-button secondary :loading="importing" :disabled="busy" @click="pickFolder">
+        <template #icon><n-icon :component="FolderOpenOutline" /></template>
+        {{ t('assets.importFolder') }}
+      </n-button>
+      <n-button quaternary :disabled="busy" @click="refresh">
+        <template #icon><n-icon :component="RefreshOutline" /></template>
+      </n-button>
+    </MediaPageHeader>
 
-    <div class="assets-toolbar">
+    <div class="mf-toolbar">
       <n-input v-model:value="query" clearable :placeholder="t('assets.search')" />
-      <n-select v-model:value="kind" :options="kindOptions" class="assets-kind" />
-      <span class="assets-total">{{ t('assets.total', { count: totalCount }) }}</span>
+      <n-select v-model:value="kind" :options="kindOptions" />
+      <span class="mf-toolbar__count">{{ t('assets.total', { count: totalCount }) }}</span>
     </div>
 
     <n-spin :show="busy">
-      <n-empty v-if="!assets.length" :description="t('assets.empty')" class="assets-empty">
-        <template #extra>
-          <div class="assets-empty-hint">{{ t('assets.emptyHint') }}</div>
-        </template>
-      </n-empty>
+      <div v-if="!assets.length" class="mf-empty">
+        <span class="mf-empty__icon">
+          <n-icon :component="ImagesOutline" :size="30" />
+        </span>
+        <div class="mf-empty__title">{{ t('assets.empty') }}</div>
+        <div class="mf-empty__hint">{{ t('assets.emptyHint') }}</div>
+        <div class="mf-dropzone__actions">
+          <n-button type="primary" :loading="importing" :disabled="busy" @click="pickFiles">
+            <template #icon><n-icon :component="ImagesOutline" /></template>
+            {{ t('assets.importFiles') }}
+          </n-button>
+          <n-button secondary :loading="importing" :disabled="busy" @click="pickFolder">
+            <template #icon><n-icon :component="FolderOpenOutline" /></template>
+            {{ t('assets.importFolder') }}
+          </n-button>
+        </div>
+      </div>
 
-      <div v-else class="assets-grid">
-        <article v-for="asset in assets" :key="asset.id" class="asset-card">
-          <div class="asset-thumb">
+      <div v-else class="mf-assets-grid">
+        <article v-for="asset in assets" :key="asset.id" class="mf-asset-card">
+          <div class="mf-asset-card__thumb">
             <img v-if="asset.thumbnail" :src="thumbnailSrc(asset)" :alt="asset.name" loading="lazy" />
             <n-icon v-else :component="kindIcon(asset.kind)" size="34" />
             <n-tag class="asset-kind" size="small" :bordered="false">{{ kindLabel(asset.kind) }}</n-tag>
           </div>
-          <div class="asset-body">
-            <div class="asset-name" :title="asset.path">{{ asset.name }}</div>
-            <div class="asset-sub">
+          <div class="mf-asset-card__body">
+            <div class="mf-asset-card__name" :title="asset.path">{{ asset.name }}</div>
+            <div class="mf-asset-card__sub">
               <span v-if="resolution(asset)">{{ resolution(asset) }}</span>
               <span v-if="formatDuration(asset)">{{ formatDuration(asset) }}</span>
               <span>{{ formatSize(asset.size) }}</span>
             </div>
-            <div class="asset-actions">
+            <div class="mf-asset-card__actions">
               <n-button text size="small" @click="openInFactory(asset)">
                 <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
                 {{ t('assets.toFactory') }}
@@ -310,29 +316,35 @@ onBeforeUnmount(() => {
       </div>
     </n-spin>
 
+    <div v-if="!assets.length" class="mf-step-strip">
+      <div class="mf-step mf-step--link" role="button" tabindex="0" @click="router.push({ name: 'image' })">
+        <span class="mf-step__num">01</span>
+        <div><div class="mf-step__title">{{ t('image.title') }}</div><div class="mf-step__text">{{ t('image.subtitle') }}</div></div>
+      </div>
+      <div class="mf-step mf-step--link" role="button" tabindex="0" @click="router.push({ name: 'video' })">
+        <span class="mf-step__num">02</span>
+        <div><div class="mf-step__title">{{ t('video.title') }}</div><div class="mf-step__text">{{ t('video.subtitle') }}</div></div>
+      </div>
+      <div class="mf-step mf-step--link" role="button" tabindex="0" @click="router.push({ name: 'factory' })">
+        <span class="mf-step__num">03</span>
+        <div><div class="mf-step__title">{{ t('factory.title') }}</div><div class="mf-step__text">{{ t('factory.subtitle') }}</div></div>
+      </div>
+    </div>
+
     <div class="assets-footer">
-      <span>{{ statsText }}</span>
+      <div class="mf-stat-pills">
+        <span class="mf-stat-pill"><strong>{{ stats.kinds?.image?.count || 0 }}</strong>{{ t('assets.image') }}</span>
+        <span class="mf-stat-pill"><strong>{{ stats.kinds?.video?.count || 0 }}</strong>{{ t('assets.video') }}</span>
+        <span class="mf-stat-pill"><strong>{{ stats.kinds?.audio?.count || 0 }}</strong>{{ t('assets.audio') }}</span>
+      </div>
       <span v-if="stats.database" class="assets-db" :title="stats.database">{{ t('assets.database') }}: {{ stats.database }}</span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.assets-page { display: flex; flex-direction: column; gap: 12px; }
-.assets-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 160px auto; gap: 10px; align-items: center; }
-.assets-total { color: var(--text-color-3); font-size: 12px; white-space: nowrap; }
-.assets-empty { padding: 64px 0; }
-.assets-empty-hint { max-width: 440px; color: var(--text-color-3); font-size: 13px; line-height: 1.6; }
-.assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.asset-card { overflow: hidden; border: 1px solid var(--divider-color); border-radius: 10px; background: var(--card-color); }
-.asset-thumb { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 10; overflow: hidden; background: var(--action-color); color: var(--text-color-3); }
-.asset-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.assets-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: auto; color: var(--text-color-3); font-size: 11px; }
 .asset-kind { position: absolute; top: 8px; left: 8px; }
-.asset-body { padding: 10px 12px 12px; }
-.asset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
-.asset-sub { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; color: var(--text-color-3); font-size: 11px; }
-.asset-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.assets-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--text-color-3); font-size: 11px; }
 .assets-db { overflow: hidden; max-width: 52%; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 760px) { .assets-toolbar { grid-template-columns: 1fr; } .assets-total { display: none; } .assets-db { max-width: 100%; } }
+@media (max-width: 760px) { .assets-db { max-width: 100%; } }
 </style>

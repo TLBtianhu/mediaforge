@@ -35,6 +35,7 @@
     "title": "格式工厂",
     "subtitle": "音视频/图片转码、提取与批量处理",
     "input": "输入素材",
+    "fileCount": "{count} 个文件",
     "chooseFiles": "选择媒体文件",
     "addFiles": "继续添加",
     "noFiles": "还没有选择文件",

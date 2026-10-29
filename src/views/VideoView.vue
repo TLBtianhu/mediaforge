@@ -12,6 +12,7 @@ import {
   FolderOpenOutline,
   VideocamOutline,
 } from '@vicons/ionicons5'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useSettingsStore } from '@/stores/settings'
 
 defineOptions({ name: 'VideoView' })
@@ -278,35 +279,41 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page video-page">
-    <div class="page-header-compact">
-      <div>
-        <h1>{{ t('video.title') }}</h1>
-        <p>{{ t('video.subtitle') }}</p>
-      </div>
+  <div class="page mf-page video-page" data-tone="amber">
+    <MediaPageHeader
+      :title="t('video.title')"
+      :subtitle="t('video.subtitle')"
+      :icon="VideocamOutline"
+      eyebrow="VIDEO RESTORE"
+      tone="amber"
+    >
       <n-tag type="warning" :bordered="false">FFmpeg · Real-ESRGAN · LaMa</n-tag>
-    </div>
+    </MediaPageHeader>
 
-    <div class="video-grid">
+    <div class="mf-page-grid">
       <n-card :title="t('factory.input')" size="small">
-        <div class="video-picker">
-          <n-button secondary :disabled="busy" @click="pickFiles">
-            <template #icon><n-icon :component="DocumentOutline" /></template>
-            {{ inputs.length ? t('factory.addFiles') : t('factory.chooseFiles') }}
-          </n-button>
-          <span class="video-count">{{ inputs.length }}</span>
+        <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
+          <span class="mf-dropzone__icon">
+            <n-icon :component="VideocamOutline" :size="26" />
+          </span>
+          <span class="mf-dropzone__title">{{ t('factory.chooseFiles') }}</span>
+          <span class="mf-dropzone__hint">{{ t('video.subtitle') }}</span>
+          <div class="mf-dropzone__actions">
+            <n-button type="primary" :disabled="busy" @click.stop="pickFiles">{{ t('factory.chooseFiles') }}</n-button>
+          </div>
         </div>
-        <n-empty v-if="!inputs.length" :description="t('factory.noFiles')" size="small" />
-        <n-list v-else hoverable>
-          <n-list-item v-for="path in inputs" :key="path">
-            <span class="video-file" :title="path">{{ fileName(path) }}</span>
-            <template #suffix>
+        <template v-else>
+          <div class="mf-file-list">
+            <div v-for="path in inputs" :key="path" class="mf-file-row">
+              <n-icon :component="VideocamOutline" size="18" />
+              <span class="mf-file-row__name" :title="path">{{ fileName(path) }}</span>
               <n-button text :disabled="busy" @click="removeInput(path)">
                 <template #icon><n-icon :component="CloseCircleOutline" /></template>
               </n-button>
-            </template>
-          </n-list-item>
-        </n-list>
+            </div>
+          </div>
+          <n-button text class="mf-add-more" :disabled="busy" @click="pickFiles">+ {{ t('factory.addFiles') }}</n-button>
+        </template>
       </n-card>
 
       <n-card :title="t('factory.output')" size="small">
@@ -399,7 +406,7 @@ onBeforeUnmount(() => {
           </div>
           <p class="video-hint">{{ t('video.previewHint') }}</p>
 
-          <n-button type="primary" size="large" :loading="busy" :disabled="busy" @click="run">
+          <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="run">
             <template #icon><n-icon :component="VideocamOutline" /></template>
             {{ t('factory.start') }}
           </n-button>
@@ -420,10 +427,26 @@ onBeforeUnmount(() => {
         </n-button>
       </div>
     </n-card>
+
+    <div class="mf-step-strip">
+      <div class="mf-step">
+        <span class="mf-step__num">01</span>
+        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('image.mode') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">02</span>
+        <div><div class="mf-step__title">{{ t('image.target') }}</div><div class="mf-step__text">{{ t('video.detectMode') }} · {{ t('image.fit') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">03</span>
+        <div><div class="mf-step__title">{{ t('video.result') }}</div><div class="mf-step__text">{{ t('video.preview') }} · audio</div></div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.video-page :deep(.n-card) { border-radius: 18px; box-shadow: 0 12px 34px rgba(29, 39, 64, 0.045); }
 .video-page { display: flex; flex-direction: column; gap: 12px; }
 .video-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .video-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
