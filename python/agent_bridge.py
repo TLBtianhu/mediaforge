@@ -402,6 +402,39 @@ class Bridge:
     # ---- MCP tool registry ---------------------------------------------------
 
     def tools(self) -> list[dict[str, Any]]:
+        """手写的历史工具 + 契约里尚未上表的功能。
+
+        契约是工具面的真源：`agent_contract` 里登记的功能，这里自动出现，
+        bridge 只保留那些**没有对应 worker 命令**的桥接专属工具
+        （`mediaforge_status` / `job_*` / `capabilities_list` / `pipeline_*` / `convert` …）。
+
+        工具面一共 60 个，对上下文紧张的调用方偏多：设 `MEDIAFORGE_MCP_SURFACE=legacy`
+        只暴露历史那 14 个（功能仍可用，只是需要按契约名直接调）。
+        """
+        legacy = self._bridge_tools()
+        if os.environ.get("MEDIAFORGE_MCP_SURFACE", "").strip().lower() == "legacy":
+            return legacy
+        return legacy + self._contract_tools()
+
+    def _contract_tools(self) -> list[dict[str, Any]]:
+        tools: list[dict[str, Any]] = []
+        for tool in agent_contract.build_contract()["tools"]:
+            if tool.get("bridgeTool"):
+                continue  # 已经以历史名字暴露过了
+            description = f"{tool['title']} — {tool['description']}"
+            if not tool["available"]:
+                description += "（当前不可用：适配器尚未实现）"
+            description += f" [approval={tool['approval']}, cost={tool['cost']}]"
+            tools.append(
+                {
+                    "name": tool["name"],
+                    "description": description,
+                    "inputSchema": tool["inputSchema"],
+                }
+            )
+        return tools
+
+    def _bridge_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "name": "mediaforge_status",
@@ -638,7 +671,35 @@ class Bridge:
             return self.jobs.cancel(str(arguments.get("jobId") or ""))
         if name == "feedback_submit":
             return self.feedback(dict(arguments))
-        raise ValueError(f"unknown tool: {name}")
+        return self._dispatch_contract(name, arguments)
+
+    # ---- 契约兜底：没被上面显式处理的名字，只要契约里有就能执行 ----------------
+
+    def _dispatch_contract(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """按契约执行一个工具：长任务进作业台账，其余在进程内跑。
+
+        这样新增功能只要登记进 `agent_contract`，MCP 侧**不用改一行**就能被 agent 调用。
+        """
+        try:
+            tool = agent_contract.find_tool(name)
+        except KeyError:
+            raise ValueError(f"unknown tool: {name}") from None
+        payload = dict(arguments or {})
+        if tool["operation"]:
+            payload.setdefault("operation", tool["operation"])
+        if tool["longRunning"]:
+            job = self.jobs.start(tool["command"], payload)
+            return {
+                "ok": True,
+                "tool": name,
+                "jobId": job.job_id,
+                "status": job.snapshot(),
+                "note": "long-running: poll job_status",
+            }
+        outcome = agent_contract.dispatch(name, payload)
+        terminal = outcome.get("result") or {}
+        body = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}
+        return {"ok": outcome["ok"], "tool": name, **body}
 
     # ---- JSON-RPC ------------------------------------------------------------
 

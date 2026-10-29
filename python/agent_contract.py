@@ -39,6 +39,16 @@ COST_LEVELS: dict[str, str] = {
     "download": "取决于网络/体积（建议提交作业并轮询）",
 }
 
+#: 有些功能在 MCP 桥接里**已经有**一个历史工具名。这里登记映射，
+#: 避免同一件事在 agent 的工具表里出现两次（名字不同、语义相同最容易让人选错）。
+BRIDGE_ALIASES: dict[str, str] = {
+    "model.list": "models_list",
+    "model.download": "models_download",
+    "media.metadata": "probe",
+    "system.contract": "agent_contract",
+    "media.evaluate": "evaluate_media",
+}
+
 _WORKER = Path(__file__).with_name("worker.py")
 
 
@@ -87,6 +97,8 @@ def _tool(
         "produces": produces,
         "evaluate": evaluate,
         "available": bool(available),
+        # 已经在桥接里以别的名字暴露过的话，这里记下来（避免重复上表）
+        "bridgeTool": BRIDGE_ALIASES.get(name),
     }
 
 
