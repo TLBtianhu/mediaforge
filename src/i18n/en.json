@@ -128,6 +128,42 @@
     "downloadFailed": "Download failed",
     "noModels": "Model directory is empty"
   },
+  "runtimeStatus": {
+    "title": "Runtime status",
+    "idle": "Idle",
+    "queued": "Queued",
+    "running": "Running",
+    "failed": "Failed",
+    "ready": "Ready",
+    "notReady": "Not ready",
+    "unknown": "Unknown",
+    "device": "Device",
+    "queue": "Queue",
+    "active": "Running",
+    "viewResults": "View results",
+    "cancel": "Cancel task",
+    "noTask": "No active task",
+    "recentFailure": "Recent failure",
+    "connection": {
+      "connected": "Connected",
+      "connecting": "Connecting",
+      "error": "Connection error",
+      "idle": "Not connected"
+    },
+    "stage": {
+      "queued": "Queued",
+      "preparing": "Preparing",
+      "validating_input": "Validating input",
+      "downloading_model": "Preparing model",
+      "ensuring_model": "Preparing model",
+      "loading_model": "Loading model",
+      "separating": "Processing",
+      "writing_output": "Collecting outputs",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
+  },
   "assets": {
     "title": "Media Shelf",
     "subtitle": "Local media index, thumbnails, and task entry points",

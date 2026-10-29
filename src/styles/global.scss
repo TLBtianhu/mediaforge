@@ -427,6 +427,170 @@ a { color: inherit; text-decoration: none; }
   opacity: 0.62;
 }
 
+.side-nav__status {
+  flex: 0 0 auto;
+  padding: 4px 3px 6px;
+}
+.status-pill {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--outline) 62%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-1) 74%, transparent);
+  color: var(--on-surface-muted);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+.status-pill:hover {
+  border-color: color-mix(in srgb, var(--primary-strong) 36%, var(--outline));
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+.status-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--on-surface-muted);
+}
+.status-pill__text {
+  max-width: 56px;
+  overflow: hidden;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-pill__bar {
+  position: absolute;
+  right: 7px;
+  bottom: 4px;
+  left: 7px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--primary-strong) 12%, transparent);
+}
+.status-pill__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary-strong);
+  transition: width 240ms ease;
+}
+.status-pill--running .status-pill__dot {
+  background: var(--primary-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-strong) 17%, transparent);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+.status-pill--running .status-pill__text { color: var(--primary-strong); }
+.status-pill--queued .status-pill__dot { background: #e58a00; }
+.status-pill--queued .status-pill__text { color: #b46c00; }
+.status-pill--failed .status-pill__dot,
+.status-pill--error .status-pill__dot { background: #e5484d; }
+.status-pill--failed .status-pill__text,
+.status-pill--error .status-pill__text { color: #d23b40; }
+.status-pill--idle .status-pill__dot { background: #0f9f72; }
+.status-pill--idle .status-pill__text { color: var(--on-surface-muted); }
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.78); }
+}
+
+.status-panel {
+  width: 310px;
+  padding: 4px;
+  color: var(--on-surface);
+  font-size: 11px;
+}
+.status-panel__head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 10px;
+}
+.status-panel__head strong { font-size: 13px; letter-spacing: -0.01em; }
+.status-panel__task {
+  padding: 10px;
+  border: 1px solid var(--outline);
+  border-radius: 11px;
+  background: var(--surface-1);
+}
+.status-panel__row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.status-panel__name {
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-panel__row strong { color: var(--primary-strong); font-size: 12px; }
+.status-panel__stage { margin: 3px 0 8px; color: var(--on-surface-muted); font-size: 10px; }
+.status-panel__task .n-button { margin-top: 4px; }
+.status-panel__empty {
+  padding: 16px 10px;
+  border: 1px dashed var(--outline);
+  border-radius: 11px;
+  color: var(--on-surface-muted);
+  font-size: 11px;
+  text-align: center;
+}
+.status-panel__stats {
+  display: flex;
+  gap: 12px;
+  padding: 10px 4px 8px;
+  color: var(--on-surface-muted);
+  font-size: 10px;
+}
+.status-panel__stats b { color: var(--on-surface); font-size: 11px; }
+.status-panel__failed, .status-panel__failed b { color: #d23b40; }
+.status-panel__runtime {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  border-top: 1px solid var(--outline);
+  color: var(--on-surface-muted);
+  font-size: 10px;
+}
+.status-panel__runtime b { color: var(--on-surface); }
+.status-panel__failure {
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: color-mix(in srgb, #e5484d 8%, transparent);
+  color: #b52c31;
+  font-size: 10px;
+}
+.status-panel__failure p {
+  overflow: hidden;
+  margin: 3px 0 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-panel__link {
+  display: block;
+  margin-top: 6px;
+  padding: 7px 4px 3px;
+  border-top: 1px solid var(--outline);
+  color: var(--primary-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: right;
+}
+
 .side-nav__bottom {
   flex: 0 0 auto;
   gap: 6px;

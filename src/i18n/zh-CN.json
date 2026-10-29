@@ -128,6 +128,42 @@
     "downloadFailed": "下载失败",
     "noModels": "模型目录为空"
   },
+  "runtimeStatus": {
+    "title": "运行状态",
+    "idle": "空闲",
+    "queued": "排队",
+    "running": "运行中",
+    "failed": "失败",
+    "ready": "就绪",
+    "notReady": "未就绪",
+    "unknown": "未检测",
+    "device": "设备",
+    "queue": "队列",
+    "active": "运行",
+    "viewResults": "查看结果",
+    "cancel": "取消任务",
+    "noTask": "当前没有运行中的任务",
+    "recentFailure": "最近失败",
+    "connection": {
+      "connected": "已连接",
+      "connecting": "连接中",
+      "error": "连接失败",
+      "idle": "未连接"
+    },
+    "stage": {
+      "queued": "排队中",
+      "preparing": "准备中",
+      "validating_input": "校验输入",
+      "downloading_model": "准备模型",
+      "ensuring_model": "准备模型",
+      "loading_model": "加载模型",
+      "separating": "处理中",
+      "writing_output": "收集输出",
+      "done": "完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    }
+  },
   "assets": {    "title": "素材台",
     "subtitle": "本机媒体索引、缩略图与任务入口",
     "importFiles": "导入文件",
