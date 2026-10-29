@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -1197,13 +1198,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page page--settings">
-    <div class="page-header-compact">
-      <div class="page-header-compact__main">
-        <h1>{{ t('settings.title') }}</h1>
-        <p>{{ t('settings.subtitle') }}</p>
-      </div>
-    </div>
+  <div class="page mf-page page--settings" data-tone="blue">
+    <MediaPageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" :icon="SettingsOutline" eyebrow="SETTINGS" tone="blue" />
 
     <div class="settings-shell">
       <aside class="settings-sidebar" :aria-label="t('settings.settingsNavigation')">
