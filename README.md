@@ -44,6 +44,8 @@ python/media_ops/
 ├─ media_catalog.json  # 图像/视频模型清单
 ├─ audio_catalog.json  # 音频模型清单（pinned）
 ├─ model_hub.py      # 统一模型目录 / 状态 / 下载
+├─ operation_kernel.py # 共享任务、取消、工作区
+├─ agent_bridge.py   # MCP stdio / HTTP bridge
 ├─ model_hub_worker.py # 模型库命令
 ├─ worker.py        # worker 命令与事件
 └─ __init__.py

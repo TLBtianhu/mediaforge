@@ -176,7 +176,8 @@ Adjust `command`, `cwd`, and `MEDIAFORGE_DATA_DIR` in
 
 ### Shared agent workspace
 
-The bridge writes durable task state under the data root:
+The bridge writes durable task state under the data root through
+`python/operation_kernel.py`:
 
 ```text
 agent-jobs/<jobId>.json
