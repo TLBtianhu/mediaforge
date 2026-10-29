@@ -217,6 +217,17 @@ pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
     }
     #[cfg(not(any(feature = "vst-lab", target_os = "macos", target_os = "linux")))]
     {
+        // 开发态：数据根和运行时根不是同一个地方——数据在 `.dev-data`，
+        // 运行时默认却在 exe 旁边的 `python-runtime`，于是 `pnpm tauri dev` 永远
+        // 报 "No active runtime environment is installed"。
+        // 数据根下存在 runtime-envs 时优先用它，开发态与数据目录保持一致。
+        if is_development_executable() {
+            if let Ok(candidate) = data_root_dir(app).map(|root| root.join("runtime-envs")) {
+                if candidate.is_dir() {
+                    return Ok(candidate);
+                }
+            }
+        }
         Ok(runtime_root_dir(app)?.join("runtime-envs"))
     }
 }
