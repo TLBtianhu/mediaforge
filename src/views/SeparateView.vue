@@ -212,10 +212,6 @@ const ensembleTypeOptions = [
   'avg_wave', 'median_wave', 'min_wave', 'max_wave',
   'avg_fft', 'median_fft', 'min_fft', 'max_fft',
 ].map(value => ({ label: value, value }))
-const runModeOptions = computed(() => [
-  { label: t('separate.runModeModel'), value: 'model' },
-  { label: t('separate.runModeWorkflow'), value: 'workflow' },
-])
 const modelSortOptions = computed(() => [
   { label: t('separate.modelSortUsage'), value: 'usage' },
   { label: t('separate.modelSortRecent'), value: 'recent' },

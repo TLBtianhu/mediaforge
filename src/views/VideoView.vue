@@ -20,7 +20,6 @@ import { useSettingsStore } from '@/stores/settings'
 
 defineOptions({ name: 'VideoView' })
 
-type ImageMode = 'upscale' | 'watermark' | 'watermark_upscale' | 'custom'
 type OutputFile = {
   path: string
   source: string
@@ -62,15 +61,6 @@ const settings = useSettingsStore()
 
 const inputs = ref<string[]>([])
 const outputDir = ref(settings.outputDir || '')
-const mode = ref<ImageMode>('custom')
-const scale = ref(2)
-const target = ref<'none' | '1080p' | '2k' | '4k' | 'custom'>('none')
-const width = ref(1920)
-const height = ref(1080)
-const fit = ref<'contain' | 'pad' | 'stretch' | 'cover'>('contain')
-const detectMode = ref<'fixed' | 'per_frame'>('fixed')
-const conf = ref(0.25)
-const expand = ref(8)
 const previewSeconds = ref(0)
 const modelDir = ref('')
 const crf = ref(18)
@@ -82,95 +72,18 @@ const failedCount = ref(0)
 const outputs = ref<OutputFile[]>([])
 const requestId = ref('')
 const journalCreatedAt = ref(0)
-type MediaModel = { id: string; label: string; capabilities?: string[]; roles?: string[] }
-const mediaModels = ref<MediaModel[]>([])
-const upscalerModel = ref('media:real-esrgan-x2')
-const detectorModel = ref('media:watermark-yolo11x')
-const inpainterModel = ref('media:lama')
-let unlisten: UnlistenFn | undefined
-
-const modeOptions = computed(() => [
-  { label: t('image.upscale'), value: 'upscale' },
-  { label: t('image.watermark'), value: 'watermark' },
-  { label: t('image.watermarkUpscale'), value: 'watermark_upscale' },
-  { label: t('image.customPipeline'), value: 'custom' },
-])
-const customSteps = ref<Array<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }>>([
-  { capability: 'watermark_removal', bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' }, params: { conf: 0.25, expand: 8, detectMode: 'fixed' } },
-  { capability: 'upscale', bindings: { upscaler: 'media:real-esrgan-x2' }, params: { target: 'none', fit: 'contain', scale: 2 } },
-])
-
-function applyPreset(kind: 'watermark_upscale' | 'upscale' | 'watermark') {
-  const steps: Array<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }> = []
-  if (kind !== 'upscale') {
-    steps.push({ capability: 'watermark_removal', bindings: { detector: detectorModel.value, inpainter: inpainterModel.value }, params: { conf: 0.25, expand: 8, detectMode: detectMode.value } })
-  }
-  if (kind !== 'watermark') {
-    steps.push({ capability: 'upscale', bindings: { upscaler: upscalerModel.value }, params: { target: 'none', fit: 'contain', scale: 2 } })
-  }
-  customSteps.value = steps
-}
-const scaleOptions = [2, 4].map(value => ({ label: `${value}×`, value }))
-const targetOptions = computed(() => [
-  { label: t('image.original'), value: 'none' },
-  { label: '1080p', value: '1080p' },
-  { label: '2K', value: '2k' },
-  { label: '4K', value: '4k' },
-  { label: t('image.custom'), value: 'custom' },
-])
-const fitOptions = computed(() => [
-  { label: t('image.contain'), value: 'contain' },
-  { label: t('image.pad'), value: 'pad' },
-  { label: t('image.stretch'), value: 'stretch' },
-  { label: t('image.cover'), value: 'cover' },
-])
-const detectOptions = computed(() => [
-  { label: t('video.fixed'), value: 'fixed' },
-  { label: t('video.perFrame'), value: 'per_frame' },
-])
-function modelOptions(capability: string, role: string, fallback: { label: string; value: string }[]) {
-  const models = mediaModels.value
-    .filter(item => item.capabilities?.includes(capability) && item.roles?.includes(role))
-    .map(item => ({ label: item.label, value: item.id }))
-  return models.length ? models : fallback
-}
-const upscalerOptions = computed(() => modelOptions('upscale', 'upscaler', [
-  { label: 'Real-ESRGAN 2×', value: 'media:real-esrgan-x2' },
-  { label: 'Real-ESRGAN 4×', value: 'media:real-esrgan-x4' },
-]))
-const detectorOptions = computed(() => modelOptions('watermark_removal', 'detector', [
-  { label: 'YOLO11x Watermark', value: 'media:watermark-yolo11x' },
-]))
-const inpainterOptions = computed(() => modelOptions('watermark_removal', 'inpainter', [
-  { label: 'LaMa Inpainting', value: 'media:lama' },
-]))
-const planStep = ref<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }>({
+type PlanStep = { capability: string; bindings: Record<string, string>; params: Record<string, unknown> }
+const planStep = ref<PlanStep>({
   capability: 'watermark_removal',
   bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' },
   params: { conf: 0.25, expand: 8, detectMode: 'fixed' },
 })
 const planAvailable = ref(true)
-const pipelineSteps = computed(() => [planStep.value])
-const legacySteps = computed(() => {
-  const steps: Array<Record<string, unknown>> = []
-  return steps
-})
-async function loadMediaModels() {
-  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
-  try {
-    const result = await invoke<{ models: MediaModel[] }>('model_hub', {
-      payload: { operation: 'list', query: '', modality: 'video', modelDir: modelDir.value },
-    })
-    mediaModels.value = result.models || []
-  } catch {
-    // Keep fallback options in browser preview or before runtime setup.
-  }
-}
-const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
-const showUpscale = computed(() => mode.value !== 'watermark' && mode.value !== 'custom')
-const showWatermark = computed(() => mode.value !== 'upscale' && mode.value !== 'custom')
-const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
+let unlisten: UnlistenFn | undefined
 
+const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
+const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
+const pipelineSteps = computed(() => [planStep.value])
 const firstOutput = computed(() => outputs.value[0] || null)
 const videoSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
 const resultInfo = computed(() => {
@@ -279,16 +192,7 @@ async function run() {
         requestId: requestId.value,
         inputs: inputs.value,
         outputDir: outputDir.value,
-        mode: mode.value,
         steps: pipelineSteps.value,
-        scale: scale.value,
-        target: target.value,
-        width: width.value,
-        height: height.value,
-        fit: fit.value,
-        detectMode: detectMode.value,
-        conf: conf.value,
-        expand: expand.value,
         previewSeconds: previewSeconds.value,
         modelDir: modelDir.value,
         crf: crf.value,
@@ -313,7 +217,6 @@ async function openOutput() {
 }
 
 onMounted(async () => {
-  void loadMediaModels()
   const requested = route.query.asset
   if (typeof requested === 'string' && requested) addInputs([requested])
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
