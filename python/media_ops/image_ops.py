@@ -344,9 +344,20 @@ class WatermarkDetector:
 
 
 class ImageRestorer:
-    def __init__(self, device: str | None = None, max_side: int = 2048, model_paths: dict[str, str] | None = None):
+    def __init__(
+        self,
+        device: str | None = None,
+        max_side: int = 2048,
+        model_paths: dict[str, str] | None = None,
+        tile: int = 512,
+        context: int = 16,
+    ):
         self.device = device or pick_device()
         self.max_side = int(max_side)
+        # 分块大小决定显存峰值：OOM 的自动纠正就是把它调小。
+        # 真正使用它的是 RealESRGANUpscaler，这里只负责把值传下去。
+        self.tile = max(64, int(tile or 512))
+        self.context = max(0, int(context))
         # 默认值也走 catalog + 唯一路径解析（`capabilities.model_path`），
         # 不再硬编码文件名：名字是投影，路径规则只有一份。
         watermark = capabilities.default_bindings("watermark_removal")
@@ -389,13 +400,17 @@ class ImageRestorer:
             self._upscalers[key] = RealESRGANUpscaler(
                 {2: self.model_paths["upscaler_x2"], 4: self.model_paths["upscaler_x4"]},
                 device=self.device,
+                tile=self.tile,
+                context=self.context,
             )
         return self._upscalers[key]
 
     def upscaler_for(self, x2_path: str, x4_path: str) -> RealESRGANUpscaler:
         key = (x2_path, x4_path)
         if key not in self._upscalers:
-            self._upscalers[key] = RealESRGANUpscaler({2: x2_path, 4: x4_path}, device=self.device)
+            self._upscalers[key] = RealESRGANUpscaler(
+                {2: x2_path, 4: x4_path}, device=self.device, tile=self.tile, context=self.context
+            )
         return self._upscalers[key]
 
     def process(
