@@ -51,6 +51,7 @@ import { sortStemOutputsByOrder } from '@/utils/stemOrder'
 import { retainAvailableModelNames } from '@/utils/modelSource'
 import { SEPARATE_MODEL_PAGE_SIZES } from '@/utils/pagination'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
@@ -2115,6 +2116,11 @@ async function retryCurrentTask() {
     },
   })
 }
+const audioSteps = computed(() => [
+  { title: t('separate.input'), text: t('separate.stepInputHint') },
+  { title: t('separate.output'), text: t('separate.stepOutputHint') },
+  { title: t('separate.model'), text: t('separate.stepRunHint') },
+])
 </script>
 
 <template>
@@ -2137,20 +2143,7 @@ async function retryCurrentTask() {
       </div>
     </MediaPageHeader>
 
-    <div class="mf-step-strip mf-step-strip--top separate-step-strip">
-      <div class="mf-step">
-        <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('separate.input') }}</div><div class="mf-step__text">{{ t('separate.stepInputHint') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('separate.output') }}</div><div class="mf-step__text">{{ t('separate.stepOutputHint') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('separate.model') }}</div><div class="mf-step__text">{{ t('separate.stepRunHint') }}</div></div>
-      </div>
-    </div>
+    <WorkbenchSteps :steps="audioSteps" class="separate-step-strip" />
 
     <div class="console" :class="[`console--${taskPanelState}`, { 'console--busy': isConfigCompact }]">
       <aside class="console__rail">
