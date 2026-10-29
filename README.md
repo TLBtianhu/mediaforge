@@ -1,6 +1,6 @@
 # MediaForge
 
-本地优先的多模态媒体工作站：**音频分离 / 图像修复 / 视频处理 / FFmpeg 格式工厂**，共用模型库、任务队列和工作流。
+本地优先的多模态媒体工作站：**音频处理 / 图像处理 / 视频处理 / FFmpeg 格式工厂**，共用模型库、任务队列和工作流。
 
 > 早期版本。当前从 [Pymss Studio](https://github.com/pymss-project/pymss-studio) fork，保留其 Tauri + Vue 3 + Python worker 架构、音频模型库、任务系统和音频编辑器；新增媒体格式工厂与图像/视频处理入口。
 
@@ -59,7 +59,7 @@ python/media_ops/
 - 移除只删索引，不删原文件
 - 后端命令：`media_library`（`list` / `import` / `remove` / `tags` / `stats`）
 
-### 图像修复
+### 图像处理
 
 页面：`#/image`
 
@@ -80,7 +80,7 @@ RealESRGAN_x2plus.pth
 RealESRGAN_x4plus.pth
 ```
 
-### 视频修复
+### 视频处理
 
 页面：`#/video`
 
@@ -101,7 +101,7 @@ RealESRGAN_x4plus.pth
 - 显示已下载 / 未下载 / 文件不完整
 - 应用内下载，进度实时显示
 - 可切换模型目录，默认 `models/` 或 `MEDIAFORGE_MODEL_DIR`
-- 图像/视频修复页头部可直接进入模型页
+- 图像/视频处理页头部可直接进入模型页
 
 ### 保留的 PyMSS 能力
 
@@ -111,7 +111,7 @@ RealESRGAN_x4plus.pth
 
 ## 模型下载
 
-图像修复需要约 430MB 权重：
+图像处理需要约 430MB 权重：
 
 ```bash
 python download_models.py

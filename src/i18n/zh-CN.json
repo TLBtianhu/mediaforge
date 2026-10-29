@@ -15,7 +15,7 @@
     "viewportRecoveryScaleUp": "放大界面比例"
   },
   "nav": {
-    "separate": "分离",
+    "separate": "音频处理",
     "models": "音频模型",
     "mediaModels": "媒体模型",
     "results": "结果",
@@ -29,8 +29,8 @@
     "plugins": "插件",
     "factory": "格式工厂",
     "assets": "素材台",
-    "image": "图像修复",
-    "video": "视频修复"
+    "image": "图像处理",
+    "video": "视频处理"
   },
   "factory": {
     "title": "格式工厂",
@@ -58,7 +58,7 @@
     "selectOutput": "请选择输出目录"
   },
   "image": {
-    "title": "图像修复",
+    "title": "图像处理",
     "subtitle": "超分、去水印与目标分辨率输出",
     "mode": "处理模式",
     "upscale": "仅超分",
@@ -87,7 +87,7 @@
     "modelDirHint": "需要 watermark_yolo11x.pt、big-lama.pt、RealESRGAN_x2plus.pth、RealESRGAN_x4plus.pth。"
   },
   "video": {
-    "title": "视频修复",
+    "title": "视频处理",
     "subtitle": "逐帧去水印/超分，保留原音频",
     "detectMode": "检测方式",
     "fixed": "固定遮罩（快）",
@@ -100,7 +100,7 @@
   },
   "mediaModels": {
     "title": "媒体模型",
-    "subtitle": "图像 / 视频修复模型、依赖与下载状态",
+    "subtitle": "图像 / 视频处理模型、依赖与下载状态",
     "modelDir": "模型目录",
     "modelDirPlaceholder": "留空使用 models/ 或 MEDIAFORGE_MODEL_DIR",
     "browse": "浏览",
@@ -137,8 +137,8 @@
     "emptyHint": "把图片、视频或音频拖进来，之后就不用来回开资源管理器了。",
     "openFolder": "打开位置",
     "toFactory": "去格式工厂",
-    "toImage": "图像修复",
-    "toVideo": "视频修复",
+    "toImage": "图像处理",
+    "toVideo": "视频处理",
     "remove": "移除",
     "removeConfirm": "从素材台移除这个文件？不会删除原文件。",
     "total": "共 {count} 个素材",
@@ -553,7 +553,7 @@
     "mergeSameDirectory": "输入目录与输出目录不能相同，请选择其他输出目录。"
   },
   "separate": {
-    "subtitle": "单模型分离、多模型融合与工作流推理",
+    "subtitle": "音频分离、修复与工作流推理",
     "input": "输入来源",
     "model": "分离模型",
     "output": "输出设置",
@@ -715,7 +715,7 @@
     "namingTokenDate": "日期",
     "namingTokenTime": "时间",
     "namingTokenLegacyTime": "日分秒",
-    "title": "分离主页",
+    "title": "音频处理",
     "outputDirectoryAbsoluteRequired": "请输入完整的绝对目录路径",
     "workflowAudioQualityHint": "WAV/FLAC 位深与 MP3 码率由工作流保存节点决定。",
     "queueCurrent": "本次任务",

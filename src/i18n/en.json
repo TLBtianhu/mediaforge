@@ -15,7 +15,7 @@
     "viewportRecoveryScaleUp": "Increase interface scale"
   },
   "nav": {
-    "separate": "Separate",
+    "separate": "Audio Processing",
     "models": "Audio Models",
     "mediaModels": "Media Models",
     "results": "Results",
@@ -29,8 +29,8 @@
     "plugins": "Plugins",
     "factory": "Media Factory",
     "assets": "Media Shelf",
-    "image": "Image Restore",
-    "video": "Video Restore"
+    "image": "Image Processing",
+    "video": "Video Processing"
   },
   "factory": {
     "title": "Media Factory",
@@ -58,8 +58,8 @@
     "selectOutput": "Choose an output directory"
   },
   "image": {
-    "title": "Image Restore",
-    "subtitle": "Super-resolution, watermark removal, and target resolution",
+    "title": "Image Processing",
+    "subtitle": "Upscale, remove watermarks, and export target sizes",
     "mode": "Mode",
     "upscale": "Upscale only",
     "watermark": "Remove watermark",
@@ -87,7 +87,7 @@
     "modelDirHint": "Requires watermark_yolo11x.pt, big-lama.pt, RealESRGAN_x2plus.pth, and RealESRGAN_x4plus.pth."
   },
   "video": {
-    "title": "Video Restore",
+    "title": "Video Processing",
     "subtitle": "Per-frame watermark removal and upscaling with original audio",
     "detectMode": "Detection",
     "fixed": "Fixed mask (fast)",
@@ -100,7 +100,7 @@
   },
   "mediaModels": {
     "title": "Media Models",
-    "subtitle": "Image/video restore models, dependencies, and download status",
+    "subtitle": "Image/video processing models, dependencies, and download status",
     "modelDir": "Model directory",
     "modelDirPlaceholder": "Leave empty to use models/ or MEDIAFORGE_MODEL_DIR",
     "browse": "Browse",
@@ -138,8 +138,8 @@
     "emptyHint": "Drop images, videos, or audio here so you do not have to keep reopening Explorer.",
     "openFolder": "Show in folder",
     "toFactory": "Open in Factory",
-    "toImage": "Restore image",
-    "toVideo": "Restore video",
+    "toImage": "Image processing",
+    "toVideo": "Video processing",
     "remove": "Remove",
     "removeConfirm": "Remove this item from the shelf? The original file will not be deleted.",
     "total": "{count} items",
@@ -554,7 +554,7 @@
     "mergeSameDirectory": "Input and output directories must be different. Choose another output directory."
   },
   "separate": {
-    "subtitle": "Single-model separation, multi-model ensembles, and workflows",
+    "subtitle": "Separation, cleanup, and workflows",
     "input": "Input Source",
     "model": "Separation Model",
     "output": "Output Settings",
@@ -716,7 +716,7 @@
     "namingTokenDate": "Date",
     "namingTokenTime": "Time",
     "namingTokenLegacyTime": "Day-minute-second",
-    "title": "Separation Home",
+    "title": "Audio Processing",
     "outputDirectoryAbsoluteRequired": "Enter a complete absolute directory path.",
     "workflowAudioQualityHint": "WAV/FLAC bit depth and MP3 bitrate follow the workflow's save node settings.",
     "queueCurrent": "Current Session",

@@ -284,7 +284,7 @@ onBeforeUnmount(() => {
       :title="t('video.title')"
       :subtitle="t('video.subtitle')"
       :icon="VideocamOutline"
-      eyebrow="VIDEO RESTORE"
+      eyebrow="VIDEO PROCESSING"
       tone="amber"
     >
       <router-link to="/media-models">

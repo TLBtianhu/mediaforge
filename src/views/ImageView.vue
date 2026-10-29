@@ -272,7 +272,7 @@ onBeforeUnmount(() => {
       :title="t('image.title')"
       :subtitle="t('image.subtitle')"
       :icon="SparklesOutline"
-      eyebrow="IMAGE RESTORE"
+      eyebrow="IMAGE PROCESSING"
       tone="violet"
     >
       <router-link to="/media-models">
