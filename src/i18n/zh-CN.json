@@ -18,6 +18,7 @@
     "separate": "音频处理",
     "models": "模型库",
     "mediaModels": "图像/视频",
+    "agent": "Agent 工作区",
     "results": "结果",
     "tools": "工具",
     "projects": "工程",
@@ -126,6 +127,20 @@
     "empty": "没有匹配的模型",
     "videoEmpty": "暂无独立视频模型",
     "videoEmptyHint": "视频处理当前复用图像模型逐帧处理：Real-ESRGAN 超分 + LaMa 去水印，处理后在 FFmpeg 中合帧并回封音频。"
+  },
+  "agent": {
+    "title": "Agent 工作区",
+    "subtitle": "MCP 任务、计划与共享工作区",
+    "running": "运行中",
+    "total": "任务",
+    "completed": "完成",
+    "failed": "失败",
+    "workspace": "共享工作区",
+    "openWorkspace": "打开工作区",
+    "noWorkspace": "尚未建立工作区",
+    "emptyTitle": "还没有 Agent 任务",
+    "emptyHint": "DSH 通过 MCP 启动的任务会出现在这里。也可以手动启动本地 MCP bridge：",
+    "outputs": "个输出"
   },
   "mediaModels": {
     "title": "图像 / 视频模型",

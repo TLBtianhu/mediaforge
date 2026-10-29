@@ -18,6 +18,7 @@ import {
   ImagesOutline,
   SparklesOutline,
   VideocamOutline,
+  ChatbubblesOutline,
 } from '@vicons/ionicons5'
 
 const route = useRoute()
@@ -87,6 +88,7 @@ const mainGroups = computed(() => [
       { name: 'separate', path: '/', icon: MusicalNotesOutline, label: t('nav.separate') },
       { name: 'image', path: '/image', icon: SparklesOutline, label: t('nav.image') },
       { name: 'video', path: '/video', icon: VideocamOutline, label: t('nav.video') },
+      { name: 'agent', path: '/agent', icon: ChatbubblesOutline, label: t('nav.agent') },
       { name: 'factory', path: '/factory', icon: SwapHorizontalOutline, label: t('nav.factory') },
     ],
   },

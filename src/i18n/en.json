@@ -18,6 +18,7 @@
     "separate": "Audio Processing",
     "models": "Model Hub",
     "mediaModels": "Image/Video",
+    "agent": "Agent Workspace",
     "results": "Results",
     "tools": "Tools",
     "projects": "Projects",
@@ -126,6 +127,20 @@
     "empty": "No matching models",
     "videoEmpty": "No standalone video models yet",
     "videoEmptyHint": "Video processing currently reuses image models frame by frame: Real-ESRGAN upscaling plus LaMa watermark removal, then FFmpeg muxes the frames and original audio."
+  },
+  "agent": {
+    "title": "Agent Workspace",
+    "subtitle": "MCP jobs, plans, and the shared workspace",
+    "running": "Running",
+    "total": "Jobs",
+    "completed": "Completed",
+    "failed": "Failed",
+    "workspace": "Shared workspace",
+    "openWorkspace": "Open workspace",
+    "noWorkspace": "No workspace yet",
+    "emptyTitle": "No agent jobs yet",
+    "emptyHint": "Jobs started by DSH through MCP appear here. You can also start the local MCP bridge:",
+    "outputs": "outputs"
   },
   "mediaModels": {
     "title": "Image / Video Models",

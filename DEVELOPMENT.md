@@ -174,6 +174,25 @@ Adjust `command`, `cwd`, and `MEDIAFORGE_DATA_DIR` in
 `integrations/dsh-mediaforge/cordis.patch.yml` when the project is not at
 `C:\MediaForge`.
 
+### Shared agent workspace
+
+The bridge writes durable task state under the data root:
+
+```text
+agent-jobs/<jobId>.json
+agent-jobs/index.json
+agent-workspace.json
+```
+
+The app's `/agent` page reads the same index through the `agent_jobs` Tauri
+command and polls every three seconds. This is the first shared surface:
+manual users can observe tasks started by an MCP agent, inspect status and
+progress, and open the workspace. It is read-only for now; cancellation and
+bidirectional edits go through the Operation Kernel phase.
+
+The stdio and HTTP bridge modes write the same state, so DSH and the app see
+the same task list when they use the same `MEDIAFORGE_DATA_DIR`.
+
 Current limitations, intentionally explicit:
 
 - The stdio bridge is a separate headless worker process. It shares the data

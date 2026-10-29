@@ -72,6 +72,7 @@ class Job:
                 "error": self.error,
                 "createdAt": self.created_at,
                 "finishedAt": self.finished_at,
+                "payload": self.payload,
             }
 
     def update(self, **fields: Any) -> None:
@@ -83,8 +84,52 @@ class Job:
 class JobManager:
     def __init__(self, data_root: Path):
         self.data_root = data_root
+        self.jobs_root = data_root / "agent-jobs"
+        self.jobs_root.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
+        self._persist_lock = threading.Lock()
+
+    def _persist(self, job: Job) -> None:
+        snapshot = job.snapshot()
+        with self._persist_lock:
+            path = self.jobs_root / f"{job.job_id}.json"
+            temporary = path.with_suffix(".json.tmp")
+            temporary.write_text(_json_text(snapshot), encoding="utf-8")
+            temporary.replace(path)
+            entries = []
+            for candidate in sorted(self.jobs_root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+                if candidate.name == "index.json" or candidate.name.endswith(".json.tmp"):
+                    continue
+                try:
+                    value = json.loads(candidate.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if isinstance(value, dict):
+                    entries.append(
+                        {
+                            "jobId": value.get("jobId"),
+                            "command": value.get("command"),
+                            "status": value.get("status"),
+                            "fraction": value.get("fraction"),
+                            "message": value.get("message"),
+                            "createdAt": value.get("createdAt"),
+                            "finishedAt": value.get("finishedAt"),
+                            "payload": value.get("payload"),
+                            "result": value.get("result"),
+                            "error": value.get("error"),
+                        }
+                    )
+            index = {"version": 1, "updatedAt": time.time(), "jobs": entries[:100]}
+            index_path = self.jobs_root / "index.json"
+            temporary = index_path.with_suffix(".json.tmp")
+            temporary.write_text(_json_text(index), encoding="utf-8")
+            temporary.replace(index_path)
+            workspace = {"version": 1, "updatedAt": index["updatedAt"], "jobs": entries[:100]}
+            workspace_path = self.data_root / "agent-workspace.json"
+            temporary = workspace_path.with_suffix(".json.tmp")
+            temporary.write_text(_json_text(workspace), encoding="utf-8")
+            temporary.replace(workspace_path)
 
     def count(self) -> int:
         with self._lock:
@@ -101,6 +146,7 @@ class JobManager:
         job = Job(job_id, command, payload, workdir)
         with self._lock:
             self._jobs[job_id] = job
+        self._persist(job)
         threading.Thread(target=self._run, args=(job,), daemon=True, name=f"mediaforge-{job_id}").start()
         return job
 
@@ -110,6 +156,7 @@ class JobManager:
         stdout_path = job.workdir / "events.jsonl"
         stderr_path = job.workdir / "stderr.log"
         job.update(status="running", message="starting worker")
+        self._persist(job)
         try:
             with open(stdout_path, "w", encoding="utf-8") as stdout, open(stderr_path, "w", encoding="utf-8") as stderr:
                 process = subprocess.Popen(
@@ -142,8 +189,10 @@ class JobManager:
                     job.update(error=f"worker exited with code {code}", )
             if job.status == "completed":
                 job.update(fraction=1.0)
+            self._persist(job)
         except Exception as exc:  # noqa: BLE001
             job.update(status="failed", error=f"{exc}\n{traceback.format_exc()}", finished_at=time.time())
+            self._persist(job)
 
     def _consume(self, job: Job, event: dict[str, Any]) -> None:
         kind = str(event.get("type") or "")
@@ -157,6 +206,7 @@ class JobManager:
             job.update(status="completed", result=payload, message="completed", fraction=1.0)
         elif kind == "error":
             job.update(status="failed", error=str(payload.get("message") or payload.get("code") or "worker error"))
+        self._persist(job)
 
     def cancel(self, job_id: str) -> dict[str, Any]:
         job = self.get(job_id)
@@ -166,6 +216,7 @@ class JobManager:
         if process and process.poll() is None:
             process.terminate()
             job.update(status="cancelled", message="cancelled by client")
+            self._persist(job)
             return {"ok": True, "cancelled": True}
         return {"ok": True, "cancelled": job.status == "cancelled"}
 

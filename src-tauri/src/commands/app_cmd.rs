@@ -2396,6 +2396,23 @@ pub async fn model_hub(app: AppHandle, payload: Value) -> AppResult<Value> {
 }
 
 #[tauri::command]
+pub async fn agent_jobs(app: AppHandle) -> AppResult<Value> {
+    let root = storage::data_root_dir(&app)?;
+    let index_path = root.join("agent-jobs").join("index.json");
+    let index = if index_path.is_file() {
+        serde_json::from_str::<Value>(&std::fs::read_to_string(&index_path)?)?
+    } else {
+        serde_json::json!({ "version": 1, "jobs": [] })
+    };
+    Ok(serde_json::json!({
+        "ok": true,
+        "dataRoot": root,
+        "workspace": root.join("agent-workspace.json"),
+        "index": index,
+    }))
+}
+
+#[tauri::command]
 pub async fn start_model_hub_download(
     app: AppHandle,
     state: State<'_, AppState>,
