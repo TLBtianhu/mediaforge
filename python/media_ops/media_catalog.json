@@ -6,108 +6,176 @@
       "name": "RealESRGAN_x2plus.pth",
       "label": "Real-ESRGAN 2×",
       "modality": "image",
-      "modalities": ["image", "video"],
+      "modalities": [
+        "image",
+        "video"
+      ],
       "video_mode": "frame",
       "implemented": true,
       "task": "super_resolution",
       "size": 67061725,
       "license": "BSD-3-Clause",
       "description": "2× photo super-resolution, used by image and video restore.",
-      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ]
     },
     {
       "id": "real-esrgan-x4",
       "name": "RealESRGAN_x4plus.pth",
       "label": "Real-ESRGAN 4×",
       "modality": "image",
-      "modalities": ["image", "video"],
+      "modalities": [
+        "image",
+        "video"
+      ],
       "video_mode": "frame",
       "implemented": true,
       "task": "super_resolution",
       "size": 67040989,
       "license": "BSD-3-Clause",
       "description": "4× photo super-resolution, used for 2K/4K targets.",
-      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ]
     },
     {
       "id": "lama",
       "name": "big-lama.pt",
       "label": "LaMa Inpainting",
       "modality": "image",
-      "modalities": ["image", "video"],
+      "modalities": [
+        "image",
+        "video"
+      ],
       "video_mode": "frame",
       "implemented": true,
       "task": "inpainting",
       "size": 205669692,
       "license": "Apache-2.0",
       "description": "Mask-guided inpainting for watermark and object removal.",
-      "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt"
+      "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt",
+      "capabilities": [
+        "watermark_removal"
+      ],
+      "roles": [
+        "inpainter"
+      ]
     },
     {
       "id": "watermark-yolo11x",
       "name": "watermark_yolo11x.pt",
       "label": "YOLO11x Watermark",
       "modality": "image",
-      "modalities": ["image", "video"],
+      "modalities": [
+        "image",
+        "video"
+      ],
       "video_mode": "frame",
       "implemented": true,
       "task": "watermark_detection",
       "size": 114434898,
       "license": "MIT (model card) / AGPL-3.0 (Ultralytics)",
       "description": "Detects watermark and logo regions before LaMa repair.",
-      "url": "https://huggingface.co/corzent/yolo11x_watermark_detection/resolve/main/best.pt"
+      "url": "https://huggingface.co/corzent/yolo11x_watermark_detection/resolve/main/best.pt",
+      "capabilities": [
+        "watermark_removal"
+      ],
+      "roles": [
+        "detector"
+      ]
     },
     {
       "id": "rife-v46",
       "name": "rife_v4.6.pth",
       "label": "RIFE 4.6",
       "modality": "video",
-      "modalities": ["video"],
+      "modalities": [
+        "video"
+      ],
       "implemented": false,
       "task": "frame_interpolation",
       "size": 0,
       "license": "MIT",
       "description": "Native video frame interpolation. Catalog entry; adapter is next.",
-      "url": ""
+      "url": "",
+      "capabilities": [
+        "frame_interpolation"
+      ],
+      "roles": [
+        "interpolator"
+      ]
     },
     {
       "id": "propainter",
       "name": "ProPainter.pth",
       "label": "ProPainter",
       "modality": "video",
-      "modalities": ["video"],
+      "modalities": [
+        "video"
+      ],
       "implemented": false,
       "task": "video_inpainting",
       "size": 0,
       "license": "S-Lab License 1.0",
       "description": "Native video inpainting for moving watermarks and objects. Adapter is next.",
-      "url": ""
+      "url": "",
+      "capabilities": [
+        "video_inpainting"
+      ],
+      "roles": [
+        "primary"
+      ]
     },
     {
       "id": "basicvsrpp",
       "name": "BasicVSR_PlusPlus.pth",
       "label": "BasicVSR++",
       "modality": "video",
-      "modalities": ["video"],
+      "modalities": [
+        "video"
+      ],
       "implemented": false,
       "task": "video_super_resolution",
       "size": 0,
       "license": "Apache-2.0",
       "description": "Temporal video super-resolution. Catalog entry; adapter is next.",
-      "url": ""
+      "url": "",
+      "capabilities": [
+        "video_super_resolution"
+      ],
+      "roles": [
+        "upscaler"
+      ]
     },
     {
       "id": "gfpgan-v14",
       "name": "GFPGANv1.4.pth",
       "label": "GFPGAN v1.4",
       "modality": "image",
-      "modalities": ["image"],
+      "modalities": [
+        "image"
+      ],
       "implemented": false,
       "task": "face_restoration",
       "size": 0,
       "license": "Apache-2.0",
       "description": "Face restoration for old or degraded portraits. Adapter is next.",
-      "url": ""
+      "url": "",
+      "capabilities": [
+        "face_restoration"
+      ],
+      "roles": [
+        "face_restorer"
+      ]
     }
   ]
 }

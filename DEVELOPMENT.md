@@ -157,9 +157,11 @@ with `serverName: mediaforge`. Once installed, DSH sees:
 mcp__mediaforge__mediaforge_status
 mcp__mediaforge__models_list
 mcp__mediaforge__models_download
+mcp__mediaforge__capabilities_list
 mcp__mediaforge__probe
 mcp__mediaforge__convert
 mcp__mediaforge__pipeline_plan
+mcp__mediaforge__pipeline_start
 mcp__mediaforge__job_status
 mcp__mediaforge__job_cancel
 mcp__mediaforge__feedback_submit

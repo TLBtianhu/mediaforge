@@ -17,6 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
+from . import capabilities
+
 MAX_OUTPUT_SIDE = 8192
 PRESETS: dict[str, tuple[int, int]] = {
     "720p": (1280, 720),
@@ -221,7 +223,7 @@ class RealESRGANUpscaler:
         canvas[y:y + rh, x:x + rw] = resized
         return canvas
 
-    def upscale(self, image: np.ndarray, scale: float = 2.0, target: tuple[int, int] | None = None, fit: str = "contain") -> tuple[np.ndarray, float]:
+    def upscale(self, image: np.ndarray, scale: float = 2.0, target: tuple[int, int] | None = None, fit: str = "contain", preferred_scale: int | None = None) -> tuple[np.ndarray, float]:
         import cv2
 
         h, w = image.shape[:2]
@@ -234,14 +236,14 @@ class RealESRGANUpscaler:
             if needed <= 1.01:
                 output = image.copy()
             else:
-                output = self._upscale_with_model(image, 2 if needed <= 2.0 else 4)
+                output = self._upscale_with_model(image, preferred_scale or (2 if needed <= 2.0 else 4))
             output = self._apply_target(output, (tw, th), fit)
             actual = float(output.shape[1]) / float(w)
         else:
             factor = min(float(scale), MAX_OUTPUT_SIDE / float(max(h, w)))
             if factor <= 1.01:
                 return image.copy(), 1.0
-            output = self._upscale_with_model(image, 2 if factor <= 2.0 else 4)
+            output = self._upscale_with_model(image, preferred_scale or (2 if factor <= 2.0 else 4))
             actual = float(output.shape[1]) / float(w)
             if abs(actual - factor) > 0.01:
                 output = cv2.resize(output, (max(1, int(round(w * factor))), max(1, int(round(h * factor)))), interpolation=cv2.INTER_LANCZOS4)
@@ -353,33 +355,56 @@ class WatermarkDetector:
 
 
 class ImageRestorer:
-    def __init__(self, device: str | None = None, max_side: int = 2048):
+    def __init__(self, device: str | None = None, max_side: int = 2048, model_paths: dict[str, str] | None = None):
         self.device = device or pick_device()
         self.max_side = int(max_side)
+        self.model_paths = {
+            "detector": str(model_path("watermark_yolo11x.pt")),
+            "inpainter": str(model_path("big-lama.pt")),
+            "upscaler_x2": str(model_path("RealESRGAN_x2plus.pth")),
+            "upscaler_x4": str(model_path("RealESRGAN_x4plus.pth")),
+            **(model_paths or {}),
+        }
         self._detector: WatermarkDetector | None = None
         self._inpainter: LamaInpainter | None = None
         self._upscaler: RealESRGANUpscaler | None = None
+        self._detectors: dict[str, WatermarkDetector] = {}
+        self._inpainters: dict[str, LamaInpainter] = {}
+        self._upscalers: dict[tuple[str, str], RealESRGANUpscaler] = {}
 
     @property
     def detector(self) -> WatermarkDetector:
-        if self._detector is None:
-            self._detector = WatermarkDetector(str(model_path("watermark_yolo11x.pt")), device=self.device)
-        return self._detector
+        return self.detector_for(self.model_paths["detector"])
+
+    def detector_for(self, path: str) -> WatermarkDetector:
+        if path not in self._detectors:
+            self._detectors[path] = WatermarkDetector(path, device=self.device)
+        return self._detectors[path]
 
     @property
     def inpainter(self) -> LamaInpainter:
-        if self._inpainter is None:
-            self._inpainter = LamaInpainter(str(model_path("big-lama.pt")), device=self.device, max_side=self.max_side)
-        return self._inpainter
+        return self.inpainter_for(self.model_paths["inpainter"])
+
+    def inpainter_for(self, path: str) -> LamaInpainter:
+        if path not in self._inpainters:
+            self._inpainters[path] = LamaInpainter(path, device=self.device, max_side=self.max_side)
+        return self._inpainters[path]
 
     @property
     def upscaler(self) -> RealESRGANUpscaler:
-        if self._upscaler is None:
-            self._upscaler = RealESRGANUpscaler(
-                {2: str(model_path("RealESRGAN_x2plus.pth")), 4: str(model_path("RealESRGAN_x4plus.pth"))},
+        key = (self.model_paths["upscaler_x2"], self.model_paths["upscaler_x4"])
+        if key not in self._upscalers:
+            self._upscalers[key] = RealESRGANUpscaler(
+                {2: self.model_paths["upscaler_x2"], 4: self.model_paths["upscaler_x4"]},
                 device=self.device,
             )
-        return self._upscaler
+        return self._upscalers[key]
+
+    def upscaler_for(self, x2_path: str, x4_path: str) -> RealESRGANUpscaler:
+        key = (x2_path, x4_path)
+        if key not in self._upscalers:
+            self._upscalers[key] = RealESRGANUpscaler({2: x2_path, 4: x4_path}, device=self.device)
+        return self._upscalers[key]
 
     def process(
         self,
@@ -392,26 +417,63 @@ class ImageRestorer:
         expand: int = 6,
         progress=None,
     ) -> tuple[np.ndarray, dict]:
+        steps = capabilities.steps_from_mode(mode)
+        for step in steps:
+            if step["capability"] == "watermark_removal":
+                step["params"].update({"conf": conf, "expand": expand})
+            elif step["capability"] == "upscale":
+                step["params"].update({"scale": scale, "target": target, "fit": fit})
+        return self.process_steps(image, steps, progress=progress)
+
+    def process_steps(
+        self,
+        image: np.ndarray,
+        steps: list[dict],
+        progress=None,
+    ) -> tuple[np.ndarray, dict]:
         image = ensure_rgb_uint8(image)
         start = time.perf_counter()
-        info: dict = {"device": self.device, "input_size": [int(image.shape[1]), int(image.shape[0])]}
-        if mode in {"watermark", "watermark_upscale"}:
-            if progress:
-                progress(0.05, "检测水印…")
-            boxes, scores, mask = self.detector.detect(image, conf=conf, expand=expand)
-            info.update({"boxes": int(len(boxes)), "scores": [round(float(v), 3) for v in scores[:20]], "mask_ratio": round(mask_area_ratio(mask), 4)})
-            if int(mask.max()) == 0:
-                raise ValueError("没有检测到水印；请降低检测阈值，或改用超分模式")
-            if mask_area_ratio(mask) > 0.75:
-                raise ValueError("检测到的遮罩覆盖了超过 75% 的画面，可能是误检；请调高检测阈值")
-            if progress:
-                progress(0.2, "LaMa 修复中…")
-            image = self.inpainter.inpaint(image, mask)
-        if mode in {"upscale", "watermark_upscale"}:
-            if progress:
-                progress(0.55, "Real-ESRGAN 超分中…")
-            image, actual = self.upscaler.upscale(image, scale=scale, target=target, fit=fit)
-            info["scale"] = round(float(actual), 3)
+        info: dict = {"device": self.device, "input_size": [int(image.shape[1]), int(image.shape[0])], "steps": []}
+        for index, step in enumerate(steps):
+            capability = str(step.get("capability") or "")
+            bindings = step.get("bindings") if isinstance(step.get("bindings"), dict) else {}
+            params = step.get("params") if isinstance(step.get("params"), dict) else {}
+            fraction = (index + 0.5) / max(len(steps), 1)
+            if capability == "watermark_removal":
+                if progress:
+                    progress(fraction * 0.35, "检测水印…")
+                detector_path = str(capabilities.model_path(str(bindings.get("detector") or "media:watermark-yolo11x")))
+                inpainter_path = str(capabilities.model_path(str(bindings.get("inpainter") or "media:lama")))
+                boxes, scores, mask = self.detector_for(detector_path).detect(
+                    image,
+                    conf=float(params.get("conf") or 0.25),
+                    expand=int(params.get("expand") or 6),
+                )
+                info["steps"].append({"capability": capability, "boxes": int(len(boxes)), "scores": [round(float(v), 3) for v in scores[:20]], "mask_ratio": round(mask_area_ratio(mask), 4)})
+                if int(mask.max()) == 0:
+                    raise ValueError("没有检测到水印；请降低检测阈值，或改用超分模式")
+                if mask_area_ratio(mask) > 0.75:
+                    raise ValueError("检测到的遮罩覆盖了超过 75% 的画面，可能是误检；请调高检测阈值")
+                if progress:
+                    progress(fraction, "LaMa 修复中…")
+                image = self.inpainter_for(inpainter_path).inpaint(image, mask)
+            elif capability == "upscale":
+                if progress:
+                    progress(fraction, "Real-ESRGAN 超分中…")
+                model_id = str(bindings.get("upscaler") or "media:real-esrgan-x2")
+                model_scale = 4 if "x4" in model_id else 2
+                upscaler = self.upscaler_for(self.model_paths["upscaler_x2"], self.model_paths["upscaler_x4"])
+                image, actual = upscaler.upscale(
+                    image,
+                    scale=float(params.get("scale") or model_scale),
+                    target=params.get("target") if isinstance(params.get("target"), tuple) else None,
+                    fit=str(params.get("fit") or "contain"),
+                    preferred_scale=model_scale,
+                )
+                info["steps"].append({"capability": capability, "model": model_id, "scale": round(float(actual), 3)})
+                info["scale"] = round(float(actual), 3)
+            else:
+                raise ValueError(f"unsupported image capability: {capability}")
         info["output_size"] = [int(image.shape[1]), int(image.shape[0])]
         info["elapsed"] = round(time.perf_counter() - start, 2)
         if progress:
@@ -428,15 +490,20 @@ class ImageRestorer:
         fit: str = "contain",
         conf: float = 0.25,
         expand: int = 6,
+        steps: list[dict] | None = None,
         progress=None,
     ) -> dict:
         source = Path(input_path)
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
-        suffix = {"upscale": "sr", "watermark": "clean", "watermark_upscale": "clean_sr"}.get(mode, "out")
+        steps = steps or capabilities.steps_from_mode(mode)
+        suffix = "_".join(
+            "clean" if step.get("capability") == "watermark_removal" else "sr"
+            for step in steps
+        )
         target_path = output_root / f"{source.stem}_{suffix}.png"
         if target_path.resolve() == source.resolve():
             target_path = output_root / f"{source.stem}_{suffix}_out.png"
-        image, info = self.process(read_image(source), mode=mode, scale=scale, target=target, fit=fit, conf=conf, expand=expand, progress=progress)
+        image, info = self.process_steps(read_image(source), steps=steps, progress=progress)
         write_image(target_path, image)
-        return {"path": str(target_path), "source": str(source), "mode": mode, "info": info, "size": target_path.stat().st_size}
+        return {"path": str(target_path), "source": str(source), "mode": mode, "steps": [step["capability"] for step in steps], "info": info, "size": target_path.stat().st_size}

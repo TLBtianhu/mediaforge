@@ -8,6 +8,7 @@ from typing import Any
 from worker_protocol import emit, emit_error
 
 from . import image_ops
+from . import capabilities
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -42,6 +43,18 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
         if model_dir:
             os.environ["MEDIAFORGE_MODEL_DIR"] = model_dir
 
+        raw_steps = payload.get("steps")
+        if raw_steps:
+            steps = capabilities.normalize_steps(raw_steps)
+            mode = capabilities.mode_for_steps(steps)
+        else:
+            steps = capabilities.normalize_steps(capabilities.steps_from_mode(mode))
+            for step in steps:
+                if step["capability"] == "watermark_removal":
+                    step["params"].update({"conf": conf, "expand": expand})
+                elif step["capability"] == "upscale":
+                    step["params"].update({"scale": scale, "target": target, "fit": fit})
+
         restorer = image_ops.ImageRestorer()
         outputs: list[dict] = []
         failed: list[dict] = []
@@ -65,7 +78,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 outputs.append(
                     restorer.process_file(
                         source, output_dir, mode=mode, scale=scale, target=target,
-                        fit=fit, conf=conf, expand=expand, progress=report,
+                        fit=fit, conf=conf, expand=expand, steps=steps, progress=report,
                     )
                 )
             except Exception as exc:  # noqa: BLE001

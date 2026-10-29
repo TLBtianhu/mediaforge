@@ -47,6 +47,7 @@ def process_video(
     conf: float = 0.25,
     expand: int = 8,
     detect_mode: str = "fixed",
+    preferred_scale: int | None = None,
     preview_seconds: float = 0.0,
     crf: int = 18,
     preset: str = "fast",
@@ -141,7 +142,7 @@ def process_video(
 
             if mode in {"upscale", "watermark_upscale"}:
                 if target is not None or float(scale) > 1.01:
-                    rgb, actual_scale = restorer.upscaler.upscale(rgb, scale=float(scale), target=target, fit=fit)
+                    rgb, actual_scale = restorer.upscaler.upscale(rgb, scale=float(scale), target=target, fit=fit, preferred_scale=preferred_scale)
             last_size = [int(rgb.shape[1]), int(rgb.shape[0])]
             cv2.imwrite(str(out_dir / f"{index + 1:08d}.png"), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
 

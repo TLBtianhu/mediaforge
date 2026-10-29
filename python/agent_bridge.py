@@ -31,6 +31,7 @@ VERSION = "0.1.0"
 
 sys.path.insert(0, str(ROOT))
 import model_hub  # noqa: E402
+from media_ops import capabilities  # noqa: E402
 
 
 def _data_root(override: str = "") -> Path:
@@ -105,6 +106,16 @@ class Bridge:
             ],
         }
 
+    def capabilities(self) -> dict[str, Any]:
+        data = capabilities.list_capabilities()
+        models = {item["id"]: item for item in model_hub.list_models(root=str(self.model_root))["models"]}
+        for cap in data["capabilities"]:
+            for model in cap["models"]:
+                source = models.get(model["id"])
+                model["downloaded"] = bool(source and source["downloaded"])
+        data["modelDir"] = str(self.model_root)
+        return data
+
     def download_model(self, model_id: str, source: str = "modelscope") -> dict[str, Any]:
         if not model_id:
             return {"ok": False, "error": "modelId is required"}
@@ -158,6 +169,57 @@ class Bridge:
         )
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot()}
 
+    def pipeline_start(
+        self,
+        input_path: str,
+        output_dir: str,
+        modality: str,
+        steps: list[dict[str, Any]],
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not input_path or not Path(input_path).is_file():
+            return {"ok": False, "error": f"input not found: {input_path}"}
+        if not output_dir:
+            return {"ok": False, "error": "outputDir is required"}
+        modality = str(modality or "").strip().lower()
+        if modality not in {"image", "video"}:
+            return {"ok": False, "error": "modality must be image or video"}
+        try:
+            normalized = capabilities.normalize_steps(steps)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+        models = model_hub.list_models(root=str(self.model_root))
+        by_id = {item["id"]: item for item in models["models"]}
+        required = sorted({model_id for step in normalized for model_id in step["bindings"].values()})
+        missing = [model_id for model_id in required if not (by_id.get(model_id) or {}).get("downloaded")]
+        if missing:
+            return {"ok": False, "error": "missing models", "requiresDownload": missing}
+        options = options or {}
+        payload: dict[str, Any] = {
+            "operation": f"media_{modality}",
+            "requestId": f"pipeline-{uuid.uuid4().hex[:12]}",
+            "inputs": [input_path],
+            "outputDir": output_dir,
+            "modelDir": str(self.model_root),
+            "steps": normalized,
+        }
+        if modality == "video":
+            watermark = next((step for step in normalized if step["capability"] == "watermark_removal"), None)
+            upscale = next((step for step in normalized if step["capability"] == "upscale"), None)
+            payload.update(
+                {
+                    "scale": 2 if upscale else 1,
+                    "previewSeconds": float(options.get("previewSeconds") or 0),
+                    "crf": int(options.get("crf") or 18),
+                    "preset": str(options.get("preset") or "fast"),
+                    "detectMode": str((watermark or {}).get("params", {}).get("detectMode") or "fixed"),
+                    "conf": float((watermark or {}).get("params", {}).get("conf") or 0.25),
+                    "expand": int((watermark or {}).get("params", {}).get("expand") or 8),
+                }
+            )
+        job = self.jobs.start("audio_tools", payload)
+        return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
+
     def plan(self, input_path: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
         if not input_path:
             return {"ok": False, "error": "input is required"}
@@ -165,6 +227,44 @@ class Bridge:
             return {"ok": False, "error": f"input not found: {input_path}"}
         models = model_hub.list_models(root=str(self.model_root))
         by_id = {item["id"]: item for item in models["models"]}
+        if any(isinstance(step, dict) and "capability" in step for step in steps):
+            try:
+                normalized = capabilities.normalize_steps(steps)
+            except Exception as exc:  # noqa: BLE001
+                return {"ok": False, "error": str(exc)}
+            capability_plan = []
+            required: list[str] = []
+            for step in normalized:
+                cap = capabilities.capability(step["capability"])
+                bindings = []
+                for role, model_id in step["bindings"].items():
+                    record = by_id.get(model_id)
+                    required.append(model_id)
+                    bindings.append(
+                        {
+                            "role": role,
+                            "model": model_id,
+                            "downloaded": bool(record and record["downloaded"]),
+                            "implemented": bool(record and record.get("implemented", True)),
+                        }
+                    )
+                capability_plan.append(
+                    {
+                        "capability": step["capability"],
+                        "label": cap["label"],
+                        "bindings": bindings,
+                        "params": step["params"],
+                    }
+                )
+            unique = sorted(set(required))
+            return {
+                "ok": True,
+                "input": input_path,
+                "plan": capability_plan,
+                "requiresDownload": [model_id for model_id in unique if not (by_id.get(model_id) or {}).get("downloaded")],
+                "canRun": all(bool((by_id.get(model_id) or {}).get("downloaded")) for model_id in unique),
+                "note": "Capability plan. Download missing models before pipeline execution.",
+            }
         plan: list[dict[str, Any]] = []
         missing: list[str] = []
         not_ready: list[str] = []
@@ -263,6 +363,11 @@ class Bridge:
                 },
             },
             {
+                "name": "capabilities_list",
+                "description": "List MediaForge capabilities, their roles, parameter schemas, and compatible models. Use this to build a pipeline instead of hardcoding modes.",
+                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+            },
+            {
                 "name": "probe",
                 "description": "Read media metadata with ffprobe. Returns a compact probe summary.",
                 "inputSchema": {
@@ -300,6 +405,9 @@ class Bridge:
                             "items": {
                                 "type": "object",
                                 "properties": {
+                                    "capability": {"type": "string"},
+                                    "bindings": {"type": "object", "additionalProperties": {"type": "string"}},
+                                    "params": {"type": "object"},
                                     "type": {
                                         "type": "string",
                                         "enum": [
@@ -313,11 +421,26 @@ class Bridge:
                                     "model": {"type": "string"},
                                     "format": {"type": "string"},
                                 },
-                                "required": ["type"],
                             },
                         },
                     },
                     "required": ["input", "steps"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "pipeline_start",
+                "description": "Start an asynchronous capability pipeline for an image or video. The input must use steps from capabilities_list; returns a jobId.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "input": {"type": "string", "description": "Absolute path to an image or video."},
+                        "outputDir": {"type": "string"},
+                        "modality": {"type": "string", "enum": ["image", "video"]},
+                        "steps": {"type": "array", "items": {"type": "object"}},
+                        "options": {"type": "object"},
+                    },
+                    "required": ["input", "outputDir", "modality", "steps"],
                     "additionalProperties": False,
                 },
             },
@@ -366,6 +489,8 @@ class Bridge:
             return self.models_list(str(arguments.get("query") or ""), str(arguments.get("modality") or "all"))
         if name == "models_download":
             return self.download_model(str(arguments.get("modelId") or ""), str(arguments.get("source") or "modelscope"))
+        if name == "capabilities_list":
+            return self.capabilities()
         if name == "probe":
             return self.probe([str(value) for value in arguments.get("inputs") or []])
         if name == "convert":
@@ -378,6 +503,14 @@ class Bridge:
             )
         if name == "pipeline_plan":
             return self.plan(str(arguments.get("input") or ""), list(arguments.get("steps") or []))
+        if name == "pipeline_start":
+            return self.pipeline_start(
+                str(arguments.get("input") or ""),
+                str(arguments.get("outputDir") or ""),
+                str(arguments.get("modality") or ""),
+                list(arguments.get("steps") or []),
+                arguments.get("options") if isinstance(arguments.get("options"), dict) else {},
+            )
         if name == "job_status":
             job = self.jobs.get(str(arguments.get("jobId") or ""))
             return {"ok": job is not None, **job.snapshot()} if job else {"ok": False, "error": "unknown job"}
@@ -402,7 +535,7 @@ class Bridge:
                     "protocolVersion": offered,
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": "mediaforge", "version": VERSION},
-                    "instructions": "MediaForge local media tools. Call models_list before processing; if pipeline_plan reports requiresDownload, use models_download only after the user agrees to the download. Prefer pipeline_plan before processing, and poll job_status after starting long jobs.",
+                    "instructions": "MediaForge local media tools. Call capabilities_list to compose a pipeline, models_list to inspect availability, and pipeline_plan before processing. If requiresDownload is reported, use models_download only after the user agrees. Poll job_status after starting long jobs.",
                 },
             }
         if method == "notifications/initialized":

@@ -8,6 +8,7 @@ from typing import Any
 from worker_protocol import emit, emit_error
 
 from . import image_ops, video_ops
+from . import capabilities
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -34,12 +35,31 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         model_dir = str(payload.get("modelDir") or "").strip()
         if model_dir:
             os.environ["MEDIAFORGE_MODEL_DIR"] = model_dir
+        raw_steps = payload.get("steps")
+        if raw_steps:
+            steps = capabilities.normalize_steps(raw_steps)
+            mode = capabilities.mode_for_steps(steps)
+        else:
+            steps = capabilities.normalize_steps(capabilities.steps_from_mode(mode))
+        watermark_step = next((step for step in steps if step["capability"] == "watermark_removal"), None)
+        upscale_step = next((step for step in steps if step["capability"] == "upscale"), None)
+        if watermark_step:
+            detect_mode = str(watermark_step["params"].get("detectMode") or detect_mode)
+        preferred_scale = None
+        model_paths: dict[str, str] = {}
+        if watermark_step:
+            model_paths["detector"] = str(capabilities.model_path(watermark_step["bindings"]["detector"]))
+            model_paths["inpainter"] = str(capabilities.model_path(watermark_step["bindings"]["inpainter"]))
+        if upscale_step:
+            upscaler_id = str(upscale_step["bindings"]["upscaler"])
+            preferred_scale = 4 if "x4" in upscaler_id else 2
+            model_paths["upscaler_x2" if preferred_scale == 2 else "upscaler_x4"] = str(capabilities.model_path(upscaler_id))
+        restorer = image_ops.ImageRestorer(model_paths=model_paths)
         target = image_ops.resolve_target(
             str(payload.get("target") or "none"),
             int(payload.get("width") or 0),
             int(payload.get("height") or 0),
         )
-        restorer = image_ops.ImageRestorer()
         total = len(inputs)
         outputs: list[dict] = []
         failed: list[dict] = []
@@ -70,6 +90,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                         conf=float(payload.get("conf") or 0.25),
                         expand=int(payload.get("expand") or 8),
                         detect_mode=detect_mode,
+                        preferred_scale=preferred_scale,
                         preview_seconds=float(payload.get("previewSeconds") or 0),
                         crf=int(payload.get("crf") or 18),
                         preset=str(payload.get("preset") or "fast"),

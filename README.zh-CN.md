@@ -46,6 +46,7 @@ python/media_ops/
 ├─ model_hub.py      # 统一模型目录 / 状态 / 下载
 ├─ operation_kernel.py # 共享任务、取消、工作区
 ├─ agent_bridge.py   # MCP stdio / HTTP bridge
+├─ media_ops/capabilities.py # 能力 / 模型角色 / pipeline
 ├─ model_hub_worker.py # 模型库命令
 ├─ worker.py        # worker 命令与事件
 └─ __init__.py
@@ -133,6 +134,8 @@ mcp__mediaforge__pipeline_plan
 mcp__mediaforge__job_status
 mcp__mediaforge__models_list
 mcp__mediaforge__models_download
+mcp__mediaforge__capabilities_list
+mcp__mediaforge__pipeline_start
 ```
 
 MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Agent 是下一阶段。
