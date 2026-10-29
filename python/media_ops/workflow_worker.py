@@ -65,7 +65,7 @@ def _run_image(
     index: int,
     total: int,
 ) -> dict[str, Any]:
-    restorer = image_ops.ImageRestorer()
+    restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, tile=int(payload.get("tile") or 0) or 512)
     name = source.name
 
     def report(fraction: float, message: str) -> None:
@@ -135,7 +135,7 @@ def _run_video(
         step_meta.append({"capability": capability, "model": dict(bindings)})
 
     # 模型只加载一次：把各步需要的权重合并到一个 ImageRestorer
-    restorer = image_ops.ImageRestorer(model_paths=merged_paths)
+    restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, model_paths=merged_paths)
 
     def report(fraction: float, message: str) -> None:
         base = (index + max(0.0, min(1.0, fraction))) / max(total, 1)

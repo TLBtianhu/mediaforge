@@ -73,7 +73,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 request_id=request_id,
             )
 
-        restorer = image_ops.ImageRestorer()
+        restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, tile=int(payload.get("tile") or 0) or 512)
         outputs: list[dict] = []
         failed: list[dict] = []
         total = len(inputs)

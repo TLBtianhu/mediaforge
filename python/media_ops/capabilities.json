@@ -6,7 +6,10 @@
       "id": "upscale",
       "label": "超分",
       "labelEn": "Upscale",
-      "modalities": ["image", "video"],
+      "modalities": [
+        "image",
+        "video"
+      ],
       "roles": {
         "upscaler": {
           "label": "超分模型",
@@ -14,20 +17,47 @@
           "required": true
         }
       },
-      "modelIds": ["media:real-esrgan-x2", "media:real-esrgan-x4"],
+      "modelIds": [
+        "media:real-esrgan-x2",
+        "media:real-esrgan-x4"
+      ],
       "params": {
-        "target": { "type": "string", "default": "none" },
-        "width": { "type": "integer", "default": 0 },
-        "height": { "type": "integer", "default": 0 },
-        "fit": { "type": "string", "default": "contain" },
-        "scale": { "type": "integer", "default": 2, "minimum": 1, "maximum": 4 }
+        "target": {
+          "type": "string",
+          "default": "none"
+        },
+        "width": {
+          "type": "integer",
+          "default": 0
+        },
+        "height": {
+          "type": "integer",
+          "default": 0
+        },
+        "fit": {
+          "type": "string",
+          "default": "contain"
+        },
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4
+        },
+        "tile": {
+          "type": "integer",
+          "default": 0
+        }
       }
     },
     {
       "id": "watermark_removal",
       "label": "去水印 / 物体移除",
       "labelEn": "Watermark / object removal",
-      "modalities": ["image", "video"],
+      "modalities": [
+        "image",
+        "video"
+      ],
       "roles": {
         "detector": {
           "label": "检测模型",
@@ -40,18 +70,40 @@
           "required": true
         }
       },
-      "modelIds": ["media:watermark-yolo11x", "media:lama"],
+      "modelIds": [
+        "media:watermark-yolo11x",
+        "media:lama"
+      ],
       "params": {
-        "conf": { "type": "number", "default": 0.25 },
-        "expand": { "type": "integer", "default": 6 },
-        "detectMode": { "type": "string", "enum": ["fixed", "per_frame"], "default": "fixed" }
+        "conf": {
+          "type": "number",
+          "default": 0.25
+        },
+        "expand": {
+          "type": "integer",
+          "default": 6
+        },
+        "detectMode": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "per_frame"
+          ],
+          "default": "fixed"
+        },
+        "tile": {
+          "type": "integer",
+          "default": 0
+        }
       }
     },
     {
       "id": "face_restoration",
       "label": "人脸修复",
       "labelEn": "Face restoration",
-      "modalities": ["image"],
+      "modalities": [
+        "image"
+      ],
       "roles": {
         "face_restorer": {
           "label": "人脸模型",
@@ -59,14 +111,18 @@
           "required": true
         }
       },
-      "modelIds": ["media:gfpgan-v14"],
+      "modelIds": [
+        "media:gfpgan-v14"
+      ],
       "params": {}
     },
     {
       "id": "frame_interpolation",
       "label": "视频插帧",
       "labelEn": "Frame interpolation",
-      "modalities": ["video"],
+      "modalities": [
+        "video"
+      ],
       "roles": {
         "interpolator": {
           "label": "插帧模型",
@@ -74,16 +130,23 @@
           "required": true
         }
       },
-      "modelIds": ["media:rife-v46"],
+      "modelIds": [
+        "media:rife-v46"
+      ],
       "params": {
-        "multiplier": { "type": "integer", "default": 2 }
+        "multiplier": {
+          "type": "integer",
+          "default": 2
+        }
       }
     },
     {
       "id": "video_inpainting",
       "label": "视频去水印 / 修复",
       "labelEn": "Video inpainting",
-      "modalities": ["video"],
+      "modalities": [
+        "video"
+      ],
       "roles": {
         "primary": {
           "label": "视频修复模型",
@@ -91,14 +154,18 @@
           "required": true
         }
       },
-      "modelIds": ["media:propainter"],
+      "modelIds": [
+        "media:propainter"
+      ],
       "params": {}
     },
     {
       "id": "video_super_resolution",
       "label": "视频超分",
       "labelEn": "Video super-resolution",
-      "modalities": ["video"],
+      "modalities": [
+        "video"
+      ],
       "roles": {
         "upscaler": {
           "label": "视频超分模型",
@@ -106,8 +173,15 @@
           "required": true
         }
       },
-      "modelIds": ["media:basicvsrpp"],
-      "params": {}
+      "modelIds": [
+        "media:basicvsrpp"
+      ],
+      "params": {
+        "tile": {
+          "type": "integer",
+          "default": 0
+        }
+      }
     }
   ]
 }

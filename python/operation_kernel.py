@@ -406,7 +406,12 @@ class OperationKernel:
             else:
                 job.update(status="completed", result=payload, message="completed", fraction=1.0)
         elif kind == "error":
-            job.update(status="failed", error=str(payload.get("message") or payload.get("code") or "worker error"))
+            # 保留错误载荷：job_status 要把 recovery 建议一并透出给调用方
+            job.update(
+                status="failed",
+                result=payload,
+                error=str(payload.get("message") or payload.get("code") or "worker error"),
+            )
         self._persist(job)
 
     def cancel(self, job_id: str) -> dict[str, Any]:

@@ -666,7 +666,14 @@ class Bridge:
             )
         if name == "job_status":
             job = self.jobs.get(str(arguments.get("jobId") or ""))
-            return {"ok": job is not None, **job.snapshot()} if job else {"ok": False, "error": "unknown job"}
+            if not job:
+                return {"ok": False, "error": "unknown job"}
+            snapshot = job.snapshot()
+            # 失败时把恢复建议一并透出：调用方不必去翻 failed[] 才能知道下一步
+            from retry_policy import recovery_from_result
+
+            hint = recovery_from_result(snapshot.get("result"))
+            return {"ok": snapshot.get("status") == "completed", **snapshot, **({"recovery": hint} if hint else {})}
         if name == "job_cancel":
             return self.jobs.cancel(str(arguments.get("jobId") or ""))
         if name == "feedback_submit":

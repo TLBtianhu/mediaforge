@@ -39,7 +39,7 @@ _RULES: list[tuple[str, str, bool, str, list[dict[str, Any]]]] = [
         True,
         "显存/内存不足",
         [
-            {"action": "reduce_param", "slot": "tile", "to": 0, "why": "关掉分块外的额外缓冲，降低峰值"},
+            {"action": "reduce_param", "slot": "tile", "to": 256, "why": "更小的分块显著降低显存峰值"},
             {"action": "reduce_param", "slot": "scale", "to": 2, "why": "降倍率，显存占用近似按面积增长"},
             {"action": "switch_device", "to": "cpu", "why": "CPU 慢但不受显存限制"},
         ],

@@ -202,6 +202,9 @@ _MEDIA_STEPS_SCHEMA = _schema(
         "crf": {"type": "integer"},
         "preset": {"type": "string"},
         "previewSeconds": {"type": "number"},
+        # 设备与分块是 payload 级开关：自动纠正（OOM → CPU/更小分块）要能传进来
+        "device": {"type": "string", "enum": ["cuda", "cpu"]},
+        "tile": {"type": "integer", "minimum": 0},
     },
     ["modality", "inputs", "outputDir", "steps"],
 )
@@ -586,7 +589,56 @@ def validate_arguments(tool_name: str, arguments: Any) -> list[str]:
     return problems
 
 
-def dispatch(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+def dispatch(
+    tool_name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    retry: bool = True,
+) -> dict[str, Any]:
+    """进程内执行一个工具；对可识别的失败**自动纠正一次**（有预算）。
+
+    外部 agent 走 MCP 时也能受益：`bridge.call()` 会复用同一个 dispatch。
+    """
+    tool = find_tool(tool_name)
+    if tool["longRunning"]:
+        raise ValueError(
+            f"{tool_name} is long-running; submit it through the job ledger instead of dispatch()"
+        )
+    from retry_policy import RetryBudget, adjust_arguments, applicable_actions, budget_from_env, recovery_from_result, retry_blocked_reason
+
+    payload = dict(arguments or {})
+    if tool["operation"]:
+        payload.setdefault("operation", tool["operation"])
+    budget_remaining = budget_from_env() if retry else 0
+    attempts: list[dict[str, Any]] = []
+    outcome = _dispatch_once(tool_name, tool, payload)
+    while True:
+        result = outcome.get("result") or {}
+        hint = recovery_from_result(result.get("payload") if isinstance(result.get("payload"), dict) else result)
+        completed = 0
+        if isinstance(result.get("payload"), dict):
+            completed = int(result["payload"].get("completed") or 0)
+        blocked = retry_blocked_reason(budget_remaining, completed, hint)
+        if blocked:
+            if hint:
+                outcome["retryBlocked"] = blocked
+            break
+        actions = applicable_actions(hint)
+        adjusted = adjust_arguments(payload, actions)
+        if adjusted is None:
+            outcome["retryBlocked"] = "adjustment produced no change"
+            break
+        budget_remaining -= 1
+        attempts.append({"code": hint.get("code"), "applied": [action.get("action") for action in actions]})
+        payload = adjusted
+        outcome = _dispatch_once(tool_name, tool, payload)
+    if attempts:
+        outcome["recoveryAttempts"] = attempts
+        outcome["arguments"] = payload
+    return outcome
+
+
+def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """**进程内**执行一个工具：不起子进程、不走管道、不需要端口。
 
     这就是"内嵌 agent 与外部 agent 共用同一个执行器"的那一层：
@@ -597,12 +649,8 @@ def dispatch(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[st
     必须走 `pipeline_start` / `workflow_start`。这里直接拒绝，避免"内嵌调用
     卡住三十分钟且无法取消"。
     """
-    tool = find_tool(tool_name)
-    if tool["longRunning"]:
-        raise ValueError(
-            f"{tool_name} is long-running; submit it through the job ledger instead of dispatch()"
-        )
-    problems = validate_arguments(tool_name, arguments or {})
+    # `operation` 是执行器注入的字段，不属于调用方参数，校验时要排除
+    problems = validate_arguments(tool_name, {key: value for key, value in payload.items() if key != "operation"})
     if problems:
         return {
             "tool": tool_name,
@@ -620,10 +668,6 @@ def dispatch(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[st
                 },
             },
         }
-    payload = dict(arguments or {})
-    if tool["operation"]:
-        payload.setdefault("operation", tool["operation"])
-
     events: list[dict[str, Any]] = []
     import worker
     import worker_protocol

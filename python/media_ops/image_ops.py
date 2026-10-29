@@ -119,7 +119,8 @@ class RealESRGANUpscaler:
     def __init__(self, paths: dict[int, str], device: str = "cuda", tile: int = 512, context: int = 16):
         self.paths = {int(key): str(value) for key, value in paths.items()}
         self.device = device
-        self.tile = int(tile)
+        # tile=0 会让分块循环步长为 0（死循环），这里兜底到安全值
+        self.tile = max(64, int(tile or 512))
         self.context = int(context)
         self._cache: dict[int, tuple[object, int]] = {}
 
