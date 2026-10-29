@@ -131,7 +131,6 @@ const showLogModal = ref(false)
 const modelSearch = ref('')
 const modelCategoryFilter = ref('')
 const modelPage = ref(1)
-const workflowSearch = ref('')
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuVisible = ref(false)
@@ -141,15 +140,10 @@ const contextWorkflow = ref<WorkflowEntry | null>(null)
 const showModelNoteEditor = ref(false)
 const noteEditorModel = ref<ModelEntry | null>(null)
 const noteDraft = ref('')
-const showWorkflowMetaEditor = ref(false)
 const showQueueModal = ref(false)
 const queueScope = ref<'session' | 'no-results'>('session')
 const removingRunRecords = ref(false)
 watch(showQueueModal, show => { if (!show) queueScope.value = 'session' })
-const workflowMetaEditor = ref<WorkflowEntry | null>(null)
-const workflowNameDraft = ref('')
-const workflowNoteDraft = ref('')
-const workflowMetaSaving = ref(false)
 if (route.query.mode === 'workflow') void router.replace('/workflows')
 const focusedSeparationJobId = ref<string | null>(null)
 const composingNewJob = ref(false)
@@ -637,62 +631,6 @@ function saveModelNote() {
   message.success(t('models.noteSaved'))
 }
 
-function openWorkflowMetaEditor(item: WorkflowEntry) {
-  workflowMetaEditor.value = item
-  workflowNameDraft.value = item.name
-  workflowNoteDraft.value = item.description
-  showWorkflowMetaEditor.value = true
-}
-
-function closeWorkflowMetaEditor() {
-  showWorkflowMetaEditor.value = false
-  workflowMetaEditor.value = null
-}
-
-function handleWorkflowMetaEditorUpdate(value: boolean) {
-  showWorkflowMetaEditor.value = value
-  if (!value) workflowMetaEditor.value = null
-}
-
-async function saveWorkflowMeta() {
-  const current = workflowMetaEditor.value
-  if (!current || workflowMetaSaving.value) return
-  const trimmedName = workflowNameDraft.value.trim()
-  if (!trimmedName) {
-    message.error(t('workflows.nameRequired'))
-    return
-  }
-  const trimmedNote = workflowNoteDraft.value.trim()
-  if (trimmedName === current.name && trimmedNote === current.description) {
-    closeWorkflowMetaEditor()
-    return
-  }
-
-  const selectedIdBeforeSave = selectedWorkflowId.value
-  workflowMetaSaving.value = true
-  try {
-    await workflow.saveWorkflow({
-      id: current.id,
-      name: trimmedName,
-      description: trimmedNote,
-      definition: current.definition,
-      format: current.format,
-      formatVersion: current.formatVersion,
-      expectedUpdatedAt: current.updatedAt,
-    })
-    // Saving a non-selected workflow should not change the workflow used by the current run.
-    if (selectedWorkflowId.value === current.id && selectedIdBeforeSave !== current.id) {
-      workflow.selectWorkflow(selectedIdBeforeSave)
-    }
-    closeWorkflowMetaEditor()
-    message.success(t('workflows.saved'))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    workflowMetaSaving.value = false
-  }
-}
-
 function handleSeparateContextMenuSelect(key: string | number) {
   const item = contextMenuKind.value === 'model' ? contextModel.value : contextWorkflow.value
   closeSeparateContextMenu()
@@ -701,18 +639,9 @@ function handleSeparateContextMenuSelect(key: string | number) {
     openModelNoteEditor(item as ModelEntry)
     return
   }
-  if (key === 'edit-workflow-meta' && 'id' in item) {
-    openWorkflowMetaEditor(item as WorkflowEntry)
-  }
 }
 
-function workflowValidationError() {
-  return ''
-}
-const workflowStructureInvalid = computed(() => false)
 const startStatusText = computed(() => {
-  const validationError = workflowValidationError()
-  if (validationError) return validationError
   if (outputDirectoryError.value) return outputDirectoryError.value
   if (!inputFiles.value.length) return t('separate.outputDirectorySummary')
   if (ensembleEnabled.value && !ensembleReady.value) return t('separate.ensembleNotReady')
@@ -745,15 +674,6 @@ const pagedDownloadedModels = computed(() => {
   return filteredDownloadedModels.value.slice(start, start + modelPageSize.value)
 })
 const modelPageSizeOptions = [...SEPARATE_MODEL_PAGE_SIZES]
-const filteredWorkflows = computed(() => {
-  const query = workflowSearch.value.trim().toLowerCase()
-  return [...workflows.value]
-    .filter((item) => {
-      if (!query) return true
-      return item.name.toLowerCase().includes(query) || item.description.toLowerCase().includes(query)
-    })
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-})
 
 const outputDirectoryInput = computed({
   get: () => temporaryOutputDir.value || normalizedOutputDir.value,
@@ -1893,11 +1813,6 @@ async function start() {
     message.warning(t('separate.ensembleNotReady'))
     return
   }
-  const validationError = workflowValidationError()
-  if (validationError) {
-    message.warning(validationError)
-    return
-  }
   if (!inputFiles.value.length) {
     message.warning(t('separate.startHintNoInput'))
     return
@@ -2672,57 +2587,6 @@ const audioSteps = computed(() => [
           <div class="separate-note-modal__footer">
             <n-button secondary @click="closeModelNoteEditor">{{ t('common.cancel') }}</n-button>
             <n-button type="primary" :disabled="!noteEditorModel" @click="saveModelNote">{{ t('common.save') }}</n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <n-modal
-      :show="showWorkflowMetaEditor"
-      @update:show="handleWorkflowMetaEditorUpdate"
-    >
-      <n-card
-        class="separate-workflow-meta-modal"
-        :title="t('workflows.editMeta')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="closeWorkflowMetaEditor"
-      >
-        <div v-if="workflowMetaEditor" class="separate-workflow-meta-modal__body">
-          <label class="separate-workflow-meta-modal__field">
-            <span>{{ t('workflows.name') }}</span>
-            <n-input
-              v-model:value="workflowNameDraft"
-              :disabled="workflowMetaSaving"
-              :placeholder="t('workflows.namePlaceholder')"
-              maxlength="120"
-              show-count
-            />
-          </label>
-          <label class="separate-workflow-meta-modal__field">
-            <span>{{ t('workflows.note') }}</span>
-            <n-input
-              v-model:value="workflowNoteDraft"
-              type="textarea"
-              :disabled="workflowMetaSaving"
-              :autosize="{ minRows: 4, maxRows: 8 }"
-              clearable
-              :maxlength="240"
-              show-count
-              :placeholder="t('workflows.notePlaceholder')"
-            />
-          </label>
-        </div>
-        <template #footer>
-          <div class="separate-workflow-meta-modal__footer">
-            <n-button secondary :disabled="workflowMetaSaving" @click="closeWorkflowMetaEditor">
-              {{ t('common.cancel') }}
-            </n-button>
-            <n-button type="primary" :loading="workflowMetaSaving" :disabled="!workflowMetaEditor" @click="saveWorkflowMeta">
-              {{ t('common.save') }}
-            </n-button>
           </div>
         </template>
       </n-card>
