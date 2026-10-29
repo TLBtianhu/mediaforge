@@ -132,6 +132,31 @@ python download_models.py --proxy http://127.0.0.1:7897
 
 下载到 `models/`。也可以在图像页选择其他模型目录。权重不随仓库分发，请遵守各自许可证。
 
+## 三套运行环境
+
+| 环境 | 启动方式 | 数据 / 缓存 | 用途 |
+| --- | --- | --- | --- |
+| 开发 | `.\scripts\dev.ps1` | `.dev-data/`、`.dev-webview/` | 日常改代码、看实际效果 |
+| 干净包验证 | `.\scripts\clean-test.ps1 -Exe "C:\Program Files\MediaForge\MediaForge.exe"` | 系统临时目录，关闭即删 | 验证“首次启动、无个性化配置”的发布包 |
+| 狗粮 / 长期用户 | `.\scripts\dogfood.ps1 -Exe "C:\Program Files\MediaForge\MediaForge.exe"` | 用户目录 `.mediaforge` + 默认 WebView2 | 模拟真实用户持续使用与跨版本更新 |
+
+> `src-tauri/target/release` 会被应用识别为开发构建。干净包验证和狗粮必须指向**安装后的 exe**，不能用 target 下的产物。
+
+### 清理
+
+```powershell
+# 清开发 profile（推荐）
+.\scripts\reset-dev.ps1
+
+# 连旧的 data/ 一起清
+.\scripts\reset-dev.ps1 -IncludeLegacyProjectData
+```
+
+- `clean-test.ps1` 的临时 profile 会在窗口关闭后自动删除
+- `dogfood` 的数据**故意不清理**，否则无法测试升级/迁移
+- 要重置狗粮环境：卸载应用后删除用户目录 `.mediaforge` 和 `%LOCALAPPDATA%\studio.mediaforge.desktop`
+- 做跨版本升级测试时，建议用**独立 Windows 本地账户**或虚拟机跑狗粮，避免和开发账户互相影响
+
 ## 开发
 
 前置：
