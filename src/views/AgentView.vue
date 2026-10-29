@@ -36,7 +36,34 @@ const dataRoot = ref('')
 const workspace = ref('')
 const loading = ref(false)
 const error = ref('')
+const query = ref('')
+const sourceFilter = ref<'all' | 'manual' | 'agent'>('all')
+const statusFilter = ref<'all' | 'active' | 'completed' | 'failed'>('all')
 let timer: ReturnType<typeof setInterval> | undefined
+
+const sourceOptions = computed(() => [
+  { label: t('agent.allSources'), value: 'all' },
+  { label: t('agent.manual'), value: 'manual' },
+  { label: t('agent.agent'), value: 'agent' },
+])
+const statusOptions = computed(() => [
+  { label: t('agent.allStatuses'), value: 'all' },
+  { label: t('agent.active'), value: 'active' },
+  { label: t('agent.completed'), value: 'completed' },
+  { label: t('agent.failed'), value: 'failed' },
+])
+const filteredJobs = computed(() => {
+  const text = query.value.trim().toLowerCase()
+  return jobs.value.filter(job => {
+    const source = job.source || 'agent'
+    if (sourceFilter.value !== 'all' && source !== sourceFilter.value) return false
+    if (statusFilter.value === 'active' && !['running', 'queued'].includes(job.status)) return false
+    if (statusFilter.value === 'completed' && job.status !== 'completed') return false
+    if (statusFilter.value === 'failed' && job.status !== 'failed') return false
+    if (!text) return true
+    return [job.command, job.jobId, job.message, job.error].some(value => String(value || '').toLowerCase().includes(text))
+  })
+})
 
 const running = computed(() => jobs.value.filter(job => job.status === 'running' || job.status === 'queued').length)
 const completed = computed(() => jobs.value.filter(job => job.status === 'completed').length)
@@ -113,7 +140,7 @@ onBeforeUnmount(() => {
       :title="t('agent.title')"
       :subtitle="t('agent.subtitle')"
       :icon="SparklesOutline"
-      eyebrow="AGENT WORKSPACE"
+      eyebrow="SHARED QUEUE"
       tone="violet"
     >
       <n-tag :type="running ? 'info' : 'default'" :bordered="false">{{ running }} {{ t('agent.running') }}</n-tag>
@@ -140,15 +167,23 @@ onBeforeUnmount(() => {
       <div class="agent-path agent-path--muted">{{ workspace }}</div>
     </section>
 
+    <section class="agent-toolbar">
+      <n-input v-model:value="query" clearable :placeholder="t('agent.search')" />
+      <n-select v-model:value="sourceFilter" :options="sourceOptions" />
+      <n-select v-model:value="statusFilter" :options="statusOptions" />
+    </section>
+
     <n-spin :show="loading">
-      <div v-if="!jobs.length" class="mf-empty">
+      <div v-if="!filteredJobs.length" class="mf-empty">
         <span class="mf-empty__icon"><n-icon :component="SparklesOutline" :size="30" /></span>
-        <div class="mf-empty__title">{{ t('agent.emptyTitle') }}</div>
-        <div class="mf-empty__hint">{{ t('agent.emptyHint') }}</div>
-        <code class="agent-command">.\scripts\start-mcp.ps1</code>
+        <div class="mf-empty__title">{{ jobs.length ? t('agent.noMatch') : t('agent.emptyTitle') }}</div>
+        <template v-if="!jobs.length">
+          <div class="mf-empty__hint">{{ t('agent.emptyHint') }}</div>
+          <code class="agent-command">.\scripts\start-mcp.ps1</code>
+        </template>
       </div>
       <div v-else class="agent-list">
-        <article v-for="job in jobs" :key="job.jobId" class="agent-job">
+        <article v-for="job in filteredJobs" :key="job.jobId" class="agent-job">
           <div class="agent-job__head">
             <div class="agent-job__title"><strong>{{ job.command }}</strong><span>{{ job.jobId }}</span></div>
             <div class="agent-job__actions">
@@ -171,6 +206,7 @@ onBeforeUnmount(() => {
 .agent-stats strong { color: var(--text-color-1); font-size: 20px; }
 .agent-stats span { color: var(--text-color-3); font-size: 11px; }
 .agent-workspace { display: grid; gap: 7px; }
+.agent-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 150px 150px; gap: 10px; }
 .agent-path { overflow: hidden; color: var(--text-color-2); font-family: var(--font-mono, monospace); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-path--muted { color: var(--text-color-3); font-size: 10px; }
 .agent-command { padding: 7px 10px; border: 1px solid var(--divider-color); border-radius: 8px; background: var(--action-color); color: var(--text-color-2); font-size: 11px; }
@@ -183,5 +219,5 @@ onBeforeUnmount(() => {
 .agent-job__title span { overflow: hidden; color: var(--text-color-3); font-family: var(--font-mono, monospace); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-job__meta { display: flex; gap: 14px; color: var(--text-color-3); font-size: 10px; }
 .agent-job__message { margin: 0; overflow: hidden; color: var(--text-color-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 760px) { .agent-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .agent-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .agent-toolbar { grid-template-columns: 1fr; } }
 </style>

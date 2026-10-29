@@ -3166,6 +3166,7 @@ async function retryCurrentTask() {
         @close="showQueueModal = false"
       >
         <template #header-extra>
+          <n-button size="small" quaternary @click="router.push('/agent')">{{ t('agent.queue') }}</n-button>
           <n-button
             v-if="queueScope === 'session' && finishedSessionJobCount"
             size="small"
