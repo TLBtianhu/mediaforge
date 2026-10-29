@@ -4,6 +4,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { isTerminalTaskStatus, taskJobId } from '../src/features/tasks/lifecycle.ts'
+import { specFor, widgetValue } from '../src/litegraph/paramCodec.ts'
 import { normalizeStemOutputs } from '../src/utils/stemOutputs.ts'
 import { workflowInputNodes } from '../src/workflows/workbench.ts'
 
@@ -24,7 +25,9 @@ function task(id, root = '/tmp/results', directory = `${root}/song`, output = `$
     outputs: [{ path: output }], files: [output], runConfig: { outputLayout: 'folders' } }
 }
 function environment(items, windows = false) {
+  // task.ts 现在通过 paramCodec 按控件名读参数，VM 里要一并注入这两个函数
   const state = { tasks: { value: items }, windowsPaths: { value: windows }, isTerminalTaskStatus, taskJobId, workflowInputNodes,
+    specFor, widgetValue,
     i18n: { global: { t: key => key } } }
   return vm.runInNewContext(`${code}\n({resultTrashTargets,resultTrashEmptyDirs,resultTrashTargetsForTasks})`, state)
 }

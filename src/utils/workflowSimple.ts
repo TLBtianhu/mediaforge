@@ -11,6 +11,7 @@ import {
   type SimpleAudioOperation,
   type SimpleProcessingAlgorithm,
 } from '@/workflows/formats'
+import { firstWidgetValue } from '../litegraph/paramCodec.ts'
 import { analyzeWorkflowInputs } from '@/utils/workflowInputs'
 import type { ModelDefaultInferenceParams } from '@/stores/model'
 
@@ -228,7 +229,7 @@ export function analyzeComfyOverview(definition: unknown): ComfyOverview | null 
     const type = String(node?.type || '')
     if (isWorkflowSeparationNodeType(type)) {
       separateCount += 1
-      const raw = String(node.widgets_values?.[0] || '').trim()
+      const raw = String(firstWidgetValue(node) || '').trim()
       const model = stripPrefix(raw)
       if (model && !models.includes(model)) models.push(model)
     }
