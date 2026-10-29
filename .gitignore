@@ -44,6 +44,9 @@ Thumbs.db
 
 # Local runtime outputs
 data/
+.dev-data/
+.dev-webview/
+preview/
 results/
 outputs/
 *.tmp

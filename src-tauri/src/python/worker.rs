@@ -818,6 +818,10 @@ fn build_worker_command(
     }
     if let Ok(models_dir) = storage::models_dir(app) {
         cmd.env("PYMSS_MODEL_DIR", models_dir.to_string_lossy().to_string());
+        cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
+    }
+    if let Ok(data_root) = storage::data_root_dir(app) {
+        cmd.env("MEDIAFORGE_DATA_DIR", data_root.to_string_lossy().to_string());
     }
     // Keep the custom-model registry with the app's own state rather than in pymss's default
     // ~/.cache location, so a portable install carries its imported models with it.

@@ -15,14 +15,15 @@ use std::os::windows::ffi::OsStrExt;
 use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
 
 const DATA_ROOT_ENV: &str = "PYMSS_STUDIO_DATA_ROOT";
-const DATA_ROOT_DIR_NAME: &str = ".pymss-studio";
+const MEDIAFORGE_DATA_ROOT_ENV: &str = "MEDIAFORGE_DATA_ROOT";
+const DATA_ROOT_DIR_NAME: &str = ".mediaforge";
 const LOCAL_DATA_ROOT_DIR_NAME: &str = "data";
 static JSON_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // Multiple WebView windows can autosave the same store at once. Serialize the temporary-file
 // replacement in the Rust process so a second writer never races the first ReplaceFileW call.
 static JSON_WRITE_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(windows)]
-const PORTABLE_MARKER_FILE_NAME: &str = "pymss-studio.portable";
+const PORTABLE_MARKER_FILE_NAME: &str = "mediaforge.portable";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,7 +116,8 @@ fn resolve_data_root(
 }
 
 pub fn data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    let env_root = std::env::var_os(DATA_ROOT_ENV)
+    let env_root = std::env::var_os(MEDIAFORGE_DATA_ROOT_ENV)
+        .or_else(|| std::env::var_os(DATA_ROOT_ENV))
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
     Ok(resolve_data_root(

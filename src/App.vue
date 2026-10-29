@@ -8,9 +8,6 @@ import TitleBar from '@/components/TitleBar.vue'
 import SideNav from '@/components/SideNav.vue'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import AppBrandMark from '@/components/AppBrandMark.vue'
-import StartupOnboarding from '@/components/StartupOnboarding.vue'
-import BeginnerGuide from '@/components/BeginnerGuide.vue'
-import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
 import ViewportRecoveryOverlay from '@/components/ViewportRecoveryOverlay.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useAppStore } from '@/stores/app'
@@ -29,7 +26,6 @@ import { connectWorkerEvents } from '@/utils/events'
 const studioLog = createLogger('ui.App')
 
 const settings = useSettingsStore()
-const beginnerGuide = useBeginnerGuideStore()
 const app = useAppStore()
 watch([() => settings.initialized, () => app.envInfo], ([initialized, env]) => {
   if (initialized && env?.torchAvailable) settings.reconcileRuntimeDevice(env)
@@ -63,10 +59,6 @@ const resolvedTheme = computed(() => {
   void isDark.value
   return getResolvedThemeTokens(settings.themeMode, settings.themeAccent)
 })
-const showStartupOnboarding = computed(() => bootReady.value && !isStandaloneRoute.value && settings.shouldShowStartupOnboarding)
-const beginnerGuideEnabled = computed(() => bootReady.value && settings.initialized && isMainTaskOwner()
-  && !isStandaloneRoute.value && !showStartupOnboarding.value && !deferredUpdateModalVisible.value
-  && !manualUpdateModalVisible.value && !runtimeCorePromptVisible.value && !updates.isInstallOverlayVisible)
 const deferredUpdatePrompt = computed(() => updates.updateIsPrerelease
   ? t('settings.updatePrereleaseDeferredPrompt', { version: updates.latestVersion })
   : t('settings.updateDeferredPrompt', { version: updates.latestVersion }))
@@ -150,7 +142,7 @@ function scheduleIdleWork(task: () => void) {
 }
 
 function startBackgroundWarmups() {
-  if (backgroundWarmupsStarted.value || !bootReady.value || showStartupOnboarding.value) return
+  if (backgroundWarmupsStarted.value || !bootReady.value) return
   backgroundWarmupsStarted.value = true
   scheduleIdleWork(() => {
     void Promise.allSettled(routeWarmupLoaders.map((load) => load()))
@@ -199,8 +191,7 @@ function showRuntimeCorePrompt() {
     runtimeCorePromptVisible.value = false
     return
   }
-  if (runtimeCorePromptShown.value || !bootReady.value || showStartupOnboarding.value || beginnerGuide.visible
-    || !settings.beginnerGuideInvitationSeen) return
+  if (runtimeCorePromptShown.value || !bootReady.value) return
   runtimeCorePromptShown.value = true
   runtimeCorePromptVisible.value = true
 }
@@ -305,7 +296,7 @@ onUnmounted(() => {
   workflowEventUnlisteners.splice(0).forEach(unlisten => unlisten())
 })
 
-watch([bootReady, showStartupOnboarding], () => {
+watch([bootReady], () => {
   startBackgroundWarmups()
 }, { immediate: true })
 
@@ -317,7 +308,7 @@ watch([bootReady, () => updates.requiresManualInstall, () => updates.latestVersi
   showManualUpdatePrompt()
 }, { immediate: true })
 
-watch([bootReady, showStartupOnboarding, isStandaloneRoute, runtimeCoreUpdateAvailable, runtimeCorePromptBlocked, () => beginnerGuide.visible], () => {
+watch([bootReady, isStandaloneRoute, runtimeCoreUpdateAvailable, runtimeCorePromptBlocked], () => {
   showRuntimeCorePrompt()
 }, { immediate: true })
 
@@ -332,7 +323,7 @@ const themeOverrides = computed(() => {
     <n-notification-provider>
       <n-message-provider>
         <n-dialog-provider>
-        <div class="app-shell" :inert="beginnerGuide.demoActive || undefined" :class="{ 'app-shell--editor': isStandaloneRoute, 'app-shell--workflow-node-editor': isStandaloneRoute && isWorkflowEditorRoute, 'app-shell--native-titlebar': isMacOS, 'no-animations': !settings.animationsEnabled }">
+        <div class="app-shell" :class="{ 'app-shell--editor': isStandaloneRoute, 'app-shell--workflow-node-editor': isStandaloneRoute && isWorkflowEditorRoute, 'app-shell--native-titlebar': isMacOS, 'no-animations': !settings.animationsEnabled }">
           <div class="app-backdrop" />
           <TitleBar v-if="!isWorkflowEditorRoute || isMainTaskOwner()" />
           <div v-if="app.workerEventConnectionStatus === 'error'" class="worker-event-alert">
@@ -351,7 +342,7 @@ const themeOverrides = computed(() => {
               </div>
             </n-alert>
           </div>
-          <div class="app-body" :inert="showStartupOnboarding || beginnerGuide.demoActive || undefined">
+          <div class="app-body">
             <SideNav v-if="!isStandaloneRoute" />
             <main class="app-content">
               <router-view v-slot="{ Component, route }">
@@ -373,8 +364,6 @@ const themeOverrides = computed(() => {
               </div>
             </div>
           </transition>
-          <StartupOnboarding v-if="showStartupOnboarding" />
-          <BeginnerGuide v-if="isMainTaskOwner() && !isStandaloneRoute" :enabled="beginnerGuideEnabled" />
           <ViewportRecoveryOverlay :enabled="bootReady && !isStandaloneRoute" />
         </div>
         <n-modal v-model:show="deferredUpdateModalVisible" preset="dialog" type="warning" :mask-closable="false" :closable="false">

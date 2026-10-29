@@ -149,6 +149,40 @@ pnpm build        # vue-tsc + vite build
 pnpm tauri build --no-bundle
 ```
 
+### 开发 profile 与用户数据隔离
+
+开发时不要使用正式用户目录：
+
+```powershell
+# 隔离 profile 启动（数据在 .dev-data，WebView2 在 .dev-webview）
+.\scripts\dev.ps1
+
+# 清空开发 profile 后重新启动
+.\scripts\dev.ps1 -Clean
+```
+
+隔离脚本会设置：
+
+```text
+MEDIAFORGE_DATA_ROOT
+MEDIAFORGE_DATA_DIR
+MEDIAFORGE_MODEL_DIR
+WEBVIEW2_USER_DATA_FOLDER
+```
+
+规则：
+
+- `data/`：旧开发数据，已 ignore
+- `.dev-data/`：隔离开发数据，已 ignore
+- `.dev-webview/`：隔离 WebView2 缓存，已 ignore
+- 正式版数据：用户目录下的 `.mediaforge`
+- 模型、日志、索引、下载记录都不进 Git
+- `scripts/reset-dev.ps1` 只清理项目内开发目录，不碰正式用户数据
+
+首次启动引导已移除；启动直接进入工作区。
+
+测试时我使用隔离 profile 或临时 `MEDIAFORGE_DATA_ROOT`，不会把测试偏好写进正式配置。
+
 后端单测方式：
 
 ```bash
