@@ -48,11 +48,11 @@ def generate(artifacts: Path, environment: dict[str, str]) -> list[str]:
                 "pymss_update_supported": supported,
                 "pymss_requires_manual_install": not supported,
                 "pymss_update_message": message,
-                "pymss_manual_install_url": f"https://github.com/pymss-project/pymss-studio/releases/tag/{tag}",
+                "pymss_manual_install_url": f"https://github.com/TLBtianhu/mediaforge/releases/tag/{tag}",
                 "platforms": {
                     target: {
                         "signature": signature,
-                        "url": f"https://github.com/pymss-project/pymss-studio/releases/download/{tag}/{asset}",
+                        "url": f"https://github.com/TLBtianhu/mediaforge/releases/download/{tag}/{asset}",
                     }
                 },
                 **extra,

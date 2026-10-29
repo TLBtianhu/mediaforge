@@ -114,7 +114,7 @@ const buildInfo = ref<BuildInfo | null>(null)
 const updateChecking = ref(false)
 const updateInstalling = ref(false)
 const appVersion = computed(() => buildInfo.value?.version || packageMeta.version || '0.0.0')
-const repoUrl = 'https://github.com/pymss-project/pymss-studio'
+const repoUrl = 'https://github.com/TLBtianhu/mediaforge'
 const officialRepository = 'pymss-project/pymss-studio'
 const officialRepositoryOwner = 'pymss-project'
 const coreRepoUrl = 'https://github.com/pymss-project/pymss'
@@ -822,7 +822,7 @@ const buildVerification = computed(() => {
   }
 })
 const aboutVersionItems = computed(() => [
-  { label: t('settings.softwareVersion'), value: appVersion.value, meta: 'Pymss Studio' },
+  { label: t('settings.softwareVersion'), value: appVersion.value, meta: 'MediaForge' },
   { label: t('settings.pymssCoreVersion'), value: pymssCoreVersion.value, meta: t('settings.coreRuntime') },
   { label: t('settings.workerVersion'), value: workerVersion.value, meta: t('settings.pythonWorker') },
 ])
@@ -1224,11 +1224,11 @@ onMounted(async () => {
           <article class="about-hero">
             <div class="about-hero__main">
               <div class="about-logo-wrap">
-                <img class="about-logo" :src="appLogo" alt="Pymss Studio" />
+                <img class="about-logo" :src="appLogo" alt="MediaForge" />
               </div>
               <div class="about-hero__copy">
                 <span class="about-eyebrow">{{ t('settings.aboutEyebrow') }}</span>
-                <h2 class="about-hero__title">Pymss Studio</h2>
+                <h2 class="about-hero__title">MediaForge</h2>
               </div>
             </div>
 

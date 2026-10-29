@@ -1,7 +1,7 @@
-; Pymss Studio Windows CUDA installer.
+; MediaForge Windows CUDA installer.
 ; The source directory is prepared by GitHub Actions and passed through PYMSS_PORTABLE_DIR.
 
-#define MyAppName "Pymss Studio"
+#define MyAppName "MediaForge"
 #define MyAppVersion GetEnv("PYMSS_VERSION") == "" ? "0.0.1" : GetEnv("PYMSS_VERSION")
 #define MyAppPublisher "TheSmallHanCat"
 #define MyAppExeName "Pymss Studio.exe"
@@ -14,7 +14,7 @@
 #endif
 
 [Setup]
-; Unique AppId for Pymss Studio. Do not reuse AppIds from other projects.
+; Unique AppId for MediaForge. Do not reuse AppIds from other projects. Keep it stable or in-place upgrades break.
 AppId={{6A208087-F154-4C62-8916-E3D40B7C0F24}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}

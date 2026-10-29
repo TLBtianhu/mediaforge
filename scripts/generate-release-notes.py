@@ -12,7 +12,7 @@ from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-DEFAULT_REPOSITORY = "pymss-project/pymss-studio"
+DEFAULT_REPOSITORY = "TLBtianhu/mediaforge"
 PACKAGE_TYPES = (
     ("windows-x64-cuda", "Windows x64", "NVIDIA CUDA", (("-setup.exe", "安装版 / Installer"), (".7z", "便携版 / Portable"))),
     ("windows-x64-cpu", "Windows x64", "CPU", (("-setup.exe", "安装版 / Installer"), (".7z", "便携版 / Portable"))),
@@ -154,6 +154,16 @@ def render_release_notes(
             "| --- | --- | --- |", *rows, "",
             "首次安装请选择上表中的完整安装包；更新归档和签名文件不用于首次安装。",
             "For a first installation, use a complete package listed above. Update archives and signature files are not installers.",
+            "",
+            "**不确定选哪个 / Not sure which one?**",
+            "",
+            "- 显卡是 NVIDIA（GeForce / RTX / Quadro）→ CUDA 版。",
+            "- 显卡是 AMD（Radeon）→ ROCm 版；驱动或系统版本不确定时，先用 CPU 版。",
+            "- 没有独立显卡，或者不清楚自己是什么显卡 → CPU 版。能跑，但模型推理会慢几倍，这不是故障。",
+            "- 磁盘紧张、能联网、不介意首次启动多等一会儿 → 在线版（首次启动时下载运行环境）。",
+            "- 不想走安装器 → 便携版（.7z 解压即用）。",
+            "",
+            "装错版本最常见的表现是「很慢」或「提示找不到 CUDA」，而不是报错退出——所以慢的时候先确认自己装的是哪个包。",
         ]),
         "\n".join([
             "## 在线更新 / In-app updates", "",
@@ -167,6 +177,17 @@ def render_release_notes(
             f"- [故障反馈 / Report a bug]({repository_url}/issues/new/choose)",
             f"- [使用问答与功能建议 / Questions and ideas]({repository_url}/discussions)",
             f"- [新用户指南 / Start here]({repository_url}/discussions/88)",
+            "",
+            "**报 bug 时请附上这五项 / When reporting a bug, include:**",
+            "",
+            "1. 版本号（设置 → 关于）。",
+            "2. 装的是哪个包（CUDA / CPU / ROCm / 在线版）和你的显卡型号。",
+            "3. 做了什么、期望什么、实际发生了什么。",
+            "4. 报错原文或界面截图。",
+            "5. 数据目录下 `logs/` 里对应的日志。",
+            "",
+            "只有「打不开」「没反应」通常要来回问好几轮才能开始查；带上上面五项，一条就够。",
+            "日志和截图里可能含私人素材或路径，发之前请自行检查。",
         ]),
     ]
     return "\n\n".join(sections) + "\n"

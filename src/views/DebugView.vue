@@ -923,7 +923,7 @@ async function copyText(text: string, success: string) {
 
 function copyDiagnosticSummary() {
   const content = [
-    `Pymss Studio ${app.buildInfoVersion || '-'} (${app.buildInfoVariant || '-'})`,
+    `MediaForge ${app.buildInfoVersion || '-'} (${app.buildInfoVariant || '-'})`,
     `${t('debug.envStatus')}: ${t(diagnosticStateLabels[diagnosticSummary.value.state])}`,
     `${t('debug.lastChecked')}: ${lastCheckedAt.value ? new Date(lastCheckedAt.value).toISOString() : t('debug.stateUnknown')}`,
     ...diagnostics.value.map(check => `${check.label.startsWith('debug.') ? t(check.label) : check.label}: ${t(diagnosticStateLabels[check.state])}${check.value ? ` · ${check.value}` : ''}${check.detail && check.state !== 'ok' ? `\n  ${check.detail.replace(/\n/g, '\n  ')}` : ''}`),

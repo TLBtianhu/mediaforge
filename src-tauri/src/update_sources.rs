@@ -5,11 +5,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use url::Url;
 
+// 2026-10-29 修：原来两个源都指向 upstream（pymss-project/pymss-studio 与
+// huanlinoto/Pymss-Studio-Dist），也就是本构建的"自动更新"会去装**上游**的包。
+// GitHub 源已改为本仓库；ModelScope 数据集属于上游，改之前必须先有自己的数据集，
+// 否则会静默安装别人的构建。
+//
+// 于是第三方镜像**默认关闭**：本项目的更新只来自它自己的发布页。
+// 确实需要国内镜像时，构建期设 `MEDIAFORGE_ENABLE_MODELSCOPE_MIRROR=1`，
+// 并先把 `MODELSCOPE_TREE` / `MODELSCOPE_ROOT` 换成自己的数据集。
 const MODELSCOPE_TREE: &str =
     "https://www.modelscope.cn/api/v1/datasets/huanlinoto/Pymss-Studio-Dist/repo/tree";
 const MODELSCOPE_ROOT: &str =
     "https://www.modelscope.cn/datasets/huanlinoto/Pymss-Studio-Dist/resolve/master";
-const GITHUB_ROOT: &str = "https://github.com/pymss-project/pymss-studio/releases/download";
+const GITHUB_ROOT: &str = "https://github.com/TLBtianhu/mediaforge/releases/download";
+
+/// 第三方更新镜像是否启用。默认关闭——外发构建不应该依赖别人的数据集。
+pub const MODELSCOPE_MIRROR_ENABLED: bool =
+    option_env!("MEDIAFORGE_ENABLE_MODELSCOPE_MIRROR").is_some();
 const CATALOG_PAGE_SIZE: usize = 200;
 const MAX_CATALOG_PAGES: usize = 20;
 const MAX_CATALOG_PAGE_BYTES: usize = 1024 * 1024;
@@ -72,6 +84,11 @@ pub async fn modelscope_manifest(
     client: &Client,
     filename: &str,
 ) -> AppResult<MirrorManifest> {
+    if !MODELSCOPE_MIRROR_ENABLED {
+        return Err(AppError::Worker(
+            "Third-party update mirrors are disabled in this build".into(),
+        ));
+    }
     modelscope_manifest_at(client, &Url::parse(MODELSCOPE_TREE).unwrap(), filename).await
 }
 
@@ -211,12 +228,9 @@ fn mirror_url(version: &str, filename: &str) -> Url {
 }
 
 pub fn release_page(version: &str) -> Option<String> {
+    // 手动安装链接指向**本仓库**的 release 页；原来指向上游的 ModelScope 数据集页面。
     Version::parse(version).ok()?;
-    let mut url =
-        Url::parse("https://www.modelscope.cn/datasets/huanlinoto/Pymss-Studio-Dist/tree/master")
-            .ok()?;
-    url.path_segments_mut().ok()?.push(version);
-    Some(url.to_string())
+    Some(format!("https://github.com/TLBtianhu/mediaforge/releases/tag/v{version}"))
 }
 
 pub fn archive_url(original: &Url, version: &str, provider: UpdateProvider) -> Option<Url> {
@@ -234,7 +248,15 @@ fn archive_url_for(original: &Url, version: &str, provider: UpdateProvider, plat
     }
     match provider {
         UpdateProvider::Github => Some(github),
-        UpdateProvider::Modelscope => Some(mirror),
+        // 默认构建里第三方镜像不存在：返回 None 会让 `download_candidates` 自动丢掉这个候选，
+        // 于是 *Auto 模式下只剩自己的发布页，不需要改动调用方逻辑。
+        UpdateProvider::Modelscope => {
+            if MODELSCOPE_MIRROR_ENABLED {
+                Some(mirror)
+            } else {
+                None
+            }
+        }
         UpdateProvider::Custom => None,
     }
 }
@@ -256,9 +278,14 @@ mod tests {
             "2.0.0/Pymss-Studio-2.0.0-windows-x64-update.zip",
         ]);
         assert_eq!(latest_mirror_manifest(&files, "stable-v1-macos-arm64-update.json").unwrap().version, "1.0.0");
-        let github = Url::parse("https://github.com/pymss-project/pymss-studio/releases/download/v1.0.0/Pymss-Studio-1.0.0-macos-arm64-update.app.tar.gz").unwrap();
-        let mirror = archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "macos-arm64").unwrap();
-        assert!(mirror.path().ends_with("/1.0.0/Pymss-Studio-1.0.0-macos-arm64-update.app.tar.gz"));
+        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v1.0.0/Pymss-Studio-1.0.0-macos-arm64-update.app.tar.gz").unwrap();
+        if MODELSCOPE_MIRROR_ENABLED {
+            let mirror = archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "macos-arm64").unwrap();
+            assert!(mirror.path().ends_with("/1.0.0/Pymss-Studio-1.0.0-macos-arm64-update.app.tar.gz"));
+        } else {
+            // 默认构建里第三方镜像不存在（见 MODELSCOPE_MIRROR_ENABLED）
+            assert!(archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "macos-arm64").is_none());
+        }
         assert!(archive_url_for(&github, "1.0.0", UpdateProvider::Github, "windows-x64").is_none());
         assert!(archive_url_for(&github, "2.0.0", UpdateProvider::Github, "macos-arm64").is_none());
     }
@@ -276,8 +303,11 @@ mod tests {
             "2.0.0/Pymss-Studio-2.0.0-windows-x64-update.zip",
         ]);
         assert_eq!(latest_mirror_manifest(&files, "stable-v1-linux-x64-update.json").unwrap().version, "1.0.0");
-        let github = Url::parse("https://github.com/pymss-project/pymss-studio/releases/download/v1.0.0/Pymss-Studio-1.0.0-linux-x64.AppImage").unwrap();
-        assert!(archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "linux-x64").is_some());
+        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v1.0.0/Pymss-Studio-1.0.0-linux-x64.AppImage").unwrap();
+        assert_eq!(
+            archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "linux-x64").is_some(),
+            MODELSCOPE_MIRROR_ENABLED
+        );
         assert!(archive_url_for(&github, "1.0.0", UpdateProvider::Github, "windows-x64").is_none());
     }
 
@@ -328,15 +358,19 @@ mod tests {
         let archive_url = |original: &Url, version: &str, provider| {
             archive_url_for(original, version, provider, "windows-x64")
         };
-        let github = Url::parse("https://github.com/pymss-project/pymss-studio/releases/download/v0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip").unwrap();
-        let mirror = archive_url(&github, "0.0.20", UpdateProvider::Modelscope).unwrap();
-        assert!(mirror
-            .as_str()
-            .ends_with("/0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip"));
-        assert_eq!(
-            archive_url(&mirror, "0.0.20", UpdateProvider::Github),
-            Some(github.clone())
-        );
+        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip").unwrap();
+        if MODELSCOPE_MIRROR_ENABLED {
+            let mirror = archive_url(&github, "0.0.20", UpdateProvider::Modelscope).unwrap();
+            assert!(mirror
+                .as_str()
+                .ends_with("/0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip"));
+            assert_eq!(
+                archive_url(&mirror, "0.0.20", UpdateProvider::Github),
+                Some(github.clone())
+            );
+        } else {
+            assert!(archive_url(&github, "0.0.20", UpdateProvider::Modelscope).is_none());
+        }
         assert!(archive_url(&github, "0.0.21", UpdateProvider::Modelscope).is_none());
         assert!(archive_url(
             &Url::parse("https://example.com/update.zip").unwrap(),

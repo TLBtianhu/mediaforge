@@ -50,7 +50,7 @@ const {
 } = storeToRefs(settings)
 
 const step = ref(0)
-const projectRepositoryUrl = 'https://github.com/pymss-project/pymss-studio'
+const projectRepositoryUrl = 'https://github.com/TLBtianhu/mediaforge'
 const checkingModelDir = ref(false)
 const overlayRef = ref<HTMLElement | null>(null)
 const runtimeChecking = ref(false)
@@ -367,7 +367,7 @@ onMounted(() => {
       <aside class="onboarding-rail">
         <div class="onboarding-brand">
           <AppBrandMark :size="42" variant="hero" shadow />
-          <div><strong>Pymss Studio</strong><span>{{ t('onboarding.title') }}</span></div>
+          <div><strong>MediaForge</strong><span>{{ t('onboarding.title') }}</span></div>
         </div>
         <ol class="onboarding-nav" :aria-label="t('onboarding.title')">
           <li v-for="(meta, index) in stepList" :key="meta.key" class="onboarding-nav__item" :class="{ active: index === step, done: index < step }" :aria-current="index === step ? 'step' : undefined">

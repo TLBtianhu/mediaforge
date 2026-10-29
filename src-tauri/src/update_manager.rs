@@ -46,7 +46,8 @@ static UPDATE_RESTART_REQUIRED: AtomicBool = AtomicBool::new(false);
 pub fn restart_required() -> bool {
     UPDATE_RESTART_REQUIRED.load(Ordering::SeqCst)
 }
-const UPDATE_ROOT: &str = "https://github.com/pymss-project/pymss-studio/releases/download/updater";
+// 2026-10-29 修：原来指向 upstream，等于"自动更新会装上游的包"。本仓库是 TLBtianhu/mediaforge。
+const UPDATE_ROOT: &str = "https://github.com/TLBtianhu/mediaforge/releases/download/updater";
 const UPDATE_GENERATION: &str = "v1";
 const DEFAULT_UPDATE_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5NzUyREY2NjAyNDVDQjAKUldTd1hDUmc5aTExcVFtUGM3ajB4R09ueU9xM3B6RG9xRDVKaUM0di9Qc1BpSGhYMXRFNUJvSWQK";
 // Test fixtures can provide a matching signing key without changing the
@@ -55,6 +56,19 @@ const UPDATE_PUBLIC_KEY: &str = match option_env!("PYMSS_UPDATE_PUBLIC_KEY") {
     Some(value) => value,
     None => DEFAULT_UPDATE_PUBLIC_KEY,
 };
+
+/// 实际使用的更新公钥。
+///
+/// CI 把 secret 映射成环境变量时，没配就是**空串**而不是 None，所以这里要兜一次：
+/// 空串照旧用内嵌默认值，否则"配了个空 secret"会让所有更新校验失败——
+/// 那种故障只在用户的更新检查里出现，日志里看不出所以然。
+fn embedded_update_public_key() -> &'static str {
+    if UPDATE_PUBLIC_KEY.is_empty() {
+        DEFAULT_UPDATE_PUBLIC_KEY
+    } else {
+        UPDATE_PUBLIC_KEY
+    }
+}
 // Replace the executable last so an interrupted update can still boot the old UI and recover.
 const MANAGED_PATHS: [&str; 3] = ["python", "bin", "Pymss Studio.exe"];
 const MAX_UPDATE_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
@@ -1368,7 +1382,7 @@ pub(crate) fn decode_release_signature(release_signature: &str, version: &str) -
 
 pub(crate) fn update_public_key() -> AppResult<PublicKey> {
     let public_key = base64::engine::general_purpose::STANDARD
-        .decode(UPDATE_PUBLIC_KEY)
+        .decode(embedded_update_public_key())
         .map_err(|error| AppError::Worker(format!("Invalid embedded update public key: {error}")))?;
     let public_key = String::from_utf8(public_key)
         .map_err(|error| AppError::Worker(format!("Invalid embedded update public key: {error}")))?;
@@ -1804,7 +1818,7 @@ mod tests {
     fn managed_updates_use_the_v1_endpoint() {
         assert_eq!(
             managed_endpoint(UpdateChannel::Stable).as_str(),
-            format!("https://github.com/pymss-project/pymss-studio/releases/download/updater/{}", crate::update_sources::metadata_name("stable", "v1")),
+            format!("https://github.com/TLBtianhu/mediaforge/releases/download/updater/{}", crate::update_sources::metadata_name("stable", "v1")),
         );
     }
 
@@ -1876,16 +1890,15 @@ mod tests {
     #[test]
     fn automatic_download_fallbacks_keep_the_same_release_and_explicit_sources_stay_explicit() {
         use crate::update_sources::{UpdateProvider, UpdateSource};
-        let original = url::Url::parse(&format!("https://github.com/pymss-project/pymss-studio/releases/download/v0.0.20/{}", crate::update_sources::archive_name("0.0.20"))).unwrap();
+        let original = url::Url::parse(&format!("https://github.com/TLBtianhu/mediaforge/releases/download/v0.0.20/{}", crate::update_sources::archive_name("0.0.20"))).unwrap();
         let candidates = super::download_candidates("0.0.20", &original, UpdateProvider::Github, UpdateSource::Auto).unwrap();
-        assert_eq!(candidates.len(), 2);
-        assert_eq!(candidates[0], (UpdateProvider::Github, original.clone()));
-        assert_eq!(candidates[1].0, UpdateProvider::Modelscope);
-        let manual = super::download_candidates("0.0.20", &original, UpdateProvider::Modelscope, UpdateSource::Modelscope).unwrap();
-        assert_eq!(manual, vec![candidates[1].clone()]);
-        assert!(super::download_candidates("0.0.21", &original, UpdateProvider::Modelscope, UpdateSource::Auto).is_err());
+        // 2026-10-29：第三方镜像默认关闭，Auto 只剩自己的发布页。
+        // 打开镜像需要构建期 `MEDIAFORGE_ENABLE_MODELSCOPE_MIRROR=1`，并且得先有自己的数据集。
+        assert_eq!(candidates, vec![(UpdateProvider::Github, original.clone())]);
+        // 显式点名第三方镜像：默认构建必须**拒绝**，而不是悄悄回落到它。
+        assert!(super::download_candidates("0.0.20", &original, UpdateProvider::Modelscope, UpdateSource::Modelscope).is_err());
+        assert!(super::download_candidates("0.0.20", &original, UpdateProvider::Modelscope, UpdateSource::Auto).is_err());
         let custom = url::Url::parse("http://localhost/custom.zip").unwrap();
-        assert!(super::download_candidates("0.0.20", &custom, UpdateProvider::Modelscope, UpdateSource::Modelscope).is_err());
         assert_eq!(super::download_candidates("0.0.20", &custom, UpdateProvider::Custom, UpdateSource::Auto).unwrap(), vec![(UpdateProvider::Custom, custom)]);
     }
 
