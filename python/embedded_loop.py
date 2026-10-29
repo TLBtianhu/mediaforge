@@ -96,6 +96,59 @@ def _load_detector(detector_path: str, device: str | None):
     return image_ops.WatermarkDetector(detector_path, device=device or "cuda")
 
 
+def _check_inputs(inputs: list[str]) -> list[dict[str, Any]]:
+    """输入层面的确定性判断：不存在、空的、不是文件。"""
+    from pathlib import Path
+
+    findings: list[dict[str, Any]] = []
+    for value in inputs:
+        path = Path(value)
+        if not path.exists():
+            findings.append({"code": "input_missing", "severity": "block", "message": f"输入不存在：{value}"})
+        elif not path.is_file():
+            findings.append({"code": "input_not_file", "severity": "block", "message": f"输入不是文件：{value}"})
+        elif path.stat().st_size == 0:
+            findings.append({"code": "input_empty", "severity": "block", "message": f"输入是空文件：{value}"})
+    return findings
+
+
+def _check_upscale_target(steps: list[dict[str, Any]], inputs: list[str]) -> list[dict[str, Any]]:
+    """目标尺寸比原图还小 → 这一步是缩图，不是放大，摘掉。"""
+    findings: list[dict[str, Any]] = []
+    upscale = next((step for step in steps if str(step.get("capability")) == "upscale"), None)
+    if upscale is None or not inputs:
+        return findings
+    target = str((upscale.get("params") or {}).get("target") or "none")
+    if target.strip().lower() in {"", "none", "off", "original"}:
+        return findings
+    try:
+        from PIL import Image
+
+        from media_ops import image_ops
+
+        resolved = image_ops.resolve_target(
+            target,
+            int((upscale.get("params") or {}).get("width") or 0),
+            int((upscale.get("params") or {}).get("height") or 0),
+        )
+        if not resolved:
+            return findings
+        with Image.open(inputs[0]) as image:
+            width, height = image.size
+        if resolved[0] <= width and resolved[1] <= height:
+            findings.append(
+                {
+                    "code": "target_not_larger",
+                    "severity": "skip",
+                    "capability": "upscale",
+                    "message": f"目标 {resolved[0]}x{resolved[1]} 不大于原图 {width}x{height}；跳过放大",
+                }
+            )
+    except Exception:  # noqa: BLE001 - 解析不了就不判，交给执行层报错
+        return findings
+    return findings
+
+
 def precheck(
     steps: list[dict[str, Any]],
     inputs: list[str],
@@ -107,13 +160,21 @@ def precheck(
     目前只预检 `watermark_removal`：干净图上跑去水印必然失败（"没有检测到水印"），
     与其让整条链失败，不如把这个步骤摘掉继续做后面的事。
 
-    返回 `None` 表示"没预检/预检不可用"，`{"ok": True}` 表示通过，
-    `{"ok": False, ...}` 表示这一步应当跳过。
+    返回 `None` 表示"没预检/预检不可用"，否则返回
+    `{"ok": bool, "blocking": bool, "findings": [...]}`：
+    `blocking` 为真时整条计划不该跑，否则只摘掉标记为 `skip` 的步骤。
     """
-    if not any(str(step.get("capability") or "") == "watermark_removal" for step in steps):
-        return None
     if not inputs:
         return None
+    findings: list[dict[str, Any]] = _check_inputs(inputs)
+    findings.extend(_check_upscale_target(steps, inputs))
+    if not any(str(step.get("capability") or "") == "watermark_removal" for step in steps):
+        # 没有需要探测的步骤：跑过的静态检查照样给结论（空 findings = 通过）
+        return {
+            "ok": not findings,
+            "blocking": any(item["severity"] == "block" for item in findings),
+            "findings": findings,
+        }
     try:
         import numpy as np
         from PIL import Image
@@ -142,21 +203,33 @@ def precheck(
                 expand=int(params.get("expand") or 6),
             )
             if int(mask.max()) == 0:
-                return {
-                    "ok": False,
-                    "reason": "no_watermark",
-                    "path": path,
-                    "message": "没有检测到水印；跳过这一步，或降低检测阈值",
-                }
+                findings.append(
+                    {
+                        "code": "no_watermark",
+                        "severity": "skip",
+                        "capability": "watermark_removal",
+                        "path": path,
+                        "message": "没有检测到水印；跳过这一步，或降低检测阈值",
+                    }
+                )
+                break
             covered = float((mask > 0).mean())
             if covered > 0.75:
-                return {
-                    "ok": False,
-                    "reason": "mask_too_large",
-                    "path": path,
-                    "message": f"检测到的遮罩覆盖了 {covered:.0%} 的画面，可能是误检；跳过这一步",
-                }
-        return {"ok": True}
+                findings.append(
+                    {
+                        "code": "mask_too_large",
+                        "severity": "skip",
+                        "capability": "watermark_removal",
+                        "path": path,
+                        "message": f"检测到的遮罩覆盖了 {covered:.0%} 的画面，可能是误检；跳过这一步",
+                    }
+                )
+                break
+        return {
+            "ok": not findings,
+            "blocking": any(item["severity"] == "block" for item in findings),
+            "findings": findings,
+        }
     except Exception:  # noqa: BLE001 - 预检是增值能力，缺依赖/缺模型时不该拦住主流程
         return None
 
@@ -237,17 +310,28 @@ def run(
     skipped: list[dict[str, Any]] = []
     check = precheck(list(arguments.get("steps") or []), [str(value) for value in arguments.get("inputs") or []])
     if check and not check.get("ok"):
-        remaining = [step for step in arguments["steps"] if str(step.get("capability")) != "watermark_removal"]
+        findings = check.get("findings") or []
+        if check.get("blocking"):
+            return {
+                "ok": False,
+                "tool": tool,
+                "blocked": "precheck_failed",
+                "summary": "; ".join(str(item.get("message")) for item in findings) or "预检未通过",
+                "precheck": check,
+                "steps": [],
+            }
+        droppable = {str(item.get("capability")) for item in findings if item.get("severity") == "skip"}
+        remaining = [step for step in arguments["steps"] if str(step.get("capability")) not in droppable]
         if not remaining:
             return {
                 "ok": False,
                 "tool": tool,
                 "blocked": "precheck_failed",
-                "summary": str(check.get("message") or "预检未通过"),
+                "summary": "; ".join(str(item.get("message")) for item in findings) or "预检未通过",
                 "precheck": check,
                 "steps": [],
             }
-        skipped.append(check)
+        skipped.extend(findings)
         arguments = {**arguments, "steps": remaining}
         if len(remaining) == 1:
             tool = f"media.{arguments['modality']}.{remaining[0]['capability']}"

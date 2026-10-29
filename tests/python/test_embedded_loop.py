@@ -125,8 +125,8 @@ class PrecheckTests(unittest.TestCase):
 
         return lambda path, device: FakeDetector()
 
-    def test_no_watermark_step_means_no_precheck(self) -> None:
-        self.assertIsNone(embedded_loop.precheck([{"capability": "upscale"}], ["a.png"]))
+    def test_no_inputs_means_no_precheck(self) -> None:
+        self.assertIsNone(embedded_loop.precheck([{"capability": "upscale"}], []))
 
     def test_empty_input_skips_precheck(self) -> None:
         self.assertIsNone(embedded_loop.precheck([{"capability": "watermark_removal"}], []))
@@ -141,7 +141,7 @@ class PrecheckTests(unittest.TestCase):
             check = embedded_loop.precheck(
                 [{"capability": "watermark_removal"}], [handle.name], detector_factory=self._detector(False)
             )
-        self.assertEqual(check["reason"], "no_watermark")
+        self.assertEqual(check["findings"][0]["code"], "no_watermark")
 
     def test_oversized_mask_is_flagged(self) -> None:
         import tempfile
@@ -153,7 +153,47 @@ class PrecheckTests(unittest.TestCase):
             check = embedded_loop.precheck(
                 [{"capability": "watermark_removal"}], [handle.name], detector_factory=self._detector(True)
             )
-        self.assertEqual(check["reason"], "mask_too_large")
+        self.assertEqual(check["findings"][0]["code"], "mask_too_large")
+
+    def test_missing_input_blocks_the_whole_plan(self) -> None:
+        check = embedded_loop.precheck([{"capability": "upscale"}], ["/definitely/missing.png"])
+        self.assertTrue(check["blocking"])
+        self.assertEqual(check["findings"][0]["code"], "input_missing")
+
+    def test_empty_input_blocks(self) -> None:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            pass
+        check = embedded_loop.precheck([{"capability": "upscale"}], [handle.name])
+        self.assertTrue(check["blocking"])
+        self.assertEqual(check["findings"][0]["code"], "input_empty")
+
+    def test_target_smaller_than_source_skips_upscale(self) -> None:
+        import tempfile
+
+        from PIL import Image as _Image
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            _Image.new("RGB", (1920, 1080), (10, 20, 30)).save(handle.name)
+            check = embedded_loop.precheck(
+                [{"capability": "upscale", "params": {"target": "720p"}}], [handle.name]
+            )
+        self.assertFalse(check["blocking"])
+        self.assertEqual(check["findings"][0]["code"], "target_not_larger")
+        self.assertEqual(check["findings"][0]["capability"], "upscale")
+
+    def test_target_larger_than_source_passes(self) -> None:
+        import tempfile
+
+        from PIL import Image as _Image
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            _Image.new("RGB", (320, 240), (10, 20, 30)).save(handle.name)
+            check = embedded_loop.precheck(
+                [{"capability": "upscale", "params": {"target": "1080p"}}], [handle.name]
+            )
+        self.assertTrue(check["ok"])
 
     def test_detector_failure_does_not_block(self) -> None:
         import tempfile
