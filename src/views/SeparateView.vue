@@ -33,19 +33,14 @@ import {
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
 import { resolveJobStatus } from '@/features/tasks/lifecycle'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
-import { useWorkflowStore, type WorkflowEntry } from '@/stores/workflow'
+import type { WorkflowEntry } from '@/stores/workflow'
 import { WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
-import {
-  getWorkflowDefinitionIssue,
-  resolveWorkflowRuntimeDefaults,
-} from '@/workflows/runtimeDefinition'
 import { useSettingsStore } from '@/stores/settings'
 import { journalJob } from '@/utils/operationJournal'
 import { useModelStore, type ModelDefaultInferenceParams, type ModelEntry } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import { buildModelCategoryOptionsFromModels, getModelCategoryLabel } from '@/utils/modelCategory'
 import { matchesModelQuery } from '@/utils/modelSearch'
-import { getSeparateWorkflowInputIssue } from '@/utils/workflowInputs'
 import { sortStemOutputsByOrder } from '@/utils/stemOrder'
 import { retainAvailableModelNames } from '@/utils/modelSource'
 import { SEPARATE_MODEL_PAGE_SIZES } from '@/utils/pagination'
@@ -70,7 +65,6 @@ const router = useRouter()
 const route = useRoute()
 const task = useTaskStore()
 const model = useModelStore()
-const workflow = useWorkflowStore()
 const settings = useSettingsStore()
 const app = useAppStore()
 const beginnerGuide = useBeginnerGuideStore()
@@ -111,7 +105,6 @@ const {
 // The audio workbench is single-model only; legacy workflow mode is retired.
 runMode.value = 'model'
 const { selectedModel, downloadedModels, models: modelEntries, isLoading, modelsLoaded, detailLoading, modelPreferences, error: modelError } = storeToRefs(model)
-const { workflows, selectedWorkflow, selectedWorkflowId } = storeToRefs(workflow)
 
 const isDragging = ref(false)
 const showSettingsDrawer = ref(false)
@@ -134,9 +127,8 @@ const modelPage = ref(1)
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuVisible = ref(false)
-const contextMenuKind = ref<'model' | 'workflow' | null>(null)
+const contextMenuKind = ref<'model' | null>(null)
 const contextModel = ref<ModelEntry | null>(null)
-const contextWorkflow = ref<WorkflowEntry | null>(null)
 const showModelNoteEditor = ref(false)
 const noteEditorModel = ref<ModelEntry | null>(null)
 const noteDraft = ref('')
@@ -537,61 +529,16 @@ const outputNamingSummary = computed(() => outputNamingConfig.value.enabled
   ? outputNamingConfig.value.template
   : t('separate.namingDefaultSummary'))
 const usesIndexToken = computed(() => outputNamingTemplate.value.includes('%index%'))
-function workflowDefinitionError(definition: Record<string, unknown>): string {
-  const issue = getWorkflowDefinitionIssue(definition)
-  if (issue === 'steps-required') return t('workflows.stepsRequired')
-  if (issue === 'no-save-outputs') return t('workflows.workflowNoSaveOutputs')
-  if (issue === 'invalid-definition') return t('workflows.workflowFormatInvalid')
-  if (issue === 'invalid-format') return t('workflows.workflowFormatInvalid')
-  const inputIssue = getSeparateWorkflowInputIssue(definition)
-  if (inputIssue) return t(
-    inputIssue.code === 'multiple-inputs' ? 'separate.workflowMultipleInputs' : 'separate.workflowNoInput',
-    { count: inputIssue.count },
-  )
-  return ''
-}
-
-const workflowIssueMap = computed(() => new Map(
-  workflows.value.map(item => [item.id, workflowDefinitionError(item.definition)]),
-))
-const runnableWorkflows = computed(() => workflows.value.filter(item => !workflowIssueMap.value.get(item.id)))
-
-function workflowIssue(item: WorkflowEntry): string {
-  return workflowIssueMap.value.get(item.id) || ''
-}
-
 const contextMenuOptions = computed<DropdownOption[]>(() => {
   if (contextMenuKind.value === 'model' && contextModel.value) {
     return [{ key: 'edit-model-note', label: t('models.editNote') }]
   }
-  if (contextMenuKind.value === 'workflow' && contextWorkflow.value) {
-    return [{ key: 'edit-workflow-meta', label: t('workflows.editMeta') }]
-  }
   return []
 })
 
-function selectRunnableWorkflow(item: WorkflowEntry) {
-  if (workflowIssue(item)) return
-  workflow.selectWorkflow(item.id)
-}
-
-function workflowIssueSummary(item: WorkflowEntry): string {
-  const inputIssue = getSeparateWorkflowInputIssue(item.definition)
-  if (inputIssue && !getWorkflowDefinitionIssue(item.definition)) return t(
-    inputIssue.code === 'multiple-inputs' ? 'separate.workflowMultipleInputsSummary' : 'separate.workflowNoInputSummary',
-    { count: inputIssue.count },
-  )
-  return workflowIssue(item)
-}
-
-function openSeparateContextMenu(
-  event: MouseEvent,
-  kind: 'model' | 'workflow',
-  target: ModelEntry | WorkflowEntry,
-) {
+function openSeparateContextMenu(event: MouseEvent, kind: 'model', target: ModelEntry) {
   contextMenuKind.value = kind
-  contextModel.value = kind === 'model' ? target as ModelEntry : null
-  contextWorkflow.value = kind === 'workflow' ? target as WorkflowEntry : null
+  contextModel.value = target
   contextMenuVisible.value = false
   contextMenuX.value = event.clientX
   contextMenuY.value = event.clientY
@@ -604,7 +551,6 @@ function closeSeparateContextMenu() {
   contextMenuVisible.value = false
   contextMenuKind.value = null
   contextModel.value = null
-  contextWorkflow.value = null
 }
 
 function openModelNoteEditor(item: ModelEntry) {
@@ -632,13 +578,10 @@ function saveModelNote() {
 }
 
 function handleSeparateContextMenuSelect(key: string | number) {
-  const item = contextMenuKind.value === 'model' ? contextModel.value : contextWorkflow.value
+  const item = contextModel.value
   closeSeparateContextMenu()
   if (!item) return
-  if (key === 'edit-model-note' && 'name' in item) {
-    openModelNoteEditor(item as ModelEntry)
-    return
-  }
+  if (key === 'edit-model-note') openModelNoteEditor(item as ModelEntry)
 }
 
 const startStatusText = computed(() => {
