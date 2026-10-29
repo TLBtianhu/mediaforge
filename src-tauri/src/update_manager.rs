@@ -513,14 +513,21 @@ pub(crate) fn download_candidates(version: &str, original: &Url, provider: Updat
     if provider == UpdateProvider::Custom {
         return Ok(vec![(provider, original.clone())]);
     }
-    let providers = if source == UpdateSource::Auto {
-        vec![provider, if provider == UpdateProvider::Github { UpdateProvider::Modelscope } else { UpdateProvider::Github }]
-    } else { vec![provider] };
-    let candidates: Vec<_> = providers.into_iter().filter_map(|provider| {
-        update_sources::archive_url(original, version, provider).map(|url| (provider, url))
-    }).collect();
-    if candidates.is_empty() {
-        return Err(AppError::Worker("The update archive URL is not a supported official release URL".into()));
+    // 调用方**显式**点名的来源必须能给出地址；给不出就报错，
+    // 不能借 Auto 的回落把它悄悄换成别家（用户以为在用镜像，其实在连 GitHub）。
+    let primary = update_sources::archive_url(original, version, provider).ok_or_else(|| {
+        AppError::Worker("The requested update source is not available in this build".into())
+    })?;
+    let mut candidates = vec![(provider, primary)];
+    if source == UpdateSource::Auto {
+        let fallback = if provider == UpdateProvider::Github {
+            UpdateProvider::Modelscope
+        } else {
+            UpdateProvider::Github
+        };
+        if let Some(url) = update_sources::archive_url(original, version, fallback) {
+            candidates.push((fallback, url));
+        }
     }
     Ok(candidates)
 }
