@@ -470,6 +470,21 @@ def _write_debug_line(path: str | None, line: str, max_bytes: int) -> None:
         file.write(line + "\n")
 
 
+_EVENT_SINK: Any = None
+
+
+def set_event_sink(sink: Any) -> None:
+    """把事件捕获到进程内（内嵌 agent 直调用），而不是写到 stdout。
+
+    设置后 `emit()` 不再序列化/写管道，而是直接把事件交给 sink。
+    这是"同一个工具既能被外部 agent 通过 MCP 调用、也能被内嵌 loop 直接调用"
+    的那道缝：执行器只认识工具名与 payload，不知道调用方在进程内还是跨进程。
+    传 `None` 恢复默认行为。
+    """
+    global _EVENT_SINK
+    _EVENT_SINK = sink
+
+
 def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: str | None = None, task_id: str | None = None) -> None:
     payload = payload or {}
     if event_type in _LOG_EVENTS and payload.get("schemaVersion") != 1:
@@ -488,6 +503,10 @@ def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: 
             context=context,
         )
         payload = {**_safe_log_value(payload), **canonical}
+    sink = _EVENT_SINK
+    if sink is not None:
+        sink(event_type, payload, request_id, task_id)
+        return
     message = json.dumps({
         "type": event_type,
         "requestId": request_id if request_id is not None else _BOUND_REQUEST_ID,

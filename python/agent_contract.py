@@ -384,3 +384,53 @@ def cmd_agent_contract(payload: dict[str, Any]) -> int:
         return 0
     except Exception as exc:  # noqa: BLE001
         return emit_error("CONTRACT_FAILED", str(exc))
+
+
+def find_tool(tool_name: str) -> dict[str, Any]:
+    for tool in _native_tools() + _media_tools() + _audio_tool_tools():
+        if tool["name"] == tool_name:
+            return tool
+    raise KeyError(f"unknown tool: {tool_name}")
+
+
+def dispatch(tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """**进程内**执行一个工具：不起子进程、不走管道、不需要端口。
+
+    这就是"内嵌 agent 与外部 agent 共用同一个执行器"的那一层：
+    外部走 MCP → bridge → 作业台账；内嵌走 dispatch → 同一个 worker 命令。
+    两边用的是同一份契约里的 `command` + `operation`。
+
+    长任务（`longRunning`）**不在这里执行**：它们需要作业台账、进度与取消，
+    必须走 `pipeline_start` / `workflow_start`。这里直接拒绝，避免"内嵌调用
+    卡住三十分钟且无法取消"。
+    """
+    tool = find_tool(tool_name)
+    if tool["longRunning"]:
+        raise ValueError(
+            f"{tool_name} is long-running; submit it through the job ledger instead of dispatch()"
+        )
+    payload = dict(arguments or {})
+    if tool["operation"]:
+        payload.setdefault("operation", tool["operation"])
+
+    events: list[dict[str, Any]] = []
+    import worker
+    import worker_protocol
+
+    def sink(event_type: str, data: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
+        events.append({"type": event_type, "payload": data})
+
+    worker_protocol.set_event_sink(sink)
+    try:
+        code = worker.run_command(tool["command"], payload)
+    finally:
+        worker_protocol.set_event_sink(None)
+
+    terminal = events[-1] if events else None
+    return {
+        "tool": tool_name,
+        "code": code,
+        "events": events,
+        "ok": bool(terminal and terminal["type"] != "error"),
+        "result": terminal,
+    }
