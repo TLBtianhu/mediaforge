@@ -547,7 +547,10 @@ def emit_error(
 
 
 def import_available(name: str) -> bool:
-    return importlib.util.find_spec(name) is not None
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
 
 
 def load_payload(payload_arg: str | None) -> dict[str, Any]:

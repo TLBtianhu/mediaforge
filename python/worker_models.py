@@ -13,7 +13,10 @@ from typing import Any
 
 from audio_tools.asr_cache import is_complete_asr_model_cache
 
-import yaml
+try:
+    import yaml
+except ImportError:  # bootstrap Python may not have PyYAML; model listing does not need it
+    yaml = None
 
 from worker_inference_constraints import chunk_size_constraint
 from worker_protocol import WORKER_VERSION, _as_bool, _as_float, _as_int, emit, emit_error, import_available
@@ -159,6 +162,11 @@ class RegisteredUserModelEntry:
 
 @lru_cache(maxsize=1)
 def _model_catalog_path() -> Path:
+    # MediaForge ships a pinned catalog so the audio model library can be
+    # browsed before the inference runtime (and pymss) is installed.
+    bundled = Path(__file__).with_name("audio_catalog.json")
+    if bundled.is_file():
+        return bundled
     try:
         # Reading the catalog must not execute pymss.__init__: that imports the inference stack
         # and Torch, adding seconds to every app start merely to locate one JSON file.
@@ -488,6 +496,8 @@ def _default_model_dir() -> Path:
 
 
 def _load_yaml_config(config_path: Path) -> dict[str, Any]:
+    if yaml is None:
+        return {}
     with config_path.open(encoding="utf-8") as handle:
         data = yaml.load(handle, Loader=yaml.FullLoader)
     return data if isinstance(data, dict) else {}
@@ -1131,6 +1141,8 @@ def cmd_debug_model_config(payload: dict[str, Any]) -> int:
 
         if action in {"save", "save_downloaded"}:
             content = str(payload.get("content") or "")
+            if yaml is None:
+                raise RuntimeError("PyYAML is unavailable in this runtime")
             yaml.load(content, Loader=yaml.FullLoader)
             if base_path is None:
                 raise ValueError("This model does not have a config path")

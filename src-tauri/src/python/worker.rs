@@ -160,7 +160,11 @@ fn requires_bootstrap_python(command: &str) -> bool {
 fn allows_bootstrap_without_runtime(command: &str) -> bool {
     matches!(
         command,
-        "media_models" | "media_library" | "media_model_download"
+        "media_models"
+            | "media_library"
+            | "media_model_download"
+            | "list_models"
+            | "env_info"
     )
 }
 
