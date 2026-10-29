@@ -14,7 +14,7 @@ $runtimeEnvs = Join-Path $dataRoot "runtime-envs"
 if ($Clean) {
   # Keep runtime-envs: a Python runtime is expensive to reinstall and is not
   # user state. Only reset settings, models, library data, and WebView2.
-  Get-ChildItem $dataRoot -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "runtime-envs" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  Get-ChildItem $dataRoot -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin @("runtime-envs", "models") } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item $webViewRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
