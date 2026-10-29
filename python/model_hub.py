@@ -11,6 +11,8 @@ import importlib.util
 import json
 import shutil
 import time
+
+from download_watchdog import ProgressWatchdog, stall_seconds
 import urllib.parse
 import urllib.request
 
@@ -227,16 +229,25 @@ def _download_file(
     target.parent.mkdir(parents=True, exist_ok=True)
     part = target.with_suffix(target.suffix + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": "MediaForge/0.1"})
-    with urllib.request.urlopen(request, timeout=60) as response, open(part, "wb") as handle:
+    # 看门狗：连接建起来但一直不吐数据（或吐一半停住）时要报错，不能永远挂着。
+    # urlopen 的 timeout 只覆盖"连不上/等不到响应"，管不了"响应来了但不继续"。
+    watchdog = ProgressWatchdog(label, timeout=stall_seconds())
+    with watchdog, urllib.request.urlopen(request, timeout=60) as response, open(part, "wb") as handle:
         total = int(response.headers.get("Content-Length") or expected or 0)
         done = 0
         last = 0.0
         while True:
-            chunk = response.read(1024 * 1024)
+            # read 也可能永久阻塞：用较短超时的 socket 读不到就交给看门狗
+            try:
+                chunk = response.read(1024 * 1024)
+            except TimeoutError:
+                watchdog.beat(0)
+                continue
             if not chunk:
                 break
             handle.write(chunk)
             done += len(chunk)
+            watchdog.beat(len(chunk))
             if progress and (time.time() - last > 0.12 or (total and done >= total)):
                 last = time.time()
                 progress(min(0.99, done / total) if total else 0.5, f"下载 {label} · {done / 1024 / 1024:.0f} MB")
