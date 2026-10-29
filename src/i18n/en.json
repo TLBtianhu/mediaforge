@@ -692,7 +692,7 @@
   "separate": {
     "subtitle": "Separation, cleanup, and workflows",
     "input": "Input Source",
-    "model": "Separation Model",
+    "model": "Processing model",
     "output": "Output Settings",
     "stepInputHint": "Choose audio or video; batch drag-and-drop is supported",
     "stepOutputHint": "Set the output folder, stem format, and naming",
@@ -711,7 +711,7 @@
     "outputDirectoryTrailingCharacter": "Windows path names cannot end with a space or period.",
     "outputDirectoryReservedName": "The path contains a Windows reserved name. Choose another directory.",
     "outputDirectoryIncomplete": "The output directory path is incomplete.",
-    "modelPanelHint": "Downloaded models available for separation",
+    "modelPanelHint": "Choose a processing capability and primary model",
     "advancedPanelHint": "Inference overrides; unspecified parameters use defaults",
     "advancedPanelLoading": "Loading inference parameters for the current model…",
     "advancedPanelEmpty": "This model has no advanced inference parameters to display.",

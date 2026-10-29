@@ -692,7 +692,7 @@
   "separate": {
     "subtitle": "音频分离、修复与工作流推理",
     "input": "输入来源",
-    "model": "分离模型",
+    "model": "处理模型",
     "output": "输出设置",
     "stepInputHint": "选择音频或视频，支持批量拖入",
     "stepOutputHint": "设置输出目录、分轨格式与命名",
@@ -711,7 +711,7 @@
     "outputDirectoryTrailingCharacter": "Windows 路径名称不能以空格或句点结尾",
     "outputDirectoryReservedName": "路径包含 Windows 保留名称，请更换目录名",
     "outputDirectoryIncomplete": "输出目录路径不完整，请输入完整目录路径",
-    "modelPanelHint": "已下载且可用于分离的模型",
+    "modelPanelHint": "选择处理能力与主模型",
     "advancedPanelHint": "推理参数覆盖；未指定项沿用默认值",
     "advancedPanelLoading": "正在读取当前模型的推理参数…",
     "advancedPanelEmpty": "当前模型没有可显示的高级推理参数。",
