@@ -1,0 +1,4 @@
+# 插件宿主测试会各自拉起 VST 扫描子进程；默认线程数（= CPU 核数）下会互相踩崩
+# （0xC0000409）。限制测试线程数，`cargo test` 直接跑就是安全的。
+[env]
+RUST_TEST_THREADS = { value = "4", force = true }
