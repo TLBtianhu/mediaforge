@@ -13,6 +13,7 @@ type AgentJob = {
   command: string
   status: string
   source?: 'manual' | 'agent'
+  cancelTaskId?: string
   fraction: number
   message: string
   createdAt: number
@@ -85,7 +86,7 @@ async function openWorkspace() {
 async function cancel(job: AgentJob) {
   try {
     if ((job.source || 'agent') === 'manual') {
-      await invoke('cancel_task', { taskId: job.jobId })
+      await invoke('cancel_task', { taskId: job.cancelTaskId || job.jobId })
     } else {
       await invoke('cancel_agent_job', { jobId: job.jobId })
     }

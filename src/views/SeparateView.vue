@@ -41,6 +41,7 @@ import {
   resolveWorkflowRuntimeDefaults,
 } from '@/workflows/runtimeDefinition'
 import { useSettingsStore } from '@/stores/settings'
+import { journalJob } from '@/utils/operationJournal'
 import { useModelStore, type ModelDefaultInferenceParams, type ModelEntry } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import { buildModelCategoryOptionsFromModels, getModelCategoryLabel } from '@/utils/modelCategory'
@@ -49,7 +50,7 @@ import { getSeparateWorkflowInputIssue } from '@/utils/workflowInputs'
 import { sortStemOutputsByOrder } from '@/utils/stemOrder'
 import { retainAvailableModelNames } from '@/utils/modelSource'
 import { SEPARATE_MODEL_PAGE_SIZES } from '@/utils/pagination'
-import AppBrandMark from '@/components/AppBrandMark.vue'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
@@ -826,6 +827,33 @@ function isNoResultSeparationJob(job: SeparationJob) {
 }
 const separationJobs = computed(() => task.allJobs.filter(isSeparationJob))
 const separationSessionJobs = computed(() => task.sessionJobs.filter(isSeparationJob))
+
+function journalAudioJob(job: SeparationJob) {
+  const statusMap: Record<string, 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'> = {
+    queued: 'queued',
+    running: 'running',
+    done: 'completed',
+    failed: 'failed',
+    cancelled: 'cancelled',
+  }
+  void journalJob({
+    jobId: job.id,
+    command: 'separation',
+    source: 'manual',
+    status: statusMap[job.status] || 'running',
+    fraction: Math.max(0, Math.min(1, Number(job.progress || 0) / 100)),
+    message: `${job.model} · ${job.inputCount} ${t('separate.queueFileUnit')}`,
+    createdAt: job.createdAt / 1000,
+    finishedAt: job.finishedAt ? job.finishedAt / 1000 : null,
+    payload: { operation: 'separation', model: job.model, inputs: job.tasks.map(item => item.input) },
+    result: { outputs: job.tasks.flatMap(item => item.outputs) },
+    cancelTaskId: job.primary?.id,
+  })
+}
+
+watch(separationSessionJobs, jobs => {
+  for (const job of jobs) journalAudioJob(job)
+}, { deep: true, immediate: true })
 const noResultSeparationJobs = computed(() => separationJobs.value.filter(isNoResultSeparationJob)
   .sort((left, right) => right.updatedAt - left.updatedAt))
 const newestRunningJob = computed(() => {
@@ -2094,15 +2122,14 @@ async function retryCurrentTask() {
 </script>
 
 <template>
-  <div class="page separate-page">
-    <header class="console-topbar">
-      <div class="console-topbar__brand">
-        <AppBrandMark :size="30" variant="compact" shadow />
-        <div class="console-topbar__title">
-          <h1>{{ t('separate.title') }}</h1>
-          <span>{{ t('separate.subtitle') }}</span>
-        </div>
-      </div>
+  <div class="page separate-page mf-page" data-tone="blue">
+    <MediaPageHeader
+      :title="t('separate.title')"
+      :subtitle="t('separate.subtitle')"
+      :icon="MusicalNotesOutline"
+      eyebrow="AUDIO WORKSPACE"
+      tone="blue"
+    >
       <div class="console-topbar__controls" data-guide="separation-modes">
         <n-radio-group
           v-model:value="runMode"
@@ -2121,7 +2148,22 @@ async function retryCurrentTask() {
           {{ runMode === 'workflow' ? t('separate.manageWorkflowsInline') : t('separate.manageModelsInline') }}
         </n-button>
       </div>
-    </header>
+    </MediaPageHeader>
+
+    <div class="mf-step-strip separate-step-strip">
+      <div class="mf-step">
+        <span class="mf-step__num">01</span>
+        <div><div class="mf-step__title">{{ t('separate.input') }}</div><div class="mf-step__text">{{ t('separate.stepInputHint') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">02</span>
+        <div><div class="mf-step__title">{{ t('separate.output') }}</div><div class="mf-step__text">{{ t('separate.stepOutputHint') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">03</span>
+        <div><div class="mf-step__title">{{ t('separate.model') }}</div><div class="mf-step__text">{{ t('separate.stepRunHint') }}</div></div>
+      </div>
+    </div>
 
     <div class="console" :class="[`console--${taskPanelState}`, { 'console--busy': isConfigCompact }]">
       <aside class="console__rail">

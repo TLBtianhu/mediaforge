@@ -14,6 +14,7 @@ export type JournalJobInput = {
   payload?: Record<string, unknown>
   result?: Record<string, unknown> | null
   error?: string | null
+  cancelTaskId?: string
 }
 
 const lastSent = new Map<string, number>()

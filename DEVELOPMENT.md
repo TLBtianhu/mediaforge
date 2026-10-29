@@ -187,7 +187,8 @@ agent-workspace.json
 
 The app's `/agent` page reads the same index through the `agent_jobs` Tauri
 command and polls every three seconds. Manual media pages also journal their
-tasks with `journal_job`, so manual and agent work appear in one list.
+tasks with `journal_job`, and audio separation batches journal through
+`journalAudioJob`; manual and agent work appear in one list.
 Manual tasks cancel through `cancel_task`; agent jobs cancel through
 `cancel_agent_job`. Both paths persist the same job records.
 
