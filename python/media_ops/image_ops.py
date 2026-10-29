@@ -159,7 +159,7 @@ class RealESRGANUpscaler:
     def _run_tile(self, model, tile_rgb: np.ndarray) -> np.ndarray:
         import torch
 
-        tensor = torch.from_numpy(tile_rgb).permute(2, 0, 1).float().div_(255.0).unsqueeze(0).to(self.device)
+        tensor = torch.from_numpy(np.array(tile_rgb, copy=True)).permute(2, 0, 1).float().div(255.0).unsqueeze(0).to(self.device)
         if self.device == "cuda":
             tensor = tensor.half()
             with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.float16):
@@ -167,7 +167,7 @@ class RealESRGANUpscaler:
         else:
             with torch.inference_mode():
                 output = model(tensor)
-        output = output.float().clamp_(0, 1).detach()[0].permute(1, 2, 0).cpu().numpy()
+        output = torch.clamp(output.float(), 0, 1).detach()[0].permute(1, 2, 0).cpu().numpy()
         return (output * 255.0).round().astype(np.uint8)
 
     def _pad(self, image: np.ndarray, multiple: int = 4) -> tuple[np.ndarray, int, int]:
