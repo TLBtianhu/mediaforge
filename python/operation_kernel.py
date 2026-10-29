@@ -64,8 +64,9 @@ class Job:
 
 
 class OperationKernel:
-    def __init__(self, data_root: Path):
+    def __init__(self, data_root: Path, python_path: str | None = None):
         self.data_root = data_root
+        self.python_path = python_path
         self.jobs_root = data_root / "agent-jobs"
         self.jobs_root.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, Job] = {}
@@ -143,7 +144,7 @@ class OperationKernel:
         try:
             with open(stdout_path, "w", encoding="utf-8") as stdout, open(stderr_path, "w", encoding="utf-8") as stderr:
                 process = subprocess.Popen(
-                    [sys.executable, str(WORKER), job.command, "--payload", str(payload_path)],
+                    [self.python_path or sys.executable, str(WORKER), job.command, "--payload", str(payload_path)],
                     cwd=str(ROOT),
                     stdout=subprocess.PIPE,
                     stderr=stderr,

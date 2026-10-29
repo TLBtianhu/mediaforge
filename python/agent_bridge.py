@@ -45,6 +45,19 @@ def _json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
+def _active_runtime_python(runtime_envs: Path) -> str | None:
+    state_path = runtime_envs / "active-runtime.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    python_path = state.get("pythonPath") if isinstance(state, dict) else None
+    if not isinstance(python_path, str):
+        return None
+    candidate = Path(python_path).expanduser()
+    return str(candidate) if candidate.is_file() else None
+
+
 from operation_kernel import Job, OperationKernel
 
 
@@ -53,7 +66,9 @@ class Bridge:
         self.token = token
         self.port = port
         self.data_root = data_root
-        self.jobs = OperationKernel(data_root)
+        runtime_envs = Path(os.environ.get("PYMSS_STUDIO_RUNTIME_ENVS_DIR") or data_root / "runtime-envs")
+        self.python_path = _active_runtime_python(runtime_envs)
+        self.jobs = OperationKernel(data_root, self.python_path)
         explicit_model = os.environ.get("MEDIAFORGE_MODEL_DIR") or os.environ.get("PYMSS_MODEL_DIR")
         self.model_root = Path(explicit_model).expanduser() if explicit_model else data_root / "models"
         self.model_root.mkdir(parents=True, exist_ok=True)
