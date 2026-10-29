@@ -251,6 +251,25 @@ the model bindings directly. The shared `PipelineBuilder` component loads
 `media_capabilities` and lets users add, remove, and reorder capability steps
 with per-role model selectors; `custom` mode sends those steps to the worker.
 
+## Task / Workflow boundary
+
+- A task page runs exactly one capability with one primary model.
+- Multi-model composition belongs to `/workflows`; it must not be offered as a
+  task-page mode.
+- `/queue` is the global shared task queue; `/results` is the global output/history
+  surface. Audio's local queue modal is only a session shortcut and links to `/queue`.
+- `/agent` is a compatibility redirect to `/queue`.
+- Audio no longer exposes an inline workflow-mode switch; its header links to the
+  global workflow page.
+
+### Section hierarchy
+
+- Input and output cards use `01` / `02`.
+- The processing plan uses the square cube icon, not `03`, matching the audio
+  stage head. The step strip above still communicates the 01/02/03 sequence.
+- Cards share the rail-card visual tokens: 18px radius, 17/18px padding,
+  `--surface-1`, inset outline, and `--shadow-panel`.
+
 ## 打包前检查
 
 - [ ] `data/` 不存在或已清理
