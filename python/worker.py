@@ -142,6 +142,9 @@ def run_command(command: str, payload: dict) -> int:
     if command == "media_models":
         from media_ops.model_worker import cmd_media_models
         return cmd_media_models(payload)
+    if command == "media_model_download":
+        from media_ops.model_worker import cmd_media_model_download
+        return cmd_media_model_download(payload)
     if command == "infer":
         from worker_infer import cmd_infer
         return cmd_infer(payload)

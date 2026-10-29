@@ -9,9 +9,20 @@ import time
 import urllib.request
 from pathlib import Path
 
-from . import image_ops
-
 CATALOG_PATH = Path(__file__).with_name("media_catalog.json")
+
+
+def _default_model_dir() -> Path:
+    explicit = os.environ.get("MEDIAFORGE_MODEL_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    data_root = os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
+    if data_root:
+        return Path(data_root).expanduser() / "models"
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "MediaForge" / "models"
+    return Path.home() / ".mediaforge" / "models"
 
 
 def load_catalog() -> list[dict]:
@@ -21,7 +32,7 @@ def load_catalog() -> list[dict]:
 
 def model_dir(override: str | None = None) -> Path:
     value = str(override or "").strip()
-    root = Path(value).expanduser() if value else image_ops.model_dir()
+    root = Path(value).expanduser() if value else _default_model_dir()
     root.mkdir(parents=True, exist_ok=True)
     return root
 

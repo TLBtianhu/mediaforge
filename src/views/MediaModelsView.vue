@@ -55,6 +55,7 @@ const message = useMessage()
 const modelDir = ref('')
 const status = ref<Status | null>(null)
 const loading = ref(false)
+const loadError = ref('')
 const downloadingId = ref('')
 const progress = ref<Record<string, number>>({})
 const requestId = ref('')
@@ -98,6 +99,7 @@ function statusLabel(item: MediaModel) {
 async function load() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   loading.value = true
+  loadError.value = ''
   try {
     const result = await invoke<{ ok: boolean } & Status>('media_models', {
       payload: { operation: 'status', modelDir: modelDir.value },
@@ -110,7 +112,8 @@ async function load() {
     }
     if (!modelDir.value) modelDir.value = result.modelDir
   } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
+    loadError.value = error instanceof Error ? error.message : String(error)
+    message.error(loadError.value)
   } finally {
     loading.value = false
   }
@@ -143,7 +146,7 @@ async function download(item: MediaModel) {
   progress.value = { ...progress.value, [item.id]: 0 }
   requestId.value = `model-${Date.now()}-${item.id}`
   try {
-    await invoke('start_audio_tool', {
+    await invoke('start_media_model_download', {
       payload: {
         operation: 'media_model_download',
         requestId: requestId.value,
@@ -211,6 +214,13 @@ onBeforeUnmount(() => {
         <template #icon><n-icon :component="RefreshOutline" /></template>
       </n-button>
     </MediaPageHeader>
+
+    <n-alert v-if="loadError" type="error" :bordered="false">
+      <div class="model-load-error">
+        <span>{{ loadError }}</span>
+        <router-link to="/settings?section=runtime">{{ t('runtimeStatus.notReady') }} →</router-link>
+      </div>
+    </n-alert>
 
     <section class="mf-panel">
       <div class="mf-panel__head">
@@ -303,6 +313,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .model-dir-row { display: flex; gap: 8px; align-items: center; }
+.model-load-error { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.model-load-error a { color: var(--primary-strong); font-weight: 700; white-space: nowrap; }
 .model-env { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
 .model-env__label { margin-right: 4px; color: var(--text-color-3); font-size: 11px; font-weight: 700; }
 .model-env__hint { margin-left: auto; color: var(--text-color-3); font-size: 11px; }

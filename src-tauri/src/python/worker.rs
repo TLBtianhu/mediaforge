@@ -157,6 +157,13 @@ fn requires_bootstrap_python(command: &str) -> bool {
     )
 }
 
+fn allows_bootstrap_without_runtime(command: &str) -> bool {
+    matches!(
+        command,
+        "media_models" | "media_library" | "media_model_download"
+    )
+}
+
 fn select_worker_python(
     command: &str,
     bootstrap_python: &str,
@@ -168,7 +175,7 @@ fn select_worker_python(
     if let Some(python) = active_runtime_python {
         return Ok(python);
     }
-    if command == "test_connection" {
+    if command == "test_connection" || allows_bootstrap_without_runtime(command) {
         return Ok(bootstrap_python.to_string());
     }
     Err(AppError::Worker(

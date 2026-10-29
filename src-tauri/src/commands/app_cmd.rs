@@ -2396,6 +2396,23 @@ pub async fn media_models(app: AppHandle, payload: Value) -> AppResult<Value> {
 }
 
 #[tauri::command]
+pub async fn start_media_model_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    payload: Value,
+) -> AppResult<Value> {
+    let task_id = payload
+        .get("requestId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::Worker("missing media model download request id".into()))?
+        .to_string();
+    spawn_worker_background(app, state, "media_model_download", task_id.clone(), payload)?;
+    Ok(serde_json::json!({ "taskId": task_id, "started": true }))
+}
+
+#[tauri::command]
 pub async fn start_audio_tool(
     app: AppHandle,
     state: State<'_, AppState>,
