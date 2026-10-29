@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { dropSkippedSteps, precheckPlan, summarizePrecheck } from '../utils/mediaPrecheck.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -175,6 +176,21 @@ async function run() {
     message.warning(t('factory.selectOutput'))
     return
   }
+  // 跑之前先问后端：输入可用吗、目标比原图大吗、图上有没有水印
+  const precheck = summarizePrecheck(await precheckPlan(pipelineSteps.value, inputs.value))
+  if (!precheck.runnable) {
+    message.error(precheck.notices.join('；') || t('factory.processing'))
+    return
+  }
+  const stepsToRun = dropSkippedSteps(pipelineSteps.value, precheck.dropped)
+  if (precheck.notices.length) {
+    if (!stepsToRun.length) {
+      // 唯一的步骤被预检判死：直接说清楚，不让用户等一轮失败
+      message.warning(precheck.notices.join('；'))
+      return
+    }
+    message.warning(precheck.notices.join('；'))
+  }
   busy.value = true
   progress.value = 0
   status.value = t('factory.processing')
@@ -190,7 +206,7 @@ async function run() {
         requestId: requestId.value,
         inputs: inputs.value,
         outputDir: outputDir.value,
-        steps: pipelineSteps.value,
+        steps: stepsToRun,
         modelDir: modelDir.value,
       },
     })

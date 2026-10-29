@@ -2505,6 +2505,13 @@ pub async fn start_model_hub_download(
     Ok(serde_json::json!({ "taskId": task_id, "started": true }))
 }
 
+/// 计划预检：把步骤与输入交给 worker 判断"这计划能不能跑"。
+/// 只读、无副作用，所以不像 start_audio_tool 那样需要 requestId。
+#[tauri::command]
+pub async fn media_precheck(app: AppHandle, payload: Option<Value>) -> AppResult<Value> {
+    run_worker_with_payload(&app, "media_precheck", payload)
+}
+
 #[tauri::command]
 pub async fn start_audio_tool(
     app: AppHandle,
