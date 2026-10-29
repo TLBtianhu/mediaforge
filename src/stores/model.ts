@@ -63,6 +63,12 @@ export type ModelEntry = {
   defaultInferenceParamsResolved?: boolean
   defaultInferenceParamsSource?: 'config' | 'runtime_fallback'
   inferenceParamMeta?: InferenceParamMeta
+  /**
+   * 槽位接口（后端按任务族生成）：只声明"支持哪些槽位、绑定到哪个原生键"。
+   * 界面的分组与顺序来自前端布局档，不在这里——见 src/litegraph/renderPlan.ts。
+   */
+  slots?: Record<string, { bind: string; min?: number; max?: number; step?: number; default?: unknown; choices?: Array<string | number>; derive?: string }>
+  slotTask?: string
 }
 
 /** One architecture the worker thinks a weights file might be, with why it thinks so. */
@@ -799,6 +805,7 @@ export const useModelStore = defineStore('model', () => {
           supportedOnly: false,
           includeLocalState: true,
           includeCustom: true,
+          includeInterfaces: true,
           modelDir: settings.modelDir || null,
         },
       })
