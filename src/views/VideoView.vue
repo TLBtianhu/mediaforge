@@ -148,6 +148,7 @@ const planStep = ref<{ capability: string; bindings: Record<string, string>; par
   bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' },
   params: { conf: 0.25, expand: 8, detectMode: 'fixed' },
 })
+const planAvailable = ref(true)
 const pipelineSteps = computed(() => [planStep.value])
 const legacySteps = computed(() => {
   const steps: Array<Record<string, unknown>> = []
@@ -461,7 +462,7 @@ onBeforeUnmount(() => {
           <div class="mf-card-head"><span class="mf-card-index">03</span><div class="mf-card-head__label"><strong>{{ t('plan.title') }}</strong><small>{{ t('pipeline.stepCompose') }}</small></div></div>
         </template>
         <n-space vertical :size="12">
-          <ProcessingPlan v-model="planStep" modality="video" :busy="busy" />
+          <ProcessingPlan v-model="planStep" modality="video" :busy="busy" @availability="planAvailable = $event" />
           <div class="video-row">
             <div>
               <label class="video-label">{{ t('video.preview') }}</label>
@@ -477,7 +478,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <p class="video-hint">{{ t('video.previewHint') }}</p>
-          <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="run">
+          <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy || !planAvailable" @click="run">
             <template #icon><n-icon :component="VideocamOutline" /></template>
             {{ t('factory.start') }}
           </n-button>

@@ -96,6 +96,7 @@ const planStep = ref<PlanStep>({
   bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' },
   params: { conf: 0.25, expand: 8, detectMode: 'fixed' },
 })
+const planAvailable = ref(true)
 const scaleOptions = [2, 4].map(value => ({ label: `${value}×`, value }))
 const targetOptions = computed(() => [
   { label: t('image.original'), value: 'none' },
@@ -431,8 +432,8 @@ onBeforeUnmount(() => {
           <div class="mf-card-head"><span class="mf-card-index">03</span><div class="mf-card-head__label"><strong>{{ t('plan.title') }}</strong><small>{{ t('pipeline.stepCompose') }}</small></div></div>
         </template>
         <n-space vertical :size="12">
-          <ProcessingPlan v-model="planStep" modality="image" :busy="busy" />
-          <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="run">
+          <ProcessingPlan v-model="planStep" modality="image" :busy="busy" @availability="planAvailable = $event" />
+          <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy || !planAvailable" @click="run">
             <template #icon><n-icon :component="SparklesOutline" /></template>
             {{ t('factory.start') }}
           </n-button>

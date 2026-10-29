@@ -33,7 +33,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   busy: false,
 })
-const emit = defineEmits<{ 'update:modelValue': [value: PlanStep] }>()
+const emit = defineEmits<{ 'update:modelValue': [value: PlanStep]; availability: [value: boolean] }>()
 const { t } = useI18n()
 const router = useRouter()
 const capabilities = ref<Capability[]>([])
@@ -55,6 +55,7 @@ const modelOptions = computed(() => {
     .map(model => ({ label: `${model.label}${model.downloaded ? '' : ' · ' + t('pipeline.notDownloaded')}`, value: model.id }))
 })
 const hasUsableModel = computed(() => Boolean(current.value?.models.some(model => model.downloaded && model.implemented && model.roles.includes(displayRole.value))))
+watch(hasUsableModel, value => emit('availability', value), { immediate: true })
 const selectedModel = computed(() => current.value && displayRole.value ? props.modelValue?.bindings[displayRole.value] || '' : '')
 const paramEntries = computed(() => Object.entries(current.value?.params || {}))
 
@@ -188,7 +189,7 @@ onMounted(load)
 .plan-empty__glyph { display: grid; width: 56px; height: 56px; margin-bottom: 4px; place-items: center; border-radius: 16px; color: var(--primary-strong); background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 26%, transparent); font-size: 26px; }
 .plan-empty strong { color: var(--on-surface-heading); font-size: 14px; }
 .plan-empty p { max-width: 320px; margin: 0; color: var(--on-surface-muted); font-size: 12px; line-height: 1.5; }
-.plan-empty :deep(.n-button) { margin-top: 8px; }
+.plan-empty :deep(.n-button) { margin-top: 8px; color: var(--on-surface-heading); background: var(--surface-2); }
 .processing-plan__head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
 .processing-plan__head > div { display: flex; flex-direction: column; gap: 3px; }
 .processing-plan__head span { color: var(--on-surface-muted); font-size: 10.5px; }
