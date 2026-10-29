@@ -211,7 +211,7 @@ def cmd_media_workflow(payload: dict[str, Any]) -> int:
                 else:
                     outputs.append(_run_video(source, output_dir, steps, payload, request_id, index, total))
             except Exception as exc:  # noqa: BLE001
-                failed.append({"path": str(source), "error": str(exc)})
+                failed.append(failures.describe(source, exc))
 
         evaluation.attach(outputs)
         emit(

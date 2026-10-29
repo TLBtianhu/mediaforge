@@ -561,6 +561,15 @@ def emit_error(
     }
     if extra:
         payload.update(extra)
+    # 能认出来的失败附带可执行建议：agent 拿到"下一步动哪个开关"才能自己收敛
+    try:
+        from recovery import classify
+
+        hint = classify(message, detail)
+        if hint:
+            payload["recovery"] = hint
+    except Exception:  # noqa: BLE001 - 建议是增值信息，不能影响报错本身
+        pass
     emit("error", payload, request_id=request_id, task_id=task_id)
     return 1
 

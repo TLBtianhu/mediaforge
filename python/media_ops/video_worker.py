@@ -11,6 +11,7 @@ import worker_paths
 from . import image_ops, video_ops
 from . import capabilities
 from . import evaluation
+from . import failures
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -107,7 +108,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                     )
                 )
             except Exception as exc:  # noqa: BLE001
-                failed.append({"path": str(source), "error": str(exc)})
+                failed.append(failures.describe(source, exc))
 
         evaluation.attach(outputs)
         emit(

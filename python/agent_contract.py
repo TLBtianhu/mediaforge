@@ -129,6 +129,15 @@ def _tool(
     }
 
 
+def _recovery_actions() -> dict[str, str]:
+    try:
+        from recovery import ACTIONS
+
+        return dict(ACTIONS)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def load_task_slots() -> dict[str, Any]:
     try:
         from media_ops import registry
@@ -446,6 +455,8 @@ def build_contract() -> dict[str, Any]:
         "costLevels": COST_LEVELS,
         # 槽位词汇表：UI 与 agent 共用同一份参数语义
         "slots": vocabulary,
+        # 失败时可执行的恢复动作（worker 的错误事件里会给出具体取值）
+        "recoveryActions": _recovery_actions(),
         "taskSlots": {
             task: [slot for slot in (spec.get("slots") or []) if slot in vocabulary]
             for task, spec in (load_task_slots() or {}).items()
