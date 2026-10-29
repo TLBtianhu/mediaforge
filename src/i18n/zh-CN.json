@@ -1,4 +1,4 @@
-{
+﻿{
   "app": {
     "name": "MediaForge",
     "bootPreparing": "正在初始化工作环境…",
@@ -190,8 +190,8 @@
     "workspace": "共享工作区",
     "openWorkspace": "打开工作区",
     "noWorkspace": "尚未建立工作区",
-    "emptyTitle": "还没有 Agent 任务",
-    "emptyHint": "DSH 通过 MCP 启动的任务会出现在这里。也可以手动启动本地 MCP bridge：",
+    "emptyTitle": "还没有任务",
+    "emptyHint": "DSH 通过 MCP 启动的任务、手动任务和后台处理都会出现在这里。",
     "outputs": "个输出",
     "manual": "手动",
     "agent": "Agent",
@@ -2935,3 +2935,4 @@
     "workflowEditorTitle": "工作流编辑器"
   }
 }
+
