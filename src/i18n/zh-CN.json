@@ -137,6 +137,8 @@
     "subtitle": "按能力组合步骤，每个角色独立绑定模型",
     "addStep": "添加步骤",
     "addFirst": "添加第一步",
+    "stepInput": "选择素材与处理目标",
+    "stepCompose": "按能力组合步骤、绑定模型",
     "empty": "还没有步骤。添加能力后，模型和参数会按能力展开。",
     "notDownloaded": "未下载"
   },

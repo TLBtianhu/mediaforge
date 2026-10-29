@@ -61,7 +61,7 @@ const settings = useSettingsStore()
 
 const inputs = ref<string[]>([])
 const outputDir = ref(settings.outputDir || '')
-const mode = ref<ImageMode>('watermark_upscale')
+const mode = ref<ImageMode>('custom')
 const scale = ref(2)
 const target = ref<'none' | '1080p' | '2k' | '4k' | 'custom'>('none')
 const width = ref(1920)
@@ -98,6 +98,17 @@ const customSteps = ref<Array<{ capability: string; bindings: Record<string, str
   { capability: 'watermark_removal', bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' }, params: { conf: 0.25, expand: 8, detectMode: 'fixed' } },
   { capability: 'upscale', bindings: { upscaler: 'media:real-esrgan-x2' }, params: { target: 'none', fit: 'contain', scale: 2 } },
 ])
+
+function applyPreset(kind: 'watermark_upscale' | 'upscale' | 'watermark') {
+  const steps: Array<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }> = []
+  if (kind !== 'upscale') {
+    steps.push({ capability: 'watermark_removal', bindings: { detector: detectorModel.value, inpainter: inpainterModel.value }, params: { conf: 0.25, expand: 8, detectMode: detectMode.value } })
+  }
+  if (kind !== 'watermark') {
+    steps.push({ capability: 'upscale', bindings: { upscaler: upscalerModel.value }, params: { target: 'none', fit: 'contain', scale: 2 } })
+  }
+  customSteps.value = steps
+}
 const scaleOptions = [2, 4].map(value => ({ label: `${value}×`, value }))
 const targetOptions = computed(() => [
   { label: t('image.original'), value: 'none' },
@@ -394,15 +405,15 @@ onBeforeUnmount(() => {
     <div class="mf-step-strip mf-step-strip--top">
       <div class="mf-step">
         <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('image.mode') }}</div></div>
+        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('pipeline.stepInput') }}</div></div>
       </div>
       <div class="mf-step">
         <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('image.target') }}</div><div class="mf-step__text">{{ t('video.detectMode') }} · {{ t('image.fit') }}</div></div>
+        <div><div class="mf-step__title">{{ t('pipeline.title') }}</div><div class="mf-step__text">{{ t('pipeline.stepCompose') }}</div></div>
       </div>
       <div class="mf-step">
         <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('video.result') }}</div><div class="mf-step__text">{{ t('video.preview') }} · audio</div></div>
+        <div><div class="mf-step__title">{{ t('video.result') }}</div><div class="mf-step__text">{{ pipelineSummary }} · audio</div></div>
       </div>
     </div>
 
@@ -456,74 +467,13 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div>
-            <label class="video-label">{{ t('image.mode') }}</label>
-            <n-select v-model:value="mode" :options="modeOptions" :disabled="busy" />
+          <div class="pipeline-presets">
+            <button type="button" :disabled="busy" @click="applyPreset('watermark_upscale')">{{ t('image.watermarkUpscale') }}</button>
+            <button type="button" :disabled="busy" @click="applyPreset('upscale')">{{ t('image.upscale') }}</button>
+            <button type="button" :disabled="busy" @click="applyPreset('watermark')">{{ t('image.watermark') }}</button>
           </div>
 
-          <div v-if="mode === 'custom'">
-            <PipelineBuilder v-model="customSteps" modality="video" :busy="busy" />
-          </div>
-
-          <div v-if="showUpscale">
-            <label class="video-label">{{ t('image.upscalerModel') }}</label>
-            <n-select v-model:value="upscalerModel" :options="upscalerOptions" :disabled="busy" />
-          </div>
-          <div v-if="showWatermark" class="video-row">
-            <div>
-              <label class="video-label">{{ t('image.detectorModel') }}</label>
-              <n-select v-model:value="detectorModel" :options="detectorOptions" :disabled="busy" />
-            </div>
-            <div>
-              <label class="video-label">{{ t('image.inpainterModel') }}</label>
-              <n-select v-model:value="inpainterModel" :options="inpainterOptions" :disabled="busy" />
-            </div>
-          </div>
-
-          <template v-if="showUpscale">
-            <div class="video-row">
-              <div>
-                <label class="video-label">{{ t('image.target') }}</label>
-                <n-select v-model:value="target" :options="targetOptions" :disabled="busy" />
-              </div>
-              <div v-if="target === 'none'">
-                <label class="video-label">{{ t('image.scale') }}</label>
-                <n-select v-model:value="scale" :options="scaleOptions" :disabled="busy" />
-              </div>
-              <div>
-                <label class="video-label">{{ t('image.fit') }}</label>
-                <n-select v-model:value="fit" :options="fitOptions" :disabled="busy" />
-              </div>
-            </div>
-            <div v-if="target === 'custom'" class="video-row">
-              <div>
-                <label class="video-label">{{ t('image.width') }}</label>
-                <n-input-number v-model:value="width" :min="64" :max="8192" :disabled="busy" />
-              </div>
-              <div>
-                <label class="video-label">{{ t('image.height') }}</label>
-                <n-input-number v-model:value="height" :min="64" :max="8192" :disabled="busy" />
-              </div>
-            </div>
-          </template>
-
-          <template v-if="showWatermark">
-            <div class="video-row">
-              <div>
-                <label class="video-label">{{ t('video.detectMode') }}</label>
-                <n-select v-model:value="detectMode" :options="detectOptions" :disabled="busy" />
-              </div>
-              <div>
-                <label class="video-label">{{ t('image.conf') }}</label>
-                <n-input-number v-model:value="conf" :min="0.05" :max="0.95" :step="0.05" :disabled="busy" />
-              </div>
-              <div>
-                <label class="video-label">{{ t('image.expand') }}</label>
-                <n-input-number v-model:value="expand" :min="0" :max="64" :disabled="busy" />
-              </div>
-            </div>
-            <n-alert type="info" :bordered="false">{{ t('video.detectorHint') }}</n-alert>
-          </template>
+          <PipelineBuilder v-model="customSteps" modality="video" :busy="busy" />
 
           <div class="video-row">
             <div>

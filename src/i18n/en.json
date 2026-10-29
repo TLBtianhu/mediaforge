@@ -137,6 +137,8 @@
     "subtitle": "Compose capabilities and bind a model to each role",
     "addStep": "Add step",
     "addFirst": "Add first step",
+    "stepInput": "Choose an asset and a processing goal",
+    "stepCompose": "Compose capabilities and bind models",
     "empty": "No steps yet. Add a capability to reveal its roles and parameters.",
     "notDownloaded": "not downloaded"
   },
