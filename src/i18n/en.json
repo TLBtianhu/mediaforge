@@ -122,6 +122,7 @@
     "missing": "Missing",
     "partial": "Incomplete",
     "downloadFailed": "Download failed",
+    "pending": "Adapter pending",
     "empty": "No matching models",
     "videoEmpty": "No standalone video models yet",
     "videoEmptyHint": "Video processing currently reuses image models frame by frame: Real-ESRGAN upscaling plus LaMa watermark removal, then FFmpeg muxes the frames and original audio."

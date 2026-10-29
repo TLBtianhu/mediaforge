@@ -100,6 +100,7 @@ def _audio_record(item: dict, root: Path, source: str) -> dict:
         "id": f"audio:{name}",
         "provider": "pymss-audio",
         "modality": "audio",
+        "modalities": ["audio"],
         "name": name,
         "label": Path(name).stem,
         "task": str(item.get("model_type") or item.get("architecture") or "separation"),
@@ -114,6 +115,7 @@ def _audio_record(item: dict, root: Path, source: str) -> dict:
         "partial": partial,
         "missingPaths": missing,
         "runtime": "pymss",
+        "implemented": True,
         "downloadable": True,
     }
 
@@ -125,6 +127,8 @@ def _media_record(item: dict, root: Path) -> dict:
         "id": f"media:{item.get('id') or item.get('name')}",
         "provider": "media-image",
         "modality": str(item.get("modality") or "image"),
+        "modalities": list(item.get("modalities") or [item.get("modality") or "image"]),
+        "implemented": bool(item.get("implemented", True)),
         "name": str(item.get("name") or ""),
         "label": str(item.get("label") or item.get("name") or ""),
         "task": str(item.get("task") or ""),
@@ -167,7 +171,7 @@ def list_models(
             or text in record["architecture"].lower()
         ]
     if modality in {"audio", "image", "video"}:
-        records = [record for record in records if record["modality"] == modality]
+        records = [record for record in records if modality in record.get("modalities", [record["modality"]])]
     records.sort(key=lambda record: (record["modality"] != "audio", record["categoryCn"], record["label"].lower()))
     environment = {
         "pymss": importlib.util.find_spec("pymss") is not None,

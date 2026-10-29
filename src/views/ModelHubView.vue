@@ -25,6 +25,8 @@ type ModelRecord = {
   id: string
   provider: string
   modality: 'audio' | 'image' | 'video'
+  modalities: string[]
+  implemented: boolean
   name: string
   label: string
   task: string
@@ -76,14 +78,14 @@ let unlisten: UnlistenFn | undefined
 
 const tabs = computed(() => [
   { value: 'all', label: t('modelHub.all'), count: models.value.length },
-  { value: 'audio', label: t('modelHub.audio'), count: models.value.filter(item => item.modality === 'audio').length },
-  { value: 'image', label: t('modelHub.image'), count: models.value.filter(item => item.modality === 'image').length },
-  { value: 'video', label: t('modelHub.video'), count: models.value.filter(item => item.modality === 'video').length },
+  { value: 'audio', label: t('modelHub.audio'), count: models.value.filter(item => item.modalities.includes('audio')).length },
+  { value: 'image', label: t('modelHub.image'), count: models.value.filter(item => item.modalities.includes('image')).length },
+  { value: 'video', label: t('modelHub.video'), count: models.value.filter(item => item.modalities.includes('video')).length },
 ])
 const filtered = computed(() => {
   const text = query.value.trim().toLowerCase()
   return models.value.filter(item => {
-    if (modality.value !== 'all' && item.modality !== modality.value) return false
+    if (modality.value !== 'all' && !item.modalities.includes(modality.value)) return false
     if (downloadedOnly.value && !item.downloaded) return false
     if (!text) return true
     return [item.name, item.label, item.categoryCn, item.architecture]
@@ -269,14 +271,15 @@ onBeforeUnmount(() => {
             <div class="hub-card__title"><strong>{{ item.label }}</strong><span :title="item.name">{{ item.name }}</span></div>
             <n-tag size="small" :type="item.downloaded ? 'success' : item.partial ? 'warning' : 'default'" :bordered="false">{{ item.downloaded ? t('modelHub.downloaded') : item.partial ? t('modelHub.partial') : t('modelHub.missing') }}</n-tag>
           </div>
-          <div class="hub-card__badges"><n-tag size="small" :bordered="false">{{ modalityLabel(item.modality) }}</n-tag><span>{{ item.categoryCn }}</span><span>{{ runtimeLabel(item.runtime) }}</span></div>
+          <div class="hub-card__badges"><n-tag v-for="value in item.modalities" :key="value" size="small" :bordered="false">{{ modalityLabel(value) }}</n-tag><span>{{ item.categoryCn }}</span><span>{{ runtimeLabel(item.runtime) }}</span><n-tag v-if="!item.implemented" size="small" type="info" :bordered="false">{{ t('modelHub.pending') }}</n-tag></div>
           <p class="hub-card__desc">{{ item.description }}</p>
           <div class="hub-card__meta"><span>{{ formatSize(item.size) }}</span><span>{{ item.license }}</span><span>{{ item.architecture }}</span></div>
           <n-progress v-if="downloadingId === item.id" type="line" :percentage="progress[item.id] || 0" />
-          <n-button v-if="!item.downloaded" type="primary" class="mf-primary-action" :loading="downloadingId === item.id" :disabled="Boolean(downloadingId)" @click="download(item)">
+          <n-button v-if="!item.downloaded && item.implemented" type="primary" class="mf-primary-action" :loading="downloadingId === item.id" :disabled="Boolean(downloadingId)" @click="download(item)">
             <template #icon><n-icon :component="CloudDownloadOutline" /></template>
             {{ downloadingId === item.id ? t('modelHub.downloading') : t('modelHub.download') }}
           </n-button>
+          <div v-else-if="!item.implemented" class="hub-card__pending">{{ t('modelHub.pending') }}</div>
           <div v-else class="hub-card__ready"><n-icon :component="SparklesOutline" />{{ t('modelHub.downloaded') }}</div>
         </article>
       </div>
@@ -307,5 +310,6 @@ onBeforeUnmount(() => {
 .hub-card__desc { display: -webkit-box; overflow: hidden; min-height: 32px; margin: 9px 0; color: var(--text-color-2); font-size: 11px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .hub-card__meta { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-bottom: 11px; color: var(--text-color-3); font-size: 10px; }
 .hub-card__ready { display: flex; gap: 6px; align-items: center; justify-content: center; min-height: 34px; border-radius: 9px; background: color-mix(in srgb, #0f9f72 10%, transparent); color: #0f9f72; font-size: 11px; font-weight: 700; }
+.hub-card__pending { display: flex; align-items: center; justify-content: center; min-height: 34px; border-radius: 9px; background: var(--action-color); color: var(--text-color-3); font-size: 10.5px; }
 @media (max-width: 980px) { .hub-grid { grid-template-columns: 1fr; } .hub-toolbar { grid-template-columns: 1fr; } }
 </style>
