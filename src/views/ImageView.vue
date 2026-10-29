@@ -13,7 +13,7 @@ import {
   SparklesOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
-import PipelineBuilder from '@/components/media/PipelineBuilder.vue'
+import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -90,21 +90,12 @@ const modeOptions = computed(() => [
   { label: t('image.watermarkUpscale'), value: 'watermark_upscale' },
   { label: t('image.customPipeline'), value: 'custom' },
 ])
-const customSteps = ref<Array<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }>>([
-  { capability: 'watermark_removal', bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' }, params: { conf: 0.25, expand: 8, detectMode: 'fixed' } },
-  { capability: 'upscale', bindings: { upscaler: 'media:real-esrgan-x2' }, params: { target: 'none', fit: 'contain', scale: 2 } },
-])
-
-function applyPreset(kind: 'watermark_upscale' | 'upscale' | 'watermark') {
-  const steps: Array<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }> = []
-  if (kind !== 'upscale') {
-    steps.push({ capability: 'watermark_removal', bindings: { detector: detectorModel.value, inpainter: inpainterModel.value }, params: { conf: 0.25, expand: 8, detectMode: 'fixed' } })
-  }
-  if (kind !== 'watermark') {
-    steps.push({ capability: 'upscale', bindings: { upscaler: upscalerModel.value }, params: { target: 'none', fit: 'contain', scale: 2 } })
-  }
-  customSteps.value = steps
-}
+type PlanStep = { capability: string; bindings: Record<string, string>; params: Record<string, unknown> }
+const planStep = ref<PlanStep>({
+  capability: 'watermark_removal',
+  bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' },
+  params: { conf: 0.25, expand: 8, detectMode: 'fixed' },
+})
 const scaleOptions = [2, 4].map(value => ({ label: `${value}×`, value }))
 const targetOptions = computed(() => [
   { label: t('image.original'), value: 'none' },
@@ -135,25 +126,7 @@ const detectorOptions = computed(() => modelOptions('watermark_removal', 'detect
 const inpainterOptions = computed(() => modelOptions('watermark_removal', 'inpainter', [
   { label: 'LaMa Inpainting', value: 'media:lama' },
 ]))
-const pipelineSteps = computed(() => {
-  if (mode.value === 'custom') return customSteps.value
-  const steps: Array<Record<string, unknown>> = []
-  if (mode.value !== 'upscale') {
-    steps.push({
-      capability: 'watermark_removal',
-      bindings: { detector: detectorModel.value, inpainter: inpainterModel.value },
-      params: { conf: conf.value, expand: expand.value },
-    })
-  }
-  if (mode.value !== 'watermark') {
-    steps.push({
-      capability: 'upscale',
-      bindings: { upscaler: upscalerModel.value },
-      params: { target: target.value, width: width.value, height: height.value, fit: fit.value, scale: scale.value },
-    })
-  }
-  return steps
-})
+const pipelineSteps = computed(() => [planStep.value])
 async function loadMediaModels() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   try {
@@ -167,18 +140,8 @@ async function loadMediaModels() {
 }
 const showUpscale = computed(() => mode.value !== 'watermark' && mode.value !== 'custom')
 const showWatermark = computed(() => mode.value !== 'upscale' && mode.value !== 'custom')
-const pipelineSummary = computed(() => {
-  if (mode.value === 'custom') return t('image.customPipeline')
-  const parts: string[] = []
-  if (showUpscale.value) {
-    parts.push(upscalerOptions.value.find(item => item.value === upscalerModel.value)?.label || 'Upscaler')
-  }
-  if (showWatermark.value) {
-    parts.push(detectorOptions.value.find(item => item.value === detectorModel.value)?.label || 'Detector')
-    parts.push(inpainterOptions.value.find(item => item.value === inpainterModel.value)?.label || 'Inpainter')
-  }
-  return parts.join(' · ')
-})
+const capabilityLabels: Record<string, string> = { upscale: '超分', watermark_removal: '去水印 / 物体移除', face_restoration: '人脸修复' }
+const pipelineSummary = computed(() => capabilityLabels[planStep.value.capability] || planStep.value.capability)
 const firstOutput = computed(() => outputs.value[0] || null)
 const resultSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
 const originalSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.source) : '')
@@ -405,8 +368,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="mf-page-grid">
-      <n-card :title="t('factory.input')" size="small">
+    <div class="media-workbench">
+      <n-card class="workbench-input" :title="t('factory.input')" size="small">
         <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
           <span class="mf-dropzone__icon">
             <n-icon :component="DocumentOutline" :size="26" />
@@ -431,7 +394,7 @@ onBeforeUnmount(() => {
         </template>
       </n-card>
 
-      <n-card :title="t('factory.output')" size="small">
+      <n-card class="workbench-output" :title="t('factory.output')" size="small">
         <n-space vertical :size="12">
           <div>
             <label class="image-label">{{ t('factory.outputDir') }}</label>
@@ -443,7 +406,6 @@ onBeforeUnmount(() => {
               </n-button>
             </div>
           </div>
-
           <div>
             <label class="image-label">{{ t('image.modelDir') }}</label>
             <div class="image-path">
@@ -455,23 +417,18 @@ onBeforeUnmount(() => {
             </div>
             <p class="image-hint">{{ t('image.modelDirHint') }}</p>
           </div>
+        </n-space>
+      </n-card>
 
-          <div class="pipeline-presets">
-            <button type="button" :disabled="busy" @click="applyPreset('watermark_upscale')">{{ t('image.watermarkUpscale') }}</button>
-            <button type="button" :disabled="busy" @click="applyPreset('upscale')">{{ t('image.upscale') }}</button>
-            <button type="button" :disabled="busy" @click="applyPreset('watermark')">{{ t('image.watermark') }}</button>
-          </div>
-
-          <PipelineBuilder v-model="customSteps" modality="image" :busy="busy" />
-
+      <n-card class="workbench-plan" :title="t('plan.title')" size="small">
+        <n-space vertical :size="12">
+          <ProcessingPlan v-model="planStep" modality="image" :busy="busy" />
           <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="run">
             <template #icon><n-icon :component="SparklesOutline" /></template>
             {{ t('factory.start') }}
           </n-button>
-
           <n-progress v-if="busy || progress" type="line" :percentage="progress" />
           <n-alert v-if="status" :type="failedCount ? 'error' : 'info'" :bordered="false">{{ status }}</n-alert>
-
           <div v-if="outputs.length" class="image-outputs">
             <div class="image-outputs-head">
               <strong>{{ t('factory.outputs') }}</strong>
@@ -488,9 +445,8 @@ onBeforeUnmount(() => {
           </div>
         </n-space>
       </n-card>
-    </div>
 
-    <n-card v-if="firstOutput" :title="t('image.compare')" size="small">
+    <n-card v-if="firstOutput" class="workbench-result" :title="t('image.compare')" size="small">
       <div class="image-compare">
         <img class="compare-base" :src="resultSrc" :alt="t('image.after')" />
         <img class="compare-top" :src="originalSrc" :alt="t('image.before')" :style="{ clipPath: `inset(0 ${100 - compare}% 0 0)` }" />
@@ -504,11 +460,17 @@ onBeforeUnmount(() => {
     </n-card>
 
   </div>
+  </div>
 </template>
 
 <style scoped>
 .image-page :deep(.n-card) { border-radius: 18px; box-shadow: 0 12px 34px rgba(29, 39, 64, 0.045); }
 .image-page { display: flex; flex-direction: column; gap: 12px; }
+.media-workbench { display: grid; grid-template-columns: minmax(280px, .82fr) minmax(0, 1.55fr); grid-template-areas: "input plan" "output plan" "result result"; gap: 16px; align-items: start; }
+.workbench-input { grid-area: input; }
+.workbench-output { grid-area: output; }
+.workbench-plan { grid-area: plan; }
+.workbench-result { grid-area: result; }
 .image-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .image-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .image-count { color: var(--text-color-3); font-size: 12px; }
@@ -527,5 +489,5 @@ onBeforeUnmount(() => {
 .compare-label--right { right: 8px; }
 .compare-slider { margin-top: 10px; }
 .image-info { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-@media (max-width: 900px) { .image-grid { grid-template-columns: 1fr; } .image-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .media-workbench { grid-template-columns: 1fr; grid-template-areas: "input" "output" "plan" "result"; } .image-grid { grid-template-columns: 1fr; } .image-row { grid-template-columns: 1fr 1fr; } }
 </style>

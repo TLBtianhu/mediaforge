@@ -132,13 +132,21 @@
     "videoEmpty": "暂无独立视频模型",
     "videoEmptyHint": "视频处理当前复用图像模型逐帧处理：Real-ESRGAN 超分 + LaMa 去水印，处理后在 FFmpeg 中合帧并回封音频。"
   },
+  "plan": {
+    "title": "处理方案",
+    "oneModel": "一次任务只使用一个主模型",
+    "models": "个可用模型",
+    "capability": "处理能力",
+    "model": "主模型",
+    "workflowHint": "需要“去水印 + 超分”这类多模型组合时，请到工作流中编排；这里一次只执行一个模型。"
+  },
   "pipeline": {
     "title": "处理流程",
     "subtitle": "按能力组合步骤，每个角色独立绑定模型",
     "addStep": "添加步骤",
     "addFirst": "添加第一步",
     "stepInput": "选择素材与处理目标",
-    "stepCompose": "按能力组合步骤、绑定模型",
+    "stepCompose": "选择能力与主模型",
     "empty": "还没有步骤。添加能力后，模型和参数会按能力展开。",
     "notDownloaded": "未下载"
   },

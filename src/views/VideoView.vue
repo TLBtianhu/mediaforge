@@ -13,7 +13,7 @@ import {
   VideocamOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
-import PipelineBuilder from '@/components/media/PipelineBuilder.vue'
+import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -143,23 +143,14 @@ const detectorOptions = computed(() => modelOptions('watermark_removal', 'detect
 const inpainterOptions = computed(() => modelOptions('watermark_removal', 'inpainter', [
   { label: 'LaMa Inpainting', value: 'media:lama' },
 ]))
-const pipelineSteps = computed(() => {
-  if (mode.value === 'custom') return customSteps.value
+const planStep = ref<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }>({
+  capability: 'watermark_removal',
+  bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' },
+  params: { conf: 0.25, expand: 8, detectMode: 'fixed' },
+})
+const pipelineSteps = computed(() => [planStep.value])
+const legacySteps = computed(() => {
   const steps: Array<Record<string, unknown>> = []
-  if (mode.value !== 'upscale') {
-    steps.push({
-      capability: 'watermark_removal',
-      bindings: { detector: detectorModel.value, inpainter: inpainterModel.value },
-      params: { conf: conf.value, expand: expand.value, detectMode: detectMode.value },
-    })
-  }
-  if (mode.value !== 'watermark') {
-    steps.push({
-      capability: 'upscale',
-      bindings: { upscaler: upscalerModel.value },
-      params: { target: target.value, width: width.value, height: height.value, fit: fit.value, scale: scale.value },
-    })
-  }
   return steps
 })
 async function loadMediaModels() {
@@ -176,18 +167,9 @@ async function loadMediaModels() {
 const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
 const showUpscale = computed(() => mode.value !== 'watermark' && mode.value !== 'custom')
 const showWatermark = computed(() => mode.value !== 'upscale' && mode.value !== 'custom')
-const pipelineSummary = computed(() => {
-  if (mode.value === 'custom') return `FFmpeg · ${t('image.customPipeline')}`
-  const parts = ['FFmpeg']
-  if (showUpscale.value) {
-    parts.push(upscalerOptions.value.find(item => item.value === upscalerModel.value)?.label || 'Upscaler')
-  }
-  if (showWatermark.value) {
-    parts.push(detectorOptions.value.find(item => item.value === detectorModel.value)?.label || 'Detector')
-    parts.push(inpainterOptions.value.find(item => item.value === inpainterModel.value)?.label || 'Inpainter')
-  }
-  return parts.join(' · ')
-})
+const capabilityLabels: Record<string, string> = { upscale: '超分', watermark_removal: '去水印 / 物体移除', face_restoration: '人脸修复', frame_interpolation: '视频插帧', video_inpainting: '视频修复', video_super_resolution: '视频超分' }
+const pipelineSummary = computed(() => capabilityLabels[planStep.value.capability] || planStep.value.capability)
+
 const firstOutput = computed(() => outputs.value[0] || null)
 const videoSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
 const resultInfo = computed(() => {
@@ -417,8 +399,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="mf-page-grid">
-      <n-card :title="t('factory.input')" size="small">
+    <div class="media-workbench">
+      <n-card class="workbench-input" :title="t('factory.input')" size="small">
         <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
           <span class="mf-dropzone__icon">
             <n-icon :component="VideocamOutline" :size="26" />
@@ -443,7 +425,7 @@ onBeforeUnmount(() => {
         </template>
       </n-card>
 
-      <n-card :title="t('factory.output')" size="small">
+      <n-card class="workbench-output" :title="t('factory.output')" size="small">
         <n-space vertical :size="12">
           <div>
             <label class="video-label">{{ t('factory.outputDir') }}</label>
@@ -455,7 +437,6 @@ onBeforeUnmount(() => {
               </n-button>
             </div>
           </div>
-
           <div>
             <label class="video-label">{{ t('image.modelDir') }}</label>
             <div class="video-path">
@@ -466,15 +447,12 @@ onBeforeUnmount(() => {
               </n-button>
             </div>
           </div>
+        </n-space>
+      </n-card>
 
-          <div class="pipeline-presets">
-            <button type="button" :disabled="busy" @click="applyPreset('watermark_upscale')">{{ t('image.watermarkUpscale') }}</button>
-            <button type="button" :disabled="busy" @click="applyPreset('upscale')">{{ t('image.upscale') }}</button>
-            <button type="button" :disabled="busy" @click="applyPreset('watermark')">{{ t('image.watermark') }}</button>
-          </div>
-
-          <PipelineBuilder v-model="customSteps" modality="video" :busy="busy" />
-
+      <n-card class="workbench-plan" :title="t('plan.title')" size="small">
+        <n-space vertical :size="12">
+          <ProcessingPlan v-model="planStep" modality="video" :busy="busy" />
           <div class="video-row">
             <div>
               <label class="video-label">{{ t('video.preview') }}</label>
@@ -490,19 +468,16 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <p class="video-hint">{{ t('video.previewHint') }}</p>
-
           <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="run">
             <template #icon><n-icon :component="VideocamOutline" /></template>
             {{ t('factory.start') }}
           </n-button>
-
           <n-progress v-if="busy || progress" type="line" :percentage="progress" />
           <n-alert v-if="status" :type="failedCount ? 'error' : 'info'" :bordered="false">{{ status }}</n-alert>
         </n-space>
       </n-card>
-    </div>
 
-    <n-card v-if="firstOutput" :title="t('video.result')" size="small">
+    <n-card v-if="firstOutput" class="workbench-result" :title="t('video.result')" size="small">
       <video class="video-player" :src="videoSrc" controls />
       <div class="video-info">
         <n-tag v-for="row in resultInfo" :key="row.label" size="small" :bordered="false">{{ row.label }}: {{ row.value }}</n-tag>
@@ -514,11 +489,17 @@ onBeforeUnmount(() => {
     </n-card>
 
   </div>
+  </div>
 </template>
 
 <style scoped>
 .video-page :deep(.n-card) { border-radius: 18px; box-shadow: 0 12px 34px rgba(29, 39, 64, 0.045); }
 .video-page { display: flex; flex-direction: column; gap: 12px; }
+.media-workbench { display: grid; grid-template-columns: minmax(280px, .82fr) minmax(0, 1.55fr); grid-template-areas: "input plan" "output plan" "result result"; gap: 16px; align-items: start; }
+.workbench-input { grid-area: input; }
+.workbench-output { grid-area: output; }
+.workbench-plan { grid-area: plan; }
+.workbench-result { grid-area: result; }
 .video-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .video-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .video-count { color: var(--text-color-3); font-size: 12px; }
@@ -529,5 +510,5 @@ onBeforeUnmount(() => {
 .video-hint { margin: -4px 0 0; color: var(--text-color-3); font-size: 11px; }
 .video-player { width: 100%; max-height: 520px; border-radius: 8px; background: #000; }
 .video-info { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
-@media (max-width: 900px) { .video-grid { grid-template-columns: 1fr; } .video-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .media-workbench { grid-template-columns: 1fr; grid-template-areas: "input" "output" "plan" "result"; } .video-grid { grid-template-columns: 1fr; } .video-row { grid-template-columns: 1fr 1fr; } }
 </style>

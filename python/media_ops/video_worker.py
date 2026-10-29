@@ -43,6 +43,12 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             steps = capabilities.normalize_steps(capabilities.steps_from_mode(mode))
         watermark_step = next((step for step in steps if step["capability"] == "watermark_removal"), None)
         upscale_step = next((step for step in steps if step["capability"] == "upscale"), None)
+        if len(steps) != 1:
+            return emit_error(
+                "MEDIA_ONE_MODEL_PER_TASK",
+                "One task may run exactly one capability/model. Use a workflow for multiple steps.",
+                request_id=request_id,
+            )
         if watermark_step:
             detect_mode = str(watermark_step["params"].get("detectMode") or detect_mode)
         preferred_scale = None

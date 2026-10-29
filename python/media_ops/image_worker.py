@@ -63,6 +63,12 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                     step["params"].update({"conf": conf, "expand": expand})
                 elif step["capability"] == "upscale":
                     step["params"].update({"scale": scale, "target": target, "fit": fit})
+        if len(steps) != 1:
+            return emit_error(
+                "MEDIA_ONE_MODEL_PER_TASK",
+                "One task may run exactly one capability/model. Use a workflow for multiple steps.",
+                request_id=request_id,
+            )
 
         restorer = image_ops.ImageRestorer()
         outputs: list[dict] = []

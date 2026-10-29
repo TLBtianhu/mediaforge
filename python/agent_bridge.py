@@ -203,6 +203,8 @@ class Bridge:
             normalized = capabilities.normalize_steps(steps)
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
+        if len(normalized) != 1:
+            return {"ok": False, "error": "one task may run exactly one capability/model; use a workflow for multiple steps"}
         models = model_hub.list_models(root=str(self.model_root))
         by_id = {item["id"]: item for item in models["models"]}
         required = sorted({model_id for step in normalized for model_id in step["bindings"].values()})
