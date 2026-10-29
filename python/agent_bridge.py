@@ -27,6 +27,8 @@ WORKER = ROOT / "worker.py"
 VERSION = "0.1.0"
 
 sys.path.insert(0, str(ROOT))
+import agent_contract  # noqa: E402
+import media_eval  # noqa: E402
 import model_hub  # noqa: E402
 import worker_paths  # noqa: E402
 from media_ops import capabilities  # noqa: E402
@@ -565,6 +567,24 @@ class Bridge:
                     "additionalProperties": False,
                 },
             },
+            {
+                "name": "agent_contract",
+                "description": "The machine-readable contract for every MediaForge operation: tool names, input schemas, approval levels, cost class, outputs and evaluation hooks, plus the worker-command coverage audit. Prefer this over guessing tool shapes.",
+                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+            },
+            {
+                "name": "evaluate_media",
+                "description": "Evaluate produced media objectively: dimensions, duration, frame count, sharpness, clipping. Pass the original as `reference` to get change and sharpness comparisons. Read-only; use it to self-check a pipeline result before reporting success.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                        "reference": {"type": "string", "description": "Optional original file to compare against."},
+                    },
+                    "required": ["inputs"],
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -576,6 +596,13 @@ class Bridge:
             return self.download_model(str(arguments.get("modelId") or ""), str(arguments.get("source") or "modelscope"))
         if name == "capabilities_list":
             return self.capabilities()
+        if name == "agent_contract":
+            return agent_contract.build_contract()
+        if name == "evaluate_media":
+            return media_eval.evaluate(
+                [str(value) for value in arguments.get("inputs") or []],
+                str(arguments.get("reference") or "").strip() or None,
+            )
         if name == "probe":
             return self.probe([str(value) for value in arguments.get("inputs") or []])
         if name == "convert":

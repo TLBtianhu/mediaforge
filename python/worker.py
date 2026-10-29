@@ -70,6 +70,12 @@ def run_command(command: str, payload: dict) -> int:
     if command == "env_info":
         from worker_models import cmd_env_info
         return cmd_env_info()
+    if command == "agent_contract":
+        from agent_contract import cmd_agent_contract
+        return cmd_agent_contract(payload)
+    if command == "evaluate_media":
+        from media_eval import cmd_evaluate_media
+        return cmd_evaluate_media(payload)
     if command == "list_models":
         from worker_models import cmd_list_models
         return cmd_list_models(payload)
