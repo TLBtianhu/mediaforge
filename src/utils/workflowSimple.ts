@@ -93,6 +93,7 @@ export type PymssYamlWorkflow = {
 
 export type SimpleStepDraft = {
   id: string
+  capability?: string
   model: string
   modelType?: string
   input: string
@@ -257,6 +258,7 @@ export function hydrateSimpleWorkflow(definition: unknown): SimpleDraft {
     .filter(isRecord)
     .map((raw, index): SimpleStepDraft => ({
       id: String(raw.id || `step${index + 1}`),
+      capability: typeof raw.capability === 'string' && raw.capability.trim() ? raw.capability.trim() : undefined,
       model: String(raw.model || ''),
       modelType: typeof raw.model_type === 'string' && raw.model_type.trim() ? raw.model_type.trim() : undefined,
       input: String(raw.input || 'input'),
@@ -425,6 +427,7 @@ function normalizeSimpleEditorUi(
 export function createStepDraft(index: number): SimpleStepDraft {
   return {
     id: `step${index + 1}`,
+    capability: undefined,
     model: '',
     modelType: undefined,
     input: index === 0 ? 'input' : '',

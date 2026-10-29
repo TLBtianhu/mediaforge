@@ -169,6 +169,7 @@ function hydrateStepModelTypes(value: SimpleDraft) {
       model.name === step.model || model.aliases?.includes(step.model)
     ))
     if (entry?.modelType) step.modelType = entry.modelType
+    if (!step.capability && entry?.capabilities?.length) step.capability = entry.capabilities[0]
   })
 }
 

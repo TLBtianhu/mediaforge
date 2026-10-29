@@ -21,6 +21,8 @@ const studioLog = createLogger('ui.stores.model')
 export type ModelEntry = {
   name: string
   aliases: string[]
+  capabilities?: string[]
+  roles?: string[]
   modelType: string | null
   architecture: string
   supported: boolean
