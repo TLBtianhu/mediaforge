@@ -122,7 +122,9 @@
     "missing": "未下载",
     "partial": "文件不完整",
     "downloadFailed": "下载失败",
-    "empty": "没有匹配的模型"
+    "empty": "没有匹配的模型",
+    "videoEmpty": "暂无独立视频模型",
+    "videoEmptyHint": "视频处理当前复用图像模型逐帧处理：Real-ESRGAN 超分 + LaMa 去水印，处理后在 FFmpeg 中合帧并回封音频。"
   },
   "mediaModels": {
     "title": "图像 / 视频模型",

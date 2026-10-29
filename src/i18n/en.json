@@ -122,7 +122,9 @@
     "missing": "Missing",
     "partial": "Incomplete",
     "downloadFailed": "Download failed",
-    "empty": "No matching models"
+    "empty": "No matching models",
+    "videoEmpty": "No standalone video models yet",
+    "videoEmptyHint": "Video processing currently reuses image models frame by frame: Real-ESRGAN upscaling plus LaMa watermark removal, then FFmpeg muxes the frames and original audio."
   },
   "mediaModels": {
     "title": "Image / Video Models",

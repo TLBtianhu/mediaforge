@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -80,7 +80,16 @@ const tabs = computed(() => [
   { value: 'image', label: t('modelHub.image'), count: models.value.filter(item => item.modality === 'image').length },
   { value: 'video', label: t('modelHub.video'), count: models.value.filter(item => item.modality === 'video').length },
 ])
-const filtered = computed(() => downloadedOnly.value ? models.value.filter(item => item.downloaded) : models.value)
+const filtered = computed(() => {
+  const text = query.value.trim().toLowerCase()
+  return models.value.filter(item => {
+    if (modality.value !== 'all' && item.modality !== modality.value) return false
+    if (downloadedOnly.value && !item.downloaded) return false
+    if (!text) return true
+    return [item.name, item.label, item.categoryCn, item.architecture]
+      .some(value => String(value || '').toLowerCase().includes(text))
+  })
+})
 const downloadedCount = computed(() => models.value.filter(item => item.downloaded).length)
 const envLabels: Record<string, string> = {
   pymss: 'pymss', torch: 'PyTorch', spandrel: 'Spandrel', ultralytics: 'Ultralytics', opencv: 'OpenCV', ffmpeg: 'FFmpeg',
@@ -120,7 +129,7 @@ async function load() {
   loadError.value = ''
   try {
     const result = await invoke<HubResult>('model_hub', {
-      payload: { operation: 'list', query: query.value, modality: modality.value, source: 'modelscope', modelDir: modelDir.value },
+      payload: { operation: 'list', query: '', modality: 'all', source: 'modelscope', modelDir: modelDir.value },
     })
     models.value = result.models || []
     environment.value = result.environment || {}
@@ -165,13 +174,6 @@ async function download(item: ModelRecord) {
   }
 }
 
-let searchTimer: ReturnType<typeof setTimeout> | undefined
-
-watch([query, modality], () => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => { void load() }, 250)
-})
-
 onMounted(async () => {
   const requested = route.query.modality
   if (requested === 'audio' || requested === 'image' || requested === 'video') modality.value = requested
@@ -207,7 +209,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (searchTimer) clearTimeout(searchTimer)
   unlisten?.()
 })
 </script>
@@ -258,7 +259,8 @@ onBeforeUnmount(() => {
     <n-spin :show="loading">
       <div v-if="!filtered.length" class="mf-empty">
         <span class="mf-empty__icon"><n-icon :component="CubeOutline" :size="30" /></span>
-        <div class="mf-empty__title">{{ t('modelHub.empty') }}</div>
+        <div class="mf-empty__title">{{ modality === 'video' ? t('modelHub.videoEmpty') : t('modelHub.empty') }}</div>
+        <div v-if="modality === 'video'" class="mf-empty__hint">{{ t('modelHub.videoEmptyHint') }}</div>
       </div>
       <div v-else class="hub-grid">
         <article v-for="item in filtered" :key="item.id" class="hub-card">
