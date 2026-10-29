@@ -52,6 +52,7 @@ import { retainAvailableModelNames } from '@/utils/modelSource'
 import { SEPARATE_MODEL_PAGE_SIZES } from '@/utils/pagination'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
+import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
@@ -2147,31 +2148,17 @@ const audioSteps = computed(() => [
 
     <div class="console" :class="[`console--${taskPanelState}`, { 'console--busy': isConfigCompact }]">
       <aside class="console__rail">
-        <section class="rail-card rail-card--input" data-guide="input">
-          <div class="rail-card__head">
-            <span class="rail-card__index">01</span>
-            <div class="rail-card__label">
-              <strong>{{ t('separate.input') }}</strong>
-              <small>{{ t('separate.candidateCount', { count: inputFiles.length }) }}</small>
-            </div>
+        <WorkbenchCard class="rail-card--input" data-guide="input" index="01" :title="t('separate.input')" :subtitle="t('separate.candidateCount', { count: inputFiles.length })">
+          <template #actions>
             <div class="rail-card__actions rail-card__actions--input">
               <label class="input-retention-toggle input-retention-toggle--head">
                 <span>{{ t('separate.clearInputAfterSubmit') }}</span>
                 <n-switch v-model:value="settings.clearInputAfterSubmit" size="small" :disabled="isRunModeLocked" />
               </label>
-              <n-button
-                v-if="inputFiles.length"
-                text
-                size="tiny"
-                class="rail-card__clear"
-                :disabled="isRunModeLocked"
-                @click="task.clearInputFiles()"
-              >
-                {{ t('separate.clearAll') }}
-              </n-button>
+              <n-button v-if="inputFiles.length" text size="tiny" class="rail-card__clear" :disabled="isRunModeLocked" @click="task.clearInputFiles()">{{ t('separate.clearAll') }}</n-button>
             </div>
-          </div>
-          <div class="rail-card__body">
+          </template>
+
             <div class="picker-buttons">
               <button type="button" class="picker-btn" :disabled="isRunModeLocked" @click="handlePickFiles">
                 <n-icon :component="MusicalNotesOutline" />
@@ -2218,22 +2205,16 @@ const audioSteps = computed(() => [
                 <strong>{{ isDragging ? t('separate.dropHere') : t('separate.candidateEmpty') }}</strong>
               </div>
             </div>
-          </div>
-        </section>
+        </WorkbenchCard>
 
-        <section class="rail-card rail-card--output" data-guide="output">
-          <div class="rail-card__head">
-            <span class="rail-card__index">02</span>
-            <div class="rail-card__label">
-              <strong>{{ t('separate.output') }}</strong>
-              <small>{{ t('separate.outputSummaryHint') }}</small>
-            </div>
+        <WorkbenchCard class="rail-card--output" data-guide="output" index="02" :title="t('separate.output')" :subtitle="t('separate.outputSummaryHint')">
+          <template #actions>
             <n-button text size="tiny" class="rail-card__more" :disabled="isRunModeLocked" @click="showSettingsDrawer = true">
               <template #icon><n-icon :component="SettingsOutline" /></template>
               {{ t('separate.configParams') }}
             </n-button>
-          </div>
-          <div class="rail-card__body rail-card__body--output">
+          </template>
+
             <label class="ofield" data-guide="output-location">
               <span class="ofield__label">{{ t('separate.temporaryOutputDir') }}</span>
               <div class="dir-input">
@@ -2310,8 +2291,7 @@ const audioSteps = computed(() => [
               </div>
               <div v-else class="ofield__static ofield__static--muted">{{ t('separate.allStems') }}</div>
             </div>
-          </div>
-        </section>
+        </WorkbenchCard>
       </aside>
 
       <main class="console__stage">
@@ -3360,68 +3340,8 @@ const audioSteps = computed(() => [
 }
 
 /* ============ Rail cards ============ */
-.rail-card {
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
-  padding: 17px 18px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent),
-    inset 0 1px 0 rgba(255,255,255,0.03),
-    var(--shadow-panel);
-}
-
 .rail-card--output {
   grid-template-rows: auto auto;
-}
-
-.rail-card__head {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-width: 0;
-}
-
-.rail-card__index {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--primary-strong);
-  background: var(--primary-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 40%, transparent);
-}
-
-.rail-card__label {
-  min-width: 0;
-  flex: 1;
-  display: grid;
-  gap: 1px;
-}
-
-.rail-card__label strong {
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rail-card__label small {
-  font-size: 11px;
-  color: var(--on-surface-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .rail-card__actions {
