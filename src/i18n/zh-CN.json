@@ -141,6 +141,8 @@
     "emptyTitle": "还没有 Agent 任务",
     "emptyHint": "DSH 通过 MCP 启动的任务会出现在这里。也可以手动启动本地 MCP bridge：",
     "outputs": "个输出",
+    "manual": "手动",
+    "agent": "Agent",
     "cancel": "取消",
     "cancelRequested": "已请求取消"
   },

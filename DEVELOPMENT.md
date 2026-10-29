@@ -186,10 +186,10 @@ agent-workspace.json
 ```
 
 The app's `/agent` page reads the same index through the `agent_jobs` Tauri
-command and polls every three seconds. This is the first shared surface:
-manual users can observe tasks started by an MCP agent, inspect status and
-progress, cancel a running job, and open the workspace. Bidirectional edits
-go through the Operation Kernel phase.
+command and polls every three seconds. Manual media pages also journal their
+tasks with `journal_job`, so manual and agent work appear in one list.
+Manual tasks cancel through `cancel_task`; agent jobs cancel through
+`cancel_agent_job`. Both paths persist the same job records.
 
 The stdio and HTTP bridge modes write the same state, so DSH and the app see
 the same task list when they use the same `MEDIAFORGE_DATA_DIR`.

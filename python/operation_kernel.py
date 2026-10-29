@@ -46,6 +46,7 @@ class Job:
             return {
                 "jobId": self.job_id,
                 "command": self.command,
+                "source": str(self.payload.get("source") or "agent"),
                 "status": self.status,
                 "fraction": round(float(self.fraction), 4),
                 "message": self.message,
@@ -91,6 +92,7 @@ class OperationKernel:
                         {
                             "jobId": value.get("jobId"),
                             "command": value.get("command"),
+                            "source": value.get("source") or "agent",
                             "status": value.get("status"),
                             "fraction": value.get("fraction"),
                             "message": value.get("message"),

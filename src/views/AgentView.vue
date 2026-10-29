@@ -12,6 +12,7 @@ type AgentJob = {
   jobId: string
   command: string
   status: string
+  source?: 'manual' | 'agent'
   fraction: number
   message: string
   createdAt: number
@@ -83,7 +84,11 @@ async function openWorkspace() {
 
 async function cancel(job: AgentJob) {
   try {
-    await invoke('cancel_agent_job', { jobId: job.jobId })
+    if ((job.source || 'agent') === 'manual') {
+      await invoke('cancel_task', { taskId: job.jobId })
+    } else {
+      await invoke('cancel_agent_job', { jobId: job.jobId })
+    }
     message.success(t('agent.cancelRequested'))
     await load()
   } catch (cause) {
@@ -150,7 +155,7 @@ onBeforeUnmount(() => {
               <n-tag size="small" :type="statusType(job.status)" :bordered="false">{{ job.status }}</n-tag>
             </div>
           </div>
-          <div class="agent-job__meta"><span>{{ formatTime(job.createdAt) }}</span><span>{{ outputCount(job) }} {{ t('agent.outputs') }}</span></div>
+          <div class="agent-job__meta"><span>{{ job.source === 'manual' ? t('agent.manual') : t('agent.agent') }}</span><span>{{ formatTime(job.createdAt) }}</span><span>{{ outputCount(job) }} {{ t('agent.outputs') }}</span></div>
           <n-progress v-if="job.status === 'running' || job.status === 'queued'" type="line" :percentage="Math.round(Number(job.fraction || 0) * 100)" />
           <p class="agent-job__message">{{ job.error || job.message }}</p>
         </article>

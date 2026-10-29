@@ -13,6 +13,7 @@ import {
   SparklesOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
 
 defineOptions({ name: 'ImageView' })
@@ -74,6 +75,7 @@ const failedCount = ref(0)
 const outputs = ref<OutputFile[]>([])
 const compare = ref(50)
 const requestId = ref('')
+const journalCreatedAt = ref(0)
 let unlisten: UnlistenFn | undefined
 
 const modeOptions = computed(() => [
@@ -166,6 +168,21 @@ function onProgress(payload: WorkerPayload) {
   status.value = String(payload.current || t('image.title'))
 }
 
+function journal(status: 'running' | 'completed' | 'failed' | 'cancelled', fraction: number, text: string, result: Record<string, unknown> | null = null) {
+  void journalJob({
+    jobId: requestId.value,
+    command: 'media_image',
+    source: 'manual',
+    status,
+    fraction,
+    message: text,
+    createdAt: journalCreatedAt.value,
+    payload: { operation: 'media_image', inputs: inputs.value, outputDir: outputDir.value },
+    result,
+    error: status === 'failed' ? text : null,
+  })
+}
+
 async function run() {
   if (!inputs.value.length) {
     message.warning(t('factory.selectFirst'))
@@ -181,6 +198,8 @@ async function run() {
   failedCount.value = 0
   outputs.value = []
   requestId.value = `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  journalCreatedAt.value = journalNow()
+  journal('running', 0, status.value)
   try {
     await invoke('start_audio_tool', {
       payload: {
@@ -202,6 +221,7 @@ async function run() {
   } catch (error) {
     busy.value = false
     status.value = error instanceof Error ? error.message : String(error)
+    journal('failed', 0, status.value)
     message.error(status.value)
   }
 }
@@ -227,6 +247,7 @@ onMounted(async () => {
 
       if (payload?.type === 'audio_tool_progress' && payload.payload) {
         onProgress(payload.payload)
+        journal('running', Number(payload.payload.fraction || 0), String(payload.payload.current || status.value))
         return
       }
       if (payload?.type === 'audio_tool_result' && payload.payload) {
@@ -239,6 +260,7 @@ onMounted(async () => {
         status.value = failedCount.value
           ? `${t('factory.failed')} (${failedCount.value})`
           : t('factory.completed')
+        journal(failedCount.value ? 'failed' : 'completed', 1, status.value, result as Record<string, unknown>)
         if (failedCount.value) message.warning(status.value)
         else message.success(status.value)
         requestId.value = ''
@@ -247,12 +269,14 @@ onMounted(async () => {
       if (payload?.type === 'error') {
         busy.value = false
         status.value = String(payload.payload?.message || 'Image processing failed')
+        journal('failed', 0, status.value)
         message.error(status.value)
         requestId.value = ''
       }
       if (payload?.type === 'task_cancelled') {
         busy.value = false
         status.value = 'Cancelled'
+        journal('cancelled', 0, status.value)
         requestId.value = ''
       }
     })

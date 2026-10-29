@@ -141,6 +141,8 @@
     "emptyTitle": "No agent jobs yet",
     "emptyHint": "Jobs started by DSH through MCP appear here. You can also start the local MCP bridge:",
     "outputs": "outputs",
+    "manual": "Manual",
+    "agent": "Agent",
     "cancel": "Cancel",
     "cancelRequested": "Cancellation requested"
   },

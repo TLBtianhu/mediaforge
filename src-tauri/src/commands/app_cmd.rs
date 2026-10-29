@@ -2428,6 +2428,62 @@ pub async fn cancel_agent_job(app: AppHandle, job_id: String) -> AppResult<Value
 }
 
 #[tauri::command]
+pub async fn journal_job(app: AppHandle, job: Value) -> AppResult<Value> {
+    let job_id = job
+        .get("jobId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::Worker("missing journal job id".into()))?
+        .to_string();
+    if !job_id
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+    {
+        return Err(AppError::Worker("invalid journal job id".into()));
+    }
+    let root = storage::data_root_dir(&app)?;
+    let jobs_root = root.join("agent-jobs");
+    std::fs::create_dir_all(&jobs_root)?;
+    let mut job = job;
+    if let Some(object) = job.as_object_mut() {
+        object
+            .entry("source".to_string())
+            .or_insert_with(|| Value::String("manual".into()));
+    }
+    let path = jobs_root.join(format!("{job_id}.json"));
+    std::fs::write(&path, serde_json::to_string_pretty(&job)?)?;
+
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&jobs_root)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("");
+        if !name.ends_with(".json") || name == "index.json" || name.ends_with(".json.tmp") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
+        if value.get("jobId").and_then(Value::as_str).is_some() {
+            entries.push(value);
+        }
+    }
+    entries.sort_by(|left, right| {
+        let left_time = left.get("createdAt").and_then(Value::as_f64).unwrap_or(0.0);
+        let right_time = right.get("createdAt").and_then(Value::as_f64).unwrap_or(0.0);
+        right_time.partial_cmp(&left_time).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    entries.truncate(100);
+    let index = serde_json::json!({
+        "version": 1,
+        "updatedAt": chrono::Utc::now().timestamp(),
+        "jobs": entries,
+    });
+    std::fs::write(jobs_root.join("index.json"), serde_json::to_string_pretty(&index)?)?;
+    Ok(serde_json::json!({ "ok": true, "jobId": job_id, "index": index }))
+}
+
+#[tauri::command]
 pub async fn start_model_hub_download(
     app: AppHandle,
     state: State<'_, AppState>,
