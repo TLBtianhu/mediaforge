@@ -2396,6 +2396,11 @@ pub async fn model_hub(app: AppHandle, payload: Value) -> AppResult<Value> {
 }
 
 #[tauri::command]
+pub async fn media_capabilities(app: AppHandle) -> AppResult<Value> {
+    run_worker_with_payload(&app, "media_capabilities", Some(serde_json::json!({})))
+}
+
+#[tauri::command]
 pub async fn agent_jobs(app: AppHandle) -> AppResult<Value> {
     let root = storage::data_root_dir(&app)?;
     let index_path = root.join("agent-jobs").join("index.json");

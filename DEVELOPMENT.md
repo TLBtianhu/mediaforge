@@ -247,7 +247,9 @@ Pipelines are ordered capability steps with explicit model bindings:
 
 The legacy `mode` names remain as compatibility presets, but new callers should
 use steps. Image and video workers both accept `steps`; image/video UI exposes
-the model bindings directly.
+the model bindings directly. The shared `PipelineBuilder` component loads
+`media_capabilities` and lets users add, remove, and reorder capability steps
+with per-role model selectors; `custom` mode sends those steps to the worker.
 
 ## 打包前检查
 

@@ -13,12 +13,13 @@ import {
   VideocamOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import PipelineBuilder from '@/components/media/PipelineBuilder.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
 
 defineOptions({ name: 'VideoView' })
 
-type ImageMode = 'upscale' | 'watermark' | 'watermark_upscale'
+type ImageMode = 'upscale' | 'watermark' | 'watermark_upscale' | 'custom'
 type OutputFile = {
   path: string
   source: string
@@ -91,6 +92,11 @@ const modeOptions = computed(() => [
   { label: t('image.upscale'), value: 'upscale' },
   { label: t('image.watermark'), value: 'watermark' },
   { label: t('image.watermarkUpscale'), value: 'watermark_upscale' },
+  { label: t('image.customPipeline'), value: 'custom' },
+])
+const customSteps = ref<Array<{ capability: string; bindings: Record<string, string>; params: Record<string, unknown> }>>([
+  { capability: 'watermark_removal', bindings: { detector: 'media:watermark-yolo11x', inpainter: 'media:lama' }, params: { conf: 0.25, expand: 8, detectMode: 'fixed' } },
+  { capability: 'upscale', bindings: { upscaler: 'media:real-esrgan-x2' }, params: { target: 'none', fit: 'contain', scale: 2 } },
 ])
 const scaleOptions = [2, 4].map(value => ({ label: `${value}×`, value }))
 const targetOptions = computed(() => [
@@ -127,6 +133,7 @@ const inpainterOptions = computed(() => modelOptions('watermark_removal', 'inpai
   { label: 'LaMa Inpainting', value: 'media:lama' },
 ]))
 const pipelineSteps = computed(() => {
+  if (mode.value === 'custom') return customSteps.value
   const steps: Array<Record<string, unknown>> = []
   if (mode.value !== 'upscale') {
     steps.push({
@@ -156,9 +163,10 @@ async function loadMediaModels() {
   }
 }
 const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
-const showUpscale = computed(() => mode.value !== 'watermark')
-const showWatermark = computed(() => mode.value !== 'upscale')
+const showUpscale = computed(() => mode.value !== 'watermark' && mode.value !== 'custom')
+const showWatermark = computed(() => mode.value !== 'upscale' && mode.value !== 'custom')
 const pipelineSummary = computed(() => {
+  if (mode.value === 'custom') return `FFmpeg · ${t('image.customPipeline')}`
   const parts = ['FFmpeg']
   if (showUpscale.value) {
     parts.push(upscalerOptions.value.find(item => item.value === upscalerModel.value)?.label || 'Upscaler')
@@ -451,6 +459,10 @@ onBeforeUnmount(() => {
           <div>
             <label class="video-label">{{ t('image.mode') }}</label>
             <n-select v-model:value="mode" :options="modeOptions" :disabled="busy" />
+          </div>
+
+          <div v-if="mode === 'custom'">
+            <PipelineBuilder v-model="customSteps" modality="video" :busy="busy" />
           </div>
 
           <div v-if="showUpscale">

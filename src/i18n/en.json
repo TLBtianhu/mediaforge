@@ -72,6 +72,7 @@
     "upscale": "Upscale only",
     "watermark": "Remove watermark",
     "watermarkUpscale": "Remove watermark + upscale",
+    "customPipeline": "Custom pipeline",
     "scale": "Scale",
     "target": "Target resolution",
     "original": "Original size",
@@ -130,6 +131,14 @@
     "empty": "No matching models",
     "videoEmpty": "No standalone video models yet",
     "videoEmptyHint": "Video processing currently reuses image models frame by frame: Real-ESRGAN upscaling plus LaMa watermark removal, then FFmpeg muxes the frames and original audio."
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "subtitle": "Compose capabilities and bind a model to each role",
+    "addStep": "Add step",
+    "addFirst": "Add first step",
+    "empty": "No steps yet. Add a capability to reveal its roles and parameters.",
+    "notDownloaded": "not downloaded"
   },
   "agent": {
     "title": "Shared Task Queue",

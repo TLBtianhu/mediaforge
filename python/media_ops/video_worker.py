@@ -27,7 +27,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         if not output_dir:
             return emit_error("MEDIA_VIDEO_INVALID", "No output directory", request_id=request_id)
         mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale"}:
+        if mode not in {"upscale", "watermark", "watermark_upscale", "custom"}:
             return emit_error("MEDIA_VIDEO_INVALID", f"Unknown video mode: {mode}", request_id=request_id)
         detect_mode = str(payload.get("detectMode") or "fixed").strip().lower()
         if detect_mode not in {"fixed", "per_frame"}:

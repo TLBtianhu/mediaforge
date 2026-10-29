@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from worker_protocol import debug_log, emit_error, load_payload, protocol_logging
+from worker_protocol import debug_log, emit, emit_error, load_payload, protocol_logging
 from worker_proxy import ProxyConfigError, configure_process_proxy, load_proxy_config, parse_proxy_config
 
 
@@ -139,6 +139,10 @@ def run_command(command: str, payload: dict) -> int:
     if command == "media_library":
         from media_ops.library_worker import cmd_media_library
         return cmd_media_library(payload)
+    if command == "media_capabilities":
+        from media_ops.capabilities import list_capabilities
+        emit("media_capabilities_result", list_capabilities())
+        return 0
     if command == "model_hub":
         from model_hub_worker import cmd_model_hub
         return cmd_model_hub(payload)

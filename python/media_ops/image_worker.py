@@ -28,7 +28,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return emit_error("MEDIA_IMAGE_INVALID", "No output directory", request_id=request_id)
 
         mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale"}:
+        if mode not in {"upscale", "watermark", "watermark_upscale", "custom"}:
             return emit_error("MEDIA_IMAGE_INVALID", f"Unknown image mode: {mode}", request_id=request_id)
         scale = float(payload.get("scale") or 2.0)
         target = image_ops.resolve_target(

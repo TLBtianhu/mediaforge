@@ -155,6 +155,7 @@ fn main() {
             commands::app_cmd::cancel_editor_mix_export,
             commands::app_cmd::media_library,
             commands::app_cmd::model_hub,
+            commands::app_cmd::media_capabilities,
             commands::app_cmd::start_model_hub_download,
             commands::app_cmd::agent_jobs,
             commands::app_cmd::cancel_agent_job,
