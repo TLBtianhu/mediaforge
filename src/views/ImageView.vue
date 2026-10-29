@@ -15,6 +15,7 @@ import {
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
+import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -298,10 +299,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="media-workbench">
-      <n-card class="workbench-input" size="small">
-        <template #header>
-          <div class="mf-card-head"><span class="mf-card-index">01</span><div class="mf-card-head__label"><strong>{{ t('factory.input') }}</strong><small>{{ t('plan.inputHint') }}</small></div></div>
-        </template>
+      <WorkbenchCard class="workbench-input" index="01" :title="t('factory.input')" :subtitle="t('plan.inputHint')">
         <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
           <span class="mf-dropzone__icon">
             <n-icon :component="DocumentOutline" :size="26" />
@@ -324,12 +322,9 @@ onBeforeUnmount(() => {
           </div>
           <n-button text class="mf-add-more" :disabled="busy" @click="pickFiles">+ {{ t('factory.addFiles') }}</n-button>
         </template>
-      </n-card>
+      </WorkbenchCard>
 
-      <n-card class="workbench-output" size="small">
-        <template #header>
-          <div class="mf-card-head"><span class="mf-card-index">02</span><div class="mf-card-head__label"><strong>{{ t('factory.output') }}</strong><small>{{ t('plan.outputHint') }}</small></div></div>
-        </template>
+      <WorkbenchCard class="workbench-output" index="02" :title="t('factory.output')" :subtitle="t('plan.outputHint')">
         <n-space vertical :size="12">
           <div>
             <label class="image-label">{{ t('factory.outputDir') }}</label>
@@ -353,12 +348,9 @@ onBeforeUnmount(() => {
             <p class="image-hint">{{ t('image.modelDirHint') }}</p>
           </div>
         </n-space>
-      </n-card>
+      </WorkbenchCard>
 
-      <n-card class="workbench-plan" size="small">
-        <template #header>
-          <div class="mf-card-head"><span class="mf-card-index mf-card-index--icon"><n-icon :component="CubeOutline" /></span><div class="mf-card-head__label"><strong>{{ t('plan.title') }}</strong><small>{{ t('pipeline.stepCompose') }}</small></div></div>
-        </template>
+      <WorkbenchCard class="workbench-plan" :icon="CubeOutline" :title="t('plan.title')" :subtitle="t('pipeline.stepCompose')">
         <n-space vertical :size="12">
           <ProcessingPlan v-model="planStep" modality="image" :busy="busy" @availability="planAvailable = $event" />
           <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy || !planAvailable" @click="run">
@@ -382,12 +374,9 @@ onBeforeUnmount(() => {
             </n-list>
           </div>
         </n-space>
-      </n-card>
+      </WorkbenchCard>
 
-    <n-card v-if="firstOutput" class="workbench-result" size="small">
-      <template #header>
-        <div class="mf-card-head"><span class="mf-card-index">04</span><div class="mf-card-head__label"><strong>{{ t('image.compare') }}</strong></div></div>
-      </template>
+    <WorkbenchCard v-if="firstOutput" class="workbench-result" index="04" :title="t('image.compare')">
       <div class="image-compare">
         <img class="compare-base" :src="resultSrc" :alt="t('image.after')" />
         <img class="compare-top" :src="originalSrc" :alt="t('image.before')" :style="{ clipPath: `inset(0 ${100 - compare}% 0 0)` }" />
@@ -398,24 +387,14 @@ onBeforeUnmount(() => {
       <div class="image-info">
         <n-tag v-for="row in resultInfo" :key="row.label" size="small" :bordered="false">{{ row.label }}: {{ row.value }}</n-tag>
       </div>
-    </n-card>
+    </WorkbenchCard>
 
   </div>
   </div>
 </template>
 
 <style scoped>
-.image-page :deep(.n-card) { border-radius: 18px; box-shadow: 0 12px 34px rgba(29, 39, 64, 0.045); }
-.media-workbench :deep(.n-card) { padding: 17px 18px; border-radius: 18px; background: color-mix(in srgb, var(--surface-1) 78%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent), inset 0 1px 0 rgba(255,255,255,.03), var(--shadow-panel); }
-.media-workbench :deep(.n-card-header) { padding: 0 0 14px; border: 0; }
-.media-workbench :deep(.n-card-header__main) { width: 100%; }
-.media-workbench :deep(.n-card__content) { padding: 0; }
 .image-page { display: flex; flex-direction: column; gap: 12px; }
-.media-workbench { display: grid; grid-template-columns: minmax(280px, .82fr) minmax(0, 1.55fr); grid-template-areas: "input plan" "output plan" "result result"; gap: 16px; align-items: start; }
-.workbench-input { grid-area: input; }
-.workbench-output { grid-area: output; }
-.workbench-plan { grid-area: plan; }
-.workbench-result { grid-area: result; }
 .image-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .image-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .image-count { color: var(--text-color-3); font-size: 12px; }
@@ -434,5 +413,5 @@ onBeforeUnmount(() => {
 .compare-label--right { right: 8px; }
 .compare-slider { margin-top: 10px; }
 .image-info { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-@media (max-width: 900px) { .media-workbench { grid-template-columns: 1fr; grid-template-areas: "input" "output" "plan" "result"; } .image-grid { grid-template-columns: 1fr; } .image-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .image-grid { grid-template-columns: 1fr; } .image-row { grid-template-columns: 1fr 1fr; } }
 </style>

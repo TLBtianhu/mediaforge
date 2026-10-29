@@ -220,6 +220,14 @@
 .mf-card-head__label { display: grid; flex: 1; gap: 1px; min-width: 0; }
 .mf-card-head__label strong { overflow: hidden; color: var(--on-surface-heading); font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
 .mf-card-head__label small { overflow: hidden; color: var(--on-surface-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.media-workbench { display: grid; grid-template-columns: minmax(420px, .42fr) minmax(0, 1fr); grid-template-areas: "input plan" "output plan" "result result"; gap: 16px; align-items: start; }
+.workbench-input { grid-area: input; }
+.workbench-output { grid-area: output; }
+.workbench-plan { grid-area: plan; }
+.workbench-result { grid-area: result; }
+@media (max-width: 1100px) {
+  .media-workbench { grid-template-columns: 1fr; grid-template-areas: "input" "output" "plan" "result"; }
+}
 .pipeline-presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .pipeline-presets button { padding: 5px 9px; border: 1px solid var(--divider-color); border-radius: 999px; background: var(--action-color); color: var(--text-color-2); font-family: inherit; font-size: 10px; cursor: pointer; }
 .pipeline-presets button:hover { border-color: color-mix(in srgb, var(--mf-accent) 35%, var(--divider-color)); color: var(--mf-accent); }
