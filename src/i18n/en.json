@@ -70,6 +70,7 @@
     "selectOutput": "Choose an output directory"
   },
   "image": {
+    "dropFolderHere": "Drop a single folder here",
     "title": "Image Processing",
     "subtitle": "Upscale, remove watermarks, and export target sizes",
     "mode": "Mode",

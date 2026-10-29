@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { dropSkippedSteps, precheckPlan, summarizePrecheck } from '../utils/mediaPrecheck.ts'
+import { DIRECTORY_ZONES, findDropZone, folderToReference, toCssPoint, type PathKind } from '../utils/dropZones.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -83,6 +84,8 @@ const planAvailable = ref(true)
 let unlisten: UnlistenFn | undefined
 let unlistenDrop: UnlistenFn | undefined
 const dragging = ref(false)
+// 投放区用 data-drop-zone 标记：组件 ref 拿到的是组件实例，取不到矩形
+
 
 const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 const pipelineSteps = computed(() => [planStep.value])
@@ -244,6 +247,34 @@ onMounted(async () => {
         if (type !== 'drop') return
         const paths = (event.payload as { paths?: string[] }).paths || []
         if (!paths.length) return
+        // 原生拖放只给窗口坐标：用它判断用户想放进哪个字段
+        const zones = Array.from(document.querySelectorAll<HTMLElement>('[data-drop-zone]')).map(el => {
+          const rect = el.getBoundingClientRect()
+          return {
+            id: el.dataset.dropZone || '',
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+          }
+        })
+        const cssPoint = toCssPoint(event.payload.position, window.devicePixelRatio)
+        const zone = findDropZone(cssPoint, zones) || 'input'
+        const rawKinds = await invoke<Array<[string, string]>>('path_kinds', { paths })
+        const kinds = rawKinds.map(([path, kind]) => ({ path, kind: kind as PathKind['kind'] }))
+        if (DIRECTORY_ZONES.has(zone)) {
+          // 输出目录/模型目录：拖入单个文件夹 = 引用它
+          const folder = folderToReference(kinds)
+          if (folder) {
+            if (zone === 'outputDir') outputDir.value = folder
+            else modelDir.value = folder
+            message.success(folder)
+            return
+          }
+          // 目录型字段只接受单个文件夹；拖来文件时明确提示，别悄悄当成输入
+          message.warning(t('image.dropFolderHere'))
+          return
+        }
         const result = await invoke<{ files: string[]; warnings: string[] }>('scan_image_paths', { paths })
         const files = result.files || []
         if (files.length) {
@@ -339,7 +370,7 @@ const workbenchSteps = computed(() => [
     <WorkbenchSteps :steps="workbenchSteps" />
 
     <div class="media-workbench">
-      <WorkbenchCard class="workbench-input" index="01" :title="t('factory.input')" :subtitle="t('plan.inputHint')">
+      <WorkbenchCard data-drop-zone="input" class="workbench-input" index="01" :title="t('factory.input')" :subtitle="t('plan.inputHint')">
         <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
           <span class="mf-dropzone__icon">
             <n-icon :component="DocumentOutline" :size="26" />
@@ -368,7 +399,7 @@ const workbenchSteps = computed(() => [
         <n-space vertical :size="12">
           <div>
             <label class="image-label">{{ t('factory.outputDir') }}</label>
-            <div class="image-path">
+            <div class="image-path" data-drop-zone="outputDir">
               <n-input :value="outputDir" readonly :placeholder="t('factory.outputDir')" />
               <n-button secondary :disabled="busy" @click="pickOutput">
                 <template #icon><n-icon :component="FolderOpenOutline" /></template>
@@ -378,7 +409,7 @@ const workbenchSteps = computed(() => [
           </div>
           <div>
             <label class="image-label">{{ t('image.modelDir') }}</label>
-            <div class="image-path">
+            <div class="image-path" data-drop-zone="modelDir">
               <n-input v-model:value="modelDir" :placeholder="t('image.modelDirPlaceholder')" />
               <n-button secondary :disabled="busy" @click="pickModelDir">
                 <template #icon><n-icon :component="FolderOpenOutline" /></template>

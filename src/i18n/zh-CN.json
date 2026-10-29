@@ -70,6 +70,7 @@
     "selectOutput": "请选择输出目录"
   },
   "image": {
+    "dropFolderHere": "请拖入一个文件夹",
     "title": "图像处理",
     "subtitle": "超分、去水印与目标分辨率输出",
     "mode": "处理模式",

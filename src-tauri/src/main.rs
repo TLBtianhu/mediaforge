@@ -236,6 +236,7 @@ fn main() {
             commands::app_cmd::save_app_store,
             commands::app_cmd::save_editor_project,
             commands::app_cmd::scan_media_paths,
+        commands::app_cmd::path_kinds,
         commands::app_cmd::scan_image_paths,
             commands::app_cmd::scan_audio_paths,
             commands::app_cmd::scan_audio_paths_with_options,

@@ -3180,6 +3180,27 @@ fn collect_image_files(dir: &Path, results: &mut Vec<String>, warnings: &mut Vec
     }
 }
 
+/// 判断拖进来的路径是文件还是目录。
+///
+/// 拖放事件只给路径字符串，"这是文件夹"与否必须查文件系统——用它来决定
+/// 是"引用这个目录"还是"把文件加进来"。
+#[tauri::command]
+pub async fn path_kinds(paths: Vec<String>) -> AppResult<Vec<(String, String)>> {
+    let mut result = Vec::new();
+    for raw in paths {
+        let path = Path::new(&raw);
+        let kind = if path.is_dir() {
+            "directory"
+        } else if path.is_file() {
+            "file"
+        } else {
+            "missing"
+        };
+        result.push((raw, kind.to_string()));
+    }
+    Ok(result)
+}
+
 /// 拖放/选择到的路径 → 图片文件列表（目录会递归展开）。
 #[tauri::command]
 pub async fn scan_image_paths(paths: Vec<String>) -> AppResult<ScanAudioPathsResult> {
