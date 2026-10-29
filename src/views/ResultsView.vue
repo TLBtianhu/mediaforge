@@ -713,12 +713,8 @@ function formatDurationMs(value: number | undefined) {
 </script>
 
 <template>
-  <div class="page results-page">
-    <div class="page-header-compact results-page__header">
-      <div>
-        <h1>{{ t('results.title') }}</h1>
-        <p>{{ t('results.subtitle') }}</p>
-      </div>
+  <div class="page mf-page results-page" data-tone="violet">
+    <MediaPageHeader :title="t('results.title')" :subtitle="t('results.subtitle')" :icon="FolderOpenOutline" eyebrow="RESULTS" tone="violet">
       <div
         class="results-page__header-actions"
         :class="{ 'results-page__header-actions--selecting': selecting }"
@@ -773,7 +769,7 @@ function formatDurationMs(value: number | undefined) {
           </n-button>
         </template>
       </div>
-    </div>
+    </MediaPageHeader>
 
     <div v-if="task.resultTasks.length" class="results-toolbar">
       <n-input
