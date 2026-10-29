@@ -406,25 +406,64 @@ fn distinct_bundled_runtime_env(
     bundled.filter(|path| path.canonicalize().ok() != user_runtime)
 }
 
-fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
-    let user_file = storage::active_runtime_file(app)?;
-    if let Some((path, _source)) = resolve_active_runtime_record(&user_file) {
-        let is_managed = is_user_runtime_python_path(app, &path)?;
-        let is_debug_override = active_debug_override_path_allowed(
-            &user_file,
-            &path,
-            storage::is_development_executable(),
-        );
-        if (is_managed || is_debug_override) && active_path_backend_matches(&user_file, &path) {
-            return Ok(Some(path));
+/// 候选的 `runtime-envs` 目录，按优先级排列。
+///
+/// 为什么不是"只有一处"：开发态的数据根与运行时根历史上不一致——
+/// 数据在 `.dev-data`，而 exe 旁边会留下一个只有 `.lock` 的空壳
+/// `target/debug/python-runtime/runtime-envs`。只看一处就会永远读到空壳。
+fn runtime_envs_candidates(app: &AppHandle) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(envs) = storage::runtime_envs_dir(app) {
+        candidates.push(envs);
+    }
+    if let Ok(root) = storage::data_root_dir(app) {
+        candidates.push(root.join("runtime-envs"));
+    }
+    if storage::is_development_executable() {
+        // 开发态兜底：项目根下的 `.dev-data/runtime-envs`
+        if let Some(project) = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent() {
+            candidates.push(project.join(".dev-data").join("runtime-envs"));
         }
-    };
-    if let Some(envs_dir) = bundled_runtime_envs_dir(app)? {
-        let bundled_file = envs_dir.join("active-runtime.json");
-        if let Some((path, _source)) = resolve_active_runtime_record(&bundled_file) {
-            if is_bundled_runtime_python_path(&bundled_file, &path)? {
-                return Ok(Some(path));
-            }
+    }
+    if let Ok(Some(bundled)) = bundled_runtime_envs_dir(app) {
+        candidates.push(bundled);
+    }
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut unique: Vec<PathBuf> = Vec::new();
+    for candidate in candidates {
+        let key = candidate.canonicalize().unwrap_or_else(|_| candidate.clone());
+        if seen.iter().any(|existing| existing == &key) {
+            continue;
+        }
+        seen.push(key);
+        unique.push(candidate);
+    }
+    unique
+}
+
+fn python_under_envs_dir(envs_dir: &Path, python_path: &str) -> bool {
+    let root = envs_dir.canonicalize().unwrap_or_else(|_| envs_dir.to_path_buf());
+    PathBuf::from(python_path)
+        .parent()
+        .and_then(Path::parent)
+        .and_then(|env| env.canonicalize().ok())
+        .is_some_and(|env| env.starts_with(&root))
+}
+
+fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
+    let development = storage::is_development_executable();
+    for envs_dir in runtime_envs_candidates(app) {
+        let file = envs_dir.join("active-runtime.json");
+        if !file.is_file() {
+            continue;
+        }
+        let Some((path, _source)) = resolve_active_runtime_record(&file) else {
+            continue;
+        };
+        let managed = python_under_envs_dir(&envs_dir, &path);
+        let debug_override = active_debug_override_path_allowed(&file, &path, development);
+        if (managed || debug_override) && active_path_backend_matches(&file, &path) {
+            return Ok(Some(path));
         }
     }
     Ok(None)
@@ -746,9 +785,14 @@ fn build_worker_command(
         let envs = storage::runtime_envs_dir(app)
             .map(|path| path.display().to_string())
             .unwrap_or_else(|_| "<unresolved>".into());
-        let record = storage::active_runtime_file(app)
-            .map(|file| format!("{} (exists={})", file.display(), file.is_file()))
-            .unwrap_or_else(|_| "<unresolved>".into());
+        let record = runtime_envs_candidates(app)
+            .iter()
+            .map(|dir| {
+                let file = dir.join("active-runtime.json");
+                format!("{} (exists={})", file.display(), file.is_file())
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
         AppError::Worker(format!("{error} [runtime-envs={envs}; record={record}]"))
     })?;
     let python_for_log = python.clone();
