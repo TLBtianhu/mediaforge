@@ -1018,13 +1018,14 @@ function formatDurationMs(value: number | undefined) {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--outline) 54%, transparent);
-  border-radius: 14px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 18px;
   background:
     linear-gradient(180deg, rgba(255,255,255,0.018), transparent 58%),
-    color-mix(in srgb, var(--surface-1) 70%, transparent);
-  transition: border-color 160ms ease, background 160ms ease;
+    color-mix(in srgb, var(--surface-1) 78%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent), inset 0 1px 0 rgba(255,255,255,.03), var(--shadow-panel);
+  transition: background 160ms ease, box-shadow 160ms ease;
 }
 
 .result-row--selected {
@@ -1293,10 +1294,11 @@ function formatDurationMs(value: number | undefined) {
   place-items: center;
   align-content: center;
   gap: 10px;
-  border: 1px dashed color-mix(in srgb, var(--outline) 64%, transparent);
+  border: 0;
   border-radius: 18px;
   color: var(--on-surface-muted);
   background: color-mix(in srgb, var(--surface-1) 58%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent), var(--shadow-panel);
 }
 
 .results-empty strong {
