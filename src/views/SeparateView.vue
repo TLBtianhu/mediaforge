@@ -11,7 +11,6 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
   CubeOutline,
-  GitNetworkOutline,
   CheckmarkCircle,
   PlayOutline,
   MusicalNotesOutline,
@@ -294,7 +293,7 @@ function hasInferenceField(key: string) {
 
 watch(() => beginnerGuide.parameterStep, active => {
   if (beginnerGuide.demoActive && !isTutorialFrame()) return
-  if (active && runMode.value === 'model' && !ensembleEnabled.value) {
+  if (active && !ensembleEnabled.value) {
     guideOpenedSettings = true
     showSettingsDrawer.value = true
     parameterHelpPage.value = null
@@ -532,7 +531,7 @@ function normalizeStemOrder(order: string[], stems: string[]) {
   return next
 }
 
-const orderedOutputStems = computed(() => runMode.value === 'model' && ensembleEnabled.value
+const orderedOutputStems = computed(() => ensembleEnabled.value
   ? [ensembleStem.value.trim()].filter(Boolean)
   : normalizeStemOrder(customStemOrder.value, checkedOutputStems.value))
 const outputNamingConfig = computed(() => ({
@@ -2204,9 +2203,8 @@ const audioSteps = computed(() => [
 
             <div class="ofield-row" data-guide="output-format">
               <label class="ofield">
-                <span class="ofield__label">{{ runMode === 'workflow' ? t('separate.currentFormat') : t('settings.defaultFormat') }}</span>
-                <n-select v-if="runMode === 'model'" v-model:value="settings.defaultFormat" size="small" :options="formatOptions" :disabled="isRunModeLocked" />
-                <div v-else class="ofield__static">{{ formatLabel }}</div>
+                <span class="ofield__label">{{ t('settings.defaultFormat') }}</span>
+                <n-select v-model:value="settings.defaultFormat" size="small" :options="formatOptions" :disabled="isRunModeLocked" />
               </label>
               <div class="ofield">
                 <span class="ofield__label">{{ t('separate.saveMode') }}</span>
@@ -2229,7 +2227,7 @@ const audioSteps = computed(() => [
               </div>
             </div>
 
-            <div v-if="runMode === 'model'" class="ofield naming-field" data-guide="output-naming">
+            <div class="ofield naming-field" data-guide="output-naming">
               <span class="ofield__label">{{ t('separate.namingRule') }}</span>
               <button type="button" class="naming-summary" :disabled="isRunModeLocked" @click="showNamingModal = true">
                 <span>{{ outputNamingSummary }}</span>
@@ -2237,7 +2235,7 @@ const audioSteps = computed(() => [
               </button>
             </div>
 
-            <div v-if="runMode === 'model'" class="ofield ofield--stems" data-guide="output-stems">
+            <div class="ofield ofield--stems" data-guide="output-stems">
               <div class="ofield__heading">
                 <span class="ofield__label">{{ t('separate.outputStems') }}</span>
                 <div v-if="!ensembleEnabled && availableStemNames.length > 3" class="stem-selection-actions">
@@ -2456,14 +2454,14 @@ const audioSteps = computed(() => [
           <section v-else key="ready" class="stage-view stage-view--ready">
             <div class="stage-head">
               <div class="stage-head__label">
-                <n-icon :component="runMode === 'workflow' ? GitNetworkOutline : CubeOutline" />
+                <n-icon :component="CubeOutline" />
                 <div>
                   <h2>{{ t('separate.runTarget') }}</h2>
-                  <p>{{ runMode === 'workflow' ? t('separate.workflowPanelHint') : t('separate.modelPanelHint') }}</p>
+                  <p>{{ t('separate.modelPanelHint') }}</p>
                 </div>
               </div>
               <div class="stage-head__controls">
-                <div v-if="runMode === 'model'" class="stage-head__extra" data-guide="model-mode">
+                <div class="stage-head__extra" data-guide="model-mode">
                   <n-select
                     :value="ensembleEnabled ? 'ensemble' : 'single'"
                     size="small"
@@ -2485,7 +2483,7 @@ const audioSteps = computed(() => [
             </div>
 
             <transition name="stage-swap" mode="out-in">
-              <div v-if="runMode === 'model'" key="model" class="target-pane" :class="{ 'target-pane--ensemble': ensembleEnabled }">
+              <div key="model" class="target-pane" :class="{ 'target-pane--ensemble': ensembleEnabled }">
                 <template v-if="modelPanelHasModels">
                   <div class="target-toolbar" data-guide="separation-models">
                     <n-input
@@ -2795,7 +2793,7 @@ const audioSteps = computed(() => [
         @close="showSettingsDrawer = false"
       >
         <div class="settings-drawer__content">
-          <div v-if="runMode === 'model'" class="settings-group settings-group--run">
+          <div class="settings-group settings-group--run">
             <div class="settings-group__head">
               <strong>{{ t('separate.runOptionsTitle') }}</strong>
               <span>{{ t('separate.runOptionsHint') }}</span>
@@ -2808,23 +2806,22 @@ const audioSteps = computed(() => [
           <div class="settings-group">
             <div class="settings-group__head">
               <strong>{{ t('separate.audioQualityTitle') }} · {{ formatLabel }}</strong>
-              <span>{{ t(runMode === 'workflow' && effectiveFormat !== 'm4a'
-                ? 'separate.workflowAudioQualityHint' : 'separate.audioQualityEditable') }}</span>
+              <span>{{ t('separate.audioQualityEditable') }}</span>
             </div>
-            <n-grid v-if="runMode === 'model' || effectiveFormat === 'm4a'" :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
-              <n-grid-item v-if="runMode === 'model' && effectiveFormat === 'wav'">
+            <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
+              <n-grid-item v-if="effectiveFormat === 'wav'">
                 <div class="field-block" data-parameter-guide="wavBitDepth" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'wavBitDepth' }">
                   <label>{{ t('audio.wavBitDepth') }}</label>
                   <n-select v-model:value="settings.wavBitDepth" :options="wavBitDepthOptions" />
                 </div>
               </n-grid-item>
-              <n-grid-item v-if="runMode === 'model' && effectiveFormat === 'flac'">
+              <n-grid-item v-if="effectiveFormat === 'flac'">
                 <div class="field-block" data-parameter-guide="flacBitDepth" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'flacBitDepth' }">
                   <label>{{ t('audio.flacBitDepth') }}</label>
                   <n-select v-model:value="settings.flacBitDepth" :options="flacBitDepthOptions" />
                 </div>
               </n-grid-item>
-              <n-grid-item v-if="runMode === 'model' && effectiveFormat === 'mp3'">
+              <n-grid-item v-if="effectiveFormat === 'mp3'">
                 <div class="field-block" data-parameter-guide="mp3BitRate" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'mp3BitRate' }">
                   <label>{{ t('audio.mp3BitRate') }}</label>
                   <n-select v-model:value="settings.mp3BitRate" :options="mp3BitRateOptions" />
@@ -2842,7 +2839,7 @@ const audioSteps = computed(() => [
                   <n-select v-model:value="settings.m4aCodec" :options="m4aCodecOptions" />
                 </div>
               </n-grid-item>
-              <n-grid-item v-if="runMode === 'model' && showNormalizeField">
+              <n-grid-item v-if="showNormalizeField">
                 <div class="field-block field-block--inline-check" data-parameter-guide="normalize" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'normalize' }">
                   <n-checkbox v-model:checked="normalize">{{ t('inference.normalize') }}</n-checkbox>
                 </div>
@@ -2850,7 +2847,7 @@ const audioSteps = computed(() => [
             </n-grid>
           </div>
 
-          <div v-if="runMode === 'model'" class="settings-group">
+          <div class="settings-group">
             <n-collapse v-model:expanded-names="expandedInferenceSections">
               <n-collapse-item :title="t('inference.advancedParams')" name="inference">
                 <template #header-extra><n-button v-if="!beginnerGuide.parameterStep" text size="small" :aria-label="t('parameterHelp.label')" @click.stop="openParameterHelp"><n-icon :component="InformationCircleOutline" size="18" /></n-button></template>
@@ -2859,7 +2856,7 @@ const audioSteps = computed(() => [
                   <n-spin size="small" />
                   <span>{{ t('separate.advancedPanelLoading') }}</span>
                 </div>
-                <n-grid v-if="runMode === 'model'" :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
+                <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
                   <n-grid-item v-if="hasInferenceField('batch_size')">
                     <div class="field-block" data-parameter-guide="batch_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'batch_size' }">
                       <label>{{ t('inference.batchSize') }}</label>
@@ -2906,14 +2903,14 @@ const audioSteps = computed(() => [
                 </n-grid>
                 <div class="check-list check-list--spaced">
                   <n-checkbox v-if="showStandardizeField" v-model:checked="standardize" data-parameter-guide="standardize" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'standardize' }">{{ t('inference.standardize') }}</n-checkbox>
-                  <n-checkbox v-if="runMode === 'model' && hasInferenceField('enable_post_process')" v-model:checked="enable_post_process" data-parameter-guide="enable_post_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'enable_post_process' }">{{ t('inference.vrEnablePostProcess') }}</n-checkbox>
-                  <n-checkbox v-if="runMode === 'model' && hasInferenceField('high_end_process')" v-model:checked="high_end_process" data-parameter-guide="high_end_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'high_end_process' }">{{ t('inference.vrHighEndProcess') }}</n-checkbox>
+                  <n-checkbox v-if="hasInferenceField('enable_post_process')" v-model:checked="enable_post_process" data-parameter-guide="enable_post_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'enable_post_process' }">{{ t('inference.vrEnablePostProcess') }}</n-checkbox>
+                  <n-checkbox v-if="hasInferenceField('high_end_process')" v-model:checked="high_end_process" data-parameter-guide="high_end_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'high_end_process' }">{{ t('inference.vrHighEndProcess') }}</n-checkbox>
                 </div>
-                <p v-if="runMode === 'model' && !advancedParamsLoading && !hasVisibleAdvancedFields" class="advanced-empty">
+                <p v-if="!advancedParamsLoading && !hasVisibleAdvancedFields" class="advanced-empty">
                   {{ t('separate.advancedPanelEmpty') }}
                 </p>
                 <div
-                  v-if="runMode === 'model' && currentModelInfo && currentModelDefaultsResolved && !advancedParamsLoading"
+                  v-if="currentModelInfo && currentModelDefaultsResolved && !advancedParamsLoading"
                   class="advanced-actions"
                   data-parameter-guide="modelDefaults"
                   :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'modelDefaults' }"
