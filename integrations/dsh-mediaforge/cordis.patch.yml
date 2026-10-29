@@ -1,0 +1,15 @@
+- insert:
+    - id: mediaforge-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: mediaforge
+        transport: stdio
+        command: cmd
+        args:
+          - /c
+          - C:\MediaForge\scripts\mediaforge-mcp.cmd
+        cwd: C:\MediaForge
+        env:
+          MEDIAFORGE_DATA_DIR: C:\Users\30680\.mediaforge
+        failOnStartupError: false
+        toolCallTimeoutMs: 120000

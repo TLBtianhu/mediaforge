@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "MediaForge Media Tools",
+    "description": "Connects the local MediaForge media service as MCP tools: probe, convert, plan, model catalog, and job status."
+  }
+}

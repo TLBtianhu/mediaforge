@@ -111,6 +111,29 @@ RealESRGAN_x4plus.pth
 - 运行依赖不满足时只看不跑；安装 runtime 后才能推理
 - 旧音频高级管理页保留在 `/models/audio-legacy`
 
+### Agent / MCP
+
+本地 MCP bridge：`python/agent_bridge.py`
+
+```powershell
+.\scripts\start-mcp.ps1        # HTTP，127.0.0.1:1421
+.\scripts\start-mcp.ps1 -Dev   # 使用 .dev-data
+```
+
+DSH 集成 bundle：`integrations/dsh-mediaforge`
+
+安装后 DSH 可直接调用：
+
+```text
+mcp__mediaforge__probe
+mcp__mediaforge__convert
+mcp__mediaforge__pipeline_plan
+mcp__mediaforge__job_status
+mcp__mediaforge__models_list
+```
+
+MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Agent 是下一阶段。
+
 ### 运行状态
 
 侧栏底部常驻状态胶囊：

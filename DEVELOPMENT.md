@@ -124,6 +124,73 @@ Remove-Item "$env:TEMP\MediaForge-clean-*" -Recurse -Force
 - 每次 UI 改动后保留截图用于对比，截图目录不进 Git
 - 测试必须使用隔离 profile 或临时数据根
 
+## Agent / MCP bridge
+
+`python/agent_bridge.py` is a dependency-free MCP bridge over the existing
+worker protocol. It supports both transports:
+
+```text
+stdio   : DSH spawns the bridge as an MCP child process
+HTTP    : http://127.0.0.1:1421/mcp with a pairing token
+```
+
+Start the HTTP bridge:
+
+```powershell
+.\scripts\start-mcp.ps1
+.\scripts\start-mcp.ps1 -Dev
+```
+
+The HTTP bridge writes `mcp-bridge.json` (URL + bearer token) under the data
+root. Never expose this port on a public interface.
+
+DSH integration:
+
+```text
+integrations/dsh-mediaforge
+```
+
+It is a configuration-only bundle that registers `@deepseek-ai/dsh-mcp-client`
+with `serverName: mediaforge`. Once installed, DSH sees:
+
+```text
+mcp__mediaforge__mediaforge_status
+mcp__mediaforge__models_list
+mcp__mediaforge__probe
+mcp__mediaforge__convert
+mcp__mediaforge__pipeline_plan
+mcp__mediaforge__job_status
+mcp__mediaforge__job_cancel
+mcp__mediaforge__feedback_submit
+```
+
+The bundle uses the stdio launcher:
+
+```text
+scripts/mediaforge-mcp.cmd
+```
+
+Adjust `command`, `cwd`, and `MEDIAFORGE_DATA_DIR` in
+`integrations/dsh-mediaforge/cordis.patch.yml` when the project is not at
+`C:\MediaForge`.
+
+Current limitations, intentionally explicit:
+
+- The stdio bridge is a separate headless worker process. It shares the data
+  root and models, but not the live Tauri job queue.
+- `pipeline_plan` is read-only; image/video execution still goes through the
+  existing app commands until the Operation Kernel refactor lands.
+- No DSH model bridge yet. MCP is used for capabilities only, not for
+  inheriting DSH login/model selection.
+
+Next phases:
+
+1. Extract the shared Operation Kernel so UI, MCP, and the internal agent use
+   one implementation.
+2. Add a DSH Host plugin model gateway that streams from `ctx.llm` using
+   `agentDefaultModel`; no second API key.
+3. Add the internal agent loop and the structured harness feedback workflow.
+
 ## 打包前检查
 
 - [ ] `data/` 不存在或已清理

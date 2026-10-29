@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "MediaForge 媒体工具",
+    "description": "把本地 MediaForge 媒体服务接入为 MCP 工具：探测、转码、计划、模型目录与任务状态。"
+  }
+}
