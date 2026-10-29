@@ -1241,6 +1241,23 @@ def cmd_list_models(payload: dict[str, Any]) -> int:
         # the end; the UI sorts on top of this anyway.
         entries.extend(list_registered_user_models(category=category))
     models = [model_to_dict(entry, model_dir, include_local_state) for entry in entries]
+    if payload.get("includeInterfaces"):
+        # 模型列表可以顺带带上槽位接口（UI 用来生成参数表单）。
+        # 默认关闭：326 个模型每个带 3–6 个槽位会让列表载荷变大，按需开启。
+        from media_ops import interface as model_interface
+
+        for item in models:
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            try:
+                found = model_interface.interface_for(f"audio:{name}")
+            except Exception:
+                found = None
+            if found:
+                item["slots"] = found["slots"]
+                item["slotTask"] = found["task"]
+
     category_pairs = sorted({
         (m["category"], m.get("categoryCn") or m["category"])
         for m in models
