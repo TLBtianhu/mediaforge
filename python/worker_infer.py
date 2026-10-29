@@ -10,6 +10,9 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator
 from uuid import uuid4
+from types import SimpleNamespace
+
+import worker_paths
 
 from worker_models import (
     _derive_overlap_size_from_num_overlap,
@@ -481,6 +484,71 @@ def _resolve_separator_device(device: Any, device_ids: Any) -> tuple[str, list[i
     return "auto", normalized_ids, f"cuda:{normalized_ids[0]}"
 
 
+def _resolve_audio_catalog_record(model_name: str) -> dict[str, Any] | None:
+    """按 `audio:xxx` / label / name 从音频模型库找到记录。
+
+    为什么需要：`models_list` 用的是音频模型库（326 条，id 形如 `audio:HTDemucs4.th`），
+    而分离走的是 pymss 自己的模型索引——两套命名不一致，agent 拿到列表里的 id 直接调
+    `audio.separate` 会报 "Unknown pymss model"。这里补一层映射。
+    """
+    try:
+        from model_hub import list_models  # 局部导入：只有音频路径才需要
+    except Exception:
+        return None
+    try:
+        data = list_models(modality="audio")
+    except Exception:
+        return None
+    wanted = str(model_name or "").strip().lower()
+    if not wanted:
+        return None
+    aliases = {wanted}
+    if wanted.startswith("audio:"):
+        aliases.add(wanted[len("audio:"):])
+    for record in data.get("models") or []:
+        names = {
+            str(record.get("id") or "").strip().lower(),
+            str(record.get("label") or "").strip().lower(),
+            str(record.get("name") or "").strip().lower(),
+        }
+        names.discard("")
+        if names & aliases:
+            return record
+    return None
+
+
+def _resolved_from_audio_record(record: dict[str, Any], model_dir: str | None, model_name: str) -> dict[str, Any]:
+    files = [entry for entry in (record.get("files") or []) if isinstance(entry, dict)]
+    weights = next(
+        (entry for entry in files if not str(entry.get("path") or "").lower().endswith((".yaml", ".json", ".txt"))),
+        None,
+    )
+    config = next(
+        (entry for entry in files if str(entry.get("path") or "").lower().endswith((".yaml", ".yml", ".json"))),
+        None,
+    )
+    if weights is None:
+        raise FileNotFoundError(f"{model_name!r} has no weight file in the audio catalog")
+    root = worker_paths.model_root(model_dir)
+    model_path = root / str(weights["path"])
+    config_path = root / str(config["path"]) if config else None
+    missing = [str(path) for path in (model_path, config_path) if path is not None and not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Model {model_name!r} is missing required file(s): {', '.join(missing)}")
+    return {
+        "entry": SimpleNamespace(
+            name=str(record.get("name") or model_name),
+            model_type=str(record.get("task") or ""),
+            supported=True,
+        ),
+        "model_type": str(record.get("task") or ""),
+        "model_path": str(model_path),
+        "config_path": str(config_path) if config_path else None,
+        "auxiliary_paths": [],
+        "target_instrument_override": None,
+    }
+
+
 def _resolve_studio_model(
     model_name: str,
     model_dir: str | None,
@@ -488,7 +556,13 @@ def _resolve_studio_model(
     require_supported: bool,
     require_exists: bool,
 ) -> dict[str, Any]:
-    entry = get_any_model_entry(model_name)
+    try:
+        entry = get_any_model_entry(model_name)
+    except KeyError:
+        record = _resolve_audio_catalog_record(model_name)
+        if record is None:
+            raise
+        return _resolved_from_audio_record(record, model_dir, model_name)
     if require_supported and not bool(getattr(entry, "supported", True)):
         reason = str(getattr(entry, "unsupported_reason", "") or "unsupported")
         raise RuntimeError(f"Model {model_name!r} is not supported: {reason}")
