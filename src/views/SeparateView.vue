@@ -146,7 +146,7 @@ const workflowMetaEditor = ref<WorkflowEntry | null>(null)
 const workflowNameDraft = ref('')
 const workflowNoteDraft = ref('')
 const workflowMetaSaving = ref(false)
-if (route.query.mode === 'workflow') runMode.value = 'workflow'
+if (route.query.mode === 'workflow') void router.replace('/workflows')
 const focusedSeparationJobId = ref<string | null>(null)
 const composingNewJob = ref(false)
 const submittingJob = ref(false)
