@@ -400,7 +400,10 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="media-workbench">
-      <n-card class="workbench-input" :title="t('factory.input')" size="small">
+      <n-card class="workbench-input" size="small">
+        <template #header>
+          <div class="mf-card-head"><span class="mf-card-index">01</span><div class="mf-card-head__label"><strong>{{ t('factory.input') }}</strong><small>{{ t('plan.inputHint') }}</small></div></div>
+        </template>
         <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
           <span class="mf-dropzone__icon">
             <n-icon :component="VideocamOutline" :size="26" />
@@ -425,7 +428,10 @@ onBeforeUnmount(() => {
         </template>
       </n-card>
 
-      <n-card class="workbench-output" :title="t('factory.output')" size="small">
+      <n-card class="workbench-output" size="small">
+        <template #header>
+          <div class="mf-card-head"><span class="mf-card-index">02</span><div class="mf-card-head__label"><strong>{{ t('factory.output') }}</strong><small>{{ t('plan.outputHint') }}</small></div></div>
+        </template>
         <n-space vertical :size="12">
           <div>
             <label class="video-label">{{ t('factory.outputDir') }}</label>
@@ -450,7 +456,10 @@ onBeforeUnmount(() => {
         </n-space>
       </n-card>
 
-      <n-card class="workbench-plan" :title="t('plan.title')" size="small">
+      <n-card class="workbench-plan" size="small">
+        <template #header>
+          <div class="mf-card-head"><span class="mf-card-index">03</span><div class="mf-card-head__label"><strong>{{ t('plan.title') }}</strong><small>{{ t('pipeline.stepCompose') }}</small></div></div>
+        </template>
         <n-space vertical :size="12">
           <ProcessingPlan v-model="planStep" modality="video" :busy="busy" />
           <div class="video-row">
@@ -477,7 +486,10 @@ onBeforeUnmount(() => {
         </n-space>
       </n-card>
 
-    <n-card v-if="firstOutput" class="workbench-result" :title="t('video.result')" size="small">
+    <n-card v-if="firstOutput" class="workbench-result" size="small">
+      <template #header>
+        <div class="mf-card-head"><span class="mf-card-index">04</span><div class="mf-card-head__label"><strong>{{ t('video.result') }}</strong></div></div>
+      </template>
       <video class="video-player" :src="videoSrc" controls />
       <div class="video-info">
         <n-tag v-for="row in resultInfo" :key="row.label" size="small" :bordered="false">{{ row.label }}: {{ row.value }}</n-tag>
@@ -494,6 +506,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .video-page :deep(.n-card) { border-radius: 18px; box-shadow: 0 12px 34px rgba(29, 39, 64, 0.045); }
+.media-workbench :deep(.n-card) { padding: 17px 18px; border-radius: 18px; background: color-mix(in srgb, var(--surface-1) 78%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent), inset 0 1px 0 rgba(255,255,255,.03), var(--shadow-panel); }
+.media-workbench :deep(.n-card-header) { padding: 0 0 14px; border: 0; }
+.media-workbench :deep(.n-card-header__main) { width: 100%; }
+.media-workbench :deep(.n-card__content) { padding: 0; }
 .video-page { display: flex; flex-direction: column; gap: 12px; }
 .media-workbench { display: grid; grid-template-columns: minmax(280px, .82fr) minmax(0, 1.55fr); grid-template-areas: "input plan" "output plan" "result result"; gap: 16px; align-items: start; }
 .workbench-input { grid-area: input; }
@@ -504,10 +520,10 @@ onBeforeUnmount(() => {
 .video-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .video-count { color: var(--text-color-3); font-size: 12px; }
 .video-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.video-label { display: block; margin-bottom: 6px; color: var(--text-color-2); font-size: 12px; font-weight: 600; }
+.video-label { display: block; margin-bottom: 6px; color: var(--on-surface-muted); font-size: 12px; font-weight: 600; }
 .video-path { display: flex; gap: 8px; align-items: center; }
 .video-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.video-hint { margin: -4px 0 0; color: var(--text-color-3); font-size: 11px; }
+.video-hint { margin: -4px 0 0; color: var(--on-surface-muted); font-size: 11px; }
 .video-player { width: 100%; max-height: 520px; border-radius: 8px; background: #000; }
 .video-info { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 @media (max-width: 900px) { .media-workbench { grid-template-columns: 1fr; grid-template-areas: "input" "output" "plan" "result"; } .video-grid { grid-template-columns: 1fr; } .video-row { grid-template-columns: 1fr 1fr; } }

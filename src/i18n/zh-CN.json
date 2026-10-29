@@ -135,6 +135,8 @@
   "plan": {
     "title": "处理方案",
     "oneModel": "一次任务只使用一个主模型",
+    "inputHint": "选择素材",
+    "outputHint": "目录、格式与命名",
     "models": "个可用模型",
     "capability": "处理能力",
     "model": "主模型",

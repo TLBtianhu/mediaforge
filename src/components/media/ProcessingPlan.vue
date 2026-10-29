@@ -166,9 +166,9 @@ onMounted(load)
 .processing-plan { display: grid; gap: 12px; }
 .processing-plan__head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
 .processing-plan__head > div { display: flex; flex-direction: column; gap: 3px; }
-.processing-plan__head span { color: var(--text-color-3); font-size: 10.5px; }
+.processing-plan__head span { color: var(--on-surface-muted); font-size: 10.5px; }
 .processing-plan__field { display: grid; gap: 5px; }
-.processing-plan__field label { color: var(--text-color-3); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.processing-plan__field label { color: var(--on-surface-muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .processing-plan__params { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 9px; }
-.processing-plan__note { padding-top: 2px; color: var(--text-color-3); font-size: 10px; line-height: 1.5; }
+.processing-plan__note { padding-top: 2px; color: var(--on-surface-muted); font-size: 10px; line-height: 1.5; }
 </style>

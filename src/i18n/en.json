@@ -135,6 +135,8 @@
   "plan": {
     "title": "Processing Plan",
     "oneModel": "One primary model per task",
+    "inputHint": "Choose an asset",
+    "outputHint": "Directory, format, and naming",
     "models": "available models",
     "capability": "Capability",
     "model": "Primary model",

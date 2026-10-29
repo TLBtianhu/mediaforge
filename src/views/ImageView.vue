@@ -369,7 +369,10 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="media-workbench">
-      <n-card class="workbench-input" :title="t('factory.input')" size="small">
+      <n-card class="workbench-input" size="small">
+        <template #header>
+          <div class="mf-card-head"><span class="mf-card-index">01</span><div class="mf-card-head__label"><strong>{{ t('factory.input') }}</strong><small>{{ t('plan.inputHint') }}</small></div></div>
+        </template>
         <div v-if="!inputs.length" class="mf-dropzone" @click="pickFiles">
           <span class="mf-dropzone__icon">
             <n-icon :component="DocumentOutline" :size="26" />
@@ -394,7 +397,10 @@ onBeforeUnmount(() => {
         </template>
       </n-card>
 
-      <n-card class="workbench-output" :title="t('factory.output')" size="small">
+      <n-card class="workbench-output" size="small">
+        <template #header>
+          <div class="mf-card-head"><span class="mf-card-index">02</span><div class="mf-card-head__label"><strong>{{ t('factory.output') }}</strong><small>{{ t('plan.outputHint') }}</small></div></div>
+        </template>
         <n-space vertical :size="12">
           <div>
             <label class="image-label">{{ t('factory.outputDir') }}</label>
@@ -420,7 +426,10 @@ onBeforeUnmount(() => {
         </n-space>
       </n-card>
 
-      <n-card class="workbench-plan" :title="t('plan.title')" size="small">
+      <n-card class="workbench-plan" size="small">
+        <template #header>
+          <div class="mf-card-head"><span class="mf-card-index">03</span><div class="mf-card-head__label"><strong>{{ t('plan.title') }}</strong><small>{{ t('pipeline.stepCompose') }}</small></div></div>
+        </template>
         <n-space vertical :size="12">
           <ProcessingPlan v-model="planStep" modality="image" :busy="busy" />
           <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="run">
@@ -446,7 +455,10 @@ onBeforeUnmount(() => {
         </n-space>
       </n-card>
 
-    <n-card v-if="firstOutput" class="workbench-result" :title="t('image.compare')" size="small">
+    <n-card v-if="firstOutput" class="workbench-result" size="small">
+      <template #header>
+        <div class="mf-card-head"><span class="mf-card-index">04</span><div class="mf-card-head__label"><strong>{{ t('image.compare') }}</strong></div></div>
+      </template>
       <div class="image-compare">
         <img class="compare-base" :src="resultSrc" :alt="t('image.after')" />
         <img class="compare-top" :src="originalSrc" :alt="t('image.before')" :style="{ clipPath: `inset(0 ${100 - compare}% 0 0)` }" />
@@ -465,6 +477,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .image-page :deep(.n-card) { border-radius: 18px; box-shadow: 0 12px 34px rgba(29, 39, 64, 0.045); }
+.media-workbench :deep(.n-card) { padding: 17px 18px; border-radius: 18px; background: color-mix(in srgb, var(--surface-1) 78%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent), inset 0 1px 0 rgba(255,255,255,.03), var(--shadow-panel); }
+.media-workbench :deep(.n-card-header) { padding: 0 0 14px; border: 0; }
+.media-workbench :deep(.n-card-header__main) { width: 100%; }
+.media-workbench :deep(.n-card__content) { padding: 0; }
 .image-page { display: flex; flex-direction: column; gap: 12px; }
 .media-workbench { display: grid; grid-template-columns: minmax(280px, .82fr) minmax(0, 1.55fr); grid-template-areas: "input plan" "output plan" "result result"; gap: 16px; align-items: start; }
 .workbench-input { grid-area: input; }
@@ -475,8 +491,8 @@ onBeforeUnmount(() => {
 .image-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .image-count { color: var(--text-color-3); font-size: 12px; }
 .image-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.image-label { display: block; margin-bottom: 6px; color: var(--text-color-2); font-size: 12px; font-weight: 600; }
-.image-hint { margin: 4px 0 0; color: var(--text-color-3); font-size: 11px; }
+.image-label { display: block; margin-bottom: 6px; color: var(--on-surface-muted); font-size: 12px; font-weight: 600; }
+.image-hint { margin: 4px 0 0; color: var(--on-surface-muted); font-size: 11px; }
 .image-path { display: flex; gap: 8px; align-items: center; }
 .image-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .image-outputs { border-top: 1px solid var(--divider-color); padding-top: 10px; }
