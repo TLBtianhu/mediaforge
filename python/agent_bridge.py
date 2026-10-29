@@ -69,6 +69,8 @@ class Bridge:
         runtime_envs = Path(os.environ.get("PYMSS_STUDIO_RUNTIME_ENVS_DIR") or data_root / "runtime-envs")
         self.python_path = _active_runtime_python(runtime_envs)
         self.jobs = OperationKernel(data_root, self.python_path)
+        # 每个作业已用掉几次自动重试（异步重试必须自己记，台账不存这个）
+        self._retry_counts: dict[str, int] = {}
         # 模型根：规则只有一份，在 worker_paths.model_root()。
         # `data_root` 作为参数传进去——桥接可能用 --data-root 指定了另一处，
         # 那时候环境变量不一定跟着变，所以不能只靠 env。
@@ -585,6 +587,16 @@ class Bridge:
                 },
             },
             {
+                "name": "job_retry",
+                "description": "Resubmit a failed job with the corrected parameters its recovery hint suggests (smaller tile, lower scale, CPU). Refuses when the failure is not recoverable, needs user consent, or the retry budget is spent.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"jobId": {"type": "string"}},
+                    "required": ["jobId"],
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "feedback_submit",
                 "description": "Record structured harness feedback from the agent. Local-only; never changes code or permissions.",
                 "inputSchema": {
@@ -676,9 +688,42 @@ class Bridge:
             return {"ok": snapshot.get("status") == "completed", **snapshot, **({"recovery": hint} if hint else {})}
         if name == "job_cancel":
             return self.jobs.cancel(str(arguments.get("jobId") or ""))
+        if name == "job_retry":
+            return self.job_retry(str(arguments.get("jobId") or ""))
         if name == "feedback_submit":
             return self.feedback(dict(arguments))
         return self._dispatch_contract(name, arguments)
+
+    def job_retry(self, job_id: str) -> dict[str, Any]:
+        """把失败的作业按恢复建议改参数后重新提交。
+
+        异步任务不能在提交时重试，所以这里是**事后**的一次机会：
+        调用方看到 `job_status` 里的 recovery 后决定要不要重试。
+        """
+        job = self.jobs.get(job_id)
+        if not job:
+            return {"ok": False, "error": "unknown job"}
+        snapshot = job.snapshot()
+        if snapshot.get("status") != "failed":
+            return {"ok": False, "error": "job did not fail", "status": snapshot.get("status")}
+        from retry_policy import plan_retry
+
+        used = self._retry_counts.get(job_id, 0)
+        plan = plan_retry(snapshot.get("payload") or {}, snapshot.get("result"), attempts_used=used)
+        if not plan["ok"]:
+            return {**plan, "jobId": job_id, "attemptsUsed": used}
+        self._retry_counts[job_id] = used + 1
+        payload = {**plan["payload"], "requestId": f"{job_id}-r{used + 1}"}
+        retried = self.jobs.start(str(snapshot.get("command") or job.command), payload)
+        return {
+            "ok": True,
+            "jobId": retried.job_id,
+            "retriedFrom": job_id,
+            "attemptsUsed": used + 1,
+            "applied": plan["actions"],
+            "recovery": plan["hint"],
+            "status": retried.snapshot(),
+        }
 
     # ---- 契约兜底：没被上面显式处理的名字，只要契约里有就能执行 ----------------
 

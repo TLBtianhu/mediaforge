@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import copy
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -62,7 +63,8 @@ def applicable_actions(hint: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 def adjust_arguments(arguments: dict[str, Any], actions: list[dict[str, Any]]) -> dict[str, Any] | None:
     """按动作调整调用参数；调整不出实际变化时返回 None（别做无意义的重试）。"""
-    adjusted = dict(arguments or {})
+    # 深拷贝：job_retry 传入的是台账里存的载荷，改它就是改历史
+    adjusted = copy.deepcopy(arguments or {})
     changed = False
     steps = adjusted.get("steps")
     for action in actions:
@@ -79,9 +81,10 @@ def adjust_arguments(arguments: dict[str, Any], actions: list[dict[str, Any]]) -
                     if not isinstance(params, dict):
                         continue
                     if slot in params or slot in _declared_params(step):
-                        params[slot] = value
-                        changed = True
-            if slot in adjusted:
+                        if params.get(slot) != value:
+                            params[slot] = value
+                            changed = True
+            if slot in adjusted and adjusted[slot] != value:
                 adjusted[slot] = value
                 changed = True
         elif action.get("action") == "switch_device":
@@ -129,3 +132,40 @@ def retry_blocked_reason(remaining: int, completed: int, hint: dict[str, Any] | 
     if not applicable_actions(hint):
         return "no automatically applicable action"
     return None
+
+
+def plan_retry(
+    payload: dict[str, Any] | None,
+    result: Any,
+    *,
+    attempts_used: int = 0,
+    budget: int | None = None,
+) -> dict[str, Any]:
+    """长任务（作业台账）的重试计划。
+
+    异步任务不能在提交时重试——所以要能**事后**判断：这次失败能不能再试、
+    该改成什么参数。返回 `{"ok": True, "payload": {...}, "actions": [...]}`，
+    或者 `{"ok": False, "error": 原因, "hint": ...}`。
+
+    这里只做计划，不动手：真正提交由调用方（bridge.job_retry / 内嵌 loop）决定。
+    """
+    hint = recovery_from_result(result)
+    if not hint:
+        return {"ok": False, "error": "no recovery hint"}
+    if not hint.get("retryable"):
+        return {"ok": False, "error": "failure is not retryable", "hint": hint}
+    remaining = (budget_from_env() if budget is None else budget) - attempts_used
+    if remaining <= 0:
+        return {"ok": False, "error": "retry budget exhausted", "hint": hint}
+    actions = applicable_actions(hint)
+    if not actions:
+        return {"ok": False, "error": "no automatically applicable action", "hint": hint}
+    adjusted = adjust_arguments(payload or {}, actions)
+    if adjusted is None:
+        return {"ok": False, "error": "adjustment produced no change", "hint": hint}
+    return {
+        "ok": True,
+        "payload": adjusted,
+        "actions": [action.get("action") for action in actions],
+        "hint": hint,
+    }

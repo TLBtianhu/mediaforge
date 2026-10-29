@@ -65,6 +65,7 @@ class BridgeToolCoverageTests(unittest.TestCase):
             "workflow_start",
             "job_status",
             "job_cancel",
+            "job_retry",
             "feedback_submit",
             "agent_contract",
             "evaluate_media",
