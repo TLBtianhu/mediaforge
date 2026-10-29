@@ -2632,60 +2632,6 @@ const audioSteps = computed(() => [
                 </div>
               </div>
 
-              <div v-else key="workflow" class="target-pane">
-                <div class="target-toolbar target-toolbar--single">
-                  <n-input
-                    v-model:value="workflowSearch"
-                    clearable
-                    :placeholder="t('separate.workflowSearchPlaceholder')"
-                  >
-                    <template #prefix><n-icon :component="SearchOutline" /></template>
-                  </n-input>
-                </div>
-                <div v-if="filteredWorkflows.length" class="target-list" role="listbox" :aria-label="t('separate.workflow')">
-                  <button
-                    v-for="item in filteredWorkflows"
-                    :key="item.id"
-                    type="button"
-                    role="option"
-                    :aria-selected="selectedWorkflowId === item.id"
-                    :aria-disabled="Boolean(workflowIssue(item))"
-                    :title="workflowIssue(item) || item.name"
-                    class="target-row workflow-target"
-                    :class="{
-                      'target-row--active': selectedWorkflowId === item.id,
-                      'target-row--unavailable': Boolean(workflowIssue(item)),
-                      'workflow-target--restricted': Boolean(getSeparateWorkflowInputIssue(item.definition)) && !getWorkflowDefinitionIssue(item.definition),
-                    }"
-                    @click="selectRunnableWorkflow(item)"
-                    @contextmenu.stop.prevent="openSeparateContextMenu($event, 'workflow', item)"
-                  >
-                    <span class="target-row__radio"></span>
-                    <span class="target-row__body">
-                      <span class="target-row__heading">
-                        <span class="target-row__name" :title="item.name">{{ item.name }}</span>
-                        <span v-if="workflowIssue(item)" class="target-row__unavailable">
-                          {{ t(getSeparateWorkflowInputIssue(item.definition) && !getWorkflowDefinitionIssue(item.definition)
-                            ? 'separate.workflowPageRequired' : 'separate.workflowUnavailable') }}
-                        </span>
-                      </span>
-                      <span class="target-row__meta">
-                        <span class="target-row__tag">{{ t('separate.workflow') }}</span>
-                        <span v-if="workflowIssue(item)" class="target-row__issue">{{ workflowIssueSummary(item) }}</span>
-                        <span v-else class="target-row__desc" :title="item.description">{{ item.description || t('separate.workflowNoDescription') }}</span>
-                      </span>
-                    </span>
-                  </button>
-                </div>
-                <div v-else class="stage-empty">
-                  <div class="stage-empty__glyph"><n-icon :component="GitNetworkOutline" /></div>
-                  <strong>{{ t('separate.workflowEmptyTitle') }}</strong>
-                  <p>{{ t('separate.workflowEmptyDesc') }}</p>
-                  <n-button secondary @click="router.push('/workflows')">
-                    {{ t('separate.workflowCreateAction') }}
-                  </n-button>
-                </div>
-              </div>
             </transition>
 
             <footer class="launch-bar" :class="`launch-bar--${canStart ? 'ready' : 'idle'}`">
