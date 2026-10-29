@@ -141,6 +141,14 @@
     "noModelTitle": "当前没有可用模型",
     "noModelHint": "请先在模型库下载或导入当前能力需要的模型。",
     "openModels": "前往模型库",
+    "capabilities": {
+      "upscale": "超分",
+      "watermark_removal": "去水印 / 物体移除",
+      "face_restoration": "人脸修复",
+      "frame_interpolation": "视频插帧",
+      "video_inpainting": "视频修复",
+      "video_super_resolution": "视频超分"
+    },
     "models": "个可用模型",
     "capability": "处理能力",
     "model": "主模型",

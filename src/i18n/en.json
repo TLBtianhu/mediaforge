@@ -141,6 +141,14 @@
     "noModelTitle": "No usable model",
     "noModelHint": "Download or import a model for this capability from the Model Hub first.",
     "openModels": "Open Model Hub",
+    "capabilities": {
+      "upscale": "Upscale",
+      "watermark_removal": "Watermark / object removal",
+      "face_restoration": "Face restoration",
+      "frame_interpolation": "Frame interpolation",
+      "video_inpainting": "Video inpainting",
+      "video_super_resolution": "Video super-resolution"
+    },
     "models": "available models",
     "capability": "Capability",
     "model": "Primary model",

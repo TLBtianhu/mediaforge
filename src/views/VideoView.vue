@@ -169,8 +169,7 @@ async function loadMediaModels() {
 const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
 const showUpscale = computed(() => mode.value !== 'watermark' && mode.value !== 'custom')
 const showWatermark = computed(() => mode.value !== 'upscale' && mode.value !== 'custom')
-const capabilityLabels: Record<string, string> = { upscale: '超分', watermark_removal: '去水印 / 物体移除', face_restoration: '人脸修复', frame_interpolation: '视频插帧', video_inpainting: '视频修复', video_super_resolution: '视频超分' }
-const pipelineSummary = computed(() => capabilityLabels[planStep.value.capability] || planStep.value.capability)
+const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 
 const firstOutput = computed(() => outputs.value[0] || null)
 const videoSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')

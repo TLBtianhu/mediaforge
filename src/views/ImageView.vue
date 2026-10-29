@@ -142,8 +142,7 @@ async function loadMediaModels() {
 }
 const showUpscale = computed(() => mode.value !== 'watermark' && mode.value !== 'custom')
 const showWatermark = computed(() => mode.value !== 'upscale' && mode.value !== 'custom')
-const capabilityLabels: Record<string, string> = { upscale: '超分', watermark_removal: '去水印 / 物体移除', face_restoration: '人脸修复' }
-const pipelineSummary = computed(() => capabilityLabels[planStep.value.capability] || planStep.value.capability)
+const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 const firstOutput = computed(() => outputs.value[0] || null)
 const resultSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
 const originalSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.source) : '')
