@@ -70,6 +70,12 @@ def run_command(command: str, payload: dict) -> int:
     if command == "env_info":
         from worker_models import cmd_env_info
         return cmd_env_info()
+    if command == "failure_stats":
+        from failure_stats import collect
+
+        from worker_protocol import emit
+        emit("failure_stats", collect())
+        return 0
     if command == "agent_contract":
         from agent_contract import cmd_agent_contract
         return cmd_agent_contract(payload)

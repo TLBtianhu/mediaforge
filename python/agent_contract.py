@@ -388,6 +388,8 @@ def _native_tools() -> list[dict[str, Any]]:
         # 诊断
         _tool("system.env", "环境信息", "解释器/torch/CUDA/运行时与产品声明的版本对账。", "system", "env_info"),
         _tool("system.contract", "Agent 契约", "本契约全文（工具、批准等级、覆盖率审计）。", "system", "agent_contract"),
+        _tool("system.failure_stats", "失败模式统计", "按可恢复性归类作业台账里的失败，给出先修哪个。", "system",
+              "failure_stats"),
         _tool("system.health", "健康检查", "worker 版本探活。", "system", "health"),
     ]
     return tools
@@ -405,6 +407,7 @@ INTERNAL_COMMANDS: dict[str, str] = {
     "unregister_custom_model": "移除注册表条目，属于维护操作。",
     "test_connection": "诊断网络连通性。",
     "health": "由 system.health 覆盖。",
+    "failure_stats": "由 system.failure_stats 覆盖。",
     "list_models": "由 model.list 覆盖。",
     "model_info": "由 model.inspect 覆盖。",
     "model_interface": "由 model.interface 覆盖。",
