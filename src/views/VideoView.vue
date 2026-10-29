@@ -311,11 +311,29 @@ onBeforeUnmount(() => {
       eyebrow="VIDEO PROCESSING"
       tone="amber"
     >
+      <router-link to="/agent">
+        <n-button quaternary size="small">{{ t('agent.queue') }}</n-button>
+      </router-link>
       <router-link to="/models?modality=video">
         <n-button quaternary size="small">{{ t('nav.models') }}</n-button>
       </router-link>
       <n-tag type="warning" :bordered="false">FFmpeg · Real-ESRGAN · LaMa</n-tag>
     </MediaPageHeader>
+
+    <div class="mf-step-strip">
+      <div class="mf-step">
+        <span class="mf-step__num">01</span>
+        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('image.mode') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">02</span>
+        <div><div class="mf-step__title">{{ t('image.target') }}</div><div class="mf-step__text">{{ t('video.detectMode') }} · {{ t('image.fit') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">03</span>
+        <div><div class="mf-step__title">{{ t('video.result') }}</div><div class="mf-step__text">{{ t('video.preview') }} · audio</div></div>
+      </div>
+    </div>
 
     <div class="mf-page-grid">
       <n-card :title="t('factory.input')" size="small">
@@ -455,20 +473,6 @@ onBeforeUnmount(() => {
       </div>
     </n-card>
 
-    <div class="mf-step-strip">
-      <div class="mf-step">
-        <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('image.mode') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('image.target') }}</div><div class="mf-step__text">{{ t('video.detectMode') }} · {{ t('image.fit') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('video.result') }}</div><div class="mf-step__text">{{ t('video.preview') }} · audio</div></div>
-      </div>
-    </div>
   </div>
 </template>
 

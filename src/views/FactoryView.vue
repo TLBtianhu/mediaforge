@@ -247,8 +247,26 @@ onBeforeUnmount(() => {
       eyebrow="FORMAT FACTORY"
       tone="blue"
     >
+      <router-link to="/agent">
+        <n-button quaternary size="small">{{ t('agent.queue') }}</n-button>
+      </router-link>
       <n-tag type="info" :bordered="false">FFmpeg</n-tag>
     </MediaPageHeader>
+
+    <div class="mf-step-strip">
+      <div class="mf-step">
+        <span class="mf-step__num">01</span>
+        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('factory.chooseFiles') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">02</span>
+        <div><div class="mf-step__title">{{ t('factory.output') }}</div><div class="mf-step__text">{{ t('factory.hint') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">03</span>
+        <div><div class="mf-step__title">{{ t('factory.start') }}</div><div class="mf-step__text">FFmpeg · local</div></div>
+      </div>
+    </div>
 
     <div class="mf-page-grid">
       <section class="mf-panel mf-panel--input">
@@ -346,20 +364,6 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <div class="mf-step-strip">
-      <div class="mf-step">
-        <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('factory.chooseFiles') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('factory.output') }}</div><div class="mf-step__text">{{ t('factory.hint') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('factory.start') }}</div><div class="mf-step__text">FFmpeg · local</div></div>
-      </div>
-    </div>
   </div>
 </template>
 

@@ -131,6 +131,7 @@
   "agent": {
     "title": "Agent 工作区",
     "subtitle": "MCP 任务、计划与共享工作区",
+    "queue": "公共队列",
     "running": "运行中",
     "total": "任务",
     "completed": "完成",

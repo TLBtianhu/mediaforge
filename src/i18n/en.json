@@ -131,6 +131,7 @@
   "agent": {
     "title": "Agent Workspace",
     "subtitle": "MCP jobs, plans, and the shared workspace",
+    "queue": "Shared Queue",
     "running": "Running",
     "total": "Jobs",
     "completed": "Completed",

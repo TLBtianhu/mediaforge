@@ -299,11 +299,29 @@ onBeforeUnmount(() => {
       eyebrow="IMAGE PROCESSING"
       tone="violet"
     >
+      <router-link to="/agent">
+        <n-button quaternary size="small">{{ t('agent.queue') }}</n-button>
+      </router-link>
       <router-link to="/models?modality=image">
         <n-button quaternary size="small">{{ t('nav.models') }}</n-button>
       </router-link>
       <n-tag type="success" :bordered="false">Real-ESRGAN · LaMa</n-tag>
     </MediaPageHeader>
+
+    <div class="mf-step-strip">
+      <div class="mf-step">
+        <span class="mf-step__num">01</span>
+        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('image.mode') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">02</span>
+        <div><div class="mf-step__title">{{ t('image.target') }}</div><div class="mf-step__text">{{ t('image.fit') }} · {{ t('image.scale') }}</div></div>
+      </div>
+      <div class="mf-step">
+        <span class="mf-step__num">03</span>
+        <div><div class="mf-step__title">{{ t('image.compare') }}</div><div class="mf-step__text">Real-ESRGAN · LaMa · local</div></div>
+      </div>
+    </div>
 
     <div class="mf-page-grid">
       <n-card :title="t('factory.input')" size="small">
@@ -441,20 +459,6 @@ onBeforeUnmount(() => {
       </div>
     </n-card>
 
-    <div class="mf-step-strip">
-      <div class="mf-step">
-        <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('image.mode') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('image.target') }}</div><div class="mf-step__text">{{ t('image.fit') }} · {{ t('image.scale') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('image.compare') }}</div><div class="mf-step__text">Real-ESRGAN · LaMa · local</div></div>
-      </div>
-    </div>
   </div>
 </template>
 
