@@ -247,7 +247,7 @@ onBeforeUnmount(() => {
       eyebrow="FORMAT FACTORY"
       tone="blue"
     >
-      <router-link to="/agent">
+      <router-link to="/queue">
         <n-button quaternary size="small">{{ t('agent.queue') }}</n-button>
       </router-link>
       <n-tag type="info" :bordered="false">FFmpeg</n-tag>

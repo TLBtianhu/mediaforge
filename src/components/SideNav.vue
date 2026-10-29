@@ -88,7 +88,6 @@ const mainGroups = computed(() => [
       { name: 'separate', path: '/', icon: MusicalNotesOutline, label: t('nav.separate') },
       { name: 'image', path: '/image', icon: SparklesOutline, label: t('nav.image') },
       { name: 'video', path: '/video', icon: VideocamOutline, label: t('nav.video') },
-      { name: 'agent', path: '/agent', icon: ChatbubblesOutline, label: t('nav.agent') },
       { name: 'factory', path: '/factory', icon: SwapHorizontalOutline, label: t('nav.factory') },
     ],
   },
@@ -104,6 +103,7 @@ const mainGroups = computed(() => [
     label: t('nav.groupFlow'),
     items: [
       { name: 'workflows', path: '/workflows', icon: GitNetworkOutline, label: t('nav.workflows') },
+      { name: 'queue', path: '/queue', icon: ChatbubblesOutline, label: t('nav.queue') },
       { name: 'results', path: '/results', icon: FolderOpenOutline, label: t('nav.results') },
     ],
   },

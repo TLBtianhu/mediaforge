@@ -35,7 +35,8 @@
     "groupWorkspace": "Workspace",
     "groupModels": "Models",
     "groupFlow": "Workflow",
-    "groupExtras": "Extensions"
+    "groupExtras": "Extensions",
+    "queue": "Queue"
   },
   "factory": {
     "title": "Media Factory",

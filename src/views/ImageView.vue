@@ -11,6 +11,7 @@ import {
   DocumentOutline,
   FolderOpenOutline,
   SparklesOutline,
+  CubeOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
@@ -345,7 +346,7 @@ onBeforeUnmount(() => {
       eyebrow="IMAGE PROCESSING"
       tone="violet"
     >
-      <router-link to="/agent">
+      <router-link to="/queue">
         <n-button quaternary size="small">{{ t('agent.queue') }}</n-button>
       </router-link>
       <router-link to="/models?modality=image">
@@ -429,7 +430,7 @@ onBeforeUnmount(() => {
 
       <n-card class="workbench-plan" size="small">
         <template #header>
-          <div class="mf-card-head"><span class="mf-card-index">03</span><div class="mf-card-head__label"><strong>{{ t('plan.title') }}</strong><small>{{ t('pipeline.stepCompose') }}</small></div></div>
+          <div class="mf-card-head"><span class="mf-card-index mf-card-index--icon"><n-icon :component="CubeOutline" /></span><div class="mf-card-head__label"><strong>{{ t('plan.title') }}</strong><small>{{ t('pipeline.stepCompose') }}</small></div></div>
         </template>
         <n-space vertical :size="12">
           <ProcessingPlan v-model="planStep" modality="image" :busy="busy" @availability="planAvailable = $event" />

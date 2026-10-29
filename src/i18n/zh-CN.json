@@ -35,7 +35,8 @@
     "groupWorkspace": "工作区",
     "groupModels": "模型",
     "groupFlow": "流程",
-    "groupExtras": "扩展"
+    "groupExtras": "扩展",
+    "queue": "任务队列"
   },
   "factory": {
     "title": "格式工厂",
@@ -241,7 +242,8 @@
       "cancelled": "已取消"
     }
   },
-  "assets": {    "title": "素材台",
+  "assets": {
+    "title": "素材台",
     "subtitle": "本机媒体索引、缩略图与任务入口",
     "importFiles": "导入文件",
     "importFolder": "导入文件夹",

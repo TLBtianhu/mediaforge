@@ -2131,21 +2131,12 @@ async function retryCurrentTask() {
       tone="blue"
     >
       <div class="console-topbar__controls" data-guide="separation-modes">
-        <n-radio-group
-          v-model:value="runMode"
-          class="mode-switch"
-          :disabled="isRunModeLocked"
-        >
-          <n-radio-button
-            v-for="option in runModeOptions"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </n-radio-button>
-        </n-radio-group>
-        <n-button text class="console-topbar__manage" @click="router.push(runMode === 'workflow' ? '/workflows' : '/models')">
-          {{ runMode === 'workflow' ? t('separate.manageWorkflowsInline') : t('separate.manageModelsInline') }}
+        <n-tag size="small" :bordered="false">{{ t('separate.runModeModel') }}</n-tag>
+        <n-button text class="console-topbar__manage" @click="router.push('/workflows')">
+          {{ t('separate.manageWorkflowsInline') }}
+        </n-button>
+        <n-button text class="console-topbar__manage" @click="router.push('/models')">
+          {{ t('separate.manageModelsInline') }}
         </n-button>
       </div>
     </MediaPageHeader>
@@ -3166,7 +3157,7 @@ async function retryCurrentTask() {
         @close="showQueueModal = false"
       >
         <template #header-extra>
-          <n-button size="small" quaternary @click="router.push('/agent')">{{ t('agent.queue') }}</n-button>
+          <n-button size="small" quaternary @click="router.push('/queue')">{{ t('agent.queue') }}</n-button>
           <n-button
             v-if="queueScope === 'session' && finishedSessionJobCount"
             size="small"

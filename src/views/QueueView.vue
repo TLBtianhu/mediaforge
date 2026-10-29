@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
@@ -6,7 +6,7 @@ import { useMessage } from 'naive-ui'
 import { FolderOpenOutline, RefreshOutline, SparklesOutline } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 
-defineOptions({ name: 'AgentView' })
+defineOptions({ name: 'QueueView' })
 
 type AgentJob = {
   jobId: string
@@ -221,3 +221,4 @@ onBeforeUnmount(() => {
 .agent-job__message { margin: 0; overflow: hidden; color: var(--text-color-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) { .agent-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .agent-toolbar { grid-template-columns: 1fr; } }
 </style>
+
