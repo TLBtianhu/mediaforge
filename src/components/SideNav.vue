@@ -103,6 +103,7 @@ const mainGroups = computed(() => [
     label: t('nav.groupFlow'),
     items: [
       { name: 'workflows', path: '/workflows', icon: GitNetworkOutline, label: t('nav.workflows') },
+      { name: 'mediaWorkflow', path: '/media-workflow', icon: GitNetworkOutline, label: t('nav.mediaWorkflow') },
       { name: 'queue', path: '/queue', icon: ChatbubblesOutline, label: t('nav.queue') },
       { name: 'results', path: '/results', icon: FolderOpenOutline, label: t('nav.results') },
     ],

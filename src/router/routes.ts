@@ -8,6 +8,7 @@ export const appRoutes: RouteRecordRaw[] = [
   { path: '/media-models', redirect: { name: 'models', query: { modality: 'image' } } },
   { path: '/models/audio-legacy', name: 'audioModelsLegacy', component: () => import('@/views/ModelsView.vue') },
   { path: '/workflows', name: 'workflows', component: () => import('@/views/WorkflowsView.vue') },
+  { path: '/media-workflow', name: 'mediaWorkflow', component: () => import('@/views/MediaWorkflowView.vue') },
   { path: '/workflow-node-editor', name: 'workflow-node-editor', component: () => import('@/views/WorkflowNodeEditorView.vue') },
   { path: '/workflow-simple-editor', name: 'workflow-simple-editor', component: () => import('@/views/WorkflowSimpleEditorView.vue') },
   { path: '/results', name: 'results', component: () => import('@/views/ResultsView.vue') },

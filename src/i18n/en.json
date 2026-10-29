@@ -36,7 +36,8 @@
     "groupModels": "Models",
     "groupFlow": "Workflow",
     "groupExtras": "Extensions",
-    "queue": "Queue"
+    "queue": "Queue",
+    "mediaWorkflow": "Media workflow"
   },
   "factory": {
     "title": "Media Factory",
@@ -2933,5 +2934,30 @@
     "exit": "Exit demo",
     "editorTitle": "Audio editor",
     "workflowEditorTitle": "Workflow editor"
+  },
+  "mediaWorkflow": {
+    "title": "Media workflow",
+    "subtitle": "Serialize multiple image/video models",
+    "input": "Input",
+    "inputHint": "Choose an image or a video",
+    "chooseInput": "Choose files",
+    "addInput": "Add more",
+    "output": "Output",
+    "outputHint": "Directory, modality, and model directory",
+    "modality": "Modality",
+    "outputDir": "Output directory",
+    "modelDirHint": "Leave empty to use models/",
+    "step": "Step {index}",
+    "stepHint": "One capability + primary model per step; each output feeds the next",
+    "result": "Workflow result",
+    "resultHint": "Final artifacts generated in step order",
+    "addStep": "Add step",
+    "removeStep": "Remove",
+    "start": "Start workflow",
+    "starting": "Starting…",
+    "completed": "Workflow completed",
+    "failed": "Workflow failed",
+    "noInput": "Choose an input first",
+    "noOutput": "Choose an output directory"
   }
 }

@@ -237,6 +237,57 @@ class Bridge:
         job = self.jobs.start("audio_tools", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
+    def workflow_start(
+        self,
+        input_path: str,
+        output_dir: str,
+        modality: str,
+        steps: list[dict[str, Any]],
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Start a multi-step image/video workflow through OperationKernel.
+
+        Each step is one capability + primary model. The workflow worker runs
+        steps serially and hands each output to the next step.
+        """
+        if not input_path or not Path(input_path).is_file():
+            return {"ok": False, "error": f"input not found: {input_path}"}
+        if not output_dir:
+            return {"ok": False, "error": "outputDir is required"}
+        modality = str(modality or "").strip().lower()
+        if modality not in {"image", "video"}:
+            return {"ok": False, "error": "modality must be image or video"}
+        try:
+            normalized = capabilities.normalize_steps(steps)
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+        if not normalized:
+            return {"ok": False, "error": "workflow requires at least one step"}
+        models = model_hub.list_models(root=str(self.model_root))
+        by_id = {item["id"]: item for item in models["models"]}
+        required = sorted({model_id for step in normalized for model_id in step["bindings"].values()})
+        missing = [model_id for model_id in required if not (by_id.get(model_id) or {}).get("downloaded")]
+        if missing:
+            return {"ok": False, "error": "missing models", "requiresDownload": missing}
+        options = options or {}
+        payload: dict[str, Any] = {
+            "operation": "media_workflow",
+            "requestId": f"workflow-{uuid.uuid4().hex[:12]}",
+            "modality": modality,
+            "inputs": [input_path],
+            "outputDir": output_dir,
+            "modelDir": str(self.model_root),
+            "steps": normalized,
+            "previewSeconds": float(options.get("previewSeconds") or 0),
+            "crf": int(options.get("crf") or 18),
+            "preset": str(options.get("preset") or "fast"),
+            "width": int(options.get("width") or 0),
+            "height": int(options.get("height") or 0),
+            "fit": str(options.get("fit") or "contain"),
+        }
+        job = self.jobs.start("audio_tools", payload)
+        return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
+
     def plan(self, input_path: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
         if not input_path:
             return {"ok": False, "error": "input is required"}
@@ -462,6 +513,22 @@ class Bridge:
                 },
             },
             {
+                "name": "workflow_start",
+                "description": "Start a multi-step image/video workflow. Each step is one capability plus one primary model; outputs are passed to the next step. Use pipeline_start for a single task.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "input": {"type": "string", "description": "Absolute path to an image or video."},
+                        "outputDir": {"type": "string"},
+                        "modality": {"type": "string", "enum": ["image", "video"]},
+                        "steps": {"type": "array", "items": {"type": "object"}},
+                        "options": {"type": "object"},
+                    },
+                    "required": ["input", "outputDir", "modality", "steps"],
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "job_status",
                 "description": "Read an asynchronous MediaForge job's status and result.",
                 "inputSchema": {
@@ -522,6 +589,14 @@ class Bridge:
             return self.plan(str(arguments.get("input") or ""), list(arguments.get("steps") or []))
         if name == "pipeline_start":
             return self.pipeline_start(
+                str(arguments.get("input") or ""),
+                str(arguments.get("outputDir") or ""),
+                str(arguments.get("modality") or ""),
+                list(arguments.get("steps") or []),
+                arguments.get("options") if isinstance(arguments.get("options"), dict) else {},
+            )
+        if name == "workflow_start":
+            return self.workflow_start(
                 str(arguments.get("input") or ""),
                 str(arguments.get("outputDir") or ""),
                 str(arguments.get("modality") or ""),

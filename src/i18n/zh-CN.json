@@ -1,4 +1,4 @@
-﻿{
+{
   "app": {
     "name": "MediaForge",
     "bootPreparing": "正在初始化工作环境…",
@@ -36,7 +36,8 @@
     "groupModels": "模型",
     "groupFlow": "流程",
     "groupExtras": "扩展",
-    "queue": "任务队列"
+    "queue": "任务队列",
+    "mediaWorkflow": "媒体工作流"
   },
   "factory": {
     "title": "格式工厂",
@@ -2933,6 +2934,30 @@
     "exit": "退出演示",
     "editorTitle": "音频编辑器",
     "workflowEditorTitle": "工作流编辑器"
+  },
+  "mediaWorkflow": {
+    "title": "媒体工作流",
+    "subtitle": "图像 / 视频多模型串行处理",
+    "input": "输入素材",
+    "inputHint": "选择一张图片或一个视频",
+    "chooseInput": "选择文件",
+    "addInput": "继续添加",
+    "output": "输出设置",
+    "outputHint": "目录、模态与模型目录",
+    "modality": "媒体类型",
+    "outputDir": "输出目录",
+    "modelDirHint": "留空使用 models/",
+    "step": "步骤 {index}",
+    "stepHint": "每一步一个能力 + 主模型，输出传给下一步",
+    "result": "工作流结果",
+    "resultHint": "按步骤顺序生成最终文件",
+    "addStep": "添加步骤",
+    "removeStep": "移除",
+    "start": "开始工作流",
+    "starting": "正在启动…",
+    "completed": "工作流完成",
+    "failed": "工作流失败",
+    "noInput": "请选择输入素材",
+    "noOutput": "请选择输出目录"
   }
 }
-
