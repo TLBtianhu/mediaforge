@@ -450,9 +450,12 @@ fn python_under_envs_dir(envs_dir: &Path, python_path: &str) -> bool {
         .is_some_and(|env| env.starts_with(&root))
 }
 
-fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
-    let development = storage::is_development_executable();
-    for envs_dir in runtime_envs_candidates(app) {
+/// 从候选目录里挑出**第一个可用**的运行时记录。
+///
+/// 抽成纯函数是为了能测：这里的"空壳目录"曾经让开发态连续四轮报
+/// "没有安装运行时"——单测比真机点四次便宜得多。
+fn select_active_record(candidates: &[PathBuf], development: bool) -> Option<String> {
+    for envs_dir in candidates {
         let file = envs_dir.join("active-runtime.json");
         if !file.is_file() {
             continue;
@@ -460,13 +463,80 @@ fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
         let Some((path, _source)) = resolve_active_runtime_record(&file) else {
             continue;
         };
-        let managed = python_under_envs_dir(&envs_dir, &path);
+        let managed = python_under_envs_dir(envs_dir, &path);
         let debug_override = active_debug_override_path_allowed(&file, &path, development);
         if (managed || debug_override) && active_path_backend_matches(&file, &path) {
-            return Ok(Some(path));
+            return Some(path);
         }
     }
-    Ok(None)
+    None
+}
+
+fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
+    Ok(select_active_record(
+        &runtime_envs_candidates(app),
+        storage::is_development_executable(),
+    ))
+}
+
+#[cfg(test)]
+mod runtime_record_tests {
+    use super::*;
+    use std::fs;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let mut root = std::env::temp_dir();
+        root.push(format!("mediaforge-runtime-test-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    /// 造一个可用的 runtime-envs：`<envs>/<backend>/Scripts/python.exe` + 记录
+    fn make_envs(root: &Path, backend: &str) -> PathBuf {
+        let envs = root.join("runtime-envs");
+        let python = envs.join(backend).join("Scripts").join("python.exe");
+        fs::create_dir_all(python.parent().unwrap()).unwrap();
+        fs::write(&python, b"stub").unwrap();
+        let record = serde_json::json!({
+            "pythonPath": python.to_string_lossy(),
+            "backend": backend,
+        });
+        fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
+        envs
+    }
+
+    #[test]
+    fn skips_empty_shell_directories() {
+        let root = scratch("shell");
+        // 空壳：只有锁文件，没有 active-runtime.json（真实开发态的 target/debug 就是这样）
+        let shell = root.join("python-runtime").join("runtime-envs");
+        fs::create_dir_all(&shell).unwrap();
+        fs::write(shell.join(".runtime-management.lock"), b"").unwrap();
+
+        let real = make_envs(&root.join("data"), "cuda");
+        let picked = select_active_record(&[shell, real.clone()], true);
+        assert!(picked.is_some(), "空壳目录应被跳过，改用后面那个有记录的");
+        assert!(picked.unwrap().contains("python.exe"));
+    }
+
+    #[test]
+    fn rejects_a_record_whose_backend_disagrees_with_its_directory() {
+        let root = scratch("mismatch");
+        let envs = make_envs(&root, "cpu");
+        // 把记录里的 backend 改成 cuda，但目录名仍是 cpu → 必须拒绝
+        let record = serde_json::json!({
+            "pythonPath": envs.join("cpu").join("Scripts").join("python.exe").to_string_lossy(),
+            "backend": "cuda",
+        });
+        fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
+        assert_eq!(select_active_record(&[envs], false), None);
+    }
+
+    #[test]
+    fn returns_none_without_candidates() {
+        assert_eq!(select_active_record(&[], true), None);
+    }
 }
 
 fn resolve_runtime_overlay_for_record(

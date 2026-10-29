@@ -86,3 +86,117 @@ class DispatchSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def function_locals(node: ast.AST) -> set[str]:
+    """函数内"有定义"的名字：参数、赋值、导入、推导式/循环/with/except 目标。"""
+    names: set[str] = set()
+    args = getattr(node, "args", None)
+    if isinstance(args, ast.arguments):
+        for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]:
+            names.add(arg.arg)
+        if args.vararg:
+            names.add(args.vararg.arg)
+        if args.kwarg:
+            names.add(args.kwarg.arg)
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del)):
+            names.add(child.id)
+        elif isinstance(child, (ast.Import, ast.ImportFrom)):
+            for alias in child.names:
+                names.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(child, ast.ExceptHandler) and child.name:
+            names.add(child.name)
+        elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child is not node:
+            names.add(child.name)
+    return names
+
+
+def find_unbound(source: str, label: str, watched: tuple[str, ...]) -> list[str]:
+    """找出"在函数里被读取、但该作用域与模块都没有定义"的名字。"""
+    tree = ast.parse(source)
+    global_names = module_level_imports(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                for inner in ast.walk(target):
+                    if isinstance(inner, ast.Name):
+                        global_names.add(inner.id)
+        elif isinstance(node, ast.AnnAssign):
+            for inner in ast.walk(node.target):
+                if isinstance(inner, ast.Name):
+                    global_names.add(inner.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            global_names.add(node.name)
+    problems: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        declared_global = {
+            name
+            for inner in ast.walk(node)
+            if isinstance(inner, ast.Global)
+            for name in inner.names
+        }
+        locals_ = function_locals(node) | declared_global
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Name) or not isinstance(child.ctx, ast.Load):
+                continue
+            if child.id not in watched:
+                continue
+            if child.id in locals_ or child.id in global_names:
+                continue
+            problems.append(f"{label}:{node.name} 使用了未定义的名字 {child.id}")
+    return problems
+
+
+class UnboundNameTests(unittest.TestCase):
+    """函数里引用了自己作用域没有的名字——`payload` 就是这么炸过一次。
+
+    2026-10-29：`workflow_worker._run_image` 里写了 `payload.get("device")`，
+    但该函数没有 payload 参数，真实调用才抛 NameError。单测都是直接调别的函数，全绿。
+    """
+
+    WATCHED = ("payload",)
+
+    @staticmethod
+    def _problems_in(source: str, label: str) -> list[str]:
+        return find_unbound(source, label, UnboundNameTests.WATCHED)
+
+    def test_the_checker_itself_catches_a_missing_payload(self) -> None:
+        """守卫要能抓到真 bug，否则它只是装饰。"""
+        bad = """
+def _run_image(source):
+    restorer = build(device=payload.get("device"))
+    return restorer
+"""
+        self.assertEqual(len(self._problems_in(bad, "bad.py")), 1)
+
+    def test_the_checker_accepts_a_bound_payload(self) -> None:
+        good = """
+def _run_image(source, payload):
+    return build(device=payload.get("device"))
+"""
+        self.assertEqual(self._problems_in(good, "good.py"), [])
+
+    def test_watched_names_are_bound_wherever_they_are_used(self) -> None:
+        modules = [
+            *sorted((PYTHON_DIR / "media_ops").glob("*.py")),
+            *sorted(PYTHON_DIR.glob("worker*.py")),
+            PYTHON_DIR / "agent_contract.py",
+            PYTHON_DIR / "agent_bridge.py",
+            PYTHON_DIR / "embedded_loop.py",
+            PYTHON_DIR / "retry_policy.py",
+        ]
+        problems: list[str] = []
+        for module in modules:
+            if not module.is_file():
+                continue
+            problems.extend(
+                find_unbound(
+                    module.read_text(encoding="utf-8"),
+                    module.name,
+                    UnboundNameTests.WATCHED,
+                )
+            )
+        self.assertEqual(sorted(set(problems)), [], "这些函数引用了作用域里没有的名字：")
