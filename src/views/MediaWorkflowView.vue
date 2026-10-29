@@ -15,7 +15,7 @@ defineOptions({ name: 'MediaWorkflowView' })
 
 type PlanStep = { capability: string; bindings: Record<string, string>; params: Record<string, unknown> }
 type WorkflowOutput = { path: string; source: string; steps?: string[]; size?: number }
-type WorkerEvent = { type?: string; requestId?: string | null; payload?: Record<string, unknown> }
+type WorkerEvent = { type?: string; requestId?: string | null; taskId?: string | null; payload?: Record<string, unknown> }
 
 const { t } = useI18n()
 const message = useMessage()
