@@ -199,6 +199,59 @@ def list_capabilities() -> dict[str, Any]:
     return {"capabilities": result, "modelDir": str(model_dir()), "audit": audit_capabilities()}
 
 
+_PARAM_TYPES: dict[str, Any] = {
+    "integer": int,
+    "number": (int, float),
+    "string": str,
+    "boolean": bool,
+}
+
+
+def _slot_ranges() -> dict[str, dict[str, Any]]:
+    try:
+        from . import interface as model_interface
+
+        return model_interface.vocabulary()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _validate_step_params(capability_id: str, params: dict[str, Any], declared: dict[str, Any]) -> None:
+    """步骤参数必须是这个能力（或它绑定的模型）声明过的，且类型/范围正确。
+
+    以前未知参数会静默透传给 worker —— 调用方以为自己调了个旋钮，其实什么都没发生。
+    """
+    allowed = set(declared)
+    unknown = sorted(key for key in params if key not in allowed)
+    if unknown:
+        raise ValueError(
+            f"capability {capability_id} does not accept parameters: {', '.join(unknown)}"
+            f" (allowed: {', '.join(sorted(allowed)) or 'none'})"
+        )
+    ranges = _slot_ranges()
+    for key, value in params.items():
+        spec = declared.get(key) or {}
+        expected = str(spec.get("type") or "")
+        python_type = _PARAM_TYPES.get(expected)
+        if python_type is not None:
+            if expected in {"integer", "number"} and isinstance(value, bool):
+                raise ValueError(f"capability {capability_id}: parameter {key} should be {expected}")
+            if not isinstance(value, python_type):
+                raise ValueError(f"capability {capability_id}: parameter {key} should be {expected}")
+        slot = ranges.get(key)
+        if slot and isinstance(value, (int, float)) and not isinstance(value, bool):
+            minimum = slot.get("min")
+            maximum = slot.get("max")
+            if isinstance(minimum, (int, float)) and value < minimum:
+                raise ValueError(
+                    f"capability {capability_id}: parameter {key} must be >= {minimum} (got {value})"
+                )
+            if isinstance(maximum, (int, float)) and value > maximum:
+                raise ValueError(
+                    f"capability {capability_id}: parameter {key} must be <= {maximum} (got {value})"
+                )
+
+
 def normalize_steps(steps: Any) -> list[dict[str, Any]]:
     if not isinstance(steps, list) or not steps:
         raise ValueError("pipeline steps must be a non-empty array")
@@ -223,12 +276,15 @@ def normalize_steps(steps: Any) -> list[dict[str, Any]]:
             if model_id not in cap["modelIds"]:
                 raise ValueError(f"model {model_id} is not allowed for capability {cap['id']}")
             resolved[role] = model_id
+        declared = dict(cap["params"])
         defaults = {key: spec.get("default") for key, spec in cap["params"].items()}
         for model_id in resolved.values():
             record = catalog.get(model_id) or {}
             for key, spec in (record.get("params") or {}).items():
                 if isinstance(spec, dict):
+                    declared[key] = spec
                     defaults[key] = spec.get("default")
+        _validate_step_params(cap["id"], params, declared)
         normalized.append(
             {
                 "capability": cap["id"],

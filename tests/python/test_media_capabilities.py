@@ -115,3 +115,49 @@ class NoNameSniffingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StepParamValidationTests(unittest.TestCase):
+    """步骤参数必须是声明过的，且类型/范围正确——不能静默透传。"""
+
+    def _step(self, capability_id: str, bindings: dict, params: dict) -> dict:
+        return {"capability": capability_id, "bindings": bindings, "params": params}
+
+    def test_unknown_parameter_is_rejected_with_the_allowed_list(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            capabilities.normalize_steps(
+                [self._step("upscale", {"upscaler": "media:real-esrgan-x2"}, {"bogus": 1})]
+            )
+        message = str(caught.exception)
+        self.assertIn("does not accept parameters: bogus", message)
+        self.assertIn("allowed:", message)
+
+    def test_wrong_type_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            capabilities.normalize_steps(
+                [self._step("upscale", {"upscaler": "media:real-esrgan-x2"}, {"scale": "x2"})]
+            )
+        self.assertIn("scale should be integer", str(caught.exception))
+
+    def test_slot_range_is_enforced(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            capabilities.normalize_steps(
+                [
+                    self._step(
+                        "watermark_removal",
+                        {"inpainter": "media:lama", "detector": "media:watermark-yolo11x"},
+                        {"conf": 2.5},
+                    )
+                ]
+            )
+        self.assertIn("conf must be <= 1.0", str(caught.exception))
+
+    def test_valid_parameters_merge_with_defaults(self) -> None:
+        normalized = capabilities.normalize_steps(
+            [self._step("watermark_removal",
+                        {"inpainter": "media:lama", "detector": "media:watermark-yolo11x"},
+                        {"conf": 0.3})]
+        )
+        params = normalized[0]["params"]
+        self.assertEqual(params["conf"], 0.3)
+        self.assertIn("expand", params)  # 默认值被保留
