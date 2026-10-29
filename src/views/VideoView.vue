@@ -80,6 +80,11 @@ const failedCount = ref(0)
 const outputs = ref<OutputFile[]>([])
 const requestId = ref('')
 const journalCreatedAt = ref(0)
+type MediaModel = { id: string; label: string; capabilities?: string[]; roles?: string[] }
+const mediaModels = ref<MediaModel[]>([])
+const upscalerModel = ref('media:real-esrgan-x2')
+const detectorModel = ref('media:watermark-yolo11x')
+const inpainterModel = ref('media:lama')
 let unlisten: UnlistenFn | undefined
 
 const modeOptions = computed(() => [
@@ -105,9 +110,65 @@ const detectOptions = computed(() => [
   { label: t('video.fixed'), value: 'fixed' },
   { label: t('video.perFrame'), value: 'per_frame' },
 ])
+function modelOptions(capability: string, role: string, fallback: { label: string; value: string }[]) {
+  const models = mediaModels.value
+    .filter(item => item.capabilities?.includes(capability) && item.roles?.includes(role))
+    .map(item => ({ label: item.label, value: item.id }))
+  return models.length ? models : fallback
+}
+const upscalerOptions = computed(() => modelOptions('upscale', 'upscaler', [
+  { label: 'Real-ESRGAN 2×', value: 'media:real-esrgan-x2' },
+  { label: 'Real-ESRGAN 4×', value: 'media:real-esrgan-x4' },
+]))
+const detectorOptions = computed(() => modelOptions('watermark_removal', 'detector', [
+  { label: 'YOLO11x Watermark', value: 'media:watermark-yolo11x' },
+]))
+const inpainterOptions = computed(() => modelOptions('watermark_removal', 'inpainter', [
+  { label: 'LaMa Inpainting', value: 'media:lama' },
+]))
+const pipelineSteps = computed(() => {
+  const steps: Array<Record<string, unknown>> = []
+  if (mode.value !== 'upscale') {
+    steps.push({
+      capability: 'watermark_removal',
+      bindings: { detector: detectorModel.value, inpainter: inpainterModel.value },
+      params: { conf: conf.value, expand: expand.value, detectMode: detectMode.value },
+    })
+  }
+  if (mode.value !== 'watermark') {
+    steps.push({
+      capability: 'upscale',
+      bindings: { upscaler: upscalerModel.value },
+      params: { target: target.value, width: width.value, height: height.value, fit: fit.value, scale: scale.value },
+    })
+  }
+  return steps
+})
+async function loadMediaModels() {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+  try {
+    const result = await invoke<{ models: MediaModel[] }>('model_hub', {
+      payload: { operation: 'list', query: '', modality: 'video', modelDir: modelDir.value },
+    })
+    mediaModels.value = result.models || []
+  } catch {
+    // Keep fallback options in browser preview or before runtime setup.
+  }
+}
 const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
 const showUpscale = computed(() => mode.value !== 'watermark')
 const showWatermark = computed(() => mode.value !== 'upscale')
+const pipelineSummary = computed(() => {
+  const parts = ['FFmpeg']
+  if (showUpscale.value) {
+    parts.push(upscalerOptions.value.find(item => item.value === upscalerModel.value)?.label || 'Upscaler')
+  }
+  if (showWatermark.value) {
+    parts.push(detectorOptions.value.find(item => item.value === detectorModel.value)?.label || 'Detector')
+    parts.push(inpainterOptions.value.find(item => item.value === inpainterModel.value)?.label || 'Inpainter')
+  }
+  return parts.join(' · ')
+})
 const firstOutput = computed(() => outputs.value[0] || null)
 const videoSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
 const resultInfo = computed(() => {
@@ -217,6 +278,7 @@ async function run() {
         inputs: inputs.value,
         outputDir: outputDir.value,
         mode: mode.value,
+        steps: pipelineSteps.value,
         scale: scale.value,
         target: target.value,
         width: width.value,
@@ -249,6 +311,7 @@ async function openOutput() {
 }
 
 onMounted(async () => {
+  void loadMediaModels()
   const requested = route.query.asset
   if (typeof requested === 'string' && requested) addInputs([requested])
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
@@ -317,7 +380,7 @@ onBeforeUnmount(() => {
       <router-link to="/models?modality=video">
         <n-button quaternary size="small">{{ t('nav.models') }}</n-button>
       </router-link>
-      <n-tag type="warning" :bordered="false">FFmpeg · Real-ESRGAN · LaMa</n-tag>
+      <n-tag type="warning" :bordered="false">{{ pipelineSummary }}</n-tag>
     </MediaPageHeader>
 
     <div class="mf-step-strip mf-step-strip--top">
@@ -388,6 +451,21 @@ onBeforeUnmount(() => {
           <div>
             <label class="video-label">{{ t('image.mode') }}</label>
             <n-select v-model:value="mode" :options="modeOptions" :disabled="busy" />
+          </div>
+
+          <div v-if="showUpscale">
+            <label class="video-label">{{ t('image.upscalerModel') }}</label>
+            <n-select v-model:value="upscalerModel" :options="upscalerOptions" :disabled="busy" />
+          </div>
+          <div v-if="showWatermark" class="video-row">
+            <div>
+              <label class="video-label">{{ t('image.detectorModel') }}</label>
+              <n-select v-model:value="detectorModel" :options="detectorOptions" :disabled="busy" />
+            </div>
+            <div>
+              <label class="video-label">{{ t('image.inpainterModel') }}</label>
+              <n-select v-model:value="inpainterModel" :options="inpainterOptions" :disabled="busy" />
+            </div>
           </div>
 
           <template v-if="showUpscale">

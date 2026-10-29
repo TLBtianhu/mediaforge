@@ -46,6 +46,15 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
         raw_steps = payload.get("steps")
         if raw_steps:
             steps = capabilities.normalize_steps(raw_steps)
+            for step in steps:
+                if step["capability"] == "upscale":
+                    target_value = step["params"].get("target")
+                    if not isinstance(target_value, tuple):
+                        step["params"]["target"] = image_ops.resolve_target(
+                            str(target_value or "none"),
+                            int(payload.get("width") or 0),
+                            int(payload.get("height") or 0),
+                        )
             mode = capabilities.mode_for_steps(steps)
         else:
             steps = capabilities.normalize_steps(capabilities.steps_from_mode(mode))

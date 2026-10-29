@@ -221,6 +221,34 @@ Next phases:
    `agentDefaultModel`; no second API key.
 3. Add the internal agent loop and the structured harness feedback workflow.
 
+## Capability and model binding
+
+`python/media_ops/capabilities.py` is the single description of what a media
+operation can do:
+
+```text
+capability: upscale / watermark_removal / face_restoration / frame_interpolation ...
+binding:    detector / inpainter / upscaler / interpolator ...
+model:      media:lama / media:real-esrgan-x4 / media:watermark-yolo11x ...
+```
+
+Pipelines are ordered capability steps with explicit model bindings:
+
+```json
+{
+  "capability": "watermark_removal",
+  "bindings": {
+    "detector": "media:watermark-yolo11x",
+    "inpainter": "media:lama"
+  },
+  "params": { "conf": 0.25, "expand": 8 }
+}
+```
+
+The legacy `mode` names remain as compatibility presets, but new callers should
+use steps. Image and video workers both accept `steps`; image/video UI exposes
+the model bindings directly.
+
 ## 打包前检查
 
 - [ ] `data/` 不存在或已清理
