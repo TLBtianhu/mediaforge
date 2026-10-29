@@ -2413,6 +2413,21 @@ pub async fn agent_jobs(app: AppHandle) -> AppResult<Value> {
 }
 
 #[tauri::command]
+pub async fn cancel_agent_job(app: AppHandle, job_id: String) -> AppResult<Value> {
+    if job_id.is_empty()
+        || !job_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+    {
+        return Err(AppError::Worker("invalid agent job id".into()));
+    }
+    let root = storage::data_root_dir(&app)?;
+    let cancel_path = root.join("agent-jobs").join(format!("{job_id}.cancel"));
+    std::fs::write(&cancel_path, b"cancel")?;
+    Ok(serde_json::json!({ "ok": true, "jobId": job_id, "cancelPath": cancel_path }))
+}
+
+#[tauri::command]
 pub async fn start_model_hub_download(
     app: AppHandle,
     state: State<'_, AppState>,

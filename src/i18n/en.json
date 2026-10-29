@@ -140,7 +140,9 @@
     "noWorkspace": "No workspace yet",
     "emptyTitle": "No agent jobs yet",
     "emptyHint": "Jobs started by DSH through MCP appear here. You can also start the local MCP bridge:",
-    "outputs": "outputs"
+    "outputs": "outputs",
+    "cancel": "Cancel",
+    "cancelRequested": "Cancellation requested"
   },
   "mediaModels": {
     "title": "Image / Video Models",

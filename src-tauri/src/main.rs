@@ -157,6 +157,7 @@ fn main() {
             commands::app_cmd::model_hub,
             commands::app_cmd::start_model_hub_download,
             commands::app_cmd::agent_jobs,
+            commands::app_cmd::cancel_agent_job,
             commands::app_cmd::start_audio_tool,
             commands::tempo_key::start_tempo_key_analysis,
             commands::app_cmd::start_operation_task,

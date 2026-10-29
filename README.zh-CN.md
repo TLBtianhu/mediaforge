@@ -138,7 +138,7 @@ MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Ag
 
 - 读取 `agent-jobs/index.json` 和 `agent-workspace.json`
 - 手动用户可以看到 DSH 通过 MCP 启动的任务、进度和输出
-- 当前是共享任务的第一步：只读观察；取消和双向编辑在 Operation Kernel 阶段补上
+- 当前是共享任务的第一步：只读观察 + 取消；双向编辑在 Operation Kernel 阶段补上
 
 ### 运行状态
 

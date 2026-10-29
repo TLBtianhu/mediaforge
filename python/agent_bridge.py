@@ -170,6 +170,7 @@ class JobManager:
                 )
                 job.process = process
                 assert process.stdout is not None
+                threading.Thread(target=self._watch_cancel, args=(job, process), daemon=True).start()
                 for line in process.stdout:
                     line = line.strip()
                     if not line:
@@ -193,6 +194,16 @@ class JobManager:
         except Exception as exc:  # noqa: BLE001
             job.update(status="failed", error=f"{exc}\n{traceback.format_exc()}", finished_at=time.time())
             self._persist(job)
+
+    def _watch_cancel(self, job: Job, process: subprocess.Popen[str]) -> None:
+        cancel_path = job.workdir / "cancel"
+        while process.poll() is None:
+            if cancel_path.exists():
+                job.update(status="cancelled", message="cancelled by user")
+                self._persist(job)
+                process.terminate()
+                return
+            time.sleep(0.2)
 
     def _consume(self, job: Job, event: dict[str, Any]) -> None:
         kind = str(event.get("type") or "")

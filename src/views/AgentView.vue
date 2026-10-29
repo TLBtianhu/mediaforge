@@ -81,6 +81,16 @@ async function openWorkspace() {
   }
 }
 
+async function cancel(job: AgentJob) {
+  try {
+    await invoke('cancel_agent_job', { jobId: job.jobId })
+    message.success(t('agent.cancelRequested'))
+    await load()
+  } catch (cause) {
+    message.error(cause instanceof Error ? cause.message : String(cause))
+  }
+}
+
 onMounted(() => {
   void load()
   timer = setInterval(() => { void load() }, 3000)
@@ -135,7 +145,10 @@ onBeforeUnmount(() => {
         <article v-for="job in jobs" :key="job.jobId" class="agent-job">
           <div class="agent-job__head">
             <div class="agent-job__title"><strong>{{ job.command }}</strong><span>{{ job.jobId }}</span></div>
-            <n-tag size="small" :type="statusType(job.status)" :bordered="false">{{ job.status }}</n-tag>
+            <div class="agent-job__actions">
+              <n-button v-if="job.status === 'running' || job.status === 'queued'" text size="tiny" @click="cancel(job)">{{ t('agent.cancel') }}</n-button>
+              <n-tag size="small" :type="statusType(job.status)" :bordered="false">{{ job.status }}</n-tag>
+            </div>
           </div>
           <div class="agent-job__meta"><span>{{ formatTime(job.createdAt) }}</span><span>{{ outputCount(job) }} {{ t('agent.outputs') }}</span></div>
           <n-progress v-if="job.status === 'running' || job.status === 'queued'" type="line" :percentage="Math.round(Number(job.fraction || 0) * 100)" />
@@ -158,6 +171,7 @@ onBeforeUnmount(() => {
 .agent-list { display: grid; gap: 10px; }
 .agent-job { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--divider-color); border-radius: 14px; background: var(--card-color); }
 .agent-job__head { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.agent-job__actions { display: flex; gap: 8px; align-items: center; }
 .agent-job__title { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .agent-job__title strong { color: var(--text-color-1); font-size: 12px; }
 .agent-job__title span { overflow: hidden; color: var(--text-color-3); font-family: var(--font-mono, monospace); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }

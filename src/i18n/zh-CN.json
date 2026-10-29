@@ -18,7 +18,7 @@
     "separate": "音频处理",
     "models": "模型库",
     "mediaModels": "图像/视频",
-    "agent": "Agent 工作区",
+    "agent": "Agent",
     "results": "结果",
     "tools": "工具",
     "projects": "工程",
@@ -140,7 +140,9 @@
     "noWorkspace": "尚未建立工作区",
     "emptyTitle": "还没有 Agent 任务",
     "emptyHint": "DSH 通过 MCP 启动的任务会出现在这里。也可以手动启动本地 MCP bridge：",
-    "outputs": "个输出"
+    "outputs": "个输出",
+    "cancel": "取消",
+    "cancelRequested": "已请求取消"
   },
   "mediaModels": {
     "title": "图像 / 视频模型",
