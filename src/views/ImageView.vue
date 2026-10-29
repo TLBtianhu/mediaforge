@@ -361,7 +361,7 @@ const workbenchSteps = computed(() => [
 
       <WorkbenchCard class="workbench-plan" :icon="CubeOutline" :title="t('plan.title')" :subtitle="t('pipeline.stepCompose')">
         <n-space vertical :size="12">
-          <ProcessingPlan v-model="planStep" modality="image" :busy="busy" @availability="planAvailable = $event" />
+          <ProcessingPlan v-model="planStep" modality="image" :busy="busy" :model-dir="modelDir" @availability="planAvailable = $event" />
           <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy || !planAvailable" @click="run">
             <template #icon><n-icon :component="SparklesOutline" /></template>
             {{ t('factory.start') }}

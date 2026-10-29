@@ -30,8 +30,11 @@ const props = withDefaults(defineProps<{
   modelValue?: PlanStep
   modality: 'image' | 'video'
   busy?: boolean
+  /** 用户选的模型目录：可用性检查必须看它，否则永远显示"没有可用模型" */
+  modelDir?: string
 }>(), {
   busy: false,
+  modelDir: '',
 })
 const emit = defineEmits<{ 'update:modelValue': [value: PlanStep]; availability: [value: boolean] }>()
 const { t } = useI18n()
@@ -111,7 +114,9 @@ async function load() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   loading.value = true
   try {
-    const result = await invoke<{ capabilities: Capability[] }>('media_capabilities')
+    const result = await invoke<{ capabilities: Capability[] }>('media_capabilities', {
+      payload: { modelDir: props.modelDir || null },
+    })
     capabilities.value = result.capabilities || []
     if (!props.modelValue?.capability && available.value[0]) emit('update:modelValue', buildStep(available.value[0]))
   } catch {
@@ -120,6 +125,8 @@ async function load() {
     loading.value = false
   }
 }
+
+watch(() => props.modelDir, () => { void load() })
 
 function openModels() {
   router.push({ path: '/models', query: { modality: props.modality } })

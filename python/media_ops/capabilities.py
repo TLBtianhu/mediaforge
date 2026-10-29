@@ -158,9 +158,21 @@ def capability(capability_id: str) -> dict[str, Any]:
     raise KeyError(f"unknown capability: {capability_id}")
 
 
-def list_capabilities() -> dict[str, Any]:
+def _layout_root(override_dir: Any = None) -> Path:
+    """可用性检查也要认"用户选的模型目录"，否则界面上永远是"没有可用模型"。"""
+    if override_dir:
+        root = worker_paths.model_root(override_dir)
+        worker_paths.migrate_media_models(
+            root, [str(record.get("name") or "") for record in _catalog().values()]
+        )
+        return root
+    return _ensure_layout()
+
+
+def list_capabilities(override_dir: Any = None) -> dict[str, Any]:
+    """`override_dir` 是用户选的模型目录；不传就走全局默认根。"""
     catalog = _catalog()
-    root = _ensure_layout()
+    root = _layout_root(override_dir)
     implemented = adapter_capability_ids()
     result = []
     for item in CAPABILITIES:

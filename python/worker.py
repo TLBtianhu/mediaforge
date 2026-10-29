@@ -73,7 +73,6 @@ def run_command(command: str, payload: dict) -> int:
     if command == "media_precheck":
         from media_ops.precheck import precheck
 
-        from worker_protocol import emit
         steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
         inputs = [str(value) for value in payload.get("inputs") or [] if str(value).strip()]
         check = precheck(steps, inputs)
@@ -86,7 +85,6 @@ def run_command(command: str, payload: dict) -> int:
     if command == "failure_stats":
         from failure_stats import collect
 
-        from worker_protocol import emit
         emit("failure_stats", collect())
         return 0
     if command == "agent_contract":
@@ -169,7 +167,7 @@ def run_command(command: str, payload: dict) -> int:
         return cmd_media_library(payload)
     if command == "media_capabilities":
         from media_ops.capabilities import list_capabilities
-        emit("media_capabilities_result", list_capabilities())
+        emit("media_capabilities_result", list_capabilities(payload.get("modelDir")))
         return 0
     if command == "model_hub":
         from model_hub_worker import cmd_model_hub

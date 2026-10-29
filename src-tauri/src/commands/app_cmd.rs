@@ -2396,8 +2396,9 @@ pub async fn model_hub(app: AppHandle, payload: Value) -> AppResult<Value> {
 }
 
 #[tauri::command]
-pub async fn media_capabilities(app: AppHandle) -> AppResult<Value> {
-    run_worker_with_payload(&app, "media_capabilities", Some(serde_json::json!({})))
+pub async fn media_capabilities(app: AppHandle, payload: Option<Value>) -> AppResult<Value> {
+    // modelDir 要透传：可用性检查必须看用户选的目录，否则界面永远显示"没有可用模型"
+    run_worker_with_payload(&app, "media_capabilities", payload)
 }
 
 #[tauri::command]
