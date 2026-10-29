@@ -89,6 +89,78 @@ def agent_contract_bindings(capability: str) -> dict[str, str]:
     return capabilities.default_bindings(capability)
 
 
+def _load_detector(detector_path: str, device: str | None):
+    """加载水印检测器（预检用）。失败就让调用方回退到"不预检"。"""
+    from media_ops import image_ops
+
+    return image_ops.WatermarkDetector(detector_path, device=device or "cuda")
+
+
+def precheck(
+    steps: list[dict[str, Any]],
+    inputs: list[str],
+    *,
+    detector_factory: Callable[..., Any] | None = None,
+) -> dict[str, Any] | None:
+    """跑之前的可行性检查：只判能确定判死的情况。
+
+    目前只预检 `watermark_removal`：干净图上跑去水印必然失败（"没有检测到水印"），
+    与其让整条链失败，不如把这个步骤摘掉继续做后面的事。
+
+    返回 `None` 表示"没预检/预检不可用"，`{"ok": True}` 表示通过，
+    `{"ok": False, ...}` 表示这一步应当跳过。
+    """
+    if not any(str(step.get("capability") or "") == "watermark_removal" for step in steps):
+        return None
+    if not inputs:
+        return None
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from media_ops import capabilities
+
+        bindings = next(
+            (step.get("bindings") or {} for step in steps if str(step.get("capability")) == "watermark_removal"),
+            {},
+        )
+        defaults = capabilities.default_bindings("watermark_removal")
+        detector_path = str(
+            capabilities.model_path(str(bindings.get("detector") or defaults["detector"]))
+        )
+        params = next(
+            (step.get("params") or {} for step in steps if str(step.get("capability")) == "watermark_removal"),
+            {},
+        )
+        factory = detector_factory or _load_detector
+        detector = factory(detector_path, None)
+        for path in inputs:
+            image = np.asarray(Image.open(path).convert("RGB"))
+            boxes, _scores, mask = detector.detect(
+                image,
+                conf=float(params.get("conf") or 0.25),
+                expand=int(params.get("expand") or 6),
+            )
+            if int(mask.max()) == 0:
+                return {
+                    "ok": False,
+                    "reason": "no_watermark",
+                    "path": path,
+                    "message": "没有检测到水印；跳过这一步，或降低检测阈值",
+                }
+            covered = float((mask > 0).mean())
+            if covered > 0.75:
+                return {
+                    "ok": False,
+                    "reason": "mask_too_large",
+                    "path": path,
+                    "message": f"检测到的遮罩覆盖了 {covered:.0%} 的画面，可能是误检；跳过这一步",
+                }
+        return {"ok": True}
+    except Exception:  # noqa: BLE001 - 预检是增值能力，缺依赖/缺模型时不该拦住主流程
+        return None
+
+
 def approval_for(tool: str) -> str:
     return str(agent_contract.find_tool(tool).get("approval") or "confirm")
 
@@ -161,6 +233,24 @@ def run(
             "steps": [],
         }
 
+    # 跑之前先看有没有"必然失败"的步骤（目前是干净图上的去水印）
+    skipped: list[dict[str, Any]] = []
+    check = precheck(list(arguments.get("steps") or []), [str(value) for value in arguments.get("inputs") or []])
+    if check and not check.get("ok"):
+        remaining = [step for step in arguments["steps"] if str(step.get("capability")) != "watermark_removal"]
+        if not remaining:
+            return {
+                "ok": False,
+                "tool": tool,
+                "blocked": "precheck_failed",
+                "summary": str(check.get("message") or "预检未通过"),
+                "precheck": check,
+                "steps": [],
+            }
+        skipped.append(check)
+        arguments = {**arguments, "steps": remaining}
+        if len(remaining) == 1:
+            tool = f"media.{arguments['modality']}.{remaining[0]['capability']}"
     try:
         outcome = dispatch(tool, arguments)
     except Exception as exc:  # noqa: BLE001 - 执行器异常也要变成可判断的结果
@@ -192,6 +282,7 @@ def run(
         "ok": verdict["ok"],
         "tool": tool,
         "steps": [step],
+        "skipped": skipped,
         "outputs": [item.get("path") for item in outputs],
         "evaluations": verdict.get("evaluations") or [],
         "reasons": verdict.get("reasons") or [],

@@ -111,6 +111,66 @@ class MultiStepPlanTests(unittest.TestCase):
         self.assertEqual(plan["tool"], "media.image.upscale")
 
 
+class PrecheckTests(unittest.TestCase):
+    """干净图上的去水印步骤应当被摘掉，而不是让整条链失败。"""
+
+    def _detector(self, filled: bool):
+        class FakeDetector:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def detect(self, image, conf=0.25, expand=6):
+                mask = np.ones(image.shape[:2], dtype=np.uint8) if filled else np.zeros(image.shape[:2], dtype=np.uint8)
+                return np.empty((0, 4), dtype=np.float32), np.empty((0,), dtype=np.float32), mask
+
+        return lambda path, device: FakeDetector()
+
+    def test_no_watermark_step_means_no_precheck(self) -> None:
+        self.assertIsNone(embedded_loop.precheck([{"capability": "upscale"}], ["a.png"]))
+
+    def test_empty_input_skips_precheck(self) -> None:
+        self.assertIsNone(embedded_loop.precheck([{"capability": "watermark_removal"}], []))
+
+    def test_clean_image_reports_no_watermark(self) -> None:
+        import tempfile
+
+        from PIL import Image as _Image
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            _Image.new("RGB", (32, 32), (10, 20, 30)).save(handle.name)
+            check = embedded_loop.precheck(
+                [{"capability": "watermark_removal"}], [handle.name], detector_factory=self._detector(False)
+            )
+        self.assertEqual(check["reason"], "no_watermark")
+
+    def test_oversized_mask_is_flagged(self) -> None:
+        import tempfile
+
+        from PIL import Image as _Image
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            _Image.new("RGB", (32, 32), (10, 20, 30)).save(handle.name)
+            check = embedded_loop.precheck(
+                [{"capability": "watermark_removal"}], [handle.name], detector_factory=self._detector(True)
+            )
+        self.assertEqual(check["reason"], "mask_too_large")
+
+    def test_detector_failure_does_not_block(self) -> None:
+        import tempfile
+
+        from PIL import Image as _Image
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("torch missing")
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            _Image.new("RGB", (32, 32), (10, 20, 30)).save(handle.name)
+            check = embedded_loop.precheck(
+                [{"capability": "watermark_removal"}], [handle.name], detector_factory=boom
+            )
+        self.assertIsNone(check, "预检不可用时不能拦住主流程")
+
+
 class GateTests(unittest.TestCase):
     def test_explicit_approval_blocks_by_default(self) -> None:
         result = embedded_loop.run({"tool": "model.download", "arguments": {"modelId": "media:lama"}})
