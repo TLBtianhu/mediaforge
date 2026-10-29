@@ -58,7 +58,7 @@ class InterfaceGenerationTests(unittest.TestCase):
         interface = iface.interface_for(model_id)
         self.assertIsNotNone(interface)
         self.assertEqual(interface["task"], "separation")
-        self.assertEqual(set(interface["slots"]), {"chunk_size", "overlap", "stems"})
+        self.assertEqual(set(interface["slots"]), {"batch_size", "chunk_size", "overlap", "stems"})
         # mel_band_roformer 的覆盖生效
         self.assertEqual(interface["slots"]["chunk_size"]["step"], 128)
         self.assertEqual(interface["slots"]["chunk_size"]["default"], 512)
@@ -73,6 +73,36 @@ class InterfaceGenerationTests(unittest.TestCase):
             self.skipTest("登记表里没有 demucs 条目")
         interface = iface.interface_for(model["id"])
         self.assertNotIn("chunk_size", interface["slots"])
+
+    def test_vr_models_expose_window_and_aggression(self) -> None:
+        model = next((item for item in reg.models(task="separation") if item.get("architecture") == "vr"), None)
+        if model is None:
+            self.skipTest("登记表里没有 vr 条目")
+        slots = set(iface.interface_for(model["id"])["slots"])
+        self.assertIn("window_size", slots)
+        self.assertIn("aggression", slots)
+        # VR 用重叠次数而不是重叠样本数
+        self.assertIn("overlap_count", slots)
+        self.assertNotIn("overlap", slots)
+
+    def test_plain_models_have_no_vr_slots(self) -> None:
+        model = next(
+            item for item in reg.models(task="separation")
+            if item.get("architecture") == "mel_band_roformer"
+        )
+        slots = set(iface.interface_for(model["id"])["slots"])
+        for slot in ("window_size", "aggression", "overlap_count", "post_process"):
+            self.assertNotIn(slot, slots, f"普通模型不该有 {slot}")
+
+    def test_apollo_keeps_post_process_but_not_vr_window(self) -> None:
+        model = next((item for item in reg.models(task="separation") if item.get("architecture") == "apollo"), None)
+        if model is None:
+            self.skipTest("登记表里没有 apollo 条目")
+        slots = set(iface.interface_for(model["id"])["slots"])
+        self.assertIn("post_process", slots)
+        self.assertIn("overlap_count", slots)
+        self.assertNotIn("window_size", slots)
+        self.assertNotIn("aggression", slots)
 
     def test_unknown_model_returns_none(self) -> None:
         self.assertIsNone(iface.interface_for("nope:nope"))

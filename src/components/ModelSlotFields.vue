@@ -14,6 +14,8 @@ const props = defineProps<{
   plan: RenderPlan
   modelValue: Record<string, unknown>
   disabled?: boolean
+  /** 引导聚焦的槽位 id，用于高亮 */
+  activeSlot?: string
 }>()
 
 const emit = defineEmits<{
@@ -43,6 +45,7 @@ function patch(slot: string, value: unknown) {
             :field="field"
             :value="valueOf(field)"
             :disabled="disabled"
+            :active="activeSlot === field.slot"
             @update:value="(value: unknown) => patch(field.slot, value)"
           />
         </NCollapseItem>
@@ -54,6 +57,7 @@ function patch(slot: string, value: unknown) {
           :field="field"
           :value="valueOf(field)"
           :disabled="disabled"
+          :active="activeSlot === field.slot"
           @update:value="(value: unknown) => patch(field.slot, value)"
         />
       </template>

@@ -129,8 +129,15 @@
     ],
     "slots": [
      "stems",
+     "chunk_size",
      "overlap",
-     "chunk_size"
+     "overlap_count",
+     "batch_size",
+     "window_size",
+     "aggression",
+     "post_process_threshold",
+     "post_process",
+     "high_end_process"
     ],
     "planned": false
    },
@@ -162,7 +169,11 @@
     "signature": "Audio->Audio",
     "hypothesis": [],
     "slots": [
-     "strength"
+     "strength",
+     "chunk_size",
+     "batch_size",
+     "post_process",
+     "post_process_threshold"
     ],
     "planned": false
    },

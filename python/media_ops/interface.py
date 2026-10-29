@@ -29,6 +29,14 @@ SLOT_DEFAULTS: dict[str, dict[str, Any]] = {
                    "derive": "chunk_size_constraint"},
     "overlap": {"bind": "overlap", "min": 0, "max": 8, "step": 1, "default": 2},
     "stems": {"bind": "stems", "default": "vocals"},
+    "batch_size": {"bind": "batch_size", "min": 1, "max": 32, "step": 1, "default": 1},
+    "overlap_count": {"bind": "num_overlap", "min": 0, "max": 128, "step": 1, "default": 4},
+    "window_size": {"bind": "window_size", "min": 0, "max": 4096, "step": 64, "default": 512},
+    "aggression": {"bind": "aggression", "min": 0, "max": 100, "step": 1, "default": 5},
+    "post_process": {"bind": "enable_post_process", "default": True},
+    "high_end_process": {"bind": "high_end_process", "default": False},
+    "post_process_threshold": {"bind": "post_process_threshold", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.3},
+    "standardize": {"bind": "standardize", "default": False},
     # 图像 / 视频
     "scale": {"bind": "scale", "min": 1, "max": 4, "step": 1, "default": 2},
     "tile": {"bind": "tile", "min": 0, "max": 1024, "step": 32, "default": 0},
@@ -60,14 +68,28 @@ ARCH_SLOT_OVERRIDES: dict[str, dict[str, dict[str, Any]]] = {
         "chunk_size": {"min": 512, "max": 16384, "step": 512, "default": 4096},
     },
     "demucs": {
-        # demucs 不走分块推理，没有 chunk_size
+        # demucs 不走分块推理，既没有 chunk_size 也没有 overlap 概念
         "chunk_size": None,
+        "overlap": None,
+        "overlap_count": None,
     },
-    "htdemucs": {"chunk_size": None},
+    "htdemucs": {"chunk_size": None, "overlap": None, "overlap_count": None},
+    "vr": {
+        # VR 系用窗口 + 强度，而不是分块 + 重叠样本数
+        "overlap": None,
+        "standardize": None,
+    },
+    "apollo": {
+        # Apollo 用重叠次数而不是重叠样本数
+        "overlap": None,
+    },
     "mdx23c": {
         "chunk_size": {"step": 128, "default": 1024},
     },
 }
+
+#: 只属于 VR / Apollo 的槽位：其它分离架构不该看到它们
+VR_ONLY_SLOTS = ["window_size", "aggression", "post_process", "high_end_process", "post_process_threshold", "overlap_count"]
 
 FORBIDDEN_INTERFACE_KEYS = {"order", "group", "section", "sections", "width", "row", "column", "collapsed", "index"}
 
@@ -89,7 +111,18 @@ def interface_for(model_id: str) -> dict[str, Any] | None:
         if default is None:
             continue
         slots[slot] = dict(default)
-    overrides = ARCH_SLOT_OVERRIDES.get(str(model.get("architecture") or ""), {})
+    architecture = str(model.get("architecture") or "")
+    if task == "separation":
+        # 按架构裁剪：VR 有全套；Apollo 只借用后处理与重叠次数；其余没有这些概念
+        if architecture == "vr":
+            drop: list[str] = []
+        elif architecture == "apollo":
+            drop = ["window_size", "aggression"]
+        else:
+            drop = VR_ONLY_SLOTS
+        for slot in drop:
+            slots.pop(slot, None)
+    overrides = ARCH_SLOT_OVERRIDES.get(architecture, {})
     for slot, patch in overrides.items():
         if slot not in slots:
             continue

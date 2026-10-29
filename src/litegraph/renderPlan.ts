@@ -25,6 +25,7 @@ export const ALLOWED_BINDING_KEYS = new Set([
   'default',
   'choices',
   'derive',
+  'align',
 ])
 
 /** 一旦出现在模型接口里就说明布局又漏回来了。 */
@@ -41,6 +42,11 @@ export interface ModelSlotBinding {
   choices?: Array<string | number>
   /** 派生约束名（后端计算合法值） */
   derive?: string
+  /**
+   * 派生约束的具体参数（后端 `chunk_size_constraint` 的 step/offset/min）。
+   * 前端只用来把滑块吸附到合法值，**不复制约束逻辑**。
+   */
+  align?: { step?: number; offset?: number; min?: number }
 }
 
 export interface ModelInterface {
@@ -139,6 +145,22 @@ export function buildRenderPlan(model: ModelInterface, profile: LayoutProfile): 
   }
 
   return { modelId: model.modelId, profileId: profile.id, sections, missing }
+}
+
+/**
+ * 把值吸附到派生约束允许的格点上（step/offset/min 来自后端）。
+ * 纯函数，便于测试；不复制后端的约束推导。
+ */
+export function snapToAlignment(value: number, align: { step?: number; offset?: number; min?: number } | undefined): number {
+  if (!align || !align.step || align.step <= 0) return value
+  const offset = align.offset ?? 0
+  const step = align.step
+  const snapped = offset + Math.round((value - offset) / step) * step
+  const minimum = align.min
+  if (typeof minimum === 'number' && snapped < minimum) {
+    return offset + Math.ceil((minimum - offset) / step) * step
+  }
+  return snapped
 }
 
 export function validateInterface(model: ModelInterface): string[] {

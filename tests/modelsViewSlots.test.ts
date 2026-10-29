@@ -40,3 +40,27 @@ describe('ModelsView 的推断参数对话框', () => {
     }
   })
 })
+
+const separateView = readFileSync(join(process.cwd(), 'src/views/SeparateView.vue'), 'utf-8')
+
+describe('SeparateView 的高级参数面板', () => {
+  it('用渲染计划驱动，而不是 22 个手写控件', () => {
+    assert.ok(separateView.includes('ModelSlotFields'), '应渲染槽位面板')
+    assert.ok(separateView.includes('buildRenderPlan'), '应从接口 + 布局档合成计划')
+    assert.ok(separateView.includes('slotPanelValues') && separateView.includes('updateSlotPanel'))
+  })
+
+  it('槽位值通过 bind 与现有 refs 对接', () => {
+    assert.ok(separateView.includes('slotRefs'), '应有原生键 → ref 的映射表')
+    assert.ok(separateView.includes('interface_.slots.chunk_size'), '分块约束应透传 align')
+  })
+
+  it('没有接口的模型保留旧控件', () => {
+    assert.ok(separateView.includes('v-if="slotPanelPlan"'))
+    assert.ok(separateView.includes('<template v-else>'), '旧控件应在 v-else 分支里')
+  })
+
+  it('引导高亮仍然接上', () => {
+    assert.ok(separateView.includes(':active-slot="guidedParameter?.id"'))
+  })
+})

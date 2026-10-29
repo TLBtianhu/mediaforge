@@ -15,6 +15,8 @@ const props = defineProps<{
   field: RenderField
   value: unknown
   disabled?: boolean
+  /** onboarding 引导当前聚焦的槽位 */
+  active?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,7 +45,11 @@ const multipleValue = computed(() => (Array.isArray(props.value) ? (props.value 
 </script>
 
 <template>
-  <NFormItem :label="label">
+  <NFormItem
+    :label="label"
+    :data-parameter-guide="field.slot"
+    :class="{ 'parameter-guide-target--active': active }"
+  >
     <NSwitch
       v-if="field.kind === 'bool'"
       :value="Boolean(value)"

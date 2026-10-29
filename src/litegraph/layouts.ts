@@ -33,7 +33,11 @@ const advanced = (slots: string[]) => ({
 export const LAYOUTS: Record<string, LayoutProfile> = {
   separation: {
     id: 'layout.separation',
-    sections: [quality(['stems']), speed(['chunk_size', 'overlap'])],
+    sections: [
+      quality(['stems']),
+      speed(['chunk_size', 'overlap', 'overlap_count', 'batch_size', 'window_size', 'aggression']),
+      advanced(['post_process', 'high_end_process', 'post_process_threshold', 'standardize']),
+    ],
   },
   audio_restoration: {
     id: 'layout.audio_restoration',

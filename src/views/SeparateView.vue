@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { createLogger } from '@/utils/logger'
 
-import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -49,6 +49,9 @@ import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
+import ModelSlotFields from '@/components/ModelSlotFields.vue'
+import { buildRenderPlan, type ModelInterface } from '@/litegraph/renderPlan.ts'
+import { layoutFor } from '@/litegraph/layouts.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
 import ParameterFieldGuide from '@/components/ParameterFieldGuide.vue'
@@ -260,6 +263,57 @@ const currentModelDefaults = computed(() => currentModelInfo.value?.defaultInfer
 const currentModelDefaultsResolved = computed(() => Boolean(currentModelInfo.value?.defaultInferenceParamsResolved))
 const currentModelType = computed(() => String(currentModelInfo.value?.modelType || '').trim().toLowerCase())
 const isVrModel = computed(() => currentModelType.value === 'vr')
+// 槽位面板：接口来自后端（模型的 slots），布局来自前端布局档。
+// 现有 refs 用的就是原生键，所以 bind 直接映射到 ref，不需要额外状态。
+const slotRefs: Record<string, Ref<unknown>> = {
+  batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
+  enable_post_process, high_end_process, post_process_threshold, standardize,
+}
+
+const slotPanelInterface = computed<ModelInterface | null>(() => {
+  const info = currentModelInfo.value
+  const slots = (info as { slots?: ModelInterface['slots'] } | null)?.slots
+  if (!info?.name || !slots || Object.keys(slots).length === 0) return null
+  const task = (info as { slotTask?: string }).slotTask || 'separation'
+  const interface_: ModelInterface = { modelId: info.name, task, slots: { ...slots } }
+  // 派生约束（分块对齐）由后端给出，这里只把参数透传给滑块吸附
+  const constraint = currentChunkConstraint.value
+  const chunk = interface_.slots.chunk_size
+  if (chunk && constraint) {
+    interface_.slots.chunk_size = {
+      ...chunk,
+      align: { step: constraint.step, offset: constraint.offset, min: constraint.min },
+    }
+  }
+  return interface_
+})
+
+const slotPanelPlan = computed(() => {
+  const current = slotPanelInterface.value
+  return current ? buildRenderPlan(current, layoutFor(current.task)) : null
+})
+
+const slotPanelValues = computed<Record<string, unknown>>(() => {
+  const current = slotPanelInterface.value
+  if (!current) return {}
+  const values: Record<string, unknown> = {}
+  for (const [slot, binding] of Object.entries(current.slots)) {
+    const target = slotRefs[binding.bind]
+    if (target && target.value !== undefined) values[slot] = target.value
+  }
+  return values
+})
+
+function updateSlotPanel(next: Record<string, unknown>) {
+  const current = slotPanelInterface.value
+  if (!current) return
+  for (const [slot, value] of Object.entries(next)) {
+    const binding = current.slots[slot]
+    const target = binding ? slotRefs[binding.bind] : undefined
+    if (target) target.value = value
+  }
+}
+
 const isApolloModel = computed(() => currentModelType.value === 'apollo')
 const showStandardizeField = computed(() => Boolean(currentModelInfo.value) && !isVrModel.value)
 const showNormalizeField = computed(() => Boolean(currentModelInfo.value))
@@ -2663,6 +2717,15 @@ const audioSteps = computed(() => [
                   <n-spin size="small" />
                   <span>{{ t('separate.advancedPanelLoading') }}</span>
                 </div>
+                <!-- 有槽位接口时按渲染计划画（分组/顺序来自布局档）；没有接口的模型走下面的旧控件。 -->
+                <ModelSlotFields
+                  v-if="slotPanelPlan"
+                  :plan="slotPanelPlan"
+                  :model-value="slotPanelValues"
+                  :active-slot="guidedParameter?.id"
+                  @update:model-value="updateSlotPanel"
+                />
+                <template v-else>
                 <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
                   <n-grid-item v-if="hasInferenceField('batch_size')">
                     <div class="field-block" data-parameter-guide="batch_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'batch_size' }">
@@ -2713,6 +2776,7 @@ const audioSteps = computed(() => [
                   <n-checkbox v-if="hasInferenceField('enable_post_process')" v-model:checked="enable_post_process" data-parameter-guide="enable_post_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'enable_post_process' }">{{ t('inference.vrEnablePostProcess') }}</n-checkbox>
                   <n-checkbox v-if="hasInferenceField('high_end_process')" v-model:checked="high_end_process" data-parameter-guide="high_end_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'high_end_process' }">{{ t('inference.vrHighEndProcess') }}</n-checkbox>
                 </div>
+                </template>
                 <p v-if="!advancedParamsLoading && !hasVisibleAdvancedFields" class="advanced-empty">
                   {{ t('separate.advancedPanelEmpty') }}
                 </p>
