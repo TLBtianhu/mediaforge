@@ -197,7 +197,17 @@ class OperationKernel:
                 message=str(payload.get("current") or payload.get("message") or "running"),
             )
         elif kind in {"audio_tool_result", "media_image_result", "media_video_result"}:
-            job.update(status="completed", result=payload, message="completed", fraction=1.0)
+            failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
+            if failed:
+                first = failed[0] if isinstance(failed[0], dict) else {"error": str(failed[0])}
+                job.update(
+                    status="failed",
+                    result=payload,
+                    message="completed with failures",
+                    error=str(first.get("error") or first.get("message") or "operation failed"),
+                )
+            else:
+                job.update(status="completed", result=payload, message="completed", fraction=1.0)
         elif kind == "error":
             job.update(status="failed", error=str(payload.get("message") or payload.get("code") or "worker error"))
         self._persist(job)
