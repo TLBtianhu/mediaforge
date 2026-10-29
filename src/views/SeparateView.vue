@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useDialog, useMessage, type DropdownOption } from 'naive-ui'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
@@ -50,6 +51,7 @@ import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
 import ModelSlotFields from '@/components/ModelSlotFields.vue'
+import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
 import { buildRenderPlan, type ModelInterface } from '@/litegraph/renderPlan.ts'
 import { layoutFor } from '@/litegraph/layouts.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
@@ -1633,6 +1635,39 @@ onMounted(async () => {
       } else if (type === 'drop') {
         isDragging.value = false
         const paths = (event.payload as { paths?: string[] }).paths || []
+        // 拖到「临时输出目录」输入框上：单个文件夹 = 引用它，别当成音频文件加入。
+        // 落点判定依赖 DOM/原生命令，取不到就当作普通文件拖放（不阻断主流程）。
+        try {
+          if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+            const zones = Array.from(document.querySelectorAll<HTMLElement>('[data-drop-zone]')).map(element => {
+              const rect = element.getBoundingClientRect()
+              return {
+                id: element.dataset.dropZone || '',
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+              }
+            })
+            const point = toCssPoint(
+              (event.payload as { position?: { x: number; y: number } }).position,
+              window.devicePixelRatio,
+            )
+            if (findDropZone(point, zones) === 'outputDir' && paths.length === 1) {
+              const kinds = await invoke<Array<[string, string]>>('path_kinds', { paths })
+              const folder = kinds.length === 1 && kinds[0][1] === 'directory' ? kinds[0][0] : ''
+              if (folder) {
+                temporaryOutputDir.value = folder
+                message.success(folder)
+                return
+              }
+              message.warning(t('image.dropFolderHere'))
+              return
+            }
+          }
+        } catch {
+          // 判定失败：按普通文件处理
+        }
         const added = await task.addPaths(paths)
         if (added > 0) message.success(t('separate.addedFiles', { count: added }))
         else message.warning(t('separate.noAudioAdded'))
@@ -2104,7 +2139,7 @@ const audioSteps = computed(() => [
 
             <label class="ofield" data-guide="output-location">
               <span class="ofield__label">{{ t('separate.temporaryOutputDir') }}</span>
-              <div class="dir-input">
+              <div class="dir-input" data-drop-zone="outputDir">
                 <n-input v-model:value="outputDirectoryInput" size="small" :status="outputDirectoryError ? 'error' : undefined" :placeholder="t('separate.outputDefault')" :disabled="isRunModeLocked" clearable />
                 <n-button secondary size="small" class="dir-input__browse" :title="t('separate.chooseOutput')" :disabled="isRunModeLocked" @click="pickTemporaryOutputDir">
                   <template #icon><n-icon :component="FolderOutline" /></template>
