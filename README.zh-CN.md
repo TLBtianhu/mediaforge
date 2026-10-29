@@ -132,6 +132,7 @@ mcp__mediaforge__convert
 mcp__mediaforge__pipeline_plan
 mcp__mediaforge__job_status
 mcp__mediaforge__models_list
+mcp__mediaforge__models_download
 ```
 
 MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Agent 是下一阶段。
@@ -148,6 +149,7 @@ MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Ag
 - 手动图像/视频/格式工厂任务也会写入同一索引
 - 音频分离批次同样写入同一索引，可在 Agent 页观察和取消
 - 手动用户可以看到 Agent 通过 MCP 启动的任务，也可以取消
+- Agent 先查 `models_list`，计划缺模型时用 `models_download` 下载；下载前应由用户确认
 - 手动任务从 Agent 页取消时会走 `cancel_task`，Agent 任务走 `cancel_agent_job`
 
 ### 运行状态

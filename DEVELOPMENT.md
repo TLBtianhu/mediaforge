@@ -156,6 +156,7 @@ with `serverName: mediaforge`. Once installed, DSH sees:
 ```text
 mcp__mediaforge__mediaforge_status
 mcp__mediaforge__models_list
+mcp__mediaforge__models_download
 mcp__mediaforge__probe
 mcp__mediaforge__convert
 mcp__mediaforge__pipeline_plan

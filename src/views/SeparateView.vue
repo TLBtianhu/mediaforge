@@ -2150,7 +2150,7 @@ async function retryCurrentTask() {
       </div>
     </MediaPageHeader>
 
-    <div class="mf-step-strip separate-step-strip">
+    <div class="mf-step-strip mf-step-strip--top separate-step-strip">
       <div class="mf-step">
         <span class="mf-step__num">01</span>
         <div><div class="mf-step__title">{{ t('separate.input') }}</div><div class="mf-step__text">{{ t('separate.stepInputHint') }}</div></div>

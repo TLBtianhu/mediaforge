@@ -53,6 +53,9 @@ class Bridge:
         self.port = port
         self.data_root = data_root
         self.jobs = OperationKernel(data_root)
+        explicit_model = os.environ.get("MEDIAFORGE_MODEL_DIR") or os.environ.get("PYMSS_MODEL_DIR")
+        self.model_root = Path(explicit_model).expanduser() if explicit_model else data_root / "models"
+        self.model_root.mkdir(parents=True, exist_ok=True)
         self.feedback_path = data_root / "agent-feedback.jsonl"
         self._feedback_lock = threading.Lock()
 
@@ -60,7 +63,7 @@ class Bridge:
 
     def status(self) -> dict[str, Any]:
         try:
-            models = model_hub.list_models(root=str(model_hub.model_dir()))
+            models = model_hub.list_models(root=str(self.model_root))
             model_count = models["count"]
             downloaded = models["downloadedCount"]
         except Exception as exc:  # noqa: BLE001
@@ -74,14 +77,14 @@ class Bridge:
             "app": "MediaForge",
             "bridgeVersion": VERSION,
             "dataRoot": str(self.data_root),
-            "modelDir": str(model_hub.model_dir()),
+            "modelDir": str(self.model_root),
             "models": {"count": model_count, "downloaded": downloaded, "error": model_error},
             "jobs": self.jobs.count(),
             "pid": os.getpid(),
         }
 
     def models_list(self, query: str = "", modality: str = "all") -> dict[str, Any]:
-        data = model_hub.list_models(query, modality, root=str(model_hub.model_dir()))
+        data = model_hub.list_models(query, modality, root=str(self.model_root))
         return {
             "ok": True,
             "modelDir": data["modelDir"],
@@ -101,6 +104,27 @@ class Bridge:
                 for item in data["models"]
             ],
         }
+
+    def download_model(self, model_id: str, source: str = "modelscope") -> dict[str, Any]:
+        if not model_id:
+            return {"ok": False, "error": "modelId is required"}
+        data = model_hub.list_models(root=str(self.model_root))
+        record = next((item for item in data["models"] if item["id"] == model_id), None)
+        if record is None:
+            return {"ok": False, "error": f"unknown model: {model_id}"}
+        if not record.get("implemented", True):
+            return {"ok": False, "error": f"model adapter is not implemented yet: {model_id}"}
+        job = self.jobs.start(
+            "model_download",
+            {
+                "operation": "model_download",
+                "requestId": f"model-{uuid.uuid4().hex[:12]}",
+                "modelId": model_id,
+                "modelDir": data["modelDir"],
+                "source": source or "modelscope",
+            },
+        )
+        return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "model": record["label"]}
 
     def probe(self, inputs: list[str]) -> dict[str, Any]:
         if not inputs:
@@ -139,7 +163,7 @@ class Bridge:
             return {"ok": False, "error": "input is required"}
         if not Path(input_path).is_file():
             return {"ok": False, "error": f"input not found: {input_path}"}
-        models = model_hub.list_models(root=str(model_hub.model_dir()))
+        models = model_hub.list_models(root=str(self.model_root))
         by_id = {item["id"]: item for item in models["models"]}
         plan: list[dict[str, Any]] = []
         missing: list[str] = []
@@ -222,6 +246,19 @@ class Bridge:
                         "query": {"type": "string", "description": "Optional name/category search."},
                         "modality": {"type": "string", "enum": ["all", "audio", "image", "video"], "default": "all"},
                     },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "models_download",
+                "description": "Download one model from the unified catalog. Starts an asynchronous job; poll job_status. Ask the user before downloading a large model.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "modelId": {"type": "string", "description": "Exact id from models_list, for example media:lama."},
+                        "source": {"type": "string", "enum": ["modelscope", "huggingface", "hf-mirror"], "default": "modelscope"},
+                    },
+                    "required": ["modelId"],
                     "additionalProperties": False,
                 },
             },
@@ -327,6 +364,8 @@ class Bridge:
             return self.status()
         if name == "models_list":
             return self.models_list(str(arguments.get("query") or ""), str(arguments.get("modality") or "all"))
+        if name == "models_download":
+            return self.download_model(str(arguments.get("modelId") or ""), str(arguments.get("source") or "modelscope"))
         if name == "probe":
             return self.probe([str(value) for value in arguments.get("inputs") or []])
         if name == "convert":
@@ -363,7 +402,7 @@ class Bridge:
                     "protocolVersion": offered,
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": "mediaforge", "version": VERSION},
-                    "instructions": "MediaForge local media tools. Prefer pipeline_plan before processing, and poll job_status after starting long jobs.",
+                    "instructions": "MediaForge local media tools. Call models_list before processing; if pipeline_plan reports requiresDownload, use models_download only after the user agrees to the download. Prefer pipeline_plan before processing, and poll job_status after starting long jobs.",
                 },
             }
         if method == "notifications/initialized":

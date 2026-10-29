@@ -253,7 +253,7 @@ onBeforeUnmount(() => {
       <n-tag type="info" :bordered="false">FFmpeg</n-tag>
     </MediaPageHeader>
 
-    <div class="mf-step-strip">
+    <div class="mf-step-strip mf-step-strip--top">
       <div class="mf-step">
         <span class="mf-step__num">01</span>
         <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('factory.chooseFiles') }}</div></div>

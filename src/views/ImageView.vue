@@ -308,7 +308,7 @@ onBeforeUnmount(() => {
       <n-tag type="success" :bordered="false">Real-ESRGAN · LaMa</n-tag>
     </MediaPageHeader>
 
-    <div class="mf-step-strip">
+    <div class="mf-step-strip mf-step-strip--top">
       <div class="mf-step">
         <span class="mf-step__num">01</span>
         <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('image.mode') }}</div></div>

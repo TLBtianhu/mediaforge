@@ -61,6 +61,7 @@ def main() -> int:
             required = {
                 "mediaforge_status",
                 "models_list",
+                "models_download",
                 "probe",
                 "convert",
                 "pipeline_plan",
