@@ -14,6 +14,7 @@ import {
   CubeOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
@@ -269,6 +270,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlisten?.()
 })
+const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('pipeline.stepInput') }, { title: t('plan.title'), text: t('pipeline.stepCompose') }, { title: t('video.result'), text: pipelineSummary.value }])
 </script>
 
 <template>
@@ -289,20 +291,7 @@ onBeforeUnmount(() => {
       <n-tag type="warning" :bordered="false">{{ pipelineSummary }}</n-tag>
     </MediaPageHeader>
 
-    <div class="mf-step-strip mf-step-strip--top">
-      <div class="mf-step">
-        <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('pipeline.stepInput') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('pipeline.title') }}</div><div class="mf-step__text">{{ t('pipeline.stepCompose') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('video.result') }}</div><div class="mf-step__text">{{ pipelineSummary }} · audio</div></div>
-      </div>
-    </div>
+    <WorkbenchSteps :steps="workbenchSteps" />
 
     <div class="media-workbench">
       <WorkbenchCard class="workbench-input" index="01" :title="t('factory.input')" :subtitle="t('plan.inputHint')">
@@ -399,7 +388,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .video-page { display: flex; flex-direction: column; gap: 12px; }
-.video-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .video-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .video-count { color: var(--text-color-3); font-size: 12px; }
 .video-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -409,5 +397,5 @@ onBeforeUnmount(() => {
 .video-hint { margin: -4px 0 0; color: var(--on-surface-muted); font-size: 11px; }
 .video-player { width: 100%; max-height: 520px; border-radius: 8px; background: #000; }
 .video-info { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
-@media (max-width: 900px) { .video-grid { grid-template-columns: 1fr; } .video-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .video-row { grid-template-columns: 1fr 1fr; } }
 </style>

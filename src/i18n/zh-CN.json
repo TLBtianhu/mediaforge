@@ -149,6 +149,16 @@
       "video_inpainting": "视频修复",
       "video_super_resolution": "视频超分"
     },
+    "params": {
+      "conf": "检测置信度",
+      "expand": "遮罩扩展",
+      "detectMode": "检测方式",
+      "target": "目标分辨率",
+      "fit": "缩放方式",
+      "scale": "放大倍数",
+      "width": "宽度",
+      "height": "高度"
+    },
     "models": "个可用模型",
     "capability": "处理能力",
     "model": "主模型",

@@ -87,6 +87,15 @@ function selectModel(modelId: string) {
   emit('update:modelValue', { ...buildStep(cap, modelId), params: { ...(props.modelValue?.params || {}) } })
 }
 
+function paramLabel(key: string) {
+  const known: Record<string, string> = {
+    conf: t('plan.params.conf'), expand: t('plan.params.expand'), detectMode: t('plan.params.detectMode'),
+    target: t('plan.params.target'), fit: t('plan.params.fit'), scale: t('plan.params.scale'),
+    width: t('plan.params.width'), height: t('plan.params.height'),
+  }
+  return known[key] || key
+}
+
 function setParam(key: string, value: unknown) {
   if (!props.modelValue) return
   emit('update:modelValue', { ...props.modelValue, params: { ...props.modelValue.params, [key]: value } })
@@ -152,7 +161,7 @@ onMounted(load)
 
       <div v-if="paramEntries.length" class="processing-plan__params">
         <div v-for="[key, spec] in paramEntries" :key="key" class="processing-plan__field">
-          <label>{{ key }}</label>
+          <label>{{ paramLabel(key) }}</label>
           <n-select
             v-if="spec.enum"
             :value="modelValue?.params?.[key]"

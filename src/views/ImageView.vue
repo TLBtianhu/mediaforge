@@ -14,6 +14,7 @@ import {
   CubeOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
@@ -263,6 +264,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlisten?.()
 })
+const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('pipeline.stepInput') }, { title: t('plan.title'), text: t('pipeline.stepCompose') }, { title: t('image.compare'), text: pipelineSummary.value }])
 </script>
 
 <template>
@@ -283,20 +285,7 @@ onBeforeUnmount(() => {
       <n-tag type="success" :bordered="false">{{ pipelineSummary }}</n-tag>
     </MediaPageHeader>
 
-    <div class="mf-step-strip mf-step-strip--top">
-      <div class="mf-step">
-        <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('pipeline.stepInput') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('pipeline.title') }}</div><div class="mf-step__text">{{ t('pipeline.stepCompose') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('image.compare') }}</div><div class="mf-step__text">{{ pipelineSummary }}</div></div>
-      </div>
-    </div>
+    <WorkbenchSteps :steps="workbenchSteps" />
 
     <div class="media-workbench">
       <WorkbenchCard class="workbench-input" index="01" :title="t('factory.input')" :subtitle="t('plan.inputHint')">
@@ -395,7 +384,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .image-page { display: flex; flex-direction: column; gap: 12px; }
-.image-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .image-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .image-count { color: var(--text-color-3); font-size: 12px; }
 .image-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -413,5 +401,5 @@ onBeforeUnmount(() => {
 .compare-label--right { right: 8px; }
 .compare-slider { margin-top: 10px; }
 .image-info { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-@media (max-width: 900px) { .image-grid { grid-template-columns: 1fr; } .image-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .image-row { grid-template-columns: 1fr 1fr; } }
 </style>

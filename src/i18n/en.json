@@ -149,6 +149,16 @@
       "video_inpainting": "Video inpainting",
       "video_super_resolution": "Video super-resolution"
     },
+    "params": {
+      "conf": "Detection confidence",
+      "expand": "Mask expand",
+      "detectMode": "Detection mode",
+      "target": "Target resolution",
+      "fit": "Fit mode",
+      "scale": "Scale",
+      "width": "Width",
+      "height": "Height"
+    },
     "models": "available models",
     "capability": "Capability",
     "model": "Primary model",

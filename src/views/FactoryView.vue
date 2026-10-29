@@ -13,6 +13,7 @@ import {
   SwapHorizontalOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
@@ -237,6 +238,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlisten?.()
 })
+const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('factory.chooseFiles') }, { title: t('factory.output'), text: t('factory.hint') }, { title: t('factory.start'), text: 'FFmpeg · local' }])
 </script>
 
 <template>
@@ -254,20 +256,7 @@ onBeforeUnmount(() => {
       <n-tag type="info" :bordered="false">FFmpeg</n-tag>
     </MediaPageHeader>
 
-    <div class="mf-step-strip mf-step-strip--top">
-      <div class="mf-step">
-        <span class="mf-step__num">01</span>
-        <div><div class="mf-step__title">{{ t('factory.input') }}</div><div class="mf-step__text">{{ t('factory.chooseFiles') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">02</span>
-        <div><div class="mf-step__title">{{ t('factory.output') }}</div><div class="mf-step__text">{{ t('factory.hint') }}</div></div>
-      </div>
-      <div class="mf-step">
-        <span class="mf-step__num">03</span>
-        <div><div class="mf-step__title">{{ t('factory.start') }}</div><div class="mf-step__text">FFmpeg · local</div></div>
-      </div>
-    </div>
+    <WorkbenchSteps :steps="workbenchSteps" />
 
     <div class="media-workbench">
       <WorkbenchCard class="workbench-input" index="01" :title="t('factory.input')" :subtitle="t('factory.chooseFiles')">
