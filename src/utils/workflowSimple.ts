@@ -322,6 +322,7 @@ export function buildSimpleWorkflowDefinition(draft: SimpleDraft): PymssYamlWork
       const inferenceParams = normalizeSimpleInferenceParams(step.inferenceParams)
       return {
         id: step.id || `step${index + 1}`,
+        ...(step.capability ? { capability: step.capability } : {}),
         model: step.model,
         ...(step.modelType?.trim() ? { model_type: step.modelType.trim() } : {}),
         input: step.input || 'input',
