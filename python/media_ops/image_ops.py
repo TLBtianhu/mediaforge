@@ -287,12 +287,31 @@ class LamaInpainter:
         output = np.clip(output, 0.0, 1.0)
         return (output * 255.0).round().astype(np.uint8)[:h, :w]
 
-    def inpaint(self, image: np.ndarray, mask: np.ndarray, feather: int = 2) -> np.ndarray:
+    def inpaint(self, image: np.ndarray, mask: np.ndarray, feather: int = 2, crop_margin: int | None = None) -> np.ndarray:
         import cv2
 
         if image is None or mask is None or int(mask.max()) == 0:
             return image.copy()
         h, w = image.shape[:2]
+        if crop_margin and crop_margin > 0:
+            ys, xs = np.where(mask > 127)
+            if len(xs):
+                x0, x1 = int(xs.min()), int(xs.max()) + 1
+                y0, y1 = int(ys.min()), int(ys.max()) + 1
+                if (x1 - x0) * (y1 - y0) < 0.45 * h * w:
+                    margin = int(crop_margin)
+                    cx0, cy0 = max(0, x0 - margin), max(0, y0 - margin)
+                    cx1, cy1 = min(w, x1 + margin), min(h, y1 + margin)
+                    min_side = 256
+                    if cx1 - cx0 < min_side:
+                        grow = (min_side - (cx1 - cx0)) // 2 + 1
+                        cx0, cx1 = max(0, cx0 - grow), min(w, cx1 + grow)
+                    if cy1 - cy0 < min_side:
+                        grow = (min_side - (cy1 - cy0)) // 2 + 1
+                        cy0, cy1 = max(0, cy0 - grow), min(h, cy1 + grow)
+                    repaired = image.copy()
+                    repaired[cy0:cy1, cx0:cx1] = self._forward(image[cy0:cy1, cx0:cx1], mask[cy0:cy1, cx0:cx1])
+                    return feather_composite(image, repaired, mask, feather=feather)
         longest = max(h, w)
         factor = min(1.0, float(self.max_side) / float(longest)) if longest else 1.0
         if factor < 1.0:

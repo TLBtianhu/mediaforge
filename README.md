@@ -14,7 +14,7 @@
 - [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
 - [ ] 模型目录 `modality` 泛化（audio / image / video）
 - [x] 图像超分/去水印：Real-ESRGAN + YOLO + LaMa，支持目标分辨率与前后对比
-- [ ] 视频抽帧修复管线（超分/去水印 + 音频回封）
+- [x] 视频抽帧修复管线（超分/去水印 + 音频回封）
 
 ## 已实现能力
 
@@ -37,6 +37,8 @@ python/media_ops/
 ├─ library.py       # SQLite 素材索引 + 缩略图
 ├─ image_ops.py     # Real-ESRGAN / YOLO / LaMa
 ├─ image_worker.py  # 图像任务命令
+├─ video_ops.py     # 抽帧 / 逐帧修复 / 合帧
+├─ video_worker.py  # 视频任务命令
 ├─ worker.py        # worker 命令与事件
 └─ __init__.py
 ```
@@ -73,6 +75,18 @@ big-lama.pt
 RealESRGAN_x2plus.pth
 RealESRGAN_x4plus.pth
 ```
+
+### 视频修复
+
+页面：`#/video`
+
+- FFmpeg 抽帧 → 逐帧去水印/超分 → H.264 合帧 + 原音频回封
+- 三种模式：仅超分、仅去水印、去水印 + 超分
+- 固定遮罩（快）/ 逐帧检测（移动水印）
+- 1080p / 2K / 4K / 自定义目标分辨率
+- 支持只处理前 N 秒预览
+- 输出 MP4，AAC 音频，保留原始帧率
+- 支持从素材台带视频进入
 
 ### 保留的 PyMSS 能力
 
@@ -137,6 +151,7 @@ src/                     Vue 3 前端
 src/views/FactoryView.vue
 src/views/AssetsView.vue
 src/views/ImageView.vue
+src/views/VideoView.vue
 src/router/routes.ts
 src/components/SideNav.vue
 src/i18n/                zh-CN / en

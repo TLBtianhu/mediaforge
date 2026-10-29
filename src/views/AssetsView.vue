@@ -205,6 +205,10 @@ function openInImage(asset: Asset) {
   void router.push({ name: 'image', query: { asset: asset.path } })
 }
 
+function openInVideo(asset: Asset) {
+  void router.push({ name: 'video', query: { asset: asset.path } })
+}
+
 watch([query, kind], () => { void refresh() })
 
 onMounted(async () => {
@@ -283,6 +287,10 @@ onBeforeUnmount(() => {
               <n-button v-if="asset.kind === 'image'" text size="small" @click="openInImage(asset)">
                 <template #icon><n-icon :component="SparklesOutline" /></template>
                 {{ t('assets.toImage') }}
+              </n-button>
+              <n-button v-if="asset.kind === 'video'" text size="small" @click="openInVideo(asset)">
+                <template #icon><n-icon :component="VideocamOutline" /></template>
+                {{ t('assets.toVideo') }}
               </n-button>
               <n-button text size="small" @click="revealAsset(asset)">
                 <template #icon><n-icon :component="FolderOpenOutline" /></template>

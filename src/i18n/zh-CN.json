@@ -28,7 +28,8 @@
     "plugins": "插件",
     "factory": "格式工厂",
     "assets": "素材台",
-    "image": "图像修复"
+    "image": "图像修复",
+    "video": "视频修复"
   },
   "factory": {
     "title": "格式工厂",
@@ -83,6 +84,18 @@
     "modelDirPlaceholder": "留空使用 models/ 或 MEDIAFORGE_MODEL_DIR",
     "modelDirHint": "需要 watermark_yolo11x.pt、big-lama.pt、RealESRGAN_x2plus.pth、RealESRGAN_x4plus.pth。"
   },
+  "video": {
+    "title": "视频修复",
+    "subtitle": "逐帧去水印/超分，保留原音频",
+    "detectMode": "检测方式",
+    "fixed": "固定遮罩（快）",
+    "perFrame": "逐帧检测（慢）",
+    "preview": "预览秒数",
+    "previewHint": "0 表示处理完整视频；建议先用 3-5 秒确认效果。",
+    "result": "输出视频",
+    "openVideo": "打开输出目录",
+    "detectorHint": "固定遮罩只检测首帧，适合位置不变的水印；移动水印请用逐帧检测。"
+  },
   "assets": {    "title": "素材台",
     "subtitle": "本机媒体索引、缩略图与任务入口",
     "importFiles": "导入文件",
@@ -97,6 +110,7 @@
     "openFolder": "打开位置",
     "toFactory": "去格式工厂",
     "toImage": "图像修复",
+    "toVideo": "视频修复",
     "remove": "移除",
     "removeConfirm": "从素材台移除这个文件？不会删除原文件。",
     "total": "共 {count} 个素材",

@@ -28,7 +28,8 @@
     "plugins": "Plugins",
     "factory": "Media Factory",
     "assets": "Media Shelf",
-    "image": "Image Restore"
+    "image": "Image Restore",
+    "video": "Video Restore"
   },
   "factory": {
     "title": "Media Factory",
@@ -83,6 +84,18 @@
     "modelDirPlaceholder": "Leave empty to use models/ or MEDIAFORGE_MODEL_DIR",
     "modelDirHint": "Requires watermark_yolo11x.pt, big-lama.pt, RealESRGAN_x2plus.pth, and RealESRGAN_x4plus.pth."
   },
+  "video": {
+    "title": "Video Restore",
+    "subtitle": "Per-frame watermark removal and upscaling with original audio",
+    "detectMode": "Detection",
+    "fixed": "Fixed mask (fast)",
+    "perFrame": "Per-frame (slow)",
+    "preview": "Preview seconds",
+    "previewHint": "0 processes the full video. Use 3-5 seconds to verify first.",
+    "result": "Output video",
+    "openVideo": "Open output folder",
+    "detectorHint": "Fixed mask detects the first frame only; use per-frame for moving watermarks."
+  },
   "assets": {
     "title": "Media Shelf",
     "subtitle": "Local media index, thumbnails, and task entry points",
@@ -98,6 +111,7 @@
     "openFolder": "Show in folder",
     "toFactory": "Open in Factory",
     "toImage": "Restore image",
+    "toVideo": "Restore video",
     "remove": "Remove",
     "removeConfirm": "Remove this item from the shelf? The original file will not be deleted.",
     "total": "{count} items",

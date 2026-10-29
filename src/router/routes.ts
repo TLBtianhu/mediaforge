@@ -13,6 +13,7 @@ export const appRoutes: RouteRecordRaw[] = [
   { path: '/factory', name: 'factory', component: () => import('@/views/FactoryView.vue') },
   { path: '/assets', name: 'assets', component: () => import('@/views/AssetsView.vue') },
   { path: '/image', name: 'image', component: () => import('@/views/ImageView.vue') },
+  { path: '/video', name: 'video', component: () => import('@/views/VideoView.vue') },
   { path: '/plugins', name: 'plugins', component: () => import('@/views/PluginsView.vue') },
   { path: '/plugin-view/:plugin/:viewId', name: 'plugin-view', component: () => import('@/views/PluginWorkspaceView.vue') },
   { path: '/debug', name: 'debug', component: () => import('@/views/DebugView.vue') },
