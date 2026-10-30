@@ -66,34 +66,14 @@ jobs:
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
-          $ffmpegZip = "release/ffmpeg-release-essentials.zip"
-          $ffmpegExtract = "release/ffmpeg"
-          Invoke-WebRequest `
-            -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
-            -OutFile $ffmpegZip
-          if (Test-Path $ffmpegExtract) { Remove-Item $ffmpegExtract -Recurse -Force }
-          Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegExtract -Force
-          $ffmpegBin = Get-ChildItem -Path $ffmpegExtract -Recurse -Directory -Filter "bin" |
-            Where-Object { Test-Path (Join-Path $_.FullName "ffmpeg.exe") } |
-            Select-Object -First 1
-          if (-not $ffmpegBin) { throw "ffmpeg bin directory not found" }
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffmpeg.exe") "$bin/ffmpeg.exe" -Force
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffprobe.exe") "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取。
+          # 以前这里直接下 ffmpeg-release-essentials.zip（浮动最新版），
+          # 上游一发布新版本，构建出来的包就换了 ffmpeg，且无人察觉。
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-
-          $aria2Zip = "release/aria2-1.37.0-win-64bit-build1.zip"
-          $aria2Extract = "release/aria2"
-          Invoke-WebRequest `
-            -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" `
-            -OutFile $aria2Zip
-          if (Test-Path $aria2Extract) { Remove-Item $aria2Extract -Recurse -Force }
-          Expand-Archive -Path $aria2Zip -DestinationPath $aria2Extract -Force
-          $aria2Exe = Get-ChildItem -Path $aria2Extract -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          if (-not $aria2Exe) { throw "aria2c.exe not found" }
-          Copy-Item $aria2Exe.FullName "$bin/aria2c.exe" -Force
 
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
@@ -269,34 +249,14 @@ jobs:
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
-          $ffmpegZip = "release/ffmpeg-release-essentials.zip"
-          $ffmpegExtract = "release/ffmpeg"
-          Invoke-WebRequest `
-            -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
-            -OutFile $ffmpegZip
-          if (Test-Path $ffmpegExtract) { Remove-Item $ffmpegExtract -Recurse -Force }
-          Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegExtract -Force
-          $ffmpegBin = Get-ChildItem -Path $ffmpegExtract -Recurse -Directory -Filter "bin" |
-            Where-Object { Test-Path (Join-Path $_.FullName "ffmpeg.exe") } |
-            Select-Object -First 1
-          if (-not $ffmpegBin) { throw "ffmpeg bin directory not found" }
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffmpeg.exe") "$bin/ffmpeg.exe" -Force
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffprobe.exe") "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取。
+          # 以前这里直接下 ffmpeg-release-essentials.zip（浮动最新版），
+          # 上游一发布新版本，构建出来的包就换了 ffmpeg，且无人察觉。
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-
-          $aria2Zip = "release/aria2-1.37.0-win-64bit-build1.zip"
-          $aria2Extract = "release/aria2"
-          Invoke-WebRequest `
-            -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" `
-            -OutFile $aria2Zip
-          if (Test-Path $aria2Extract) { Remove-Item $aria2Extract -Recurse -Force }
-          Expand-Archive -Path $aria2Zip -DestinationPath $aria2Extract -Force
-          $aria2Exe = Get-ChildItem -Path $aria2Extract -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          if (-not $aria2Exe) { throw "aria2c.exe not found" }
-          Copy-Item $aria2Exe.FullName "$bin/aria2c.exe" -Force
 
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
@@ -455,23 +415,12 @@ jobs:
         run: |
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "release/ffmpeg.zip"
-          Expand-Archive -Path "release/ffmpeg.zip" -DestinationPath "release/ffmpeg" -Force
-          $ffmpeg = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffmpeg.exe" | Select-Object -First 1
-          if (-not $ffmpeg) { throw "ffmpeg.exe not found" }
-          Copy-Item $ffmpeg.FullName "$bin/ffmpeg.exe" -Force
-          $ffprobe = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffprobe.exe" | Select-Object -First 1
-          if (-not $ffprobe) { throw "ffprobe.exe not found" }
-          Copy-Item $ffprobe.FullName "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取（见 scripts/fetch-third-party.ps1）
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-          Invoke-WebRequest -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile "release/aria2.zip"
-          Expand-Archive -Path "release/aria2.zip" -DestinationPath "release/aria2" -Force
-          $aria2 = Get-ChildItem "release/aria2" -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          if (-not $aria2) { throw "aria2c.exe not found" }
-          Copy-Item $aria2.FullName "$bin/aria2c.exe" -Force
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
           & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"
@@ -618,21 +567,12 @@ jobs:
         run: |
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "release/ffmpeg.zip"
-          Expand-Archive -Path "release/ffmpeg.zip" -DestinationPath "release/ffmpeg" -Force
-          $ffmpeg = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffmpeg.exe" | Select-Object -First 1
-          Copy-Item $ffmpeg.FullName "$bin/ffmpeg.exe" -Force
-          $ffprobe = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffprobe.exe" | Select-Object -First 1
-          if (-not $ffprobe) { throw "ffprobe.exe not found" }
-          Copy-Item $ffprobe.FullName "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取（见 scripts/fetch-third-party.ps1）
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-          Invoke-WebRequest -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile "release/aria2.zip"
-          Expand-Archive -Path "release/aria2.zip" -DestinationPath "release/aria2" -Force
-          $aria2 = Get-ChildItem "release/aria2" -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          Copy-Item $aria2.FullName "$bin/aria2c.exe" -Force
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
           & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"

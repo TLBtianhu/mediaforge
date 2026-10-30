@@ -70,6 +70,57 @@ runs:
         } finally {
           subst $drive /D | Out-Null
         }
+    # ---- SignPath 签名（可选）----
+    # 只有在仓库配置了 SIGNPATH_ORGANIZATION_ID 时才执行；没配置就走了原来的未签名路径。
+    # 先把安装包打成 zip 再上传：SignPath 的 artifact configuration 以 zip 为根更稳妥。
+    - name: Package installer for signing
+      if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      shell: pwsh
+      run: |
+        $target = "release/${{ inputs.output-file }}"
+        if (!(Test-Path $target)) { throw "installer not found: $target" }
+        New-Item -ItemType Directory -Force -Path "release/signing" | Out-Null
+        Compress-Archive -Path $target -DestinationPath "release/signing/installer.zip" -Force
+
+    - name: Upload installer for signing
+      id: upload-signing
+      if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: signing-input-${{ inputs.output-file }}
+        if-no-files-found: error
+        path: release/signing/installer.zip
+
+    - name: Submit SignPath signing request
+      id: signpath
+      if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      uses: signpath/github-action-submit-signing-request@v2
+      with:
+        api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+        organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+        project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+        signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+        artifact-configuration-slug: windows-installer
+        github-artifact-id: ${{ steps.upload-signing.outputs.artifact-id }}
+        wait-for-completion: true
+        output-artifact-directory: release/signed
+
+    - name: Replace installer with signed copy
+      if: ${{ steps.signpath.outcome == 'success' }}
+      shell: pwsh
+      run: |
+        $signedZip = Get-ChildItem release/signed -Recurse -Filter '*.zip' | Select-Object -First 1
+        if (-not $signedZip) { throw "SignPath 没有返回签名产物" }
+        $extract = "release/signed/extract"
+        if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+        Expand-Archive -Path $signedZip.FullName -DestinationPath $extract -Force
+        $signedExe = Get-ChildItem $extract -Recurse -Filter '*-setup.exe' | Select-Object -First 1
+        if (-not $signedExe) { throw "签名产物里找不到安装包" }
+        Copy-Item $signedExe.FullName "release/${{ inputs.output-file }}" -Force
+        $sig = Get-AuthenticodeSignature "release/${{ inputs.output-file }}"
+        Write-Host "Authenticode: $($sig.Status) $($sig.SignerCertificate.Subject)"
+        if ($sig.Status -ne 'Valid') { throw "签名校验失败：$($sig.StatusMessage)" }
+
     - name: Upload Windows installer artifact
       uses: actions/upload-artifact@v4
       with:
