@@ -2,7 +2,7 @@
 
 > 这份文档由 `python/media_ops/media_catalog.json` 生成，`available` 表示权重已下载且通过真实素材验证；`planned` 表示还没接入，原因写在最后一节。改 catalog 后请重新生成，不要手改这里。
 
-当前可用模型 **19** 个，计划中 **10** 个。
+当前可用模型 **20** 个，计划中 **10** 个。
 
 
 ## 超分辨率（放大）
@@ -11,6 +11,7 @@
 |---|---|---|---|
 | `esrgan-comix-x4`<br>4x Fatality Comix | 4× 超分，面向漫画/线稿，边缘更硬。 | 63.9 MB | 以上游模型卡为准（uwg/upscaler 汇总） |
 | `esrgan-superscale-sp-x4`<br>4x NMKD Superscale SP | 4× 超分，风格偏柔和自然，适合人像与风景。 | 63.9 MB | 以上游模型卡为准（uwg/upscaler 汇总） |
+| `esrgan-yandereneoxl-x4`<br>4x NMKD YandereNeoXL | 4× 超分，二次元/插画向，线条干净、色彩偏鲜。 | 63.9 MB | 以上游模型卡为准（uwg/upscaler 汇总） |
 | `esrgan-nomos8kdat-x4`<br>4x Nomos8kDAT | 训练于 8000 张素材的 4× 超分，体积大（295 MB）但细节更稳。 | 295.0 MB | 以上游模型卡为准（uwg/upscaler 汇总） |
 | `esrgan-remacri-x4`<br>4x Remacri | 写实向 4× 超分，纹理保留好，适合照片。 | 63.9 MB | 以上游模型卡为准（uwg/upscaler 汇总） |
 | `esrgan-valar-x4`<br>4x Valar v1 | 4× 超分，锐度与纹理平衡，适合游戏截图与插画。 | 64.4 MB | 以上游模型卡为准（uwg/upscaler 汇总） |
@@ -74,7 +75,7 @@
 - **GFPGAN v1.4**（`gfpgan-v14`）：依赖已装通（basicsr/facexlib/gfpgan + torchvision functional_tensor 垫片），GFPGANv1.pth（587 MB）也下好了。但参数扫描表明该权重与包内两种架构都不匹配：GFPGANv1Clean 在 (channel_multiplier, different_w, input_is_latent, sft_half) 全组合下最好也只有 166 个键不匹配（缺 conv_body_first.weight，说明权重是 Sequential 结构）；GFPGANv1 则在 cm=1/2 与 sft_half True/False 下都报 final_linear 形状不符。结论：这个 v1 权重与当前 gfpgan 1.3.8 的架构定义对不上，需要换官方 GFPGANv1.4.pth（配 GFPGANv1Clean）。
 - **HAT-L**（`hat-l`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
 - **ProPainter**（`propainter`）：缺少权重地址与加载代码，尚不可下载
-- **Real-ESRGAN 2×**（`real-esrgan-x2`）：目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。它同时是视频超分 x2 的依赖（video_ops 初始化即要求 x2/x4 都在）。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。
+- **Real-ESRGAN 2×**（`real-esrgan-x2`）：目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。视频管线现在会退到已安装的超分模型，所以缺它只影响 2× 选项，不再阻塞整条视频超分。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。
 - **SAM 2**（`sam2`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
 
 ## 怎么选

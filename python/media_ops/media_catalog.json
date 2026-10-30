@@ -785,6 +785,38 @@
           "maximum": 4
         }
       }
+    },
+    {
+      "id": "esrgan-yandereneoxl-x4",
+      "name": "4x_NMKD-YandereNeoXL_200k.pth",
+      "label": "4x NMKD YandereNeoXL",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66961958,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "4× 超分，二次元/插画向，线条干净、色彩偏鲜。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-YandereNeoXL_200k.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     }
   ]
 }

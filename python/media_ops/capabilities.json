@@ -29,7 +29,8 @@
         "media:esrgan-superscale-sp-x4",
         "media:esrgan-nomos8kdat-x4",
         "media:esrgan-valar-x4",
-        "media:esrgan-comix-x4"
+        "media:esrgan-comix-x4",
+        "media:esrgan-yandereneoxl-x4"
       ],
       "params": {
         "target": {
