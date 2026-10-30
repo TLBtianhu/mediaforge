@@ -86,3 +86,27 @@ DSH 集成        启动器创建 + cordis 配置指向 ~/.mediaforge/bin
 * worker_bootstrap.cmd_update_runtime_core 与 stores/app.ts 的 runtimeCoreUpdate*
   仍是死代码，删除会破坏 store 的推导类型，需要连类型一起重构
 ```
+
+## 补充验证（19 轮之后）
+
+```
+运行时版本感知   装 0.0.16 后卡片显示"运行环境需要更新 / 3322 MB"
+                 —— 因为本地那份是旧哈希，且没有 .asset-id 标记
+                 —— 按钮文案随之变成"更新运行环境"，不是"开始准备"
+新资产参数       sha256 c1f0b3ba…  size 3483253620  解压后 5.31 GB
+HF 主源          HEAD 200，大小与常量一致
+安装包           63.1 MB（重新打包，ISIC 84.9 秒）
+```
+
+### 运行时依赖缺口（本次修复的核心问题）
+
+```
+发现    python/requirements.txt 只声明音频依赖
+        图像/视频依赖（opencv/spandrel/ultralytics/pillow/torchvision）从未声明
+        打包出的运行时缺 27 个包 → 分离正常、图像/视频必失败
+修复    新增 python/requirements-media.txt 并补装
+        打包源与开发运行时包数对齐（42 → 69），零缺口
+影响    运行时从 4.93 GB 变成 5.31 GB，哈希随之改变
+```
+
+如果没有这次核对，用户装上是"能分离、不能超分"，而错误信息只会说缺模块。
