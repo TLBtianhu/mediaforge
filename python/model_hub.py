@@ -155,7 +155,11 @@ def _media_record(item: dict, root: Path) -> dict:
         "partial": partial,
         "missingPaths": missing,
         "runtime": "torch",
-        "downloadable": True,
+        # 只有"有权重、有加载代码"的条目才允许下载；其余在界面上显示为待接入，
+        # 而不是给一个点了必然失败的下载按钮。
+        "status": str(item.get("status") or ("available" if (item.get("implemented") and item.get("url")) else "planned")),
+        "blockedReason": str(item.get("blockedReason") or ""),
+        "downloadable": bool(item.get("implemented")) and bool(item.get("url")),
     }
 
 

@@ -31,7 +31,8 @@
           "maximum": 4
         }
       },
-      "sha256": "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb"
+      "sha256": "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb",
+      "status": "available"
     },
     {
       "id": "real-esrgan-x4",
@@ -63,7 +64,8 @@
           "maximum": 4
         }
       },
-      "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1"
+      "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "status": "available"
     },
     {
       "id": "lama",
@@ -95,7 +97,8 @@
           "maximum": 64
         }
       },
-      "sha256": "344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9"
+      "sha256": "344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9",
+      "status": "available"
     },
     {
       "id": "watermark-yolo11x",
@@ -119,7 +122,8 @@
       "roles": [
         "detector"
       ],
-      "sha256": "6ac71b6ab8db27ec7928b5176e60a359c65e1579a5c1d58cf2f98df30cf3085e"
+      "sha256": "6ac71b6ab8db27ec7928b5176e60a359c65e1579a5c1d58cf2f98df30cf3085e",
+      "status": "available"
     },
     {
       "id": "rife-v46",
@@ -140,7 +144,9 @@
       ],
       "roles": [
         "interpolator"
-      ]
+      ],
+      "status": "planned",
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
     },
     {
       "id": "propainter",
@@ -161,7 +167,9 @@
       ],
       "roles": [
         "primary"
-      ]
+      ],
+      "status": "planned",
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
     },
     {
       "id": "basicvsrpp",
@@ -182,7 +190,9 @@
       ],
       "roles": [
         "upscaler"
-      ]
+      ],
+      "status": "planned",
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
     },
     {
       "id": "gfpgan-v14",
@@ -203,7 +213,227 @@
       ],
       "roles": [
         "face_restorer"
-      ]
+      ],
+      "status": "planned",
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
+    },
+    {
+      "id": "swinir-large",
+      "name": "swinir-large",
+      "label": "SwinIR Large",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "Transformer 超分，2/3/4 倍可选",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "hat-l",
+      "name": "hat-l",
+      "label": "HAT-L",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "混合注意力超分，质量高、显存占用大",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "dat-2",
+      "name": "dat-2",
+      "label": "DAT-2",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "双聚合 Transformer 超分",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "real-cugan",
+      "name": "real-cugan",
+      "label": "Real-CUGAN",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "轻量动漫向超分",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "codeformer",
+      "name": "codeformer",
+      "label": "CodeFormer",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "face_restoration",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "带保真度权重的老照片人脸修复",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "rmbg-1.4",
+      "name": "rmbg-1.4",
+      "label": "RMBG-1.4",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "matting",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "通用背景移除",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "birefnet",
+      "name": "birefnet",
+      "label": "BiRefNet",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "matting",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "高分辨率抠图",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "ddcolor",
+      "name": "ddcolor",
+      "label": "DDColor",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "colorization",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "黑白照片上色",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "scunet",
+      "name": "scunet",
+      "label": "SCUNet",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "denoise",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "盲去噪",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "depth-anything-v2",
+      "name": "depth-anything-v2",
+      "label": "Depth Anything V2",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "depth",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "单目深度估计",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "sam2",
+      "name": "sam2",
+      "label": "SAM 2",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "task": "segmentation",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "提示式分割，体积大",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "yolo11-detect",
+      "name": "yolo11-detect",
+      "label": "YOLO11 Detect",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "task": "object_detection",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "",
+      "description": "通用目标检测",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
     }
   ]
 }

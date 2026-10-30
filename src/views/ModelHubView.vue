@@ -30,6 +30,8 @@ type ModelRecord = {
   modality: 'audio' | 'image' | 'video'
   modalities: string[]
   implemented: boolean
+  status?: string
+  blockedReason?: string
   name: string
   label: string
   task: string
@@ -285,7 +287,7 @@ onBeforeUnmount(() => {
             <template #icon><n-icon :component="CloudDownloadOutline" /></template>
             {{ downloadingId === item.id ? t('modelHub.downloading') : t('modelHub.download') }}
           </n-button>
-          <div v-else-if="!item.implemented" class="hub-card__pending">{{ t('modelHub.pending') }}</div>
+          <div v-else-if="!item.implemented" class="hub-card__pending" :title="item.blockedReason || ''">{{ t('modelHub.pending') }}</div>
           <div v-else class="hub-card__ready"><n-icon :component="SparklesOutline" />{{ t('modelHub.downloaded') }}</div>
         </article>
       </div>
