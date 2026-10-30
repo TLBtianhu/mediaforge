@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import inspect
+
+from download_watchdog import DownloadStalled, ProgressWatchdog, stall_seconds
 import os
 import threading
 import time
@@ -101,6 +104,66 @@ def files_for_studio_model(model_name: str, model_dir: str | None = None) -> tup
     return entry, files
 
 
+def _file_size_probe(paths: Any) -> int:
+    total = 0
+    for path in paths:
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _download_with_stall_guard(label: str, call: Any, watchdog: Any = None, probe_path: Any = None) -> Any:
+    """把一次阻塞下载放进 daemon 线程，主线程盯着"有没有进展"。
+
+    为什么不用回调里抛异常：pymss 会隔离 progress_callback 的异常（它怕回调把下载搞挂），
+    所以只能在外面等——超时就抛错，让上层重试/换源，而不是像 2026-10-30 那次
+    `legacy_models/demucs.th.part` 一样 0 字节挂十分钟。
+    """
+    if watchdog is None and probe_path is None:
+        # 既没有进度回调、也没有可探测的落盘文件：只能原样调用
+        return call()
+
+    import threading
+
+    result: dict[str, Any] = {}
+    failure: dict[str, BaseException] = {}
+    done = threading.Event()
+
+    def target() -> None:
+        try:
+            result["value"] = call()
+        except BaseException as exc:  # noqa: BLE001 - 原样转交给调用方
+            failure["value"] = exc
+        finally:
+            done.set()
+
+    timeout = watchdog.timeout if watchdog is not None else stall_seconds()
+    worker = threading.Thread(target=target, name="download-guard", daemon=True)
+    probe_paths = [probe_path, probe_path.with_suffix(probe_path.suffix + ".part")] if probe_path else []
+    last_size = _file_size_probe(probe_paths)
+    last_change = time.monotonic()
+    with (watchdog if watchdog is not None else contextlib.nullcontext()):
+        worker.start()
+        while not done.wait(0.2):
+            if watchdog is not None:
+                if watchdog.stalled():
+                    raise DownloadStalled(label, watchdog.timeout, watchdog.bytes_done)
+                continue
+            size = _file_size_probe(probe_paths)
+            if size != last_size:
+                last_size = size
+                last_change = time.monotonic()
+                continue
+            if time.monotonic() - last_change >= timeout:
+                raise DownloadStalled(label, timeout, size)
+    if "value" in failure:
+        raise failure["value"]
+    return result.get("value")
+
+
 def download_studio_model(
     pymss_download: Any,
     model_name: str,
@@ -149,7 +212,10 @@ def download_studio_model(
             skipped.append(str(dest))
             continue
         download_kwargs: dict[str, Any] = {"timeout": timeout}
+        # 每个文件一个看门狗：回调只要还在响就算活着（字节数只用于报错文案）
+        guard_watchdog = ProgressWatchdog(relpath, timeout=stall_seconds())
         download_file_params = inspect.signature(download_file).parameters
+        can_watch_progress = progress_callback is not None and "progress_callback" in download_file_params
         if "progress_callback" in download_file_params:
             download_kwargs["progress_callback"] = progress_callback
             if progress_callback is not None:
@@ -159,6 +225,7 @@ def download_studio_model(
                     nonlocal file_done
                     # Retrying this file must not look like a new file to the model adapter.
                     file_done = max(file_done, done)
+                    guard_watchdog.beat(1)
                     try:
                         progress_callback(file_done, total, message)
                     except Exception:
@@ -173,7 +240,14 @@ def download_studio_model(
             download_kwargs["proxy"] = proxy
         url = remote_url(relpath, source=source, endpoint=endpoint)
         try:
-            _download_file_with_aria2_env(pymss_download, download_file, url, dest, expected_size, expected_sha256, download_kwargs)
+            _download_with_stall_guard(
+                relpath,
+                lambda: _download_file_with_aria2_env(
+                    pymss_download, download_file, url, dest, expected_size, expected_sha256, download_kwargs
+                ),
+                guard_watchdog if can_watch_progress else None,
+                probe_path=dest,
+            )
         except Exception as exc:
             if not getattr(pymss_download, "ARIA2C_PATH", None) or not _should_fallback_from_aria2_error(exc):
                 raise

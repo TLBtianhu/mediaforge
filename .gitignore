@@ -44,9 +44,19 @@ Thumbs.db
 
 # Local runtime outputs
 data/
+.dev-data/
+.dev-webview/
+preview/
 results/
 outputs/
 *.tmp
+
+# Model weights (download with download_models.py)
+models/*.pt
+models/*.pth
+models/*.bin
+models/*.onnx
+models/*.safetensors
 
 # Environment
 .env
@@ -61,7 +71,15 @@ cookie.txt
 !README.md
 !README.zh-CN.md
 !CONTRIBUTING.md
-docs/
+!DEVELOPMENT.md
+# 开源相关的对外文件：这些必须进仓库，否则公开仓库里根本没有它们
+# （SECURITY.md 之前被 *.md 忽略掉了，提交时被静默跳过）
+!SECURITY.md
+!CODE_OF_CONDUCT.md
+!CHANGELOG.md
+docs/*
+!docs/**/
+!docs/**/*.md
 .omc/
 .spec-workflow/
 
@@ -88,3 +106,9 @@ native/target/
 native/vendor/soundcraft-vst3-host/tests/fixture/target/
 data-vst-lab/
 .cache/
+
+# 设计/发布文档要进仓库（docs/ 曾整体被忽略，导致文档只存在于本机）
+!docs/**/*.md
+
+# facexlib 导入时会往当前工作目录下载人脸检测权重
+gfpgan/

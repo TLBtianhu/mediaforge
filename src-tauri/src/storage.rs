@@ -15,14 +15,15 @@ use std::os::windows::ffi::OsStrExt;
 use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
 
 const DATA_ROOT_ENV: &str = "PYMSS_STUDIO_DATA_ROOT";
-const DATA_ROOT_DIR_NAME: &str = ".pymss-studio";
+const MEDIAFORGE_DATA_ROOT_ENV: &str = "MEDIAFORGE_DATA_ROOT";
+const DATA_ROOT_DIR_NAME: &str = ".mediaforge";
 const LOCAL_DATA_ROOT_DIR_NAME: &str = "data";
 static JSON_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // Multiple WebView windows can autosave the same store at once. Serialize the temporary-file
 // replacement in the Rust process so a second writer never races the first ReplaceFileW call.
 static JSON_WRITE_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(windows)]
-const PORTABLE_MARKER_FILE_NAME: &str = "pymss-studio.portable";
+const PORTABLE_MARKER_FILE_NAME: &str = "mediaforge.portable";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,7 +116,8 @@ fn resolve_data_root(
 }
 
 pub fn data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    let env_root = std::env::var_os(DATA_ROOT_ENV)
+    let env_root = std::env::var_os(MEDIAFORGE_DATA_ROOT_ENV)
+        .or_else(|| std::env::var_os(DATA_ROOT_ENV))
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
     Ok(resolve_data_root(
@@ -204,12 +206,30 @@ fn bundled_runtime_envs_from(resource: Option<&Path>, exe_dir: &Path) -> Option<
 }
 
 pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    if let Some(value) = std::env::var_os("MEDIAFORGE_RUNTIME_ENVS_DIR") {
+        if !value.is_empty() {
+            return Ok(PathBuf::from(value));
+        }
+    }
     #[cfg(any(feature = "vst-lab", target_os = "macos", target_os = "linux"))]
     {
         Ok(data_root_dir(app)?.join("runtime-envs"))
     }
     #[cfg(not(any(feature = "vst-lab", target_os = "macos", target_os = "linux")))]
     {
+        // 开发态：数据根和运行时根不是同一个地方——数据在 `.dev-data`，
+        // 运行时默认却在 exe 旁边的 `python-runtime`，于是 `pnpm tauri dev` 永远
+        // 报 "No active runtime environment is installed"。
+        // 数据根下存在 runtime-envs 时优先用它，开发态与数据目录保持一致。
+        // 运行时属于"可变状态"，必须待在可写的数据根里：
+        // 装到 %LOCALAPPDATA%\Programs 之后，程序目录虽然也归用户所有，
+        // 但把 2.5 GB 的可替换资产塞进程序目录会让升级/卸载互相牵连。
+        // 因此数据根下有 runtime-envs 就用它，没有才回落程序目录（仅兼容老布局）。
+        if let Ok(candidate) = data_root_dir(app).map(|root| root.join("runtime-envs")) {
+            if candidate.is_dir() {
+                return Ok(candidate);
+            }
+        }
         Ok(runtime_root_dir(app)?.join("runtime-envs"))
     }
 }

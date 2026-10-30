@@ -1,0 +1,3 @@
+- insert:
+    - id: modelscope-panel
+      name: '@local/modelscope-panel'

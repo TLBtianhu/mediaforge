@@ -6,6 +6,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useDialog, useMessage } from 'naive-ui'
 import { ExtensionPuzzleOutline, RefreshOutline, SearchOutline, FolderOpenOutline } from '@vicons/ionicons5'
 import { usePluginMarketplace, type PluginAction } from '@/features/plugin-marketplace/composable'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useAppStore } from '@/stores/app'
 
 const { t, locale } = useI18n()
@@ -85,16 +86,15 @@ function openPluginView(plugin: { name: string }, view: { id: string; placements
 </script>
 
 <template>
-  <div class="page plugins-page">
-    <div class="page-header-compact plugins-header">
-      <div><h1>{{ t('plugins.title') }}</h1><p>{{ t('plugins.subtitle') }}</p></div>
+  <div class="page mf-page plugins-page" data-tone="blue">
+    <MediaPageHeader :title="t('plugins.title')" :subtitle="t('plugins.subtitle')" :icon="ExtensionPuzzleOutline" eyebrow="PLUGINS" tone="blue">
       <div class="plugins-actions">
         <n-button :disabled="disabled || !snapshot" @click="showSource = true">{{ t('plugins.installSource') }}</n-button>
         <n-button secondary :loading="loading" :disabled="busy" @click="refresh">
           <template #icon><n-icon :component="RefreshOutline" /></template>{{ t('plugins.refresh') }}
         </n-button>
       </div>
-    </div>
+    </MediaPageHeader>
 
     <n-alert v-if="error" type="error" class="plugins-notice">{{ error }}</n-alert>
     <n-alert v-if="!snapshot && !loading && /No active runtime/i.test(error)" type="info" class="plugins-notice">

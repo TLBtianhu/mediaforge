@@ -62,14 +62,14 @@ unset LD_LIBRARY_PATH
 PY="$PROBE_ROOT/stable-python/bin/python3"
 export PYTHONDONTWRITEBYTECODE=1
 export PYMSS_STUDIO_DATA_ROOT="$PROBE_ROOT/data"
-export PYMSS_STUDIO_RUNTIME_ENVS_DIR="$PROBE_ROOT/data/runtime-envs"
-export PYMSS_STUDIO_ACTIVE_RUNTIME_FILE="$PYMSS_STUDIO_RUNTIME_ENVS_DIR/active-runtime.json"
+export MEDIAFORGE_RUNTIME_ENVS_DIR="$PROBE_ROOT/data/runtime-envs"
+export MEDIAFORGE_ACTIVE_RUNTIME_FILE="$MEDIAFORGE_RUNTIME_ENVS_DIR/active-runtime.json"
 export PYMSS_STUDIO_BOOTSTRAP_PYTHON="$PY"
 "$PY" -c 'import sys, ssl, venv, requests, socks; assert sys.prefix == sys.base_prefix; print(sys.version)'
 "$PY" -m pip install --help > /dev/null
 "$PY" "$RESOURCES/python/worker.py" runtime_info --payload '{}'
 "$PY" "$RESOURCES/python/worker.py" install_runtime --payload '{"backend":"cpu","mirror":"pypi","locale":"en"}'
-ENV_PY="$PYMSS_STUDIO_RUNTIME_ENVS_DIR/cpu/bin/python"
+ENV_PY="$MEDIAFORGE_RUNTIME_ENVS_DIR/cpu/bin/python"
 "$ENV_PY" -c 'import sys, pymss, pymss_core, torch; assert sys.prefix != sys.base_prefix; assert torch.version.cuda is None; print(torch.__version__)'
 "$ENV_PY" "$RESOURCES/python/worker.py" env_info
 "$ENV_PY" "$RESOURCES/python/worker.py" list_models --payload '{}'

@@ -1,6 +1,7 @@
 {
   "name": "pymss-studio",
-  "version": "0.0.12",
+  "version": "0.0.16",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "type": "module",
@@ -18,7 +19,8 @@
     "vst:dev": "node scripts/vst-lab.mjs dev",
     "vst:build": "node scripts/vst-lab.mjs build",
     "plugins:build": "node scripts/tauri.mjs build --config src-tauri/tauri.plugins.conf.json --features native-plugins",
-    "test:native-audio": "cargo test --manifest-path native/Cargo.toml -p pymss-audio-host --lib"
+    "test:native-audio": "cargo test --manifest-path native/Cargo.toml -p pymss-audio-host --lib",
+    "test:media": "python scripts/check-media.py"
   },
   "dependencies": {
     "@comfyorg/litegraph": "0.17.2",

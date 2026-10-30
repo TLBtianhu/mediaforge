@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -19,8 +20,6 @@ import {
   detectRuntimePlatform,
   recommendedRuntimeBackend,
   runtimeAcceleratorReady,
-  runtimeCoreUpdateAvailable,
-  runtimeCoreSyncAvailable,
   runtimeEnvironmentForBackend,
   runtimeManifestStatus,
   runtimeLoadError,
@@ -113,7 +112,7 @@ const buildInfo = ref<BuildInfo | null>(null)
 const updateChecking = ref(false)
 const updateInstalling = ref(false)
 const appVersion = computed(() => buildInfo.value?.version || packageMeta.version || '0.0.0')
-const repoUrl = 'https://github.com/pymss-project/pymss-studio'
+const repoUrl = 'https://github.com/TLBtianhu/mediaforge'
 const officialRepository = 'pymss-project/pymss-studio'
 const officialRepositoryOwner = 'pymss-project'
 const coreRepoUrl = 'https://github.com/pymss-project/pymss'
@@ -188,10 +187,8 @@ watch(() => app.runtimeInstallLogs.at(-1), () => {
   }
 })
 const runtimeInstalling = computed(() => app.runtimeInstallStatus === 'installing')
-const runtimeCoreActionPending = ref(false)
-const runtimeCoreUpdating = computed(() => app.runtimeCoreUpdateStatus === 'updating' || app.runtimeCoreUpdateStatus === 'preparing')
 // Runtime detection and install/switch/delete all access the runtime state, so only one may run at a time.
-const runtimeBusy = computed(() => runtimeDetecting.value || runtimeInstalling.value || runtimeCoreUpdating.value || runtimeCoreActionPending.value || runtimeActivating.value !== null || runtimeDeleting.value !== null)
+const runtimeBusy = computed(() => runtimeDetecting.value || runtimeInstalling.value || runtimeActivating.value !== null || runtimeDeleting.value !== null)
 const runtimeCurrentError = computed(() => {
   const error = runtimeLoadError(app.runtimeInfo, app.envInfo)
   return error.toLowerCase().includes('winerror 1455') ? t('settings.runtimePageFileError') : error
@@ -209,13 +206,6 @@ const runtimeCurrentLabel = computed(() => {
   return runtimeCurrentBackend.value ? runtimeBackendName(runtimeCurrentBackend.value) : t('settings.envNotChecked')
 })
 const installedRuntimes = computed(() => app.runtimeInfo?.installedEnvironments || [])
-const latestPymssVersion = computed(() => app.runtimeCoreVersions?.packages?.pymss?.latestVersion || null)
-const latestPymssCoreVersion = computed(() => app.runtimeCoreVersions?.packages?.['pymss-core']?.latestVersion || null)
-const runtimeCoreVersionCheckReady = computed(() => (
-  !app.runtimeCoreVersionsLoading
-  && Boolean(latestPymssVersion.value)
-  && Boolean(latestPymssCoreVersion.value)
-))
 
 type BackendCardState = 'active' | 'installed' | 'not_installed'
 
@@ -240,7 +230,6 @@ type RuntimeBackendCard = {
   installing: boolean
   pymssVersion: string
   pymssCoreVersion: string
-  coreUpdateAvailable: boolean
 }
 
 const runtimePlatform = computed(() => detectRuntimePlatform(app.runtimeInfo))
@@ -311,9 +300,6 @@ const runtimeBackendCards = computed(() => {
       // older app even when PyPI already reports the same pymss/core versions.
       // Offer the no-Torch-reinstall core sync so the environment metadata and
       // any manifest-declared pymss extras are brought up to date.
-      const coreUpdateAvailable = app.runtimeCoreUpdateSupported && isActive && env?.coreUpdateSupported !== false && (
-        runtimeCoreUpdateAvailable(env, app.runtimeCoreVersions, app.runtimeInfo?.manifestVersion)
-      )
       const gpuBackend = item.backend === 'cuda' || item.backend === 'rocm' || item.backend === 'mlx'
       // A cancelled or failed install leaves its venv behind without an install state, so the
       // backend reads as not installed while still holding gigabytes. Surface it so the space
@@ -347,7 +333,6 @@ const runtimeBackendCards = computed(() => {
         installing: runtimeInstalling.value && app.runtimeInstallBackend === item.backend,
         pymssVersion,
         pymssCoreVersion,
-        coreUpdateAvailable,
       })
     }
   }
@@ -575,67 +560,6 @@ async function detectRuntime() {
   await refreshRuntimeStatus(true)
 }
 
-async function runRuntimeCoreOperation(card: { backend: RuntimeBackend; env?: InstalledRuntime }, mode: RuntimeCoreMode) {
-  if (!app.runtimeCoreUpdateSupported || runtimeBusy.value || runtimeCoreActionPending.value) return
-  runtimeCoreActionPending.value = true
-  try {
-    const plan = await app.prepareRuntimeCoreUpdate(card.backend, runtimeMirror.value, currentLocale.value, {
-      pythonPath: card.env?.pythonPath,
-      mode,
-    })
-    const title = mode === 'rollback' ? 'settings.runtimeCoreRollback' : mode === 'update'
-      ? 'settings.runtimeCoreUpdateTitle' : mode === 'repair'
-        ? 'settings.runtimeDependencyRepairTitle' : 'settings.runtimeCoreSyncTitle'
-    const confirmed = await confirmRuntimeAction(
-      t(title),
-      t('settings.runtimeCorePlanContent', {
-        current: plan.currentVersions.pymss || t('settings.runtimeCoreVersionUnknown'),
-        coreCurrent: plan.currentVersions['pymss-core'] || t('settings.runtimeCoreVersionUnknown'),
-        latest: plan.targetVersions.pymss,
-        coreLatest: plan.targetVersions['pymss-core'],
-        count: plan.dependencyCount,
-        channel: t(plan.channel === 'prerelease' ? 'settings.updateChannelPrerelease' : 'settings.updateChannelStable'),
-      }),
-      t(mode === 'rollback' ? 'settings.runtimeCoreRollback' : mode === 'update' ? 'settings.runtimeCoreUpdate' : 'settings.runtimeCoreSync'),
-    )
-    if (!confirmed) {
-      app.discardRuntimeCorePlan(plan.id)
-      return
-    }
-    await app.updateRuntimeCore(plan.backend, plan.mirror, currentLocale.value, {
-      pythonPath: plan.pythonPath,
-      mode: plan.mode,
-      planId: plan.id,
-    })
-  } catch (error) {
-    if (app.runtimeCoreUpdateStatus !== 'cancelled') message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeCoreActionPending.value = false
-  }
-}
-
-async function updateRuntimeCore(card: { backend: RuntimeBackend; env?: InstalledRuntime }) {
-  await runRuntimeCoreOperation(card, 'update')
-}
-
-async function repairRuntimeDependencies(card: RuntimeBackendCard) {
-  if (!app.runtimeManagementSupported) return
-  await runRuntimeCoreOperation(card, 'repair')
-}
-
-const runtimeCoreCancelling = ref(false)
-async function cancelRuntimeCoreUpdate() {
-  if (runtimeCoreCancelling.value) return
-  runtimeCoreCancelling.value = true
-  try {
-    await app.cancelRuntimeCoreUpdate()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeCoreCancelling.value = false
-  }
-}
-
 const proxyModeOptions = computed(() => [
   { value: 'none' as const, label: t('settings.proxyModeNone') },
   { value: 'system' as const, label: t('settings.proxyModeSystem') },
@@ -777,14 +701,6 @@ const buildFingerprint = computed(() => {
   return parts.length ? parts.join(' · ') : t('settings.buildFingerprintUnavailable')
 })
 
-watch(() => app.runtimeCoreUpdateStatus, (status, previous) => {
-  if (previous !== 'updating') return
-  if (status === 'success') {
-    message.success(t(app.runtimeCoreUpdateMode === 'repair'
-      ? 'settings.runtimeDependencyRepairSuccess'
-      : 'settings.runtimeCoreUpdateSuccess'))
-  }
-})
 function isOfficialRepositoryBuild(info: BuildInfo) {
   return info.official
     && info.repository === officialRepository
@@ -821,7 +737,7 @@ const buildVerification = computed(() => {
   }
 })
 const aboutVersionItems = computed(() => [
-  { label: t('settings.softwareVersion'), value: appVersion.value, meta: 'Pymss Studio' },
+  { label: t('settings.softwareVersion'), value: appVersion.value, meta: 'MediaForge' },
   { label: t('settings.pymssCoreVersion'), value: pymssCoreVersion.value, meta: t('settings.coreRuntime') },
   { label: t('settings.workerVersion'), value: workerVersion.value, meta: t('settings.pythonWorker') },
 ])
@@ -1197,13 +1113,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page page--settings">
-    <div class="page-header-compact">
-      <div class="page-header-compact__main">
-        <h1>{{ t('settings.title') }}</h1>
-        <p>{{ t('settings.subtitle') }}</p>
-      </div>
-    </div>
+  <div class="page mf-page page--settings" data-tone="blue">
+    <MediaPageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" :icon="SettingsOutline" eyebrow="SETTINGS" tone="blue" />
 
     <div class="settings-shell">
       <aside class="settings-sidebar" :aria-label="t('settings.settingsNavigation')">
@@ -1228,11 +1139,11 @@ onMounted(async () => {
           <article class="about-hero">
             <div class="about-hero__main">
               <div class="about-logo-wrap">
-                <img class="about-logo" :src="appLogo" alt="Pymss Studio" />
+                <img class="about-logo" :src="appLogo" alt="MediaForge" />
               </div>
               <div class="about-hero__copy">
                 <span class="about-eyebrow">{{ t('settings.aboutEyebrow') }}</span>
-                <h2 class="about-hero__title">Pymss Studio</h2>
+                <h2 class="about-hero__title">MediaForge</h2>
               </div>
             </div>
 
@@ -1640,7 +1551,6 @@ onMounted(async () => {
           <article class="about-info-card runtime-envs-card">
             <div class="runtime-envs-card__content">
             <n-alert v-if="!app.runtimeManagementSupported" type="info" :bordered="false">
-              {{ t('settings.runtimeCoreUpdatePlatformHint') }}
             </n-alert>
             <div class="section-title section-title--plain">
               <span class="section-title__icon">
@@ -1729,12 +1639,6 @@ onMounted(async () => {
                 <div v-if="card.env" class="runtime-env-card__meta">
                   <span v-if="card.env.torchVersion">{{ t('settings.runtimeTorchVersion', { version: card.env.torchVersion }) }}</span>
                   <span>{{ runtimeCoreVersionLabel(card) }}</span>
-                  <span v-if="runtimeCoreVersionCheckReady && card.coreUpdateAvailable" class="runtime-env-card__accel runtime-env-card__accel--warn">
-                    {{ t('settings.runtimeCoreUpdateAvailable', {
-                      pymss: latestPymssVersion || t('settings.runtimeCoreVersionUnknown'),
-                      core: latestPymssCoreVersion || t('settings.runtimeCoreVersionUnknown'),
-                    }) }}
-                  </span>
                   <span v-if="runtimeAcceleratorReady(card.env, card.backend)" class="runtime-env-card__accel runtime-env-card__accel--ok">{{ t('settings.runtimeAcceleratorAvailable') }}</span>
                   <span v-else-if="card.backend !== 'cpu'" class="runtime-env-card__accel">{{ t('settings.runtimeAcceleratorUnavailable') }}</span>
                   <span v-if="card.diskLabel">{{ t('settings.runtimeDiskUsage', { size: card.diskLabel }) }}</span>
@@ -1780,48 +1684,6 @@ onMounted(async () => {
                     @click="installBackend(card.backend)"
                   >
                     {{ card.installing ? t('settings.runtimeInstalling') : t('settings.runtimeRepair') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeManagementSupported && runtimeCoreVersionCheckReady
-                      && card.state === 'active'
-                      && !card.coreUpdateAvailable
-                      && !card.manifestNewer
-                      && card.env?.source !== 'bundled'
-                      && card.env?.coreUpdateSupported !== false"
-                    size="tiny"
-                    secondary
-                    :loading="runtimeCoreUpdating && app.runtimeCoreUpdateMode === 'repair'"
-                    :disabled="runtimeBusy"
-                    @click="repairRuntimeDependencies(card)"
-                  >
-                    <template #icon><n-icon :component="RefreshOutline" /></template>
-                    {{ t('settings.runtimeDependencyRepair') }}
-                  </n-button>
-                  <n-button
-                    v-if="runtimeCoreVersionCheckReady && card.coreUpdateAvailable && card.state === 'active'"
-                    size="tiny"
-                    secondary
-                    type="warning"
-                    :loading="runtimeCoreUpdating && app.runtimeCoreUpdateMode === 'update'"
-                    :disabled="runtimeBusy"
-                    @click="updateRuntimeCore(card)"
-                  >
-                    <template #icon><n-icon :component="CloudDownloadOutline" /></template>
-                    {{ t('settings.runtimeCoreUpdate') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeCoreUpdateSupported && card.state === 'active' && runtimeCoreSyncAvailable(card.env, app.runtimeInfo?.manifestVersion)"
-                    size="tiny" secondary type="warning" :disabled="runtimeBusy"
-                    @click="runRuntimeCoreOperation(card, 'sync')"
-                  >
-                    {{ t('settings.runtimeCoreSync') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeCoreUpdateSupported && card.state === 'active' && card.env?.coreUpdateSupported !== false && app.runtimeInfo?.rollbackAvailable"
-                    size="tiny" secondary :disabled="runtimeBusy"
-                    @click="runRuntimeCoreOperation(card, 'rollback')"
-                  >
-                    {{ t('settings.runtimeCoreRollback') }}
                   </n-button>
                   <n-button
                     v-if="card.env?.logPath"
@@ -1870,26 +1732,9 @@ onMounted(async () => {
                     </n-button>
                   </div>
                 </div>
-                <div v-if="card.state === 'active' && runtimeCoreUpdating" class="runtime-env-card__progress">
-                  <n-spin size="small" />
-                  <span class="runtime-env-card__progress-msg">
-                    {{ app.runtimeCoreUpdateStatus === 'preparing' ? t('settings.runtimeCorePreparing') : app.runtimeCoreUpdateMessage || t(app.runtimeCoreUpdateMode === 'repair'
-                      ? 'settings.runtimeDependencyRepairing'
-                      : 'settings.runtimeCoreUpdating') }}
-                  </span>
-                  <n-button size="tiny" tertiary :loading="runtimeCoreCancelling" :disabled="app.runtimeCoreUpdateStage === 'activate'" @click="cancelRuntimeCoreUpdate">
-                    {{ t('common.cancel') }}
-                  </n-button>
-                </div>
               </div>
             </div>
             </Transition>
-            <n-alert v-if="app.runtimeCoreUpdateStatus === 'error'" type="error" :bordered="false">
-              {{ app.runtimeCoreUpdateMessage }}
-            </n-alert>
-            <n-alert v-else-if="app.runtimeCoreUpdateStatus === 'success' || app.runtimeCoreUpdateStatus === 'cancelled'" :type="app.runtimeCoreUpdateStatus === 'success' ? 'success' : 'info'" :bordered="false">
-              {{ t(app.runtimeCoreUpdateStatus === 'success' ? 'settings.runtimeCoreOperationSuccess' : 'settings.runtimeCoreOperationCancelled') }}
-            </n-alert>
 
             <p v-if="runtimeDiskTotalLabel" class="setting-row__hint runtime-disk-total">
               {{ t('settings.runtimeDiskTotal', { size: runtimeDiskTotalLabel }) }}
@@ -1929,16 +1774,6 @@ onMounted(async () => {
               </div>
             </n-alert>
 
-            <n-alert v-if="app.runtimeCoreUpdateStatus === 'error'" type="error" :show-icon="true">
-              <div class="runtime-install-error">
-                <div class="runtime-install-error__message">{{ app.runtimeCoreUpdateMessage }}</div>
-                <div class="runtime-install-error__actions">
-                  <n-button v-if="app.runtimeInfo?.logPath" size="small" tertiary @click="revealPath(app.runtimeInfo.logPath)">
-                    {{ t('settings.runtimeOpenInstallLog') }}
-                  </n-button>
-                </div>
-              </div>
-            </n-alert>
 
             <div v-if="!runtimeInstalling && app.runtimeInstallLogs.length" class="runtime-log-trigger">
               <n-button size="small" tertiary @click="runtimeLogDialogVisible = true">
@@ -2381,17 +2216,6 @@ onMounted(async () => {
 <style scoped>
 .page--settings {
   max-width: var(--page-max-width-reading);
-}
-
-.page-header-compact {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.page-header-compact__main {
-  min-width: 0;
 }
 
 .settings-shell {
@@ -4186,10 +4010,6 @@ onMounted(async () => {
 
   .about-hero__title {
     font-size: 24px;
-  }
-
-  .page-header-compact {
-    flex-direction: column;
   }
 
 

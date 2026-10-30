@@ -16,6 +16,7 @@ import { useAppStore, type RuntimeBackend } from '@/stores/app'
 import { useUpdateStore } from '@/stores/update'
 import { activeRuntimeEnvironment, runtimeCoreSyncAvailable, runtimeToActivate } from '@/utils/runtime'
 import './styles/global.scss'
+import './features/media-ui/media-ui.css'
 import { isTutorialFrame } from './features/onboarding/demoContext'
 
 const studioLog = createLogger('ui.main')

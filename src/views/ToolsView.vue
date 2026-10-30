@@ -19,7 +19,8 @@ const app = useAppStore()
 const route = useRoute()
 const router = useRouter()
 const guide = useBeginnerGuideStore()
-import { ExtensionPuzzleOutline } from '@vicons/ionicons5'
+import { ConstructOutline, ExtensionPuzzleOutline } from '@vicons/ionicons5'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 const pluginMarket = usePluginMarketplace()
 // Plugin-contributed tool pages (protocol v1 views with placement "tool").
 const pluginToolViews = computed(() =>
@@ -112,7 +113,7 @@ onMounted(async () => {
 watch(visibleAudioTools, tools => { if (!tools.some(tool => tool.id === activeTool.value) && tools[0]) activeTool.value = tools[0].id }, { immediate: true })
 watch(activeTool, value => { if (restored) { recordActiveToolVisit(); void updateAudioToolsState({ activeTool: value }) } })
 </script>
-<template><div class="page tools-page audio-tools-page"><div class="page-header-compact"><div><h1>{{ t('tools.title') }}</h1><p>{{ t('tools.subtitle') }}</p></div></div>
+<template><div class="page mf-page tools-page audio-tools-page" data-tone="blue"><MediaPageHeader :title="t('tools.title')" :subtitle="t('tools.subtitle')" :icon="ConstructOutline" eyebrow="TOOLS" tone="blue" />
   <n-select :value="activeTool" @update:value="selectTool" class="audio-tools-mobile-select" data-guide="audio-tools" :options="mobileToolOptions" />
   <div class="audio-tools-workspace"><nav class="audio-tools-nav" :aria-label="t('tools.toolNavigation')"><section v-for="category in categories" :key="category.id"><strong>{{ t(category.titleKey) }}</strong><button v-for="tool in toolsByCategory(category.id)" :key="tool.id" type="button" :class="{ active: !activePluginTool && activeTool === tool.id }" @click="selectTool(tool.id)"><n-icon :component="tool.icon" /><span>{{ t(tool.titleKey) }}</span></button></section><section v-if="pluginToolViews.length"><strong>{{ t('tools.categoryPlugins') }}</strong><button v-for="entry in pluginToolViews" :key="`${entry.pluginName}/${entry.view.id}`" type="button" :class="{ active: activePluginTool === `${entry.pluginName}/${entry.view.id}` }" @click="selectPluginTool(`${entry.pluginName}/${entry.view.id}`)"><n-icon :component="ExtensionPuzzleOutline" /><span>{{ entry.view.title || entry.view.id }}</span></button></section></nav>
     <main class="audio-tools-content">

@@ -470,6 +470,21 @@ def _write_debug_line(path: str | None, line: str, max_bytes: int) -> None:
         file.write(line + "\n")
 
 
+_EVENT_SINK: Any = None
+
+
+def set_event_sink(sink: Any) -> None:
+    """把事件捕获到进程内（内嵌 agent 直调用），而不是写到 stdout。
+
+    设置后 `emit()` 不再序列化/写管道，而是直接把事件交给 sink。
+    这是"同一个工具既能被外部 agent 通过 MCP 调用、也能被内嵌 loop 直接调用"
+    的那道缝：执行器只认识工具名与 payload，不知道调用方在进程内还是跨进程。
+    传 `None` 恢复默认行为。
+    """
+    global _EVENT_SINK
+    _EVENT_SINK = sink
+
+
 def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: str | None = None, task_id: str | None = None) -> None:
     payload = payload or {}
     if event_type in _LOG_EVENTS and payload.get("schemaVersion") != 1:
@@ -488,6 +503,10 @@ def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: 
             context=context,
         )
         payload = {**_safe_log_value(payload), **canonical}
+    sink = _EVENT_SINK
+    if sink is not None:
+        sink(event_type, payload, request_id, task_id)
+        return
     message = json.dumps({
         "type": event_type,
         "requestId": request_id if request_id is not None else _BOUND_REQUEST_ID,
@@ -542,12 +561,24 @@ def emit_error(
     }
     if extra:
         payload.update(extra)
+    # 能认出来的失败附带可执行建议：agent 拿到"下一步动哪个开关"才能自己收敛
+    try:
+        from recovery import classify
+
+        hint = classify(message, detail)
+        if hint:
+            payload["recovery"] = hint
+    except Exception:  # noqa: BLE001 - 建议是增值信息，不能影响报错本身
+        pass
     emit("error", payload, request_id=request_id, task_id=task_id)
     return 1
 
 
 def import_available(name: str) -> bool:
-    return importlib.util.find_spec(name) is not None
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
 
 
 def load_payload(payload_arg: str | None) -> dict[str, Any]:
@@ -555,7 +586,10 @@ def load_payload(payload_arg: str | None) -> dict[str, Any]:
         return {}
     path = Path(payload_arg)
     if path.is_file():
-        return json.loads(path.read_text(encoding="utf-8"))
+        # utf-8-sig：PowerShell 5.1 的 Set-Content -Encoding UTF8 会写 BOM，
+        # 而 json.loads 见 BOM 直接抛“Unexpected UTF-8 BOM”。payload 文件常由脚本、
+        # 手工或第三方工具生成，读端必须容忍——否则表现是 worker 一声不响地崩掉。
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     return json.loads(payload_arg)
 
 

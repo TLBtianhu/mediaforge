@@ -2,6 +2,18 @@
 
 Guidance for future OpenCode sessions working on pymss-desktop.
 
+## 强制规则：环境与数据隔离
+
+阅读 [DEVELOPMENT.md](DEVELOPMENT.md)。任何 UI 测试、后端测试、打包和升级验证都必须遵守：
+
+- 开发只用 `scripts/dev.ps1`（`.dev-data` / `.dev-webview`），不要拿用户 profile 测试
+- 干净包验证用 `scripts/clean-test.ps1`（临时 profile，关闭即删）
+- 狗粮/长期用户用 `scripts/dogfood.ps1` 或安装后的应用（用户目录 `.mediaforge`）
+- `src-tauri/target/{debug,release}` 是开发构建，不能当安装包或狗粮
+- `.gitignore` 只是兜底；真正的隔离靠运行时数据根和 WebView2 profile
+- 不自动清理狗粮数据；升级测试必须保留配置和模型
+- 模型/日志/索引/测试截图不进仓库，也不进安装包
+
 ## Architecture
 
 Tauri desktop app for audio source separation. Three layers:

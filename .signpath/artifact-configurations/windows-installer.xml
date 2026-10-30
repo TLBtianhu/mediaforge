@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath 的 artifact configuration：描述"这个 zip 里哪些文件要签"。
+
+  上传的 artifact 是 release/signing/installer.zip，里面只有一个安装包，
+  所以这里按通配符匹配 *-setup.exe。SignPath 项目里这个文件的 slug
+  必须叫 windows-installer（工作流里引用的就是它）。
+
+  如果以后要给便携包里的 MediaForge.exe 单独签名，再加一个配置文件
+  （slug 例如 windows-exe），并在工作流里对那个 artifact 单独发一次签名请求。
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <file path="*-setup.exe" />
+  </zip-file>
+</artifact-configuration>

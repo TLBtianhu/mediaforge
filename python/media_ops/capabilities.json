@@ -1,0 +1,280 @@
+{
+  "version": 1,
+  "_comment": "能力声明。这里只说\"有什么、要哪些角色、参数长什么样\"，不说\"实现了没有\"——实现与否由 media_ops/video_step.py 与 image_ops 的注册表在加载时对账得出，见 capabilities.audit_capabilities()。手写 implemented 字段会在加载时被忽略并计入审计。",
+  "capabilities": [
+    {
+      "id": "upscale",
+      "label": "超分",
+      "labelEn": "Upscale",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "roles": {
+        "upscaler": {
+          "label": "超分模型",
+          "task": "super_resolution",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:real-esrgan-x2",
+        "media:real-esrgan-x4",
+        "media:real-cugan-x4",
+        "media:swinir-m-x2",
+        "media:real-esrgan-anime-x4",
+        "media:real-cugan-x2",
+        "media:esrgan-ultrasharp-x4",
+        "media:esrgan-remacri-x4",
+        "media:esrgan-superscale-sp-x4",
+        "media:esrgan-nomos8kdat-x4",
+        "media:esrgan-valar-x4",
+        "media:esrgan-comix-x4",
+        "media:esrgan-yandereneoxl-x4"
+      ],
+      "params": {
+        "target": {
+          "type": "string",
+          "default": "none"
+        },
+        "width": {
+          "type": "integer",
+          "default": 0
+        },
+        "height": {
+          "type": "integer",
+          "default": 0
+        },
+        "fit": {
+          "type": "string",
+          "default": "contain"
+        },
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4
+        },
+        "tile": {
+          "type": "integer",
+          "default": 0
+        }
+      }
+    },
+    {
+      "id": "watermark_removal",
+      "label": "去水印 / 物体移除",
+      "labelEn": "Watermark / object removal",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "roles": {
+        "detector": {
+          "label": "检测模型",
+          "task": "watermark_detection",
+          "required": true
+        },
+        "inpainter": {
+          "label": "修复模型",
+          "task": "inpainting",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:watermark-yolo11x",
+        "media:lama"
+      ],
+      "params": {
+        "conf": {
+          "type": "number",
+          "default": 0.25
+        },
+        "expand": {
+          "type": "integer",
+          "default": 6
+        },
+        "detectMode": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "per_frame"
+          ],
+          "default": "fixed"
+        },
+        "tile": {
+          "type": "integer",
+          "default": 0
+        }
+      }
+    },
+    {
+      "id": "face_restoration",
+      "label": "人脸修复",
+      "labelEn": "Face restoration",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "face_restorer": {
+          "label": "人脸模型",
+          "task": "face_restoration",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:gfpgan-v14"
+      ],
+      "params": {}
+    },
+    {
+      "id": "frame_interpolation",
+      "label": "视频插帧",
+      "labelEn": "Frame interpolation",
+      "modalities": [
+        "video"
+      ],
+      "roles": {
+        "interpolator": {
+          "label": "插帧模型",
+          "task": "frame_interpolation",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:rife-v46"
+      ],
+      "params": {
+        "multiplier": {
+          "type": "integer",
+          "default": 2
+        }
+      }
+    },
+    {
+      "id": "video_inpainting",
+      "label": "视频去水印 / 修复",
+      "labelEn": "Video inpainting",
+      "modalities": [
+        "video"
+      ],
+      "roles": {
+        "primary": {
+          "label": "视频修复模型",
+          "task": "video_inpainting",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:propainter"
+      ],
+      "params": {}
+    },
+    {
+      "id": "video_super_resolution",
+      "label": "视频超分",
+      "labelEn": "Video super-resolution",
+      "modalities": [
+        "video"
+      ],
+      "roles": {
+        "upscaler": {
+          "label": "视频超分模型",
+          "task": "video_super_resolution",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:basicvsrpp"
+      ],
+      "params": {
+        "tile": {
+          "type": "integer",
+          "default": 0
+        }
+      }
+    },
+    {
+      "id": "denoise",
+      "label": "去噪",
+      "labelEn": "Denoise",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "denoiser": {
+          "label": "去噪模型",
+          "task": "denoise",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:scunet-color-real",
+        "media:esrgan-1x-denoise-realplksr"
+      ],
+      "params": {}
+    },
+    {
+      "id": "object_detection",
+      "label": "目标检测",
+      "labelEn": "Object detection",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "detector": {
+          "label": "检测模型",
+          "task": "object_detection",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:yolo11n"
+      ],
+      "params": {
+        "conf": {
+          "type": "number",
+          "default": 0.25
+        }
+      }
+    },
+    {
+      "id": "depth",
+      "label": "深度估计",
+      "labelEn": "Depth estimation",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "depth_estimator": {
+          "label": "深度模型",
+          "task": "depth",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:depth-anything-v2-small"
+      ],
+      "params": {}
+    },
+    {
+      "id": "matting",
+      "label": "抠图",
+      "labelEn": "Matting",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "background_remover": {
+          "label": "抠图模型",
+          "task": "matting",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:rmbg-1.4"
+      ],
+      "params": {}
+    }
+  ]
+}

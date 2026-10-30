@@ -110,7 +110,7 @@ export function createDemoRuntime(config: DemoConfig) {
     if (command === 'plugin:event|listen') { const id = sequence++; listeners.set(id, { event: args.event, handler: args.handler }); return id }
     if (command === 'plugin:event|unlisten') { listeners.delete(args.eventId); return }
     if (command === 'plugin:event|emit' || command === 'plugin:event|emit_to') { emit(args.event, args.payload); return }
-    if (command === 'list_models') return { models: copy(models), categories: ['MSS'], categoriesCn: ['MSS'], modelDir: prefix + '/Models' }
+    if (command === 'model_hub') return { models: copy(models), categories: ['MSS'], categoriesCn: ['MSS'], modelDir: prefix + '/Models' }
     if (command === 'get_model_storage_summary') {
       const items = models.map(model => ({ name: model.name, downloaded: model.downloaded, sizeBytes: model.sizeBytes,
         expectedSizeBytes: model.sizeBytes, files: [{ path: model.modelPath, sizeBytes: model.sizeBytes, exists: true }] }))

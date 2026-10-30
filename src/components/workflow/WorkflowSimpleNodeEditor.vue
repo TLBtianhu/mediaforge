@@ -983,7 +983,9 @@ function applyModelUpdate(step: SimpleStepDraft, value: string, stems: string[])
   const oldNamesByStem = new Map(Object.entries(oldNames).map(([key, value]) => [key.toLowerCase(), value]))
   const oldSaveByStem = new Map(Object.entries(step.save || {}).map(([key, value]) => [key.toLowerCase(), value]))
   step.model = value
-  step.modelType = props.models.find(model => model.name === value || model.aliases?.includes(value))?.modelType || undefined
+  const selectedEntry = props.models.find(model => model.name === value || model.aliases?.includes(value))
+  if (selectedEntry?.capabilities?.length) step.capability = selectedEntry.capabilities[0]
+  step.modelType = selectedEntry?.modelType || undefined
   step.stems = stems
   // Per-step inference values belong to the previous model. A model change
   // deliberately returns the step to the global fallback chain.

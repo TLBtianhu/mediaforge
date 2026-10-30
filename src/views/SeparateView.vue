@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { createLogger } from '@/utils/logger'
 
-import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useDialog, useMessage, type DropdownOption } from 'naive-ui'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
   CubeOutline,
-  GitNetworkOutline,
   CheckmarkCircle,
   PlayOutline,
   MusicalNotesOutline,
@@ -34,24 +34,26 @@ import {
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
 import { resolveJobStatus } from '@/features/tasks/lifecycle'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
-import { useWorkflowStore, type WorkflowEntry } from '@/stores/workflow'
+import type { WorkflowEntry } from '@/stores/workflow'
 import { WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
-import {
-  getWorkflowDefinitionIssue,
-  resolveWorkflowRuntimeDefaults,
-} from '@/workflows/runtimeDefinition'
 import { useSettingsStore } from '@/stores/settings'
+import { journalJob } from '@/utils/operationJournal'
 import { useModelStore, type ModelDefaultInferenceParams, type ModelEntry } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import { buildModelCategoryOptionsFromModels, getModelCategoryLabel } from '@/utils/modelCategory'
 import { matchesModelQuery } from '@/utils/modelSearch'
-import { getSeparateWorkflowInputIssue } from '@/utils/workflowInputs'
 import { sortStemOutputsByOrder } from '@/utils/stemOrder'
 import { retainAvailableModelNames } from '@/utils/modelSource'
 import { SEPARATE_MODEL_PAGE_SIZES } from '@/utils/pagination'
-import AppBrandMark from '@/components/AppBrandMark.vue'
+import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
+import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
+import ModelSlotFields from '@/components/ModelSlotFields.vue'
+import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
+import { buildRenderPlan, type ModelInterface } from '@/litegraph/renderPlan.ts'
+import { layoutFor } from '@/litegraph/layouts.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
 import ParameterFieldGuide from '@/components/ParameterFieldGuide.vue'
@@ -68,7 +70,6 @@ const router = useRouter()
 const route = useRoute()
 const task = useTaskStore()
 const model = useModelStore()
-const workflow = useWorkflowStore()
 const settings = useSettingsStore()
 const app = useAppStore()
 const beginnerGuide = useBeginnerGuideStore()
@@ -105,8 +106,10 @@ const {
   modelListSortMode,
   modelListPageSize: modelPageSize,
 } = storeToRefs(task)
+
+// The audio workbench is single-model only; legacy workflow mode is retired.
+runMode.value = 'model'
 const { selectedModel, downloadedModels, models: modelEntries, isLoading, modelsLoaded, detailLoading, modelPreferences, error: modelError } = storeToRefs(model)
-const { workflows, selectedWorkflow, selectedWorkflowId } = storeToRefs(workflow)
 
 const isDragging = ref(false)
 const showSettingsDrawer = ref(false)
@@ -126,26 +129,19 @@ const showLogModal = ref(false)
 const modelSearch = ref('')
 const modelCategoryFilter = ref('')
 const modelPage = ref(1)
-const workflowSearch = ref('')
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuVisible = ref(false)
-const contextMenuKind = ref<'model' | 'workflow' | null>(null)
+const contextMenuKind = ref<'model' | null>(null)
 const contextModel = ref<ModelEntry | null>(null)
-const contextWorkflow = ref<WorkflowEntry | null>(null)
 const showModelNoteEditor = ref(false)
 const noteEditorModel = ref<ModelEntry | null>(null)
 const noteDraft = ref('')
-const showWorkflowMetaEditor = ref(false)
 const showQueueModal = ref(false)
 const queueScope = ref<'session' | 'no-results'>('session')
 const removingRunRecords = ref(false)
 watch(showQueueModal, show => { if (!show) queueScope.value = 'session' })
-const workflowMetaEditor = ref<WorkflowEntry | null>(null)
-const workflowNameDraft = ref('')
-const workflowNoteDraft = ref('')
-const workflowMetaSaving = ref(false)
-if (route.query.mode === 'workflow') runMode.value = 'workflow'
+if (route.query.mode === 'workflow') void router.replace('/workflows')
 const focusedSeparationJobId = ref<string | null>(null)
 const composingNewJob = ref(false)
 const submittingJob = ref(false)
@@ -211,10 +207,6 @@ const ensembleTypeOptions = [
   'avg_wave', 'median_wave', 'min_wave', 'max_wave',
   'avg_fft', 'median_fft', 'min_fft', 'max_fft',
 ].map(value => ({ label: value, value }))
-const runModeOptions = computed(() => [
-  { label: t('separate.runModeModel'), value: 'model' },
-  { label: t('separate.runModeWorkflow'), value: 'workflow' },
-])
 const modelSortOptions = computed(() => [
   { label: t('separate.modelSortUsage'), value: 'usage' },
   { label: t('separate.modelSortRecent'), value: 'recent' },
@@ -273,6 +265,57 @@ const currentModelDefaults = computed(() => currentModelInfo.value?.defaultInfer
 const currentModelDefaultsResolved = computed(() => Boolean(currentModelInfo.value?.defaultInferenceParamsResolved))
 const currentModelType = computed(() => String(currentModelInfo.value?.modelType || '').trim().toLowerCase())
 const isVrModel = computed(() => currentModelType.value === 'vr')
+// 槽位面板：接口来自后端（模型的 slots），布局来自前端布局档。
+// 现有 refs 用的就是原生键，所以 bind 直接映射到 ref，不需要额外状态。
+const slotRefs: Record<string, Ref<unknown>> = {
+  batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
+  enable_post_process, high_end_process, post_process_threshold, standardize,
+}
+
+const slotPanelInterface = computed<ModelInterface | null>(() => {
+  const info = currentModelInfo.value
+  const slots = (info as { slots?: ModelInterface['slots'] } | null)?.slots
+  if (!info?.name || !slots || Object.keys(slots).length === 0) return null
+  const task = (info as { slotTask?: string }).slotTask || 'separation'
+  const interface_: ModelInterface = { modelId: info.name, task, slots: { ...slots } }
+  // 派生约束（分块对齐）由后端给出，这里只把参数透传给滑块吸附
+  const constraint = currentChunkConstraint.value
+  const chunk = interface_.slots.chunk_size
+  if (chunk && constraint) {
+    interface_.slots.chunk_size = {
+      ...chunk,
+      align: { step: constraint.step, offset: constraint.offset, min: constraint.min },
+    }
+  }
+  return interface_
+})
+
+const slotPanelPlan = computed(() => {
+  const current = slotPanelInterface.value
+  return current ? buildRenderPlan(current, layoutFor(current.task)) : null
+})
+
+const slotPanelValues = computed<Record<string, unknown>>(() => {
+  const current = slotPanelInterface.value
+  if (!current) return {}
+  const values: Record<string, unknown> = {}
+  for (const [slot, binding] of Object.entries(current.slots)) {
+    const target = slotRefs[binding.bind]
+    if (target && target.value !== undefined) values[slot] = target.value
+  }
+  return values
+})
+
+function updateSlotPanel(next: Record<string, unknown>) {
+  const current = slotPanelInterface.value
+  if (!current) return
+  for (const [slot, value] of Object.entries(next)) {
+    const binding = current.slots[slot]
+    const target = binding ? slotRefs[binding.bind] : undefined
+    if (target) target.value = value
+  }
+}
+
 const isApolloModel = computed(() => currentModelType.value === 'apollo')
 const showStandardizeField = computed(() => Boolean(currentModelInfo.value) && !isVrModel.value)
 const showNormalizeField = computed(() => Boolean(currentModelInfo.value))
@@ -292,7 +335,7 @@ function hasInferenceField(key: string) {
 
 watch(() => beginnerGuide.parameterStep, active => {
   if (beginnerGuide.demoActive && !isTutorialFrame()) return
-  if (active && runMode.value === 'model' && !ensembleEnabled.value) {
+  if (active && !ensembleEnabled.value) {
     guideOpenedSettings = true
     showSettingsDrawer.value = true
     parameterHelpPage.value = null
@@ -530,7 +573,7 @@ function normalizeStemOrder(order: string[], stems: string[]) {
   return next
 }
 
-const orderedOutputStems = computed(() => runMode.value === 'model' && ensembleEnabled.value
+const orderedOutputStems = computed(() => ensembleEnabled.value
   ? [ensembleStem.value.trim()].filter(Boolean)
   : normalizeStemOrder(customStemOrder.value, checkedOutputStems.value))
 const outputNamingConfig = computed(() => ({
@@ -542,61 +585,16 @@ const outputNamingSummary = computed(() => outputNamingConfig.value.enabled
   ? outputNamingConfig.value.template
   : t('separate.namingDefaultSummary'))
 const usesIndexToken = computed(() => outputNamingTemplate.value.includes('%index%'))
-function workflowDefinitionError(definition: Record<string, unknown>): string {
-  const issue = getWorkflowDefinitionIssue(definition)
-  if (issue === 'steps-required') return t('workflows.stepsRequired')
-  if (issue === 'no-save-outputs') return t('workflows.workflowNoSaveOutputs')
-  if (issue === 'invalid-definition') return t('workflows.workflowFormatInvalid')
-  if (issue === 'invalid-format') return t('workflows.workflowFormatInvalid')
-  const inputIssue = getSeparateWorkflowInputIssue(definition)
-  if (inputIssue) return t(
-    inputIssue.code === 'multiple-inputs' ? 'separate.workflowMultipleInputs' : 'separate.workflowNoInput',
-    { count: inputIssue.count },
-  )
-  return ''
-}
-
-const workflowIssueMap = computed(() => new Map(
-  workflows.value.map(item => [item.id, workflowDefinitionError(item.definition)]),
-))
-const runnableWorkflows = computed(() => workflows.value.filter(item => !workflowIssueMap.value.get(item.id)))
-
-function workflowIssue(item: WorkflowEntry): string {
-  return workflowIssueMap.value.get(item.id) || ''
-}
-
 const contextMenuOptions = computed<DropdownOption[]>(() => {
   if (contextMenuKind.value === 'model' && contextModel.value) {
     return [{ key: 'edit-model-note', label: t('models.editNote') }]
   }
-  if (contextMenuKind.value === 'workflow' && contextWorkflow.value) {
-    return [{ key: 'edit-workflow-meta', label: t('workflows.editMeta') }]
-  }
   return []
 })
 
-function selectRunnableWorkflow(item: WorkflowEntry) {
-  if (workflowIssue(item)) return
-  workflow.selectWorkflow(item.id)
-}
-
-function workflowIssueSummary(item: WorkflowEntry): string {
-  const inputIssue = getSeparateWorkflowInputIssue(item.definition)
-  if (inputIssue && !getWorkflowDefinitionIssue(item.definition)) return t(
-    inputIssue.code === 'multiple-inputs' ? 'separate.workflowMultipleInputsSummary' : 'separate.workflowNoInputSummary',
-    { count: inputIssue.count },
-  )
-  return workflowIssue(item)
-}
-
-function openSeparateContextMenu(
-  event: MouseEvent,
-  kind: 'model' | 'workflow',
-  target: ModelEntry | WorkflowEntry,
-) {
+function openSeparateContextMenu(event: MouseEvent, kind: 'model', target: ModelEntry) {
   contextMenuKind.value = kind
-  contextModel.value = kind === 'model' ? target as ModelEntry : null
-  contextWorkflow.value = kind === 'workflow' ? target as WorkflowEntry : null
+  contextModel.value = target
   contextMenuVisible.value = false
   contextMenuX.value = event.clientX
   contextMenuY.value = event.clientY
@@ -609,7 +607,6 @@ function closeSeparateContextMenu() {
   contextMenuVisible.value = false
   contextMenuKind.value = null
   contextModel.value = null
-  contextWorkflow.value = null
 }
 
 function openModelNoteEditor(item: ModelEntry) {
@@ -636,92 +633,19 @@ function saveModelNote() {
   message.success(t('models.noteSaved'))
 }
 
-function openWorkflowMetaEditor(item: WorkflowEntry) {
-  workflowMetaEditor.value = item
-  workflowNameDraft.value = item.name
-  workflowNoteDraft.value = item.description
-  showWorkflowMetaEditor.value = true
-}
-
-function closeWorkflowMetaEditor() {
-  showWorkflowMetaEditor.value = false
-  workflowMetaEditor.value = null
-}
-
-function handleWorkflowMetaEditorUpdate(value: boolean) {
-  showWorkflowMetaEditor.value = value
-  if (!value) workflowMetaEditor.value = null
-}
-
-async function saveWorkflowMeta() {
-  const current = workflowMetaEditor.value
-  if (!current || workflowMetaSaving.value) return
-  const trimmedName = workflowNameDraft.value.trim()
-  if (!trimmedName) {
-    message.error(t('workflows.nameRequired'))
-    return
-  }
-  const trimmedNote = workflowNoteDraft.value.trim()
-  if (trimmedName === current.name && trimmedNote === current.description) {
-    closeWorkflowMetaEditor()
-    return
-  }
-
-  const selectedIdBeforeSave = selectedWorkflowId.value
-  workflowMetaSaving.value = true
-  try {
-    await workflow.saveWorkflow({
-      id: current.id,
-      name: trimmedName,
-      description: trimmedNote,
-      definition: current.definition,
-      format: current.format,
-      formatVersion: current.formatVersion,
-      expectedUpdatedAt: current.updatedAt,
-    })
-    // Saving a non-selected workflow should not change the workflow used by the current run.
-    if (selectedWorkflowId.value === current.id && selectedIdBeforeSave !== current.id) {
-      workflow.selectWorkflow(selectedIdBeforeSave)
-    }
-    closeWorkflowMetaEditor()
-    message.success(t('workflows.saved'))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    workflowMetaSaving.value = false
-  }
-}
-
 function handleSeparateContextMenuSelect(key: string | number) {
-  const item = contextMenuKind.value === 'model' ? contextModel.value : contextWorkflow.value
+  const item = contextModel.value
   closeSeparateContextMenu()
   if (!item) return
-  if (key === 'edit-model-note' && 'name' in item) {
-    openModelNoteEditor(item as ModelEntry)
-    return
-  }
-  if (key === 'edit-workflow-meta' && 'id' in item) {
-    openWorkflowMetaEditor(item as WorkflowEntry)
-  }
+  if (key === 'edit-model-note') openModelNoteEditor(item as ModelEntry)
 }
 
-function workflowValidationError() {
-  if (runMode.value !== 'workflow' || !selectedWorkflow.value) return ''
-  return workflowDefinitionError(selectedWorkflow.value.definition)
-}
-const workflowStructureInvalid = computed(() => runMode.value === 'workflow' && Boolean(workflowValidationError()))
 const startStatusText = computed(() => {
-  const validationError = workflowValidationError()
-  if (validationError) return validationError
-  if (runMode.value === 'workflow' && workflows.value.length && !runnableWorkflows.value.length) {
-    return t('separate.startHintNoRunnableWorkflow')
-  }
-  if (runMode.value === 'workflow' && !selectedWorkflow.value) return t('separate.startHintNoWorkflow')
   if (outputDirectoryError.value) return outputDirectoryError.value
   if (!inputFiles.value.length) return t('separate.outputDirectorySummary')
-  if (runMode.value === 'model' && ensembleEnabled.value && !ensembleReady.value) return t('separate.ensembleNotReady')
-  if (runMode.value === 'model' && !ensembleEnabled.value && !modelDownloaded.value) return t('separate.startHintModelMissing')
-  if (runMode.value === 'model' && !ensembleEnabled.value && !hasOutputStemSelection.value) {
+  if (ensembleEnabled.value && !ensembleReady.value) return t('separate.ensembleNotReady')
+  if (!ensembleEnabled.value && !modelDownloaded.value) return t('separate.startHintModelMissing')
+  if (!ensembleEnabled.value && !hasOutputStemSelection.value) {
     return t('separate.startHintNoOutputStems')
   }
   return t('separate.outputDirectorySummary')
@@ -749,15 +673,6 @@ const pagedDownloadedModels = computed(() => {
   return filteredDownloadedModels.value.slice(start, start + modelPageSize.value)
 })
 const modelPageSizeOptions = [...SEPARATE_MODEL_PAGE_SIZES]
-const filteredWorkflows = computed(() => {
-  const query = workflowSearch.value.trim().toLowerCase()
-  return [...workflows.value]
-    .filter((item) => {
-      if (!query) return true
-      return item.name.toLowerCase().includes(query) || item.description.toLowerCase().includes(query)
-    })
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-})
 
 const outputDirectoryInput = computed({
   get: () => temporaryOutputDir.value || normalizedOutputDir.value,
@@ -784,16 +699,7 @@ const outputPreview = computed(() => {
   }
   return `${base}${separator}${t('separate.resultFolderPreview')}${separator}${previewName}`
 })
-const effectiveFormat = computed(() => {
-  if (runMode.value === 'workflow' && selectedWorkflow.value) {
-    return resolveWorkflowRuntimeDefaults(selectedWorkflow.value.definition, {
-      device: 'auto',
-      outputFormat: settings.defaultFormat || 'wav',
-      modelDir: settings.modelDir || null,
-    }).outputFormat
-  }
-  return String(settings.defaultFormat || 'wav').trim().toLowerCase() || 'wav'
-})
+const effectiveFormat = computed(() => String(settings.defaultFormat || 'wav').trim().toLowerCase() || 'wav')
 const formatLabel = computed(() => effectiveFormat.value.toUpperCase())
 const outputNamingPreviewFiles = computed(() => {
   const stems = orderedOutputStems.value.length ? orderedOutputStems.value : ['vocals']
@@ -806,16 +712,13 @@ const outputNamingPreviewParts = computed(() => {
     parts: formatOutputNamingPreviewParts(stem, index),
   }))
 })
-const outputSummaryPath = computed(() => runMode.value === 'workflow' ? normalizedOutputDir.value : outputPreview.value)
+const outputSummaryPath = computed(() => outputPreview.value)
 const canStart = computed(() => (
   !submittingJob.value
-  && !workflowStructureInvalid.value
   && !outputDirectoryError.value
-  && (runMode.value === 'workflow'
-    ? Boolean(selectedWorkflow.value) && inputFiles.value.length > 0
-    : ensembleEnabled.value
-      ? ensembleReady.value
-      : (modelDownloaded.value && inputFiles.value.length > 0 && hasOutputStemSelection.value))
+  && (ensembleEnabled.value
+    ? ensembleReady.value
+    : (modelDownloaded.value && inputFiles.value.length > 0 && hasOutputStemSelection.value))
 ))
 function isSeparationJob(job: SeparationJob) {
   return !job.primary.runConfig?.workbench
@@ -826,6 +729,33 @@ function isNoResultSeparationJob(job: SeparationJob) {
 }
 const separationJobs = computed(() => task.allJobs.filter(isSeparationJob))
 const separationSessionJobs = computed(() => task.sessionJobs.filter(isSeparationJob))
+
+function journalAudioJob(job: SeparationJob) {
+  const statusMap: Record<string, 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'> = {
+    queued: 'queued',
+    running: 'running',
+    done: 'completed',
+    failed: 'failed',
+    cancelled: 'cancelled',
+  }
+  void journalJob({
+    jobId: job.id,
+    command: 'separation',
+    source: 'manual',
+    status: statusMap[job.status] || 'running',
+    fraction: Math.max(0, Math.min(1, Number(job.progress || 0) / 100)),
+    message: `${job.model} · ${job.inputCount} ${t('separate.queueFileUnit')}`,
+    createdAt: job.createdAt / 1000,
+    finishedAt: job.finishedAt ? job.finishedAt / 1000 : null,
+    payload: { operation: 'separation', model: job.model, inputs: job.tasks.map(item => item.input) },
+    result: { outputs: job.tasks.flatMap(item => item.outputs) },
+    cancelTaskId: job.primary?.id,
+  })
+}
+
+watch(separationSessionJobs, jobs => {
+  for (const job of jobs) journalAudioJob(job)
+}, { deep: true, immediate: true })
 const noResultSeparationJobs = computed(() => separationJobs.value.filter(isNoResultSeparationJob)
   .sort((left, right) => right.updatedAt - left.updatedAt))
 const newestRunningJob = computed(() => {
@@ -907,7 +837,6 @@ const inputCompactLine = computed(() => {
 })
 const modelCompactLine = computed(() => {
   if (currentTask.value?.model) return currentTask.value.model
-  if (runMode.value === 'workflow') return selectedWorkflow.value?.name || t('separate.noWorkflowSelected')
   const name = selectedModelName.value || t('separate.noModelSelected')
   const category = currentModelInfo.value ? categoryLabel(currentModelInfo.value) : ''
   return category ? `${name} · ${category}` : name
@@ -1230,9 +1159,7 @@ function formatOutputNamingPreviewFile(stem: string, stemIndex: number) {
 
 function formatOutputNamingPreviewParts(stem: string, stemIndex: number) {
   const inputPath = inputFiles.value[0] || t('separate.resultFolderPreview')
-  const modelName = runMode.value === 'workflow'
-    ? selectedWorkflow.value?.name || t('separate.workflow')
-    : ensembleEnabled.value ? 'Ensemble' : selectedModelName.value || t('separate.model')
+  const modelName = ensembleEnabled.value ? 'Ensemble' : selectedModelName.value || t('separate.model')
   const now = new Date()
   const values: Record<string, string> = {
     '%index%': padNumber(stemIndex + 1),
@@ -1526,7 +1453,6 @@ function handleSelectModel(item: (typeof listedDownloadedModels.value)[number]) 
 }
 
 function prefetchSelectedModelAdvancedParams() {
-  if (runMode.value !== 'model') return
   if (!shouldPrefetchAdvancedParams.value || detailLoading.value || isLoading.value || !selectedModelName.value) return
   model.selectModel(selectedModelName.value).catch(() => {})
 }
@@ -1700,6 +1626,8 @@ onMounted(async () => {
   if (!app.envInfo && !app.envLoading) {
     app.checkEnvInBackground().catch(() => {})
   }
+  // 别的页面可能刚下载过模型；这里补一次刷新，避免"已下载但本页看不到"。
+  if (!modelsLoaded.value) void model.loadModels()
   try {
     unlistenDragDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
       if (beginnerGuide.demoActive) { isDragging.value = false; return }
@@ -1709,6 +1637,39 @@ onMounted(async () => {
       } else if (type === 'drop') {
         isDragging.value = false
         const paths = (event.payload as { paths?: string[] }).paths || []
+        // 拖到「临时输出目录」输入框上：单个文件夹 = 引用它，别当成音频文件加入。
+        // 落点判定依赖 DOM/原生命令，取不到就当作普通文件拖放（不阻断主流程）。
+        try {
+          if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+            const zones = Array.from(document.querySelectorAll<HTMLElement>('[data-drop-zone]')).map(element => {
+              const rect = element.getBoundingClientRect()
+              return {
+                id: element.dataset.dropZone || '',
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+              }
+            })
+            const point = toCssPoint(
+              (event.payload as { position?: { x: number; y: number } }).position,
+              window.devicePixelRatio,
+            )
+            if (findDropZone(point, zones) === 'outputDir' && paths.length === 1) {
+              const kinds = await invoke<Array<[string, string]>>('path_kinds', { paths })
+              const folder = kinds.length === 1 && kinds[0][1] === 'directory' ? kinds[0][0] : ''
+              if (folder) {
+                temporaryOutputDir.value = folder
+                message.success(folder)
+                return
+              }
+              message.warning(t('image.dropFolderHere'))
+              return
+            }
+          }
+        } catch {
+          // 判定失败：按普通文件处理
+        }
         const added = await task.addPaths(paths)
         if (added > 0) message.success(t('separate.addedFiles', { count: added }))
         else message.warning(t('separate.noAudioAdded'))
@@ -1882,45 +1843,34 @@ async function start() {
     message.warning(outputDirectoryError.value)
     return
   }
-  if (runMode.value === 'model' && ensembleEnabled.value && !ensembleReady.value) {
+  if (ensembleEnabled.value && !ensembleReady.value) {
     message.warning(t('separate.ensembleNotReady'))
-    return
-  }
-  if (runMode.value === 'workflow' && !selectedWorkflow.value) {
-    message.warning(t('separate.startHintNoWorkflow'))
-    return
-  }
-  const validationError = workflowValidationError()
-  if (validationError) {
-    message.warning(validationError)
     return
   }
   if (!inputFiles.value.length) {
     message.warning(t('separate.startHintNoInput'))
     return
   }
-  if (runMode.value === 'model' && !ensembleEnabled.value && !modelDownloaded.value) {
+  if (!ensembleEnabled.value && !modelDownloaded.value) {
     message.warning(t('separate.startHintModelMissing'))
     return
   }
-  if (runMode.value === 'model' && !ensembleEnabled.value && currentChunkIssue.value) {
+  if (!ensembleEnabled.value && currentChunkIssue.value) {
     message.warning(t('inference.invalidChunkSize', currentChunkIssue.value))
     return
   }
-  if (runMode.value === 'model' && !ensembleEnabled.value && !hasOutputStemSelection.value) {
+  if (!ensembleEnabled.value && !hasOutputStemSelection.value) {
     message.warning(t('separate.startHintNoOutputStems'))
     return
   }
   submittingJob.value = true
   try {
-    const result = runMode.value === 'workflow' && selectedWorkflow.value
-      ? await task.startWorkflowInference(selectedWorkflow.value, { outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value })
-      : ensembleEnabled.value
-        ? await task.startWorkflowInference(buildEnsembleWorkflow(), { outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
-        : await task.startSeparation({ outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
+    const result = ensembleEnabled.value
+      ? await task.startWorkflowInference(buildEnsembleWorkflow(), { outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
+      : await task.startSeparation({ outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
     focusedSeparationJobId.value = result?.jobId || newestRunningJob.value?.id || focusedSeparationJobId.value
     composingNewJob.value = false
-    if (runMode.value === 'model' && ensembleEnabled.value && result) {
+    if (ensembleEnabled.value && result) {
       ensembleModels.value.forEach((name) => model.recordModelUse(name))
     }
     if (settings.clearInputAfterSubmit) task.clearInputFiles()
@@ -2091,65 +2041,48 @@ async function retryCurrentTask() {
     },
   })
 }
+const audioSteps = computed(() => [
+  { title: t('separate.input'), text: t('separate.stepInputHint') },
+  { title: t('separate.output'), text: t('separate.stepOutputHint') },
+  { title: t('separate.model'), text: t('separate.stepRunHint') },
+])
 </script>
 
 <template>
-  <div class="page separate-page">
-    <header class="console-topbar">
-      <div class="console-topbar__brand">
-        <AppBrandMark :size="30" variant="compact" shadow />
-        <div class="console-topbar__title">
-          <h1>{{ t('separate.title') }}</h1>
-          <span>{{ t('separate.subtitle') }}</span>
-        </div>
-      </div>
+  <div class="page separate-page mf-page" data-tone="blue">
+    <MediaPageHeader
+      :title="t('separate.title')"
+      :subtitle="t('separate.subtitle')"
+      :icon="MusicalNotesOutline"
+      eyebrow="AUDIO WORKSPACE"
+      tone="blue"
+    >
       <div class="console-topbar__controls" data-guide="separation-modes">
-        <n-radio-group
-          v-model:value="runMode"
-          class="mode-switch"
-          :disabled="isRunModeLocked"
-        >
-          <n-radio-button
-            v-for="option in runModeOptions"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </n-radio-button>
-        </n-radio-group>
-        <n-button text class="console-topbar__manage" @click="router.push(runMode === 'workflow' ? '/workflows' : '/models')">
-          {{ runMode === 'workflow' ? t('separate.manageWorkflowsInline') : t('separate.manageModelsInline') }}
+        <n-tag size="small" :bordered="false">{{ t('separate.runModeModel') }}</n-tag>
+        <n-button text class="console-topbar__manage" @click="router.push('/workflows')">
+          {{ t('separate.manageWorkflowsInline') }}
+        </n-button>
+        <n-button text class="console-topbar__manage" @click="router.push('/models')">
+          {{ t('separate.manageModelsInline') }}
         </n-button>
       </div>
-    </header>
+    </MediaPageHeader>
+
+    <WorkbenchSteps :steps="audioSteps" class="separate-step-strip" />
 
     <div class="console" :class="[`console--${taskPanelState}`, { 'console--busy': isConfigCompact }]">
       <aside class="console__rail">
-        <section class="rail-card rail-card--input" data-guide="input">
-          <div class="rail-card__head">
-            <span class="rail-card__index">01</span>
-            <div class="rail-card__label">
-              <strong>{{ t('separate.input') }}</strong>
-              <small>{{ t('separate.candidateCount', { count: inputFiles.length }) }}</small>
-            </div>
+        <WorkbenchCard class="rail-card--input" data-guide="input" index="01" :title="t('separate.input')" :subtitle="t('separate.candidateCount', { count: inputFiles.length })">
+          <template #actions>
             <div class="rail-card__actions rail-card__actions--input">
               <label class="input-retention-toggle input-retention-toggle--head">
                 <span>{{ t('separate.clearInputAfterSubmit') }}</span>
                 <n-switch v-model:value="settings.clearInputAfterSubmit" size="small" :disabled="isRunModeLocked" />
               </label>
-              <n-button
-                v-if="inputFiles.length"
-                text
-                size="tiny"
-                class="rail-card__clear"
-                :disabled="isRunModeLocked"
-                @click="task.clearInputFiles()"
-              >
-                {{ t('separate.clearAll') }}
-              </n-button>
+              <n-button v-if="inputFiles.length" text size="tiny" class="rail-card__clear" :disabled="isRunModeLocked" @click="task.clearInputFiles()">{{ t('separate.clearAll') }}</n-button>
             </div>
-          </div>
-          <div class="rail-card__body">
+          </template>
+
             <div class="picker-buttons">
               <button type="button" class="picker-btn" :disabled="isRunModeLocked" @click="handlePickFiles">
                 <n-icon :component="MusicalNotesOutline" />
@@ -2196,25 +2129,19 @@ async function retryCurrentTask() {
                 <strong>{{ isDragging ? t('separate.dropHere') : t('separate.candidateEmpty') }}</strong>
               </div>
             </div>
-          </div>
-        </section>
+        </WorkbenchCard>
 
-        <section class="rail-card rail-card--output" data-guide="output">
-          <div class="rail-card__head">
-            <span class="rail-card__index">02</span>
-            <div class="rail-card__label">
-              <strong>{{ t('separate.output') }}</strong>
-              <small>{{ t('separate.outputSummaryHint') }}</small>
-            </div>
+        <WorkbenchCard class="rail-card--output" data-guide="output" index="02" :title="t('separate.output')" :subtitle="t('separate.outputSummaryHint')">
+          <template #actions>
             <n-button text size="tiny" class="rail-card__more" :disabled="isRunModeLocked" @click="showSettingsDrawer = true">
               <template #icon><n-icon :component="SettingsOutline" /></template>
               {{ t('separate.configParams') }}
             </n-button>
-          </div>
-          <div class="rail-card__body rail-card__body--output">
+          </template>
+
             <label class="ofield" data-guide="output-location">
               <span class="ofield__label">{{ t('separate.temporaryOutputDir') }}</span>
-              <div class="dir-input">
+              <div class="dir-input" data-drop-zone="outputDir">
                 <n-input v-model:value="outputDirectoryInput" size="small" :status="outputDirectoryError ? 'error' : undefined" :placeholder="t('separate.outputDefault')" :disabled="isRunModeLocked" clearable />
                 <n-button secondary size="small" class="dir-input__browse" :title="t('separate.chooseOutput')" :disabled="isRunModeLocked" @click="pickTemporaryOutputDir">
                   <template #icon><n-icon :component="FolderOutline" /></template>
@@ -2225,9 +2152,8 @@ async function retryCurrentTask() {
 
             <div class="ofield-row" data-guide="output-format">
               <label class="ofield">
-                <span class="ofield__label">{{ runMode === 'workflow' ? t('separate.currentFormat') : t('settings.defaultFormat') }}</span>
-                <n-select v-if="runMode === 'model'" v-model:value="settings.defaultFormat" size="small" :options="formatOptions" :disabled="isRunModeLocked" />
-                <div v-else class="ofield__static">{{ formatLabel }}</div>
+                <span class="ofield__label">{{ t('settings.defaultFormat') }}</span>
+                <n-select v-model:value="settings.defaultFormat" size="small" :options="formatOptions" :disabled="isRunModeLocked" />
               </label>
               <div class="ofield">
                 <span class="ofield__label">{{ t('separate.saveMode') }}</span>
@@ -2250,7 +2176,7 @@ async function retryCurrentTask() {
               </div>
             </div>
 
-            <div v-if="runMode === 'model'" class="ofield naming-field" data-guide="output-naming">
+            <div class="ofield naming-field" data-guide="output-naming">
               <span class="ofield__label">{{ t('separate.namingRule') }}</span>
               <button type="button" class="naming-summary" :disabled="isRunModeLocked" @click="showNamingModal = true">
                 <span>{{ outputNamingSummary }}</span>
@@ -2258,7 +2184,7 @@ async function retryCurrentTask() {
               </button>
             </div>
 
-            <div v-if="runMode === 'model'" class="ofield ofield--stems" data-guide="output-stems">
+            <div class="ofield ofield--stems" data-guide="output-stems">
               <div class="ofield__heading">
                 <span class="ofield__label">{{ t('separate.outputStems') }}</span>
                 <div v-if="!ensembleEnabled && availableStemNames.length > 3" class="stem-selection-actions">
@@ -2288,8 +2214,7 @@ async function retryCurrentTask() {
               </div>
               <div v-else class="ofield__static ofield__static--muted">{{ t('separate.allStems') }}</div>
             </div>
-          </div>
-        </section>
+        </WorkbenchCard>
       </aside>
 
       <main class="console__stage">
@@ -2478,14 +2403,14 @@ async function retryCurrentTask() {
           <section v-else key="ready" class="stage-view stage-view--ready">
             <div class="stage-head">
               <div class="stage-head__label">
-                <n-icon :component="runMode === 'workflow' ? GitNetworkOutline : CubeOutline" />
+                <n-icon :component="CubeOutline" />
                 <div>
                   <h2>{{ t('separate.runTarget') }}</h2>
-                  <p>{{ runMode === 'workflow' ? t('separate.workflowPanelHint') : t('separate.modelPanelHint') }}</p>
+                  <p>{{ t('separate.modelPanelHint') }}</p>
                 </div>
               </div>
               <div class="stage-head__controls">
-                <div v-if="runMode === 'model'" class="stage-head__extra" data-guide="model-mode">
+                <div class="stage-head__extra" data-guide="model-mode">
                   <n-select
                     :value="ensembleEnabled ? 'ensemble' : 'single'"
                     size="small"
@@ -2507,7 +2432,7 @@ async function retryCurrentTask() {
             </div>
 
             <transition name="stage-swap" mode="out-in">
-              <div v-if="runMode === 'model'" key="model" class="target-pane" :class="{ 'target-pane--ensemble': ensembleEnabled }">
+              <div key="model" class="target-pane" :class="{ 'target-pane--ensemble': ensembleEnabled }">
                 <template v-if="modelPanelHasModels">
                   <div class="target-toolbar" data-guide="separation-models">
                     <n-input
@@ -2630,60 +2555,6 @@ async function retryCurrentTask() {
                 </div>
               </div>
 
-              <div v-else key="workflow" class="target-pane">
-                <div class="target-toolbar target-toolbar--single">
-                  <n-input
-                    v-model:value="workflowSearch"
-                    clearable
-                    :placeholder="t('separate.workflowSearchPlaceholder')"
-                  >
-                    <template #prefix><n-icon :component="SearchOutline" /></template>
-                  </n-input>
-                </div>
-                <div v-if="filteredWorkflows.length" class="target-list" role="listbox" :aria-label="t('separate.workflow')">
-                  <button
-                    v-for="item in filteredWorkflows"
-                    :key="item.id"
-                    type="button"
-                    role="option"
-                    :aria-selected="selectedWorkflowId === item.id"
-                    :aria-disabled="Boolean(workflowIssue(item))"
-                    :title="workflowIssue(item) || item.name"
-                    class="target-row workflow-target"
-                    :class="{
-                      'target-row--active': selectedWorkflowId === item.id,
-                      'target-row--unavailable': Boolean(workflowIssue(item)),
-                      'workflow-target--restricted': Boolean(getSeparateWorkflowInputIssue(item.definition)) && !getWorkflowDefinitionIssue(item.definition),
-                    }"
-                    @click="selectRunnableWorkflow(item)"
-                    @contextmenu.stop.prevent="openSeparateContextMenu($event, 'workflow', item)"
-                  >
-                    <span class="target-row__radio"></span>
-                    <span class="target-row__body">
-                      <span class="target-row__heading">
-                        <span class="target-row__name" :title="item.name">{{ item.name }}</span>
-                        <span v-if="workflowIssue(item)" class="target-row__unavailable">
-                          {{ t(getSeparateWorkflowInputIssue(item.definition) && !getWorkflowDefinitionIssue(item.definition)
-                            ? 'separate.workflowPageRequired' : 'separate.workflowUnavailable') }}
-                        </span>
-                      </span>
-                      <span class="target-row__meta">
-                        <span class="target-row__tag">{{ t('separate.workflow') }}</span>
-                        <span v-if="workflowIssue(item)" class="target-row__issue">{{ workflowIssueSummary(item) }}</span>
-                        <span v-else class="target-row__desc" :title="item.description">{{ item.description || t('separate.workflowNoDescription') }}</span>
-                      </span>
-                    </span>
-                  </button>
-                </div>
-                <div v-else class="stage-empty">
-                  <div class="stage-empty__glyph"><n-icon :component="GitNetworkOutline" /></div>
-                  <strong>{{ t('separate.workflowEmptyTitle') }}</strong>
-                  <p>{{ t('separate.workflowEmptyDesc') }}</p>
-                  <n-button secondary @click="router.push('/workflows')">
-                    {{ t('separate.workflowCreateAction') }}
-                  </n-button>
-                </div>
-              </div>
             </transition>
 
             <footer class="launch-bar" :class="`launch-bar--${canStart ? 'ready' : 'idle'}`">
@@ -2755,57 +2626,6 @@ async function retryCurrentTask() {
       </n-card>
     </n-modal>
 
-    <n-modal
-      :show="showWorkflowMetaEditor"
-      @update:show="handleWorkflowMetaEditorUpdate"
-    >
-      <n-card
-        class="separate-workflow-meta-modal"
-        :title="t('workflows.editMeta')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="closeWorkflowMetaEditor"
-      >
-        <div v-if="workflowMetaEditor" class="separate-workflow-meta-modal__body">
-          <label class="separate-workflow-meta-modal__field">
-            <span>{{ t('workflows.name') }}</span>
-            <n-input
-              v-model:value="workflowNameDraft"
-              :disabled="workflowMetaSaving"
-              :placeholder="t('workflows.namePlaceholder')"
-              maxlength="120"
-              show-count
-            />
-          </label>
-          <label class="separate-workflow-meta-modal__field">
-            <span>{{ t('workflows.note') }}</span>
-            <n-input
-              v-model:value="workflowNoteDraft"
-              type="textarea"
-              :disabled="workflowMetaSaving"
-              :autosize="{ minRows: 4, maxRows: 8 }"
-              clearable
-              :maxlength="240"
-              show-count
-              :placeholder="t('workflows.notePlaceholder')"
-            />
-          </label>
-        </div>
-        <template #footer>
-          <div class="separate-workflow-meta-modal__footer">
-            <n-button secondary :disabled="workflowMetaSaving" @click="closeWorkflowMetaEditor">
-              {{ t('common.cancel') }}
-            </n-button>
-            <n-button type="primary" :loading="workflowMetaSaving" :disabled="!workflowMetaEditor" @click="saveWorkflowMeta">
-              {{ t('common.save') }}
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-
     <n-modal v-model:show="showEnsembleModal" :mask-closable="true">
       <n-card
         class="ensemble-modal"
@@ -2871,7 +2691,7 @@ async function retryCurrentTask() {
         @close="showSettingsDrawer = false"
       >
         <div class="settings-drawer__content">
-          <div v-if="runMode === 'model'" class="settings-group settings-group--run">
+          <div class="settings-group settings-group--run">
             <div class="settings-group__head">
               <strong>{{ t('separate.runOptionsTitle') }}</strong>
               <span>{{ t('separate.runOptionsHint') }}</span>
@@ -2884,23 +2704,22 @@ async function retryCurrentTask() {
           <div class="settings-group">
             <div class="settings-group__head">
               <strong>{{ t('separate.audioQualityTitle') }} · {{ formatLabel }}</strong>
-              <span>{{ t(runMode === 'workflow' && effectiveFormat !== 'm4a'
-                ? 'separate.workflowAudioQualityHint' : 'separate.audioQualityEditable') }}</span>
+              <span>{{ t('separate.audioQualityEditable') }}</span>
             </div>
-            <n-grid v-if="runMode === 'model' || effectiveFormat === 'm4a'" :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
-              <n-grid-item v-if="runMode === 'model' && effectiveFormat === 'wav'">
+            <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
+              <n-grid-item v-if="effectiveFormat === 'wav'">
                 <div class="field-block" data-parameter-guide="wavBitDepth" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'wavBitDepth' }">
                   <label>{{ t('audio.wavBitDepth') }}</label>
                   <n-select v-model:value="settings.wavBitDepth" :options="wavBitDepthOptions" />
                 </div>
               </n-grid-item>
-              <n-grid-item v-if="runMode === 'model' && effectiveFormat === 'flac'">
+              <n-grid-item v-if="effectiveFormat === 'flac'">
                 <div class="field-block" data-parameter-guide="flacBitDepth" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'flacBitDepth' }">
                   <label>{{ t('audio.flacBitDepth') }}</label>
                   <n-select v-model:value="settings.flacBitDepth" :options="flacBitDepthOptions" />
                 </div>
               </n-grid-item>
-              <n-grid-item v-if="runMode === 'model' && effectiveFormat === 'mp3'">
+              <n-grid-item v-if="effectiveFormat === 'mp3'">
                 <div class="field-block" data-parameter-guide="mp3BitRate" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'mp3BitRate' }">
                   <label>{{ t('audio.mp3BitRate') }}</label>
                   <n-select v-model:value="settings.mp3BitRate" :options="mp3BitRateOptions" />
@@ -2918,7 +2737,7 @@ async function retryCurrentTask() {
                   <n-select v-model:value="settings.m4aCodec" :options="m4aCodecOptions" />
                 </div>
               </n-grid-item>
-              <n-grid-item v-if="runMode === 'model' && showNormalizeField">
+              <n-grid-item v-if="showNormalizeField">
                 <div class="field-block field-block--inline-check" data-parameter-guide="normalize" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'normalize' }">
                   <n-checkbox v-model:checked="normalize">{{ t('inference.normalize') }}</n-checkbox>
                 </div>
@@ -2926,7 +2745,7 @@ async function retryCurrentTask() {
             </n-grid>
           </div>
 
-          <div v-if="runMode === 'model'" class="settings-group">
+          <div class="settings-group">
             <n-collapse v-model:expanded-names="expandedInferenceSections">
               <n-collapse-item :title="t('inference.advancedParams')" name="inference">
                 <template #header-extra><n-button v-if="!beginnerGuide.parameterStep" text size="small" :aria-label="t('parameterHelp.label')" @click.stop="openParameterHelp"><n-icon :component="InformationCircleOutline" size="18" /></n-button></template>
@@ -2935,7 +2754,16 @@ async function retryCurrentTask() {
                   <n-spin size="small" />
                   <span>{{ t('separate.advancedPanelLoading') }}</span>
                 </div>
-                <n-grid v-if="runMode === 'model'" :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
+                <!-- 有槽位接口时按渲染计划画（分组/顺序来自布局档）；没有接口的模型走下面的旧控件。 -->
+                <ModelSlotFields
+                  v-if="slotPanelPlan"
+                  :plan="slotPanelPlan"
+                  :model-value="slotPanelValues"
+                  :active-slot="guidedParameter?.id"
+                  @update:model-value="updateSlotPanel"
+                />
+                <template v-else>
+                <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
                   <n-grid-item v-if="hasInferenceField('batch_size')">
                     <div class="field-block" data-parameter-guide="batch_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'batch_size' }">
                       <label>{{ t('inference.batchSize') }}</label>
@@ -2982,14 +2810,15 @@ async function retryCurrentTask() {
                 </n-grid>
                 <div class="check-list check-list--spaced">
                   <n-checkbox v-if="showStandardizeField" v-model:checked="standardize" data-parameter-guide="standardize" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'standardize' }">{{ t('inference.standardize') }}</n-checkbox>
-                  <n-checkbox v-if="runMode === 'model' && hasInferenceField('enable_post_process')" v-model:checked="enable_post_process" data-parameter-guide="enable_post_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'enable_post_process' }">{{ t('inference.vrEnablePostProcess') }}</n-checkbox>
-                  <n-checkbox v-if="runMode === 'model' && hasInferenceField('high_end_process')" v-model:checked="high_end_process" data-parameter-guide="high_end_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'high_end_process' }">{{ t('inference.vrHighEndProcess') }}</n-checkbox>
+                  <n-checkbox v-if="hasInferenceField('enable_post_process')" v-model:checked="enable_post_process" data-parameter-guide="enable_post_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'enable_post_process' }">{{ t('inference.vrEnablePostProcess') }}</n-checkbox>
+                  <n-checkbox v-if="hasInferenceField('high_end_process')" v-model:checked="high_end_process" data-parameter-guide="high_end_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'high_end_process' }">{{ t('inference.vrHighEndProcess') }}</n-checkbox>
                 </div>
-                <p v-if="runMode === 'model' && !advancedParamsLoading && !hasVisibleAdvancedFields" class="advanced-empty">
+                </template>
+                <p v-if="!advancedParamsLoading && !hasVisibleAdvancedFields" class="advanced-empty">
                   {{ t('separate.advancedPanelEmpty') }}
                 </p>
                 <div
-                  v-if="runMode === 'model' && currentModelInfo && currentModelDefaultsResolved && !advancedParamsLoading"
+                  v-if="currentModelInfo && currentModelDefaultsResolved && !advancedParamsLoading"
                   class="advanced-actions"
                   data-parameter-guide="modelDefaults"
                   :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'modelDefaults' }"
@@ -3124,6 +2953,7 @@ async function retryCurrentTask() {
         @close="showQueueModal = false"
       >
         <template #header-extra>
+          <n-button size="small" quaternary @click="router.push('/queue')">{{ t('agent.queue') }}</n-button>
           <n-button
             v-if="queueScope === 'session' && finishedSessionJobCount"
             size="small"
@@ -3337,68 +3167,8 @@ async function retryCurrentTask() {
 }
 
 /* ============ Rail cards ============ */
-.rail-card {
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
-  padding: 17px 18px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent),
-    inset 0 1px 0 rgba(255,255,255,0.03),
-    var(--shadow-panel);
-}
-
 .rail-card--output {
   grid-template-rows: auto auto;
-}
-
-.rail-card__head {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-width: 0;
-}
-
-.rail-card__index {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--primary-strong);
-  background: var(--primary-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 40%, transparent);
-}
-
-.rail-card__label {
-  min-width: 0;
-  flex: 1;
-  display: grid;
-  gap: 1px;
-}
-
-.rail-card__label strong {
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rail-card__label small {
-  font-size: 11px;
-  color: var(--on-surface-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .rail-card__actions {

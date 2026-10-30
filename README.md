@@ -1,355 +1,349 @@
-<!-- markdownlint-disable MD013 MD033 MD041 -->
+# MediaForge
 
-<p align="center">
-  <img src="./src/assets/app-logo-unified.png" alt="Pymss Studio" width="120" />
-</p>
+## 下载
 
-<h1 align="center">Pymss Studio</h1>
+| 渠道 | 链接 | 说明 |
+|---|---|---|
+| 国内（推荐，免登录） | https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist | 单连接约 1 MB/s，可用下载器加速 |
+| GitHub Releases | https://github.com/TLBtianhu/mediaforge/releases | 需要能访问 GitHub |
 
-<p align="center">
-  A local workspace for music source separation, workflows, batch processing, stem editing, and mix export.
-</p>
+- 安装包：`MediaForge-<版本>-windows-x64-cuda-setup.exe`（约 63 MB）
+- 便携版：`MediaForge-<版本>-windows-x64-portable.zip`（约 120 MB，解压即用，无需管理员）
 
-<p align="center">
-  <img alt="Platform Windows" src="https://img.shields.io/badge/Platform-Windows-0078D4?style=flat-square&logo=windows11&logoColor=white" />
-  <img alt="Platform macOS" src="https://img.shields.io/badge/Platform-macOS-111111?style=flat-square&logo=apple&logoColor=white" />
-  <img alt="Platform Linux" src="https://img.shields.io/badge/Platform-Linux-FCC624?style=flat-square&logo=linux&logoColor=111111" />
-</p>
+安装包**不内置运行时**：首次启动会下载约 3.45 GB 的 CUDA 运行包（解压后约 5.6 GB），
+从 hf-mirror 或魔搭任选其一，校验 sha256 后解压。模型权重也不随包，按需下载。
 
-<p align="center">
-  <a href="./README.zh-CN.md">简体中文</a>
-  ·
-  <a href="https://github.com/pymss-project/pymss-studio/releases">Download</a>
-  ·
-  <a href="https://github.com/pymss-project/pymss-studio/discussions">Community</a>
-  ·
-  <a href="https://github.com/pymss-project/pymss-studio/discussions/88">Start here</a>
-  ·
-  <a href="https://github.com/pymss-project/pymss">pymss core</a>
-</p>
+## 30 秒上手
 
-<p align="center">
-  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?style=for-the-badge&logo=tauri&logoColor=white" />
-  <img alt="Vue 3" src="https://img.shields.io/badge/Vue-3-42B883?style=for-the-badge&logo=vuedotjs&logoColor=white" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
-  <img alt="License: AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-111827?style=for-the-badge" />
-</p>
+1. 双击安装包 → SmartScreen 点「更多信息 → 仍要运行」→ 一路下一步（**安装位置固定，不用选**）
+   安装目录是 `%LOCALAPPDATA%\Programs\MediaForge`，不需要管理员权限
+2. 首次启动等运行包下完（右下角卡片有进度），然后到模型库下载一个模型（例如 Real-ESRGAN 2×，约 64 MB）
+3. 图像处理 → 拖入图片 → 选超分和模型 → 开始转换
 
-<p align="center">
-  <img src="./images/screenshots/separate/batch/en-light.webp" alt="Pymss Studio batch audio separation workspace" width="900" />
-</p>
+数据固定放在 `C:\Users\<你>\.mediaforge`（运行时、模型、输出都在这里），**卸载不会删除模型**；
+升级就是重新装一遍新安装包，数据原样保留。换掉运行时版本时应用会提示更新，旧包会被替换。
 
-## About
+## 想用 agent 调它？
 
-Pymss Studio brings the [pymss](https://github.com/pymss-project/pymss) music source-separation engine to a desktop workspace. Download models, import audio, run separation jobs, audition results, and edit stems in one application. Use it for vocal and instrumental extraction, instrument stems, audio cleanup, batch processing, speech transcription, and vocal-to-MIDI conversion.
-
-Separation and editing run locally. Preparing runtimes, models, or optional components requires a network connection; downloaded models can then process local audio.
-
-[Features](#features) · [Download](#download-and-install) · [Quick start](#quick-start) · [Preview](#preview) · [Troubleshooting](#troubleshooting) · [Development](#development-and-verification)
-
-## Features
-
-| Area | Capabilities |
-| --- | --- |
-| Source separation | Import audio, video, or folders; process batches; select model outputs, device, format, folder layout, and naming rules. |
-| Model ensembles | Select multiple models and output stems, configure an ensemble algorithm and weights, and save the combined output. |
-| Model library | Search by name, purpose, architecture, or source; switch card/list views; manage favorites, notes, resumable downloads, storage, and default inference parameters. |
-| Custom models | Import weights and configurations for supported architectures and use existing models in the separation workflow. |
-| Workflows | Arrange separation, audio processing, ensemble, and save steps in the simple editor; use the advanced node editor for flexible connections, parameters, and import/export. |
-| Task queue | Track queued and running jobs, progress and logs; cancel or retry jobs and organize completed session entries. |
-| Results and projects | Review output stems and processing parameters, audition audio, open output folders, and continue in the editor. |
-| Stem editor | Multitrack waveforms, clip editing, transport, volume/pan, mute/solo, fades, track effects, recording, project persistence, asset relinking, and mix export. |
-| Audio tools | Format conversion, audio inspection, SDR / SI-SDR, ASR, vocal-to-MIDI conversion, silence slicing, and audio merging. |
-| Runtimes and settings | Manage platform-appropriate CPU, CUDA, ROCm, and MLX environments; configure download sources, proxies, concurrency, paths, language, zoom, and themes. |
-
-Available stems, parameters, and devices vary by model and runtime. Acceleration depends on the model, hardware, drivers, and task configuration.
-
-## Download and install
-
-Choose a version on [GitHub Releases](https://github.com/pymss-project/pymss-studio/releases), read its release notes, and check **Assets**. If GitHub is inaccessible, use a mirror linked in those release notes.
-
-> [!NOTE]
-> The project is under active development and current releases include prereleases. Read the relevant release notes and back up important projects and settings before upgrading.
-
-### Platforms and runtimes
-
-| Platform / hardware | Runtime or package identifier | Notes |
-| --- | --- | --- |
-| Windows x64, NVIDIA GPU | `windows-x64-cuda` | CUDA requires a compatible GPU and driver. |
-| Windows x64, CPU inference | `windows-x64-cpu` | A starting point when GPU compatibility is uncertain. |
-| Windows x64, supported AMD GPU | `windows-x64-rocm` | Check the selected release's GPU and driver requirements; ROCm has a narrower support range. |
-| Windows x64, smaller initial download | `windows-x64-online` | Includes the bootstrap runtime; install the required inference environment after first launch. |
-| macOS 14+, Apple Silicon | `macos-arm64-mlx` | Uses MLX. Download the DMG and drag the application into `/Applications`. |
-| Linux x64 | `linux-x64-appimage` | The release workflow builds an AppImage; check the selected release's Assets for availability. |
-| Intel Mac | No dedicated release package | The existing MLX package targets Apple Silicon; source builds still require checking inference dependency compatibility. |
-
-Release packages include Python, so end users do not need to install system Python separately. The macOS DMG includes the fixed Python, PyTorch, MLX, and bundled core packages; first launch does not download another Python environment. Open **Settings → Runtime** to inspect the active runtime and update its core. Installing, switching, reinstalling, or deleting an entire environment in the application is available on Windows and Linux.
-
-### File types
-
-| File | Purpose |
-| --- | --- |
-| Windows `*-setup.exe` | Installer; application data defaults to the user directory. |
-| Windows `*.7z` | Portable package. Extract the complete directory and run `Pymss Studio.exe`; keep its runtime and tools directories. |
-| macOS `*.dmg` | Apple Silicon installation image. |
-| Windows `*-update.zip` | Update package for an existing installation, rather than a first-time installer. Follow the corresponding release notes. |
-| Split files such as `*.part-000` | Download every part and follow the release's `SPLIT-ASSETS-README.txt` to merge them before extraction. |
-
-If quarantine attributes prevent a macOS application from a trusted source from opening, apply this command to the installed application:
-
-```bash
-xattr -cr '/Applications/Pymss Studio.app'
-```
-
-## Quick start
-
-1. **Finish onboarding.** Choose language, theme, data directory, and runtime. The Online package needs to finish installing an inference environment.
-2. **Prepare a model.** Open **Models**, download a model for the target source, or import a supported custom model.
-3. **Configure separation.** Open **Separate**, import audio/video files or a folder, then choose the model, output stems, directory, and format. Start with the model's default parameters.
-4. **Run and review.** Select **Start Separation**, monitor progress and logs in the task queue, and audition the finished stems or open **Results**.
-5. **Edit and export.** Open a result in the stem editor, adjust clips, volume, pan, and effects, save the project, and use **Export Mix** to create an audio file.
-
-For a repeatable processing chain, open or create a workflow under **Workflows** in a separate editor window, choose files or a folder on its input nodes and directories on its output nodes, then save and run directly in the editor. Follow node progress on the canvas; edits made during execution apply to the next run. A short input can help confirm the model, device, and outputs before a larger batch.
-
-## Preview
-
-These previews show the main features in English and Chinese, with light and dark themes at 1920 × 1080. Click an image to view it at full size.
-
-| Feature | Light theme | Dark theme |
-| --- | --- | --- |
-| Batch separation and output configuration | <a href="./images/screenshots/separate/batch/en-light.webp"><img src="./images/screenshots/separate/batch/en-light.webp" alt="Batch separation and output configuration" width="420" /></a> | <a href="./images/screenshots/separate/batch/en-dark.webp"><img src="./images/screenshots/separate/batch/en-dark.webp" alt="Batch separation and output configuration" width="420" /></a> |
-| Model library and categories | <a href="./images/screenshots/models/library/en-light.webp"><img src="./images/screenshots/models/library/en-light.webp" alt="Model library and categories" width="420" /></a> | <a href="./images/screenshots/models/library/en-dark.webp"><img src="./images/screenshots/models/library/en-dark.webp" alt="Model library and categories" width="420" /></a> |
-| Simple workflow editor | <a href="./images/screenshots/workflows/simple/en-light.webp"><img src="./images/screenshots/workflows/simple/en-light.webp" alt="Simple workflow editor" width="420" /></a> | <a href="./images/screenshots/workflows/simple/en-dark.webp"><img src="./images/screenshots/workflows/simple/en-dark.webp" alt="Simple workflow editor" width="420" /></a> |
-| Advanced node workflows | <a href="./images/screenshots/workflows/advanced/en-light.webp"><img src="./images/screenshots/workflows/advanced/en-light.webp" alt="Advanced node workflows" width="420" /></a> | <a href="./images/screenshots/workflows/advanced/en-dark.webp"><img src="./images/screenshots/workflows/advanced/en-dark.webp" alt="Advanced node workflows" width="420" /></a> |
-| Results and audio stems | <a href="./images/screenshots/results/en-light.webp"><img src="./images/screenshots/results/en-light.webp" alt="Results and audio stems" width="420" /></a> | <a href="./images/screenshots/results/en-dark.webp"><img src="./images/screenshots/results/en-dark.webp" alt="Results and audio stems" width="420" /></a> |
-| Stem editing and mixing | <a href="./images/screenshots/editor/workspace/en-light.webp"><img src="./images/screenshots/editor/workspace/en-light.webp" alt="Stem editing and mixing" width="420" /></a> | <a href="./images/screenshots/editor/workspace/en-dark.webp"><img src="./images/screenshots/editor/workspace/en-dark.webp" alt="Stem editing and mixing" width="420" /></a> |
-
-<details>
-<summary>Audio tools, settings, and operation dialogs</summary>
-
-| Feature | Light theme | Dark theme |
-| --- | --- | --- |
-| Multi-model ensemble configuration | <a href="./images/screenshots/separate/ensemble/en-light.webp"><img src="./images/screenshots/separate/ensemble/en-light.webp" alt="Multi-model ensemble configuration" width="420" /></a> | <a href="./images/screenshots/separate/ensemble/en-dark.webp"><img src="./images/screenshots/separate/ensemble/en-dark.webp" alt="Multi-model ensemble configuration" width="420" /></a> |
-| Custom model import | <a href="./images/screenshots/models/import/en-light.webp"><img src="./images/screenshots/models/import/en-light.webp" alt="Custom model import" width="420" /></a> | <a href="./images/screenshots/models/import/en-dark.webp"><img src="./images/screenshots/models/import/en-dark.webp" alt="Custom model import" width="420" /></a> |
-| Mix export | <a href="./images/screenshots/editor/export/en-light.webp"><img src="./images/screenshots/editor/export/en-light.webp" alt="Mix export" width="420" /></a> | <a href="./images/screenshots/editor/export/en-dark.webp"><img src="./images/screenshots/editor/export/en-dark.webp" alt="Mix export" width="420" /></a> |
-| ASR speech recognition | <a href="./images/screenshots/tools/asr/en-light.webp"><img src="./images/screenshots/tools/asr/en-light.webp" alt="ASR speech recognition" width="420" /></a> | <a href="./images/screenshots/tools/asr/en-dark.webp"><img src="./images/screenshots/tools/asr/en-dark.webp" alt="ASR speech recognition" width="420" /></a> |
-| Vocal-to-MIDI conversion | <a href="./images/screenshots/tools/midi/en-light.webp"><img src="./images/screenshots/tools/midi/en-light.webp" alt="Vocal-to-MIDI conversion" width="420" /></a> | <a href="./images/screenshots/tools/midi/en-dark.webp"><img src="./images/screenshots/tools/midi/en-dark.webp" alt="Vocal-to-MIDI conversion" width="420" /></a> |
-
-</details>
-
-Screenshots render the current Vue pages with isolated presentation data. Task progress, download states, and waveforms illustrate the interface and do not represent performance measurements.
-
-## Audio tools
-
-Open **Tools** to use these utilities independently of the separation workflow.
-
-| Tool | Capabilities and input requirements |
-| --- | --- |
-| Audio conversion | Batch output to WAV, FLAC, MP3, or OGG, with sample rate, channel, and encoding settings. |
-| Audio inspection | Read containers, audio streams, codec parameters, and metadata tags with FFprobe. |
-| SDR evaluation | Align reference and estimated audio, then calculate per-channel SDR and SI-SDR. Requires corresponding reference audio. |
-| ASR | Use FunASR presets or local models to generate TXT, JSON, and SRT. Supported languages vary by preset. |
-| Vocal to MIDI | Extract pitch and note timing with GAME's native Torch model. Extract a complete GAME model archive, then select its `model.pt`. |
-| Audio slicing | Analyze silence and export clips, with minimum-length, threshold, and boundary-silence settings. |
-| Audio merging | Order a directory's files by name, modification time, or a regular expression, then export a WAV with consistent audio settings. |
-
-The optional FunASR component installs on demand; ASR models download and cache on first use. The ASR tool is currently unavailable on macOS. Download a model archive from the [GAME release](https://github.com/openvpi/GAME/releases/tag/v1.0.0) linked in the MIDI tool. **Keep the complete extracted directory: `model.pt` requires `config.yaml` beside it, and language-conditioned models also require `lang_map.json`.** Do not move the weights alone. Language, output, and parameter options depend on the selected tool and model.
-
-## Plugin marketplace
-
-Open **Plugins** in the sidebar to browse and search the official catalog. Install and activate a Python runtime in Settings first. **Install from source** accepts a plugin name, a Git repository URL, or a local folder; repository subdirectories use `URL#path/to/plugin`.
-
-The Installed tab shows loading errors, operations, and update checks. Marketplace plugins support update, dependency repair, and uninstall. Existing plugins in `~/.pymss/plugins` (or `PYMSS_PLUGINS_DIR`) are also listed, with files and dependencies managed outside the marketplace. Plugins run Python code with your user permissions.
-
-Sources and additional dependencies are stored in `runtime-envs/plugins/<runtime-identity>/installed/` under the application data directory. Dependencies resolve against the active runtime with host versions constrained. Incompatible requirements fail without replacing the working plugin. Updates are staged and verified before activation. Each runtime has its own marketplace installations.
-
-**Run plugin operations** opens Tools → Plugin operations. Plugins must contribute operations through `setup(plugin)`, and the runtime must contain pymss operations support. Legacy capability or graph-node plugins may have no generic operations. Installation does not add dynamic nodes to the Studio workflow editor.
-
-## Data, runtimes, and updates
-
-### Data locations
-
-Settings, models, outputs, projects, logs, and temporary files share a data root. Inspect actual paths under **Settings → Data Directory**; model and output directories can be configured separately.
-
-| Distribution | Default data root |
-| --- | --- |
-| `PYMSS_STUDIO_DATA_ROOT` is set | The supplied path takes priority. |
-| Development binary run directly from Cargo `target/debug` or `target/release` | `data/` in the project root. |
-| Windows portable package with a `pymss-studio.portable` marker beside the executable | `data/` beside the executable. |
-| Regular installed / other release packages | `.pymss-studio/` in the user directory, such as `%USERPROFILE%\.pymss-studio` on Windows. |
-
-The root defaults to `settings/`, `models/`, `outputs/`, `editor-projects/`, `logs/`, and `temp/`. On macOS and Linux, writable runtime state is stored in `runtime-envs/` under this root: `active-runtime.json` selects the current core, `.overlays/` contains core updates and their dependencies, and `optional-packages/` contains separately installed components. On Windows, these paths remain under the selected runtime root's `runtime-envs/`, generally in `python-runtime/runtime-envs/` beside the installation resources. The macOS base Python environment stays inside the application bundle.
-
-**Editor projects reference audio files by path.** Back up the associated audio as well as the project. Relink missing assets in the editor after moving or deleting original outputs. Use the application's migration workflow when changing the model directory.
-
-### Updates and environment management
-
-Open **Settings → About** for version and update information. Windows and macOS builds whose release channel supports in-app updates can check and install updates there. Use the release page for builds without automatic update support. On macOS, an application update replaces the entire `.app`, preserving user data; administrator authorization is requested if write permissions are insufficient. Move the app to `/Applications` before updating: updates are blocked from a read-only DMG or App Translocation location. A change to the fixed base runtime contract requires a manual installation.
-
-Use **Settings → Runtime** to update `pymss`, `pymss-core`, and their compatible dependencies independently of the desktop application. Review the prepared version and dependency plan before confirming. Packages are installed into a new core overlay and activated only after validation; a compatible previous core can be restored when available. Updates that require replacing fixed accelerator components are rejected, preserving the active runtime. Dependency combinations are defined in [`python/runtime-manifest.json`](./python/runtime-manifest.json).
-
-Optional components such as FunASR use their own directories, separate from core overlays. Installation checks compatibility with the current PyTorch version and accelerator backend. On Windows and Linux, uninstalling FunASR removes its separate component directory and any copy installed directly in the active environment; downloaded models are kept. On macOS, component operations preserve packages in the bundled base runtime; the ASR tool remains unavailable. Pip and Numba caches are stored under the data root's `temp/` directory.
-
-On macOS, deleting `Pymss Studio.app` removes the application and bundled runtime while retaining the user data root, including settings, models, outputs, and core overlays. Removing and reinstalling the app therefore reuses retained data. Custom model/output directories and `.pymss-studio-previous-*.app` update backups beside the application must be managed separately.
-
-## Troubleshooting
-
-| Problem | What to check |
-| --- | --- |
-| Model absent from the separation page | Only downloaded models that support inference appear. Check download status, model support, and runtime readiness, then refresh the model list. |
-| GPU missing or inference fails | Confirm the active backend, GPU/driver support, and model compatibility. Compare with CPU inference and inspect task logs. |
-| Insufficient GPU or system memory | Keep task concurrency at 1 initially. Reduce batch or chunk size where supported; parameter meanings vary between architectures. |
-| Runtime or model download fails | Check download source, method, and proxy under **Settings → Defaults**. Runtime installation also offers a PyPI mirror selector. Retry after confirming connectivity. |
-| ASR or MIDI cannot start | Check FunASR installation and ASR model source. For GAME, use the complete extracted directory and check for `config.yaml` and, where needed, `lang_map.json` beside the weights. |
-| Missing project assets | Check whether audio files moved or were deleted, relink them in the editor, and save the project again. |
-| Update fails or a new version behaves unexpectedly | Record version, package type, and errors; read the release notes. Back up projects and settings before manually installing a complete package. |
-
-With developer mode enabled, open **Diagnostics → Logs** to filter by source, level, or task. Studio, Worker, pymss, and external tools have separate source badges. Warnings and errors are highlighted, with expandable tracebacks, code locations, and context. Task, workflow node, download, and installation logs use the same presentation.
-
-Launching the application from a command prompt or terminal also produces readable console logs. Supported terminals use colors for levels and sources; redirected output and `NO_COLOR` omit color codes. Application log files contain one JSON record per line, while historical text in cumulative logs remains readable without conversion.
-
-**Diagnostics → Generate diagnostic report** writes `latest-diagnostic-report.md` with build/session details, recent page and tool visits, operation requests and outcomes, separation parameters, workflow batch/node correlations, task history and graph summaries, editor project/export summaries, model downloads, cached runtime probes, and update events. Requests are captured before validation or worker startup, preserving the selected feature and parameters when an environment is missing or process creation fails.
-
-The report distinguishes observations from this process and saved snapshots, including their observation/save times. Generation does not rerun environment probes or scan media files. It retains at most 24 recent operations and 12 historical tasks, prioritizing active and failed tasks; fields, collections, store reads, and report sections have explicit limits and omission/unavailability notes. Request and configuration summaries use allow-lists and omit transcript text, audio contents, arbitrary graph text, and proxy addresses. Errors and log tails can still contain custom names and paths; review them before sharing.
-
-Automatic error reports coalesce errors within a five-second interval and write the latest error and traceback afterward. Pending errors are flushed before normal application exit. Clearing logs cancels older pending reports.
-
-If no window appears at startup, exit any existing Pymss Studio process, open CMD in the installation directory, and enable verbose logging before the interface loads:
-
-```cmd
-start "" /b /wait "Pymss Studio.exe" --debug
-```
-
-To save console output, run `start "" /b /wait "Pymss Studio.exe" --debug > "%TEMP%\pymss-startup.log" 2>&1`. The flag enables verbose Studio and Worker logs for this process without changing the saved developer mode setting. A subsequent launch without the flag uses the original logging level. Exit an existing process before relaunching with the flag. On macOS and Linux, pass `--debug` directly to the application executable.
-
-For unresolved issues, include application version and package type, OS version, GPU model, separation model, reproduction steps, and relevant log excerpts in [GitHub Issues](https://github.com/pymss-project/pymss-studio/issues). Remove personal paths, proxy credentials, and other sensitive information from logs before sharing.
-
-## Development and verification
-
-### Prerequisites
-
-- Node.js 22, matching CI, and `pnpm@10.33.2`.
-- Rust stable / Cargo and [Tauri's platform prerequisites](https://v2.tauri.app/start/prerequisites/): C++ build tools and WebView2 on Windows, Xcode Command Line Tools on macOS, and the appropriate WebKitGTK/system libraries on Linux.
-- Python 3.12. Audio features use media tools such as FFmpeg / FFprobe; release scripts stage these tools for packaged builds.
-
-```bash
-git clone https://github.com/pymss-project/pymss-studio.git
-cd pymss-studio
-pnpm install --frozen-lockfile
-```
-
-For a first full desktop development session on Windows, prepare bootstrap Python, then install and activate an inference environment through onboarding or **Settings → Runtime**. Initial installation needs network access, and download size depends on the backend. The commands below prepare only the bootstrap interpreter. On Linux, install an inference environment through onboarding or **Settings → Runtime**. On macOS, prepare a compatible inference runtime separately or reuse a prepared bundled runtime. Download model weights separately in the model library.
-
-Windows PowerShell:
+安装包自带 DeepSeek Harness 集成（`<安装目录>\integrations\dsh-mediaforge`），**安装时若检测到 Harness 会自动登记**。
+如果你是「先装应用、后装 Harness」，补跑一次即可：
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "requests[socks]>=2.32,<3"
-$env:PYMSS_STUDIO_PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
-pnpm tauri dev
+powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\register.ps1"
 ```
 
-macOS / Linux:
+然后重启 Harness，新对话里说「用 mediaforge 列一下模型」。自检命令：
 
-```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install "requests[socks]>=2.32,<3"
-export PYMSS_STUDIO_PYTHON="$PWD/.venv/bin/python"
-pnpm tauri dev
+```powershell
+powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\verify.ps1"
 ```
 
-You can reuse an existing bundled runtime or activated environment. Overriding bootstrap Python does not force replacement of an active inference environment. Media features in development also need FFmpeg / FFprobe on `PATH` or in a prepared tools directory.
+## 当前进度
 
-### Commands
+- [x] Fork、独立仓库、MediaForge 品牌壳
+- [x] FFmpeg 媒体后端：`probe`、视频/音频/图片转码、提取音频、GIF
+- [x] `/factory` 格式工厂页面：文件选择、输出格式、CRF/预设、进度、结果
+- [x] 复用 PyMSS worker 事件协议（`audio_tool_progress` / `audio_tool_result`）
+- [x] Tauri release 构建通过
+- [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
+- [x] 统一模型库：音频 + 图像/视频 30 个条目（21 个可用），统一检索、状态与下载
+- [x] 音频模型与图像/视频模型合并为同一目录
+- [x] 侧栏常驻运行状态：任务进度、队列、设备、最近失败
+- [x] 图像超分/去水印：Real-ESRGAN + YOLO + LaMa，支持目标分辨率与前后对比
+- [x] 视频抽帧修复管线（超分/去水印 + 音频回封）
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm dev` | Frontend server on port `1420` for UI development and browser previews. |
-| `pnpm tauri dev` | Full desktop application with frontend hot reload and Rust / Python orchestration. |
-| `pnpm build` | TypeScript checks and the frontend production build. |
-| `pnpm tauri build` | Desktop build; runs the frontend build first. A complete inference runtime must be prepared separately. |
-| `pnpm test` / `pnpm test:frontend` | Frontend logic tests. |
-| `pnpm test:python` | Python Worker module tests. |
-| `pnpm test:rust` | Rust backend tests. |
-| `pnpm test:all` | Run the three layers sequentially after preparing their dependencies. |
+## 已实现能力
 
-For documentation changes, verify content and links. Frontend changes should run relevant tests and `pnpm build`; Worker/backend changes should run the corresponding layer's tests. CI uses Node.js 22, Python 3.12, and Rust stable, and runs `pnpm test:all` plus the frontend build.
+### 格式工厂
 
-<details>
-<summary>Python Worker debugging and environment variables</summary>
+页面：`#/factory`
 
-Use a dedicated Python 3.12 environment for standalone Worker debugging. Prepare compatible Torch and `pymss` dependencies for the selected backend first. [`python/requirements.txt`](./python/requirements.txt) describes Worker development dependencies; [`python/requirements-ci.txt`](./python/requirements-ci.txt) describes CI test dependencies. Managed application environments follow the runtime manifest.
+- 输入：MP4 / MOV / MKV / AVI / WebM / MP3 / WAV / FLAC / M4A / AAC / OGG / JPG / PNG / WEBP / GIF
+- 输出：MP4 / MKV / WebM / MP3 / WAV / FLAC / M4A / OGG / JPG / PNG / WEBP / GIF
+- 视频：H.264 / VP9，CRF 与 preset
+- 音频：MP3 / AAC / FLAC / WAV / Vorbis
+- 图片：首帧导出、图片转视频（默认 3 秒）
+- 进度、失败隔离、输出文件列表
 
-```bash
-python python/worker.py --help
-python python/worker.py env_info
-python python/worker.py list_models --payload '{}'
-```
-
-These commands use the terminal's current Python interpreter, rather than automatically selecting the desktop application's active environment. Use the bundled or active environment's Python path when verifying a release package.
-
-| Variable | Purpose |
-| --- | --- |
-| `PYMSS_STUDIO_DATA_ROOT` | Override the application data root. |
-| `PYMSS_STUDIO_PYTHON` | Override bootstrap Python. Without an override, the backend tries the bundled runtime, then system `python` on Windows or `python3` elsewhere. Inference may still use an activated environment. |
-| `PYMSS_STUDIO_DEFAULT_OUTPUT_DIR` | Worker output fallback when none is specified; the desktop application passes its configured output directory to the Worker. |
-
-</details>
-
-<details>
-<summary>Architecture, repository layout, and releases</summary>
-
-| Layer | Stack and responsibilities |
-| --- | --- |
-| Frontend | Vue 3, TypeScript, Vite, Pinia, Vue Router, Vue I18n, and Naive UI; workflow node editing uses LiteGraph. |
-| Desktop backend | Tauri v2 and Rust for dialogs, process orchestration, persistence, updates, and windows. |
-| Worker | Python JSON protocol for models, inference, workflows, and audio processing. |
-| Separation engine | External `pymss` / `pymss-core` packages. This repository integrates the desktop application rather than implementing core separation algorithms. |
-
-```mermaid
-flowchart LR
-  UI[Vue / Naive UI] --> API[Tauri / Rust]
-  API --> Worker[Python Worker]
-  Worker --> Core[pymss / pymss-core]
-  Core --> Audio[Separated stems]
-  Audio --> Editor
-  UI --> Editor[Stem editing and mix export]
-```
+后端：
 
 ```text
-.
-├── src/                   # Views, components, stores, workflows, tools, and i18n
-├── src-tauri/             # Rust backend, desktop configuration, and bundled resources
-├── python/                # Worker, audio modules, and runtime manifest
-├── tests/                 # Frontend/Python tests, manual checks, and fixtures
-├── scripts/               # Runtime preparation and release checks
-├── .github/workflows/     # CI and Windows/macOS release pipelines
-├── installer/             # Windows installer resources
-└── images/screenshots/    # English/Chinese light/dark screenshots
+python/media_ops/
+├─ ffmpeg.py        # ffprobe / ffmpeg 封装
+├─ library.py       # SQLite 素材索引 + 缩略图
+├─ image_ops.py     # Real-ESRGAN / YOLO / LaMa
+├─ image_worker.py  # 图像任务命令
+├─ video_ops.py     # 抽帧 / 逐帧修复 / 合帧
+├─ video_worker.py  # 视频任务命令
+├─ media_catalog.json  # 图像/视频模型清单
+├─ audio_catalog.json  # 音频模型清单（pinned）
+├─ model_hub.py      # 统一模型目录 / 状态 / 下载
+├─ operation_kernel.py # 共享任务、取消、工作区
+├─ agent_bridge.py   # MCP stdio / HTTP bridge
+├─ media_ops/capabilities.py # 能力 / 模型角色 / pipeline
+├─ model_hub_worker.py # 模型库命令
+├─ worker.py        # worker 命令与事件
+└─ __init__.py
 ```
 
-Windows releases prepare bootstrap Python and a backend environment, build the Tauri executable, stage the Worker/runtime/media tools, and create installers and portable archives. macOS releases prepare arm64 MLX and media tools before creating a DMG.
+### 素材台
+
+页面：`#/assets`
+
+- SQLite 索引（默认 `%APPDATA%/MediaForge/library.db`）
+- 缩略图缓存（`%APPDATA%/MediaForge/thumbnails`）
+- 导入文件/文件夹，支持拖拽
+- 搜索名称/路径/标签，按图片/视频/音频筛选
+- 一键「去格式工厂」带着素材跳转
+- 移除只删索引，不删原文件
+- 后端命令：`media_library`（`list` / `import` / `remove` / `tags` / `stats`）
+
+### 图像处理
+
+页面：`#/image`
+
+- 6 个能力：超分、去噪、抠图、深度、检测、插帧（能力与模型都从后端读取）
+- 超分 12 个模型可选（Real-ESRGAN / Real-CUGAN / SwinIR / ESRGAN 社区权重），或 1080p / 2K / 4K / 自定义目标分辨率
+- 适配方式：等比、留黑边、拉伸、裁剪填满
+- YOLO11x 水印检测 + LaMa 修复，阈值/遮罩扩展可调
+- 前后对比滑块、处理信息（输出尺寸、检测框、耗时、设备）
+- 支持从素材台带图进入
+- 模型目录可单独指定，留空使用 `models/` 或 `MEDIAFORGE_MODEL_DIR`
+
+需要的权重：
+
+```text
+watermark_yolo11x.pt
+big-lama.pt
+RealESRGAN_x2plus.pth
+RealESRGAN_x4plus.pth
+```
+
+### 视频处理
+
+页面：`#/video`
+
+- FFmpeg 抽帧 → 逐帧去水印/超分 → H.264 合帧 + 原音频回封
+- 逐帧超分（4×）、整段视频插帧（RIFE，2×）、水印修复
+- 固定遮罩（快）/ 逐帧检测（移动水印）
+- 1080p / 2K / 4K / 自定义目标分辨率
+- 支持只处理前 N 秒预览
+- 输出 MP4，AAC 音频，保留原始帧率
+- 支持从素材台带视频进入
+
+### 模型库
+
+页面：`#/models`
+
+一个页面、一个目录、一个下载通道：
+
+- 音频模型 + 图像/视频 30 个条目：21 个可用、9 个已标注阻塞原因
+- 图像/视频覆盖 6 个能力（超分 12、去噪 2、抠图 1、深度 1、检测 1、插帧 1，另有 LaMa 修复与水印检测）
+- 每个可用模型都写过 SPDX 许可与体积；选型建议见 `docs/model-guide.md`
+- 图像/视频支持自定义流程：按能力添加步骤、每个角色绑定模型
+- 旧“去水印 + 超分”保留为预设，不再是唯一能力
+- 视频 Tab 同时包含 4 个逐帧复用的图像模型和 3 个原生视频模型
+- 按模态筛选：全部 / 音频 / 图像 / 视频
+- 搜索名称、分类、架构；仅看已下载
+- 统一显示下载状态、大小、许可证、运行依赖
+- 音频走 pymss 源，图像/视频走各自官方源
+- 浏览/状态/下载不需要 pymss 推理环境
+- 运行依赖不满足时只看不跑；安装 runtime 后才能推理
+- 旧音频高级管理页保留在 `/models/audio-legacy`
+
+### Agent / MCP
+
+本地 MCP bridge：`python/agent_bridge.py`
 
 ```powershell
-./scripts/prepare-python-runtime.ps1 -Variant cuda -InitialBackend cuda
-./scripts/prepare-python-runtime.ps1 -Variant default -InitialBackend cpu
+.\scripts\start-mcp.ps1        # HTTP，127.0.0.1:1421
+.\scripts\start-mcp.ps1 -Dev   # 使用 .dev-data
 ```
 
-These are alternative runtime preparation examples; select one rather than running them sequentially. Preparation writes `python-runtime/`, requires network access, and involves large downloads. See the [Windows](./.github/workflows/release-windows.yml) and [macOS](./.github/workflows/release-macos.yml) workflows for complete staging, signing, validation, and asset splitting.
+DSH 集成 bundle：`integrations/dsh-mediaforge`
 
-</details>
+安装后 DSH 可直接调用：
 
-## Future directions
+```text
+mcp__mediaforge__probe
+mcp__mediaforge__convert
+mcp__mediaforge__pipeline_plan
+mcp__mediaforge__job_status
+mcp__mediaforge__models_list
+mcp__mediaforge__models_download
+mcp__mediaforge__capabilities_list
+mcp__mediaforge__pipeline_start
+```
 
-- Continue improving Intel / AMD model compatibility, runtime validation, and packaging.
-- Explore iOS / Android GPU and NPU inference. Mobile support is a future research direction; no mobile application release is currently provided.
+MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Agent 是下一阶段。
 
-## Community and contributing
+协议冒烟测试（临时 profile，不碰用户数据）：
 
-Use [GitHub Issues](https://github.com/pymss-project/pymss-studio/issues) for bug reports and [GitHub Discussions](https://github.com/pymss-project/pymss-studio/discussions) for features and usage discussions. Chinese-speaking users can also join the [Pymss Studio community group](https://qm.qq.com/q/YLLou4NucE).
+```powershell
+.\scripts\smoke-mcp.ps1
+```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution options and the current policy on external pull requests. Reproduction reports, compatibility checks, documentation, and shared usage experience help improve the project.
+页面：`#/agent`
 
-## License
+- 读取 `agent-jobs/index.json` 和 `agent-workspace.json`
+- 手动图像/视频/格式工厂任务也会写入同一索引
+- 音频分离批次同样写入同一索引，可在 Agent 页观察和取消
+- 手动用户可以看到 Agent 通过 MCP 启动的任务，也可以取消
+- Agent 先查 `models_list`，计划缺模型时用 `models_download` 下载；下载前应由用户确认
+- 手动任务从 Agent 页取消时会走 `cancel_task`，Agent 任务走 `cancel_agent_job`
 
-Pymss Studio is licensed under the GNU Affero General Public License v3.0. See [LICENSE](./LICENSE). Dependencies, model weights, and third-party tools retain their own licenses and usage terms.
+### 运行状态
+
+侧栏底部常驻状态胶囊：
+
+- 空闲：绿点
+- 运行中：蓝点 + 百分比 + 底部细进度线
+- 排队：显示队列数量
+- 失败：红色状态
+- 点击展开：当前任务、阶段、设备、运行/队列/失败计数、最近错误
+
+### 保留的 PyMSS 能力
+
+- 音频分离、模型库、下载器（ModelScope / HuggingFace / hf-mirror）
+- 任务队列、工作流、音轨编辑器
+- 音频工具：转换、检测、响度、ASR、MIDI、切片、合并
+
+## 模型下载
+
+图像/视频权重按需下载（单个 5 MB – 300 MB 不等）：
+
+```bash
+python download_models.py
+# 国内网络
+python download_models.py --proxy http://127.0.0.1:7897
+```
+
+下载到 `models/`。也可以在图像页选择其他模型目录。权重不随仓库分发，请遵守各自许可证。
+
+## 三套运行环境
+
+> 强制规则见 [DEVELOPMENT.md](DEVELOPMENT.md)。
+
+| 环境 | 启动方式 | 数据 / 缓存 | 用途 |
+| --- | --- | --- | --- |
+| 开发 | `.\scripts\dev.ps1` | `.dev-data/`、`.dev-webview/` | 日常改代码、看实际效果 |
+| 干净包验证 | `.\scripts\clean-test.ps1 -Exe "%LOCALAPPDATA%\Programs\MediaForge\MediaForge.exe"` | 系统临时目录，关闭即删 | 验证“首次启动、无个性化配置”的发布包 |
+| 狗粮 / 长期用户 | `.\scripts\dogfood.ps1 -Exe "%LOCALAPPDATA%\Programs\MediaForge\MediaForge.exe"` | 用户目录 `.mediaforge` + 默认 WebView2 | 模拟真实用户持续使用与跨版本更新 |
+
+> `src-tauri/target/release` 会被应用识别为开发构建。干净包验证和狗粮必须指向**安装后的 exe**，不能用 target 下的产物。
+
+### 清理
+
+```powershell
+# 清开发 profile（推荐）
+.\scripts\reset-dev.ps1
+
+# 连旧的 data/ 一起清
+.\scripts\reset-dev.ps1 -IncludeLegacyProjectData
+```
+
+- `clean-test.ps1` 的临时 profile 会在窗口关闭后自动删除
+- `dogfood` 的数据**故意不清理**，否则无法测试升级/迁移
+- 要重置狗粮环境：卸载应用后删除用户目录 `.mediaforge` 和 `%LOCALAPPDATA%\studio.mediaforge.desktop`
+- 做跨版本升级测试时，建议用**独立 Windows 本地账户**或虚拟机跑狗粮，避免和开发账户互相影响
+
+## 开发
+
+前置：
+
+- Node.js 24+、pnpm 10+
+- Rust stable（Tauri 2）
+- Windows：Visual Studio C++ Build Tools
+- FFmpeg / ffprobe 在 `PATH`，或设置 `MEDIAFORGE_FFMPEG` / `MEDIAFORGE_FFPROBE`
+
+```bash
+pnpm install
+pnpm dev          # 仅前端，端口 1420
+pnpm tauri dev    # 完整桌面应用
+pnpm build        # vue-tsc + vite build
+pnpm tauri build --no-bundle
+```
+
+### 开发 profile 与用户数据隔离
+
+开发时不要使用正式用户目录：
+
+```powershell
+# 隔离 profile 启动（数据在 .dev-data，WebView2 在 .dev-webview）
+.\scripts\dev.ps1
+
+# 清空开发 profile 后重新启动
+.\scripts\dev.ps1 -Clean
+```
+
+隔离脚本会设置：
+
+```text
+MEDIAFORGE_DATA_ROOT
+MEDIAFORGE_DATA_DIR
+MEDIAFORGE_MODEL_DIR
+WEBVIEW2_USER_DATA_FOLDER
+```
+
+规则：
+
+- `data/`：旧开发数据，已 ignore
+- `.dev-data/`：隔离开发数据，已 ignore
+- `.dev-webview/`：隔离 WebView2 缓存，已 ignore
+- 正式版数据：用户目录下的 `.mediaforge`
+- 模型、日志、索引、下载记录都不进 Git
+- `scripts/reset-dev.ps1` 只清理项目内开发目录，不碰正式用户数据
+
+首次启动引导已移除；启动直接进入工作区。
+
+测试时我使用隔离 profile 或临时 `MEDIAFORGE_DATA_ROOT`，不会把测试偏好写进正式配置。
+
+后端单测方式（先生成一个测试 payload）：
+
+```bash
+cd python
+python worker.py audio_tools --payload payload.json
+```
+
+`payload.json` 示例：
+
+```json
+{
+  "operation": "media_convert",
+  "requestId": "test-1",
+  "inputs": ["C:/path/input.mp4"],
+  "outputDir": "C:/path/out",
+  "format": "mp4",
+  "crf": 20,
+  "preset": "medium"
+}
+```
+
+## 目录
+
+```text
+src/                     Vue 3 前端
+src/views/FactoryView.vue
+src/views/AssetsView.vue
+src/views/ImageView.vue
+src/views/VideoView.vue
+src/views/ModelHubView.vue
+src/router/routes.ts
+src/components/SideNav.vue
+src/i18n/                zh-CN / en
+python/                  Python worker
+python/media_ops/        FFmpeg 媒体后端
+python/worker_tools.py   media_* 命令路由
+src-tauri/               Tauri 2 / Rust
+```
+
+## 许可证与上游
+
+- 本项目沿用 **AGPL-3.0**（完整文本见 [LICENSE](LICENSE)）。
+- 基于 [pymss-project/pymss-studio](https://github.com/pymss-project/pymss-studio) fork，保留上游版权与许可证。
+- 音频推理核心来自 [pymss-project/pymss](https://github.com/pymss-project/pymss)。
+- 随包分发的第三方组件（FFmpeg、aria2、Python 运行时、RIFE 代码）与它们的许可证见 [NOTICE](NOTICE)。
+- 模型权重各自遵循自己的许可证：每个模型的 SPDX 标识写在 `python/media_ops/media_catalog.json`，
+  可读版本见 [docs/model-guide.md](docs/model-guide.md)（其中 `BRIA-1.4-NC` 为非商业许可）。
+- 安全策略见 [SECURITY.md](SECURITY.md)，参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 上游 README 与完整音频功能文档见上游仓库。

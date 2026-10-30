@@ -14,6 +14,9 @@ const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
 const modelsTemplate = parse(readFileSync(modelsPath, 'utf8')).descriptor.template?.content || ''
 const scriptSource = descriptor.scriptSetup.content
 const script = ts.createSourceFile('SeparateView.ts', scriptSource, ts.ScriptTarget.Latest, true)
+// 后 4 个名字（workflowValidationError / workflowDefinitionError /
+// selectRunnableWorkflow / workflowIssueSummary）在 c27d06c 与 2a14e40 里
+// 随"移除音频任务的工作流选择器"一起删掉了，这里同步清理，否则测试永远红。
 const names = new Set([
   'modelPanelHasModels',
   'modelPanelLoading',
@@ -28,10 +31,6 @@ const names = new Set([
   'applyCurrentModelInferenceDefaults',
   'saveCurrentModelInferenceDefaults',
   'resetCurrentModelInferenceDefaults',
-  'workflowValidationError',
-  'workflowDefinitionError',
-  'selectRunnableWorkflow',
-  'workflowIssueSummary',
 ])
 const selected = script.statements.filter(statement => (
   ts.isFunctionDeclaration(statement) ? names.has(statement.name?.text)
@@ -184,85 +183,6 @@ function computed(source) {
 function ref(value) {
   return { value }
 }
-
-test('separation offers saved workflow execution alongside the existing model mode', () => {
-  assert.ok(template.includes(`<div v-if="runMode === 'model'" key="model"`))
-  assert.ok(template.includes('<div v-else key="workflow"'))
-  assert.ok(template.includes('v-model:value="runMode"'))
-  assert.ok(scriptSource.includes("if (route.query.mode === 'workflow') runMode.value = 'workflow'"))
-  assert.equal(scriptSource.includes("runMode.value = 'model'"), false)
-  assert.equal(scriptSource.includes("router.replace('/workflows')"), false)
-})
-
-for (const format of ['simple', 'graph']) {
-  test(`separation submits the selected ${format} workflow without inheriting model or Ensemble settings`, async () => {
-    const selected = { id: format, name: format, definition: { format } }
-    const calls = []
-    const context = {
-      computed, runMode: ref('workflow'), selectedWorkflow: ref(selected),
-      outputDirectoryError: ref(''), normalizedOutputDir: ref('D:/Outputs'), effectiveOutputLayout: ref('flat'),
-      ensembleEnabled: ref(true), ensembleReady: ref(false), modelDownloaded: ref(false),
-      hasOutputStemSelection: ref(false), inputFiles: ref(['D:/Audio/song.wav']),
-      submittingJob: ref(false), focusedSeparationJobId: ref(null), composingNewJob: ref(true),
-      workflowValidationError: () => '', settings: { clearInputAfterSubmit: false },
-      task: { async startWorkflowInference(...args) { calls.push(args); return { jobId: 'workflow-job', succeeded: 1, failed: 0 } } },
-      message: { success() {}, warning(value) { assert.fail(value) }, error(value) { assert.fail(value) } }, t: key => key,
-    }
-    const startDeclaration = script.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === 'start')
-    const startCode = ts.transpileModule(startDeclaration.getText(script), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-    await vm.runInNewContext(`${startCode}\nstart`, context)()
-    assert.equal(calls.length, 1)
-    assert.equal(calls[0][0], selected)
-    assert.equal(calls[0][1].outputDir, 'D:/Outputs')
-    assert.equal(calls[0][1].outputLayout, 'flat')
-    assert.equal(calls[0][1].outputNaming, undefined)
-    assert.equal(context.focusedSeparationJobId.value, 'workflow-job')
-    assert.equal(context.composingNewJob.value, false)
-    assert.equal(context.submittingJob.value, false)
-  })
-}
-
-test('an unfinished selected workflow cannot block single-model separation', () => {
-  const context = { runMode: { value: 'model' }, selectedWorkflow: { value: { definition: { steps: [] } } },
-    workflowDefinitionError: () => 'invalid-workflow', computed }
-  const check = vm.runInNewContext(`${code}\nworkflowValidationError`, context)
-  assert.equal(check(), '')
-})
-
-test('changing a selected workflow to multiple inputs disables submission with an actionable reason', async () => {
-  const input = { id: 1, type: 'pymss_load_audio' }
-  const selectedWorkflow = ref({ definition: { nodes: [input], links: [] } })
-  const warnings = []
-  const context = {
-    computed, runMode: ref('workflow'), selectedWorkflow,
-    getSeparateWorkflowInputIssue, getWorkflowDefinitionIssue: () => null,
-    t: (key, params) => `${key}:${params?.count ?? ''}`,
-    submittingJob: ref(false), inputFiles: ref(['D:/Audio/song.wav']),
-    temporaryOutputDir: ref(''), normalizedOutputDir: ref('D:/Outputs'), outputDirectoryPlatform: ref('windows'),
-    message: { warning: value => warnings.push(value) },
-  }
-  const result = vm.runInNewContext(`${code}\n${outputDirectoryCode}\n({ start, canStart, workflowValidationError })`, context)
-  context.workflowStructureInvalid = computed(() => Boolean(result.workflowValidationError()))
-  assert.equal(result.canStart.value, true)
-  selectedWorkflow.value.definition.nodes.push({ ...input, id: 2 })
-  assert.equal(result.canStart.value, false)
-  await result.start()
-  assert.deepEqual(warnings, ['separate.workflowMultipleInputs:2'])
-})
-
-test('incompatible workflows cannot be selected for separation', () => {
-  const calls = []
-  const context = {
-    computed,
-    getSeparateWorkflowInputIssue, getWorkflowDefinitionIssue: () => null,
-    workflowIssueMap: ref(new Map([['multi', 'multiple inputs']])),
-    workflowIssue: item => item.id === 'multi' ? 'multiple inputs' : '',
-    workflow: { selectWorkflow: id => calls.push(['select', id]) },
-  }
-  const result = vm.runInNewContext(`${code}\n({ selectRunnableWorkflow })`, context)
-  result.selectRunnableWorkflow({ id: 'multi' })
-  assert.deepEqual(calls, [])
-})
 
 test('model panel shows cached rows while refreshing them in the background', () => {
   const context = {

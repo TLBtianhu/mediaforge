@@ -10,8 +10,10 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator
 from uuid import uuid4
+from types import SimpleNamespace
 
-from worker_audio import _apply_stereo_pan, _equal_power_fade, _read_audio, _resample_audio
+import worker_paths
+
 from worker_models import (
     _derive_overlap_size_from_num_overlap,
     auxiliary_paths_for,
@@ -23,6 +25,7 @@ from worker_models import (
 from worker_protocol import ProtocolLogHandler, _as_bool, _as_float, _as_int, current_log_task_id, emit, emit_error, task_logging
 from worker_inference_constraints import InferenceParameterError, validate_chunk_size
 from worker_paths import normalize_output_dir as _normalize_output_dir
+from separation import PymssBackend
 
 
 class ModelNotFoundError(RuntimeError):
@@ -421,22 +424,6 @@ def _emit_inference_error(exc: Exception, task_id: str) -> int:
         )
     return emit_error("INFERENCE_FAILED", message, traceback.format_exc(), task_id=task_id)
 
-def _close_separator(separator: Any) -> None:
-    if separator is None:
-        return
-    close = getattr(separator, "close", None)
-    if callable(close):
-        try:
-            close()
-        except Exception:
-            pass
-    else:
-        try:
-            separator.del_cache()
-        except Exception:
-            pass
-
-
 def _normalize_selected_stems(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -497,6 +484,71 @@ def _resolve_separator_device(device: Any, device_ids: Any) -> tuple[str, list[i
     return "auto", normalized_ids, f"cuda:{normalized_ids[0]}"
 
 
+def _resolve_audio_catalog_record(model_name: str) -> dict[str, Any] | None:
+    """按 `audio:xxx` / label / name 从音频模型库找到记录。
+
+    为什么需要：`models_list` 用的是音频模型库（326 条，id 形如 `audio:HTDemucs4.th`），
+    而分离走的是 pymss 自己的模型索引——两套命名不一致，agent 拿到列表里的 id 直接调
+    `audio.separate` 会报 "Unknown pymss model"。这里补一层映射。
+    """
+    try:
+        from model_hub import list_models  # 局部导入：只有音频路径才需要
+    except Exception:
+        return None
+    try:
+        data = list_models(modality="audio")
+    except Exception:
+        return None
+    wanted = str(model_name or "").strip().lower()
+    if not wanted:
+        return None
+    aliases = {wanted}
+    if wanted.startswith("audio:"):
+        aliases.add(wanted[len("audio:"):])
+    for record in data.get("models") or []:
+        names = {
+            str(record.get("id") or "").strip().lower(),
+            str(record.get("label") or "").strip().lower(),
+            str(record.get("name") or "").strip().lower(),
+        }
+        names.discard("")
+        if names & aliases:
+            return record
+    return None
+
+
+def _resolved_from_audio_record(record: dict[str, Any], model_dir: str | None, model_name: str) -> dict[str, Any]:
+    files = [entry for entry in (record.get("files") or []) if isinstance(entry, dict)]
+    weights = next(
+        (entry for entry in files if not str(entry.get("path") or "").lower().endswith((".yaml", ".json", ".txt"))),
+        None,
+    )
+    config = next(
+        (entry for entry in files if str(entry.get("path") or "").lower().endswith((".yaml", ".yml", ".json"))),
+        None,
+    )
+    if weights is None:
+        raise FileNotFoundError(f"{model_name!r} has no weight file in the audio catalog")
+    root = worker_paths.model_root(model_dir)
+    model_path = root / str(weights["path"])
+    config_path = root / str(config["path"]) if config else None
+    missing = [str(path) for path in (model_path, config_path) if path is not None and not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Model {model_name!r} is missing required file(s): {', '.join(missing)}")
+    return {
+        "entry": SimpleNamespace(
+            name=str(record.get("name") or model_name),
+            model_type=str(record.get("task") or ""),
+            supported=True,
+        ),
+        "model_type": str(record.get("task") or ""),
+        "model_path": str(model_path),
+        "config_path": str(config_path) if config_path else None,
+        "auxiliary_paths": [],
+        "target_instrument_override": None,
+    }
+
+
 def _resolve_studio_model(
     model_name: str,
     model_dir: str | None,
@@ -504,7 +556,13 @@ def _resolve_studio_model(
     require_supported: bool,
     require_exists: bool,
 ) -> dict[str, Any]:
-    entry = get_any_model_entry(model_name)
+    try:
+        entry = get_any_model_entry(model_name)
+    except KeyError:
+        record = _resolve_audio_catalog_record(model_name)
+        if record is None:
+            raise
+        return _resolved_from_audio_record(record, model_dir, model_name)
     if require_supported and not bool(getattr(entry, "supported", True)):
         reason = str(getattr(entry, "unsupported_reason", "") or "unsupported")
         raise RuntimeError(f"Model {model_name!r} is not supported: {reason}")
@@ -812,7 +870,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
         })
 
     cleanup = ExitStack()
-    separator = None
+    backend = None
     active_task_id: str | None = None
     terminal_task_ids: set[str] = set()
     failed = False
@@ -858,18 +916,20 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
             root_task_id,
             task_id_provider=current_log_task_id,
         ))
-        separator = _prepare_separator(
+        # 业务层只认 SeparationBackend；pymss 的方法名收在 separation.py 里。
+        backend = PymssBackend(lambda: _prepare_separator(
             payload={**payload, "output": output_root, "saveAsFolder": save_as_folder},
             task_id=root_task_id,
             progress_callback=emit_batch_progress,
             logger=logger,
-        )
+        ))
+        backend.prepare()
         for item in batch_tasks:
             task_id = item["taskId"]
             active_task_id = task_id
             with task_logging(task_id):
                 emit("task_stage", {"stage": "separating", "message": "Separating"}, task_id=task_id)
-                success_files = separator.process_folder(item["input"], int(item.get("inputIndex") or 1))
+                success_files = backend.separate(item["input"], int(item.get("inputIndex") or 1))
                 if Path(item["input"]).name not in {Path(name).name for name in success_files}:
                     emit_error("INFERENCE_FAILED", f"Batch separation did not produce outputs for {Path(item['input']).name}", task_id=task_id)
                     terminal_task_ids.add(task_id)
@@ -877,7 +937,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
                     continue
                 task_output = resolve_pymss_output_dir(output_root, success_files, item["input"], save_as_folder)
                 emit("task_stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
-                outputs = separator.studio_outputs()
+                outputs = backend.outputs()
                 emit("task_done", {
                     "files": [output["path"] for output in outputs],
                     "outputs": outputs,
@@ -894,7 +954,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
                 _emit_inference_error(exc, item["taskId"])
         return 1
     finally:
-        _close_separator(separator)
+        backend.close()
         cleanup.close()
 
 
@@ -950,7 +1010,7 @@ def cmd_infer(payload: dict[str, Any]) -> int:
             "total": total_value,
         }, task_id=task_id)
 
-    separator = None
+    backend = None
     cleanup = ExitStack()
     try:
         emit("task_started", {"model": model_name, "input": input_path, "output": task_output}, task_id=task_id)
@@ -959,7 +1019,8 @@ def cmd_infer(payload: dict[str, Any]) -> int:
 
         logger = cleanup.enter_context(separation_logging(task_id))
 
-        separator = _prepare_separator(
+        # 业务层只认 SeparationBackend；pymss 的方法名收在 separation.py 里。
+        backend = PymssBackend(lambda: _prepare_separator(
             payload={
                 **payload,
                 "output": output_dir,
@@ -968,14 +1029,15 @@ def cmd_infer(payload: dict[str, Any]) -> int:
             task_id=task_id,
             progress_callback=emit_separation_progress,
             logger=logger,
-        )
+        ))
+        backend.prepare()
         emit("task_stage", {"stage": "separating", "message": "Separating"}, task_id=task_id)
-        success_files = separator.process_folder(input_path, int(payload.get("inputIndex") or 1))
+        success_files = backend.separate(input_path, int(payload.get("inputIndex") or 1))
         if Path(input_path).name not in {Path(name).name for name in success_files}:
             return emit_error("INFERENCE_FAILED", f"Separation did not produce outputs for {Path(input_path).name}", task_id=task_id)
         emit("task_stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
         task_output = resolve_pymss_output_dir(output_dir, success_files, input_path, save_as_folder)
-        outputs = separator.studio_outputs()
+        outputs = backend.outputs()
         emit("task_done", {"files": [output["path"] for output in outputs], "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputRoot": output_dir, "outputFormat": output_format}, task_id=task_id)
         return 0
     except ModelNotFoundError as exc:
@@ -985,5 +1047,5 @@ def cmd_infer(payload: dict[str, Any]) -> int:
     except Exception as exc:
         return _emit_inference_error(exc, task_id)
     finally:
-        _close_separator(separator)
+        backend.close()
         cleanup.close()

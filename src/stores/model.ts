@@ -21,6 +21,8 @@ const studioLog = createLogger('ui.stores.model')
 export type ModelEntry = {
   name: string
   aliases: string[]
+  capabilities?: string[]
+  roles?: string[]
   modelType: string | null
   architecture: string
   supported: boolean
@@ -61,6 +63,12 @@ export type ModelEntry = {
   defaultInferenceParamsResolved?: boolean
   defaultInferenceParamsSource?: 'config' | 'runtime_fallback'
   inferenceParamMeta?: InferenceParamMeta
+  /**
+   * 槽位接口（后端按任务族生成）：只声明"支持哪些槽位、绑定到哪个原生键"。
+   * 界面的分组与顺序来自前端布局档，不在这里——见 src/litegraph/renderPlan.ts。
+   */
+  slots?: Record<string, { bind: string; min?: number; max?: number; step?: number; default?: unknown; choices?: Array<string | number>; derive?: string }>
+  slotTask?: string
 }
 
 /** One architecture the worker thinks a weights file might be, with why it thinks so. */
@@ -791,12 +799,10 @@ export const useModelStore = defineStore('model', () => {
     isLoading.value = true
     error.value = null
     try {
-      const result = await invoke<ModelsPayload>('list_models', {
+      // 统一数据源：模型库（model_hub）是唯一真相，字段已与其对齐。
+      const result = await invoke<ModelsPayload>('model_hub', {
         payload: {
-          category: null,
-          supportedOnly: false,
-          includeLocalState: true,
-          includeCustom: true,
+          modality: 'all',
           modelDir: settings.modelDir || null,
         },
       })
@@ -940,6 +946,8 @@ export const useModelStore = defineStore('model', () => {
         next.completedFiles = payload.downloaded?.length + payload.skipped?.length || next.completedFiles
         next.totalFiles = Math.max(next.totalFiles, next.completedFiles || 1)
         if (payload.modelInfo) upsertModel(payload.modelInfo)
+        // 事件里的 modelInfo 形状可能和列表条目不完全一致；重拉一次保证权威。
+        void loadModels()
         if (payload.modelDir) modelDir.value = payload.modelDir
         downloadStates.value = { ...downloadStates.value, [modelName]: 'done' }
         // 模型已成功落盘后，卡片改由 model.downloaded 渲染“已下载”状态，
@@ -1153,16 +1161,14 @@ export const useModelStore = defineStore('model', () => {
       }
       const currentTask = downloadTasks.value[name]
       if (!currentTask || currentTask.taskId !== taskId || currentTask.status !== 'preparing') return false
-      await invoke<{ taskId: string; started: boolean }>('start_model_download', {
-        payload: {
-          taskId,
-          model: name,
-          modelDir: settings.modelDir || null,
-          source: settings.downloadSource,
-          downloadMethod: settings.downloadMethod,
-          endpoint: null,
-          force,
-        },
+      // 统一到模型库下载：requestId 同时充当 taskId，事件里带回同一个 id，
+      // 这样 store 的事件处理器不用改判定逻辑（仍按 taskId 关联）。
+      const modelId = String((models.value.find((item) => item.name === name) as { id?: string })?.id || name)
+      await invoke<{ taskId: string; started: boolean }>('start_model_hub_download', {
+        requestId: taskId,
+        modelId,
+        modelDir: settings.modelDir || null,
+        source: settings.downloadSource,
       })
       const startedTask = downloadTasks.value[name]
       if (!startedTask || startedTask.taskId !== taskId) {
@@ -1548,7 +1554,7 @@ export const useModelStore = defineStore('model', () => {
     }
     try {
       // The configured model directory travels with the request: copies must land beside the
-      // catalog models, and the worker's PYMSS_MODEL_DIR only ever holds the default location.
+      // catalog models, and the worker's MEDIAFORGE_MODEL_DIR only ever holds the default location.
       await invoke('start_custom_model_import', {
         payload: { ...request, taskId, modelDir: settings.modelDir || null },
       })

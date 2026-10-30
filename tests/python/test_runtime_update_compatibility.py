@@ -43,7 +43,7 @@ def package_config():
     }
 
 
-INSTALLER = """#define MyAppExeName "Pymss Studio.exe"
+INSTALLER = """#define MyAppExeName "MediaForge.exe"
 [Setup]
 AppId={{6A208087-F154-4C62-8916-E3D40B7C0F24}
 DefaultDirName={autopf}\\Pymss Studio
@@ -96,7 +96,7 @@ class RuntimeUpdateCompatibilityTests(unittest.TestCase):
             ("{autopf}", "{localappdata}"),
             ("ArchitecturesAllowed=x64", "ArchitecturesAllowed=arm64"),
             ("ArchitecturesInstallIn64BitMode=x64", "ArchitecturesInstallIn64BitMode=arm64"),
-            ("Pymss Studio.exe", "Another Application.exe"),
+            ("MediaForge.exe", "Another Application.exe"),
             ("Permissions: users-modify", "Permissions: users-full"),
             ('DestDir: "{app}"', 'DestDir: "{app}\\new-layout"'),
         ]

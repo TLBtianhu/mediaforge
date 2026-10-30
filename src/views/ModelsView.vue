@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import ModelSlotFields from '../components/ModelSlotFields.vue'
+import { fromWireParams, paramsFromInterface, toWireParams } from '../litegraph/inferenceParams.ts'
+import { layoutFor } from '../litegraph/layouts.ts'
+import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
 import { createLogger } from '@/utils/logger'
 import { isTutorialFrame } from '@/features/onboarding/demoContext'
 
@@ -109,6 +113,30 @@ const showInferenceEditor = ref(false)
 const inferenceEditorModel = ref<ModelEntry | null>(null)
 const inferenceEditorMeta = computed(() => modelStore.models.find(item => item.name === inferenceEditorModel.value?.name)?.inferenceParamMeta
   || inferenceEditorModel.value?.inferenceParamMeta)
+// 槽位接口来自后端（list_models 的 slots），布局来自前端布局档：
+// 这里只把两者合成渲染计划，不决定任何控件长什么样。
+const inferenceEditorInterface = computed<ModelInterface | null>(() => {
+  const model = inferenceEditorModel.value
+  const slots = model?.slots
+  if (!model?.name || !slots || Object.keys(slots).length === 0) return null
+  return { modelId: model.name, task: model.slotTask || 'separation', slots }
+})
+const inferenceEditorPlan = computed(() => {
+  const model = inferenceEditorInterface.value
+  return model ? buildRenderPlan(model, layoutFor(model.task)) : null
+})
+const inferenceEditorParams = ref<Record<string, unknown>>({})
+
+// 打开/切换模型时把已保存的原生参数翻回槽位值（bind 负责翻译）
+watch(inferenceEditorInterface, (current) => {
+  if (!current) {
+    inferenceEditorParams.value = {}
+    return
+  }
+  const saved = (inferenceEditorModel.value?.defaultInferenceParams || {}) as Record<string, unknown>
+  inferenceEditorParams.value = { ...paramsFromInterface(current), ...fromWireParams(current, saved) }
+}, { immediate: true })
+
 const inferenceEditorSampleStep = computed(() => inferenceEditorMeta.value?.recommendedSampleStep)
 const inferenceEditorOverlapStep = computed(() => resolveInferenceSampleStep(inferenceEditorMeta.value, 1))
 const inferenceEditorChunkStep = computed(() => resolveInferenceChunkStep(inferenceEditorMeta.value, 1024))
@@ -546,11 +574,20 @@ function hasInferenceOverride(model: ModelEntry | null | undefined) {
   return Boolean(model?.name && modelStore.getModelInferenceOverrides(model.name))
 }
 
+function slotParamsChanged(model: ModelEntry | null | undefined) {
+  const current = inferenceEditorInterface.value
+  if (!current) return false
+  const base = (model?.defaultInferenceParams || {}) as Record<string, unknown>
+  return Object.entries(toWireParams(current, inferenceEditorParams.value))
+    .some(([key, value]) => base[key] !== value)
+}
+
 function hasInferenceDraftChanges(model: ModelEntry | null | undefined) {
   const defaults = resolveInferenceDraft(model)
   return inferenceDraft.value.batch_size !== defaults.batch_size
     || inferenceDraft.value.overlap_size !== defaults.overlap_size
     || inferenceDraft.value.chunk_size !== defaults.chunk_size
+    || slotParamsChanged(model)
 }
 
 function canResetInferenceDefaults(model: ModelEntry | null | undefined) {
@@ -565,7 +602,11 @@ async function saveInferenceDefaults() {
     return
   }
   try {
-    await modelStore.setModelInferenceOverrides(model.name, inferenceDraft.value)
+    const current = inferenceEditorInterface.value
+    const draft = current
+      ? { ...inferenceDraft.value, ...toWireParams(current, inferenceEditorParams.value) }
+      : inferenceDraft.value
+    await modelStore.setModelInferenceOverrides(model.name, draft)
     if (selectedModel.value === model.name) {
       const selected = modelStore.selectedInfo?.name === model.name ? modelStore.selectedInfo : model
       taskStore.applySelectedModelDefaults(
@@ -1376,7 +1417,15 @@ onMounted(() => {
         <div v-if="inferenceEditorModel" class="model-inference-modal__body">
           <strong class="model-inference-modal__name">{{ inferenceEditorModel.name }}</strong>
           <p class="model-inference-modal__hint">{{ t('models.inferenceDefaultsHint') }}</p>
-          <div class="inference-editor-grid">
+          <!-- 有槽位接口时按渲染计划画表单（分组/顺序来自布局档）；
+               没有接口的模型（自定义导入、尚未登记）继续用原来的三个字段。 -->
+          <ModelSlotFields
+            v-if="inferenceEditorPlan"
+            :plan="inferenceEditorPlan"
+            :model-value="inferenceEditorParams"
+            @update:model-value="inferenceEditorParams = $event"
+          />
+          <div v-else class="inference-editor-grid">
             <label class="inference-editor-field">
               <span>{{ t('inference.batchSize') }}</span>
               <n-input-number v-model:value="inferenceDraft.batch_size" :min="1" :max="32" />

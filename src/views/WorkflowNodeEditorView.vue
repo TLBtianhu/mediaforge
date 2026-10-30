@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { firstWidgetValue } from '../litegraph/paramCodec.ts'
 import { createLogger } from '@/utils/logger'
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -108,7 +109,7 @@ const missingModelNodes = computed(() => {
   const missing: string[] = []
   for (const n of nodes) {
     if (isWorkflowSeparationNodeType(n.type)) {
-      const raw = String((n as any).widgets_values?.[0] || '').trim()
+      const raw = String(firstWidgetValue(n as any) || '').trim()
       const model = raw.replace(/^\[[^\]]*\]\s*/, '').trim()
       if (model && !downloaded.has(model)) missing.push(String(n.id))
     }

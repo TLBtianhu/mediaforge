@@ -1,4 +1,5 @@
 import { createLogger } from '@/utils/logger'
+import { specFor, widgetValue } from '../litegraph/paramCodec.ts'
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
@@ -1759,8 +1760,11 @@ export const useTaskStore = defineStore('task', () => {
         }
         if (!removingIds.has(item.id)) {
           for (const node of Array.isArray(definition.nodes) ? definition.nodes : []) {
-            if (node?.type === 'pymss_load_audio_batch' && typeof node.widgets_values?.[0] === 'string') {
-              const directory = pathKey(node.widgets_values[0], windows)
+            const batchFolder = node?.type === 'pymss_load_audio_batch'
+              ? widgetValue(specFor('pymss_load_audio_batch'), node, 'folder')
+              : undefined
+            if (node?.type === 'pymss_load_audio_batch' && typeof batchFolder === 'string') {
+              const directory = pathKey(batchFolder, windows)
               if (directory) protectedDirectories.add(directory.endsWith('/') ? directory : `${directory}/`)
             }
           }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from worker_protocol import debug_log, emit_error, load_payload, protocol_logging
+from worker_protocol import debug_log, emit, emit_error, load_payload, protocol_logging
 from worker_proxy import ProxyConfigError, configure_process_proxy, load_proxy_config, parse_proxy_config
 
 
@@ -26,10 +26,6 @@ def run_command(command: str, payload: dict) -> int:
         configure_process_proxy(load_proxy_config())
         from worker_bootstrap import cmd_runtime_core_versions
         return cmd_runtime_core_versions(payload)
-    if command == "update_runtime_core":
-        configure_process_proxy(load_proxy_config())
-        from worker_bootstrap import cmd_update_runtime_core
-        return cmd_update_runtime_core(payload)
     if command == "plugin_marketplace":
         configure_process_proxy(load_proxy_config())
         from worker_plugins import cmd_plugin_marketplace
@@ -70,6 +66,32 @@ def run_command(command: str, payload: dict) -> int:
     if command == "env_info":
         from worker_models import cmd_env_info
         return cmd_env_info()
+    if command == "media_precheck":
+        from media_ops.precheck import precheck
+
+        steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
+        inputs = [str(value) for value in payload.get("inputs") or [] if str(value).strip()]
+        check = precheck(steps, inputs)
+        # 顶层 ok 表达"计划可行吗"，而不是"命令跑成功了吗"
+        emit(
+            "media_precheck_result",
+            {"ok": (check or {}).get("ok", True), "steps": steps, "inputs": inputs, "precheck": check},
+        )
+        return 0
+    if command == "failure_stats":
+        from failure_stats import collect
+
+        emit("failure_stats", collect())
+        return 0
+    if command == "agent_contract":
+        from agent_contract import cmd_agent_contract
+        return cmd_agent_contract(payload)
+    if command == "evaluate_media":
+        from media_eval import cmd_evaluate_media
+        return cmd_evaluate_media(payload)
+    if command == "model_interface":
+        from worker_models import cmd_model_interface
+        return cmd_model_interface(payload)
     if command == "list_models":
         from worker_models import cmd_list_models
         return cmd_list_models(payload)
@@ -115,9 +137,6 @@ def run_command(command: str, payload: dict) -> int:
     if command == "cleanup_model_residual_files":
         from worker_models import cmd_cleanup_model_residual_files
         return cmd_cleanup_model_residual_files(payload)
-    if command == "download_model":
-        from worker_download import cmd_download_model
-        return cmd_download_model(payload)
     if command == "test_connection":
         from worker_connection import cmd_test_connection
         return cmd_test_connection(payload)
@@ -136,6 +155,19 @@ def run_command(command: str, payload: dict) -> int:
             activate_optional_packages()
         from worker_tools import cmd_audio_tools
         return cmd_audio_tools(payload)
+    if command == "media_library":
+        from media_ops.library_worker import cmd_media_library
+        return cmd_media_library(payload)
+    if command == "media_capabilities":
+        from media_ops.capabilities import list_capabilities
+        emit("media_capabilities_result", list_capabilities(payload.get("modelDir")))
+        return 0
+    if command == "model_hub":
+        from model_hub_worker import cmd_model_hub
+        return cmd_model_hub(payload)
+    if command == "model_download":
+        from model_hub_worker import cmd_model_download
+        return cmd_model_download(payload)
     if command == "infer":
         from worker_infer import cmd_infer
         return cmd_infer(payload)

@@ -11,6 +11,7 @@ import {
   type SimpleAudioOperation,
   type SimpleProcessingAlgorithm,
 } from '@/workflows/formats'
+import { firstWidgetValue } from '../litegraph/paramCodec.ts'
 import { analyzeWorkflowInputs } from '@/utils/workflowInputs'
 import type { ModelDefaultInferenceParams } from '@/stores/model'
 
@@ -93,6 +94,7 @@ export type PymssYamlWorkflow = {
 
 export type SimpleStepDraft = {
   id: string
+  capability?: string
   model: string
   modelType?: string
   input: string
@@ -227,7 +229,7 @@ export function analyzeComfyOverview(definition: unknown): ComfyOverview | null 
     const type = String(node?.type || '')
     if (isWorkflowSeparationNodeType(type)) {
       separateCount += 1
-      const raw = String(node.widgets_values?.[0] || '').trim()
+      const raw = String(firstWidgetValue(node) || '').trim()
       const model = stripPrefix(raw)
       if (model && !models.includes(model)) models.push(model)
     }
@@ -257,6 +259,7 @@ export function hydrateSimpleWorkflow(definition: unknown): SimpleDraft {
     .filter(isRecord)
     .map((raw, index): SimpleStepDraft => ({
       id: String(raw.id || `step${index + 1}`),
+      capability: typeof raw.capability === 'string' && raw.capability.trim() ? raw.capability.trim() : undefined,
       model: String(raw.model || ''),
       modelType: typeof raw.model_type === 'string' && raw.model_type.trim() ? raw.model_type.trim() : undefined,
       input: String(raw.input || 'input'),
@@ -320,6 +323,7 @@ export function buildSimpleWorkflowDefinition(draft: SimpleDraft): PymssYamlWork
       const inferenceParams = normalizeSimpleInferenceParams(step.inferenceParams)
       return {
         id: step.id || `step${index + 1}`,
+        ...(step.capability ? { capability: step.capability } : {}),
         model: step.model,
         ...(step.modelType?.trim() ? { model_type: step.modelType.trim() } : {}),
         input: step.input || 'input',
@@ -425,6 +429,7 @@ function normalizeSimpleEditorUi(
 export function createStepDraft(index: number): SimpleStepDraft {
   return {
     id: `step${index + 1}`,
+    capability: undefined,
     model: '',
     modelType: undefined,
     input: index === 0 ? 'input' : '',

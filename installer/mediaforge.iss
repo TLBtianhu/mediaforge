@@ -1,26 +1,29 @@
-; Pymss Studio Windows CUDA installer.
-; The source directory is prepared by GitHub Actions and passed through PYMSS_PORTABLE_DIR.
+; MediaForge Windows CUDA installer.
+; The source directory is prepared by GitHub Actions and passed through MEDIAFORGE_PORTABLE_DIR.
 
-#define MyAppName "Pymss Studio"
-#define MyAppVersion GetEnv("PYMSS_VERSION") == "" ? "0.0.1" : GetEnv("PYMSS_VERSION")
+#define MyAppName "MediaForge"
+#define MyAppVersion GetEnv("MEDIAFORGE_VERSION") == "" ? "0.0.1" : GetEnv("MEDIAFORGE_VERSION")
 #define MyAppPublisher "TheSmallHanCat"
-#define MyAppExeName "Pymss Studio.exe"
-#define SourceDir GetEnv("PYMSS_PORTABLE_DIR")
-#define OutputDir GetEnv("PYMSS_INSTALLER_OUTPUT") == "" ? "..\release" : GetEnv("PYMSS_INSTALLER_OUTPUT")
-#define PackageSuffix GetEnv("PYMSS_PACKAGE_SUFFIX") == "" ? "windows-x64-cuda" : GetEnv("PYMSS_PACKAGE_SUFFIX")
+#define MyAppExeName "MediaForge.exe"
+#define SourceDir GetEnv("MEDIAFORGE_PORTABLE_DIR")
+#define OutputDir GetEnv("MEDIAFORGE_INSTALLER_OUTPUT") == "" ? "..\release" : GetEnv("MEDIAFORGE_INSTALLER_OUTPUT")
+#define PackageSuffix GetEnv("MEDIAFORGE_PACKAGE_SUFFIX") == "" ? "windows-x64-cuda" : GetEnv("MEDIAFORGE_PACKAGE_SUFFIX")
 
 #if SourceDir == ""
-  #error PYMSS_PORTABLE_DIR is required. It must point to the staged portable directory.
+  #error MEDIAFORGE_PORTABLE_DIR is required. It must point to the staged portable directory.
 #endif
 
 [Setup]
-; Unique AppId for Pymss Studio. Do not reuse AppIds from other projects.
-AppId={{6A208087-F154-4C62-8916-E3D40B7C0F24}
+PrivilegesRequired=lowest
+; Unique AppId for MediaForge. Do not reuse AppIds from other projects. Keep it stable or in-place upgrades break.
+AppId={{34A687CC-EE1D-401D-8FE1-98E4061C32CB}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppVerName={#MyAppName} {#MyAppVersion}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={localappdata}\Programs\{#MyAppName}
+; 用户不选目录：安装位置是常量，升级自然落在同一处。
+DisableDirPage=yes
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 ; Select the installer process architecture independently of the install mode.
@@ -28,7 +31,7 @@ SetupArchitecture=x64
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 OutputDir={#OutputDir}
-OutputBaseFilename=Pymss-Studio-{#MyAppVersion}-{#PackageSuffix}-setup
+OutputBaseFilename=MediaForge-{#MyAppVersion}-{#PackageSuffix}-setup
 Compression=lzma2/max
 LZMAUseSeparateProcess=yes
 LZMADictionarySize=1048576
@@ -50,20 +53,20 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "python-runtime\runtime-envs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\python-runtime\runtime-envs\*"; DestDir: "{app}\python-runtime\runtime-envs"; Excludes: "active-runtime.json"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Check: ShouldInstallBundledRuntimeEnvs
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 
 [Dirs]
 ; Keep the bootstrap interpreter read-only. Only managed environments need user write access.
-Name: "{app}\python-runtime\runtime-envs"; Permissions: users-modify
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\bin\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Flags: waituntilterminated runhidden skipifdoesntexist; Check: not IsVCRedistX64Installed
-Filename: "{cmd}"; Parameters: "/C del /F /Q ""{app}\bin\VC_redist.x64.exe"""; Flags: runhidden waituntilterminated skipifdoesntexist; Check: not IsVCRedistX64Installed
+; 安装结束把 MediaForge 接进 DeepSeek Harness（没有 DSH 时脚本自己跳过）。
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\integrations\dsh-mediaforge\register.ps1"""; StatusMsg: "Registering MediaForge with DeepSeek Harness..."; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{app}\bin\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Flags: waituntilterminated runhidden skipifdoesntexist; Check: IsAdminInstallMode and not IsVCRedistX64Installed
+Filename: "{cmd}"; Parameters: "/C del /F /Q ""{app}\bin\VC_redist.x64.exe"""; Flags: runhidden waituntilterminated skipifdoesntexist; Check: IsAdminInstallMode and not IsVCRedistX64Installed
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -82,7 +85,7 @@ end;
 
 function IsFreshInstall(): Boolean;
 begin
-  Result := not FileExists(ExpandConstant('{app}\pymss-studio.inno-install'));
+  Result := not FileExists(ExpandConstant('{app}\mediaforge.inno-install'));
 end;
 
 function CachedFreshInstall(): Boolean;
@@ -118,7 +121,7 @@ begin
     Exit;
   end;
   Result := FileExists(
-    ExpandConstant('{app}\python-runtime\runtime-envs\') + Backend + '\Scripts\python.exe'
+    ExpandConstant('{userprofile}\.mediaforge\runtime-envs\') + Backend + '\Scripts\python.exe'
   );
 end;
 
@@ -163,7 +166,7 @@ var
   PythonExe: string;
   Content: string;
 begin
-  EnvDir := ExpandConstant('{app}') + '\python-runtime\runtime-envs\' + Backend;
+  EnvDir := ExpandConstant('{userprofile}\.mediaforge\runtime-envs\') + Backend;
   ConfigPath := EnvDir + '\pyvenv.cfg';
   PythonRuntimeDir := ExpandConstant('{app}') + '\python-runtime';
   PythonExe := PythonRuntimeDir + '\python.exe';
@@ -197,6 +200,46 @@ begin
   RepairVenvConfig('rocm');
 end;
 
+// 把 MediaForge 的 MCP 启动器写到用户级固定位置。
+// DSH 插件包（integrations/dsh-mediaforge）只引用这个固定路径，
+// 所以包里不需要任何机器相关的绝对路径。
+procedure WriteMcpLauncher();
+var
+  Dir, Target, Content: String;
+begin
+  Dir := ExpandConstant('{localappdata}\MediaForge\bin');
+  if not ForceDirectories(Dir) then
+    Exit;
+  Target := Dir + '\mediaforge-mcp.cmd';
+  Content :=
+    '@echo off' + #13#10 +
+    'rem Generated by the MediaForge installer. Do not edit the path by hand.' + #13#10 +
+    'setlocal' + #13#10 +
+    'set "MF_ROOT=' + ExpandConstant('{app}') + '"' + #13#10 +
+    'if not exist "%MF_ROOT%\python\agent_bridge.py" (' + #13#10 +
+    '  echo MediaForge MCP launcher: agent_bridge.py not found under "%MF_ROOT%" 1>&2' + #13#10 +
+    '  exit /b 2' + #13#10 +
+    ')' + #13#10 +
+    'if defined MEDIAFORGE_PYTHON (' + #13#10 +
+    '  "%MEDIAFORGE_PYTHON%" "%MF_ROOT%\python\agent_bridge.py" --stdio' + #13#10 +
+    '  exit /b %ERRORLEVEL%' + #13#10 +
+    ')' + #13#10 +
+    'if exist "%MF_ROOT%\python-runtime\python.exe" (' + #13#10 +
+    '  "%MF_ROOT%\python-runtime\python.exe" "%MF_ROOT%\python\agent_bridge.py" --stdio' + #13#10 +
+    '  exit /b %ERRORLEVEL%' + #13#10 +
+    ')' + #13#10 +
+    'where py >nul 2>nul' + #13#10 +
+    'if not errorlevel 1 (' + #13#10 +
+    '  py -3 "%MF_ROOT%\python\agent_bridge.py" --stdio' + #13#10 +
+    '  exit /b %ERRORLEVEL%' + #13#10 +
+    ')' + #13#10 +
+    'python "%MF_ROOT%\python\agent_bridge.py" --stdio' + #13#10 +
+    'exit /b %ERRORLEVEL%' + #13#10;
+  SaveStringToFile(Target, Content, False);
+
+  RegWriteStringValue(HKCU, 'Software\\MediaForge', 'InstallDir', ExpandConstant('{app}'));
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -208,6 +251,7 @@ begin
   begin
     RepairBundledRuntimeEnvs();
     CleanupInstallTree();
-    SaveStringToFile(ExpandConstant('{app}') + '\pymss-studio.inno-install', 'managed' + #13#10, False);
+    WriteMcpLauncher();
+    SaveStringToFile(ExpandConstant('{app}') + '\mediaforge.inno-install', 'managed' + #13#10, False);
   end;
 end;

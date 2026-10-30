@@ -1,0 +1,44 @@
+{
+  "_comment": [
+    "CI 构建所需的外部二进制。仓库不跟踪这些文件（release/bin 被 ignore），",
+    "所以公开仓库要能自己拉下来。url 允许指向发行版，但 sha256 是硬约束：",
+    "上游换了版本时校验会失败，必须显式更新这个文件，而不是默默换成新版本。",
+    "exe 的哈希对应解压后的文件，就是最终随包分发的那一份。"
+  ],
+  "tools": {
+    "ffmpeg": {
+      "version": "9.0.2-essentials_build-www.gyan.dev",
+      "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip",
+      "archiveSize": 114768076,
+      "extractPrefix": "ffmpeg-9.0.2-essentials_build/bin/",
+      "files": {
+        "ffmpeg.exe": {
+          "size": 105423872,
+          "sha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec"
+        },
+        "ffprobe.exe": {
+          "size": 105221120,
+          "sha256": "f0d36ecbbdd3bcfac3efa078c96c7271c2e68b3810595552ac3b7f17e9a65c52"
+        }
+      },
+      "license": "GPL-3.0"
+    },
+    "aria2": {
+      "version": "1.37.0",
+      "url": "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip",
+      "archiveSize": 2475379,
+      "extractPrefix": "aria2-1.37.0-win-64bit-build1/",
+      "files": {
+        "aria2c.exe": {
+          "size": 5649408,
+          "sha256": "be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2"
+        }
+      },
+      "license": "GPL-2.0-or-later"
+    }
+  },
+  "pythonRuntime": {
+    "_comment": "基础 Python 用 actions/setup-python 提供，版本必须与此处一致；运行时目录整体复制到 python-runtime/",
+    "version": "3.11.9"
+  }
+}

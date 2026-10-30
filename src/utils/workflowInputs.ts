@@ -7,6 +7,7 @@
  * a declared-but-unprovided name is an error; no positional fallback).
  */
 
+import { specFor, widgetValue } from '../litegraph/paramCodec.ts'
 import { detectWorkflowFormat } from '../workflows/formats.ts'
 import { workflowInputNodes } from '../workflows/workbench.ts'
 
@@ -27,10 +28,23 @@ export interface WorkflowInputsAnalysis {
 }
 
 const LOAD_TYPES = new Set(['pymss_load_audio', 'LoadAudio', 'pymss_load_audio_batch'])
-const INPUT_NAME_SLOT: Record<string, number> = {
+/**
+ * 旧图没有控件名，只能按下标兜底——位置化知识集中在 paramCodec 里，
+ * 这里仅保留"历史图的输入名在第几个位置"这一份兼容表。
+ * 新图（有 input_name 控件）走按名字取，不再依赖这张表。
+ */
+const LEGACY_INPUT_NAME_SLOT: Record<string, number> = {
   pymss_load_audio: 1,
   LoadAudio: 1,
   pymss_load_audio_batch: 3,
+}
+
+/** 先按名字取，取不到再按历史下标取（迁移期两条路都活着）。 */
+function loadWidget(node: any, type: string, name: string, legacySlot: number): string {
+  const spec = specFor(type)
+  const named = spec ? widgetValue(spec, node, name) : undefined
+  if (named !== undefined && named !== null && String(named).trim() !== "") return String(named).trim()
+  return widgetAt(node?.widgets_values, legacySlot)
 }
 
 function widgetAt(values: unknown, index: number): string {
@@ -56,9 +70,11 @@ export function analyzeWorkflowInputs(definition: Record<string, unknown> | null
   for (const node of nodes) {
     const type = String(node?.type || '')
     if (!LOAD_TYPES.has(type)) continue
-    const nameSlot = INPUT_NAME_SLOT[type]
-    const inputName = widgetAt(node.widgets_values, nameSlot)
-    const audioWidget = type === 'pymss_load_audio_batch' ? '' : widgetAt(node.widgets_values, 0)
+    const nameSlot = LEGACY_INPUT_NAME_SLOT[type] ?? -1
+    const inputName = loadWidget(node, type, 'input_name', nameSlot)
+    const audioWidget = type === 'pymss_load_audio_batch'
+      ? ''
+      : loadWidget(node, type, 'audio', 0)
     if (inputName) {
       if (!slots.some(slot => slot.name === inputName)) {
         slots.push({ name: inputName, nodeType: type, nodeId: node.id })
@@ -67,7 +83,7 @@ export function analyzeWorkflowInputs(definition: Record<string, unknown> | null
       // graph carries its own input file
       selfContained += 1
     } else if (type === 'pymss_load_audio_batch') {
-      const folder = widgetAt(node.widgets_values, 0)
+      const folder = loadWidget(node, type, 'folder', 0)
       if (folder) selfContained += 1
       else unresolved.push({ nodeId: node.id, widget: '', nodeType: type })
     } else if (audioWidget) {

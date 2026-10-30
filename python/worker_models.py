@@ -13,10 +13,15 @@ from typing import Any
 
 from audio_tools.asr_cache import is_complete_asr_model_cache
 
-import yaml
+try:
+    import yaml
+except ImportError:  # bootstrap Python may not have PyYAML; model listing does not need it
+    yaml = None
 
 from worker_inference_constraints import chunk_size_constraint
 from worker_protocol import WORKER_VERSION, _as_bool, _as_float, _as_int, emit, emit_error, import_available
+
+import worker_paths
 
 
 def package_version(distribution: str) -> str | None:
@@ -159,6 +164,11 @@ class RegisteredUserModelEntry:
 
 @lru_cache(maxsize=1)
 def _model_catalog_path() -> Path:
+    # MediaForge ships a pinned catalog so the audio model library can be
+    # browsed before the inference runtime (and pymss) is installed.
+    bundled = Path(__file__).with_name("audio_catalog.json")
+    if bundled.is_file():
+        return bundled
     try:
         # Reading the catalog must not execute pymss.__init__: that imports the inference stack
         # and Torch, adding seconds to every app start merely to locate one JSON file.
@@ -478,16 +488,17 @@ def _debug_catalog_status(base_data: dict[str, Any] | None = None) -> dict[str, 
 
 
 def _default_model_dir() -> Path:
-    env_value = os.environ.get("PYMSS_MODEL_DIR")
-    if env_value:
-        return Path(env_value)
-    repo_models = _model_catalog_path().parent.parent.parent / "all_models"
-    if repo_models.is_dir():
-        return repo_models
-    return Path.home() / ".cache" / "pymss" / "models"
+    """模型根目录。解析规则只有一份，在 `worker_paths.model_root()`。
+
+    2026-10-29 之前这里复制了 pymss 自己的兜底（`MEDIAFORGE_MODEL_DIR` → 仓库 `all_models`
+    → `~/.cache/pymss/models`），于是「模型放哪」在缓存/下载/导入三处各有答案。
+    """
+    return worker_paths.model_root()
 
 
 def _load_yaml_config(config_path: Path) -> dict[str, Any]:
+    if yaml is None:
+        return {}
     with config_path.open(encoding="utf-8") as handle:
         data = yaml.load(handle, Loader=yaml.FullLoader)
     return data if isinstance(data, dict) else {}
@@ -879,9 +890,40 @@ def cmd_health() -> int:
     return 0
 
 
+def _runtime_manifest() -> dict[str, Any]:
+    """读 `python/runtime-manifest.json`（打包运行时的声明）。读不到就返回空。
+
+    为什么要读它：产品声明的解释器版本（manifest 的 `python`）和**开发机实际跑的解释器**
+    可能不一致——2026-10-29 就发生过：manifest 写 3.12，开发 venv 却是宿主 Python 3.11，
+    于是"只在 3.11 上出现"的问题（比如 `Path.is_junction` 不存在）本地看不到、
+    CI 也测不出来。把这个差异变成 env_info 里的两个字段，比写进文档有用。
+    """
+    path = Path(__file__).with_name("runtime-manifest.json")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _python_matches_manifest(expected: Any, version_info: Any) -> bool:
+    """`expected` 形如 "3.12"；只比 major.minor，补丁版本不参与。"""
+    try:
+        wanted = tuple(int(part) for part in str(expected or "").split(".")[:2])
+    except ValueError:
+        return False
+    if len(wanted) != 2:
+        return False
+    return tuple(int(part) for part in version_info[:2]) == wanted
+
+
 def cmd_env_info() -> int:
+    manifest = _runtime_manifest()
+    expected_python = str(manifest.get("python") or "")
     payload: dict[str, Any] = {
         "pythonVersion": sys.version.split()[0],
+        "expectedPython": expected_python or None,
+        "runtimeMatchesManifest": _python_matches_manifest(expected_python, sys.version_info),
+        "runtimeManifestVersion": manifest.get("manifestVersion"),
         "platform": platform.platform(),
         "workerVersion": WORKER_VERSION,
         "pymssAvailable": False,
@@ -1131,6 +1173,8 @@ def cmd_debug_model_config(payload: dict[str, Any]) -> int:
 
         if action in {"save", "save_downloaded"}:
             content = str(payload.get("content") or "")
+            if yaml is None:
+                raise RuntimeError("PyYAML is unavailable in this runtime")
             yaml.load(content, Loader=yaml.FullLoader)
             if base_path is None:
                 raise ValueError("This model does not have a config path")
@@ -1162,6 +1206,24 @@ def cmd_debug_model_config(payload: dict[str, Any]) -> int:
         return emit_error("DEBUG_MODEL_CONFIG_FAILED", str(exc), traceback.format_exc())
 
 
+def cmd_model_interface(payload: dict[str, Any]) -> int:
+    """返回某个模型的槽位接口（不含任何布局信息）。
+
+    UI 与 agent 都从这里拿"这个模型支持哪些可调槽位"，布局由前端布局档决定。
+    """
+    from media_ops import interface as model_interface
+
+    model_id = str(payload.get("model") or payload.get("modelId") or "").strip()
+    if not model_id:
+        return emit_error("MODEL_INTERFACE_INVALID", "Missing model id")
+    interface = model_interface.interface_for(model_id)
+    if interface is None:
+        return emit_error("MODEL_INTERFACE_NOT_FOUND", f"Unknown model: {model_id}")
+    problems = model_interface.validate_interface(interface)
+    emit("model_interface", {"interface": interface, "problems": problems})
+    return 0
+
+
 def cmd_list_models(payload: dict[str, Any]) -> int:
     category = payload.get("category") or None
     supported_only = bool(payload.get("supportedOnly", True))
@@ -1179,6 +1241,23 @@ def cmd_list_models(payload: dict[str, Any]) -> int:
         # the end; the UI sorts on top of this anyway.
         entries.extend(list_registered_user_models(category=category))
     models = [model_to_dict(entry, model_dir, include_local_state) for entry in entries]
+    if payload.get("includeInterfaces"):
+        # 模型列表可以顺带带上槽位接口（UI 用来生成参数表单）。
+        # 默认关闭：326 个模型每个带 3–6 个槽位会让列表载荷变大，按需开启。
+        from media_ops import interface as model_interface
+
+        for item in models:
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            try:
+                found = model_interface.interface_for(f"audio:{name}")
+            except Exception:
+                found = None
+            if found:
+                item["slots"] = found["slots"]
+                item["slotTask"] = found["task"]
+
     category_pairs = sorted({
         (m["category"], m.get("categoryCn") or m["category"])
         for m in models
@@ -1386,7 +1465,11 @@ def _path_size(path: Path) -> int:
         if path.is_file():
             return int(path.stat().st_size)
         if path.is_dir():
-            return sum(_path_size(child) for child in path.rglob("*") if child.is_file())
+            # 容错：单个子目录可能不可访问（权限、装入点、损坏链接），
+            # 不能因为一条坏路径就让整个模型库报错。
+            from safe_fs import path_size
+
+            return path_size(path)
     except Exception:
         return 0
     return 0
@@ -1400,7 +1483,7 @@ def _scan_root_file_sizes(root: Path) -> dict[str, tuple[Path, int]]:
     scanned: dict[str, tuple[Path, int]] = {}
     if not root.exists():
         return scanned
-    for dirpath, _, filenames in os.walk(root):
+    for dirpath, _, filenames in os.walk(root, onerror=lambda _exc: None):
         base = Path(dirpath)
         for filename in filenames:
             file_path = base / filename

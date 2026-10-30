@@ -10,7 +10,7 @@ from typing import Any, TextIO
 
 from worker_protocol import emit, isolate_protocol_stdout
 from .asr_cache import is_complete_asr_model_cache, unresolved_incomplete_files
-from .common import AudioToolError, _available_path, _require_directory, _require_file
+from .common import AudioToolError, _available_path, _require_directory, _require_file, _srt_time
 
 DEFAULT_MODEL = "paraformer-zh"
 DEFAULT_VAD_MODEL = "fsmn-vad"
@@ -328,13 +328,6 @@ def _timestamp_seconds(value: Any) -> float | None:
     return max(0.0, number / 1000.0)
 
 
-def _srt_time(seconds: float) -> str:
-    milliseconds = max(0, round(seconds * 1000))
-    hours, remainder = divmod(milliseconds, 3_600_000)
-    minutes, remainder = divmod(remainder, 60_000)
-    secs, millis = divmod(remainder, 1000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
 
 def _normalize_text(value: Any, mode: str) -> str:
     text = str(value or "").strip()
@@ -504,7 +497,7 @@ def _select_device() -> str:
 def _configure_model_cache(payload: dict[str, Any]) -> Path | None:
     model_root = str(payload.get("modelDir") or "").strip()
     if not model_root:
-        model_root = os.environ.get("PYMSS_MODEL_DIR", "").strip()
+        model_root = os.environ.get("MEDIAFORGE_MODEL_DIR", "").strip()
     if not model_root:
         return None
 

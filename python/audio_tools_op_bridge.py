@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from audio_tools.common import _require_directory, _require_file
+from audio_tools.common import _require_directory, _require_file, _srt_time
 from worker_protocol import emit
 
 
@@ -152,13 +152,6 @@ def _asr(runtime: Any, operation: str, payload: dict[str, Any]) -> dict[str, Any
         "succeeded": 1 if text else 0,
     }
 
-
-def _srt_time(seconds: float) -> str:
-    milliseconds = max(0, round(seconds * 1000))
-    hours, remainder = divmod(milliseconds, 3_600_000)
-    minutes, remainder = divmod(remainder, 60_000)
-    secs, millis = divmod(remainder, 1_000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
 def _srt(sentences: list[dict[str, Any]]) -> str:

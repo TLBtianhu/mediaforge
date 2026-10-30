@@ -10,8 +10,8 @@ const env = {
   ...process.env,
   PYMSS_STUDIO_DATA_ROOT: dataRoot,
   PYMSS_STUDIO_DEFAULT_OUTPUT_DIR: path.join(dataRoot, 'outputs'),
-  PYMSS_STUDIO_RUNTIME_ENVS_DIR: path.join(dataRoot, 'runtime-envs'),
-  PYMSS_STUDIO_ACTIVE_RUNTIME_FILE: path.join(dataRoot, 'runtime-envs', 'active-runtime.json'),
+  MEDIAFORGE_RUNTIME_ENVS_DIR: path.join(dataRoot, 'runtime-envs'),
+  MEDIAFORGE_ACTIVE_RUNTIME_FILE: path.join(dataRoot, 'runtime-envs', 'active-runtime.json'),
 }
 const args = [path.join(root, 'scripts', 'tauri.mjs'), mode,
   '--config', 'src-tauri/tauri.vstlab.conf.json', '--features', 'vst-lab']

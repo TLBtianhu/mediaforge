@@ -612,7 +612,7 @@ class AudioToolModuleTests(unittest.TestCase):
             configured_root = Path(temp_value) / "configured-models"
             default_root = Path(temp_value) / "default-models"
             with mock.patch.dict("os.environ", {
-                "PYMSS_MODEL_DIR": str(default_root),
+                "MEDIAFORGE_MODEL_DIR": str(default_root),
                 "MODELSCOPE_CACHE": str(Path(temp_value) / "global-cache"),
             }):
                 cache_dir = asr._configure_model_cache({"modelDir": str(configured_root)})
@@ -623,7 +623,7 @@ class AudioToolModuleTests(unittest.TestCase):
     def test_asr_cache_falls_back_to_the_worker_default_model_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_value:
             default_root = Path(temp_value) / "default-models"
-            with mock.patch.dict("os.environ", {"PYMSS_MODEL_DIR": str(default_root)}, clear=True):
+            with mock.patch.dict("os.environ", {"MEDIAFORGE_MODEL_DIR": str(default_root)}, clear=True):
                 cache_dir = asr._configure_model_cache({})
 
                 self.assertEqual(cache_dir, default_root / "_tool_models" / "asr")

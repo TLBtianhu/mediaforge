@@ -17,7 +17,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,9 +27,9 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-cuda"
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
+          $stageName = "MediaForge-$version-windows-x64-cuda"
           $artifactName = "$stageName-stage"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
@@ -42,7 +42,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
 
       - name: Build Tauri production app
@@ -66,34 +66,14 @@ jobs:
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
-          $ffmpegZip = "release/ffmpeg-release-essentials.zip"
-          $ffmpegExtract = "release/ffmpeg"
-          Invoke-WebRequest `
-            -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
-            -OutFile $ffmpegZip
-          if (Test-Path $ffmpegExtract) { Remove-Item $ffmpegExtract -Recurse -Force }
-          Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegExtract -Force
-          $ffmpegBin = Get-ChildItem -Path $ffmpegExtract -Recurse -Directory -Filter "bin" |
-            Where-Object { Test-Path (Join-Path $_.FullName "ffmpeg.exe") } |
-            Select-Object -First 1
-          if (-not $ffmpegBin) { throw "ffmpeg bin directory not found" }
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffmpeg.exe") "$bin/ffmpeg.exe" -Force
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffprobe.exe") "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取。
+          # 以前这里直接下 ffmpeg-release-essentials.zip（浮动最新版），
+          # 上游一发布新版本，构建出来的包就换了 ffmpeg，且无人察觉。
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-
-          $aria2Zip = "release/aria2-1.37.0-win-64bit-build1.zip"
-          $aria2Extract = "release/aria2"
-          Invoke-WebRequest `
-            -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" `
-            -OutFile $aria2Zip
-          if (Test-Path $aria2Extract) { Remove-Item $aria2Extract -Recurse -Force }
-          Expand-Archive -Path $aria2Zip -DestinationPath $aria2Extract -Force
-          $aria2Exe = Get-ChildItem -Path $aria2Extract -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          if (-not $aria2Exe) { throw "aria2c.exe not found" }
-          Copy-Item $aria2Exe.FullName "$bin/aria2c.exe" -Force
 
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
@@ -107,7 +87,7 @@ jobs:
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -121,8 +101,8 @@ jobs:
           NVIDIA driver is required for GPU acceleration.
           Users can switch backends or install additional environments in Settings.
           "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:PYMSS_STUDIO_ACTIVE_RUNTIME_FILE = (Join-Path $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR "active-runtime.json")
+          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
+          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
           $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
           if (!(Test-Path $activeStatePath)) { throw "Staged CUDA active runtime state is missing" }
           $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
@@ -156,7 +136,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - name: Upload CUDA stage artifact
         uses: actions/upload-artifact@v4
@@ -191,7 +171,7 @@ jobs:
       - name: Upload Windows portable archive artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-portable
+          name: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-portable
           path: release/${{ needs.windows-cuda-prepare.outputs.stage_name }}.7z
 
   windows-cuda-exe:
@@ -199,8 +179,8 @@ jobs:
     runs-on: windows-latest
     needs: windows-cuda-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-cuda-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-cuda
+      MEDIAFORGE_VERSION: ${{ needs.windows-cuda-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-cuda
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build-windows-installer
@@ -209,8 +189,8 @@ jobs:
           package-suffix: windows-x64-cuda
           stage-name: ${{ needs.windows-cuda-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-cuda-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup
-          output-file: Pymss-Studio-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup
+          output-file: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup.exe
 
   windows-cpu-prepare:
     name: Windows x64 CPU prepare
@@ -220,7 +200,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -230,9 +210,9 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-cpu"
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
+          $stageName = "MediaForge-$version-windows-x64-cpu"
           $artifactName = "$stageName-stage"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
@@ -245,7 +225,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
 
       - name: Build Tauri production app
@@ -269,34 +249,14 @@ jobs:
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
-          $ffmpegZip = "release/ffmpeg-release-essentials.zip"
-          $ffmpegExtract = "release/ffmpeg"
-          Invoke-WebRequest `
-            -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
-            -OutFile $ffmpegZip
-          if (Test-Path $ffmpegExtract) { Remove-Item $ffmpegExtract -Recurse -Force }
-          Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegExtract -Force
-          $ffmpegBin = Get-ChildItem -Path $ffmpegExtract -Recurse -Directory -Filter "bin" |
-            Where-Object { Test-Path (Join-Path $_.FullName "ffmpeg.exe") } |
-            Select-Object -First 1
-          if (-not $ffmpegBin) { throw "ffmpeg bin directory not found" }
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffmpeg.exe") "$bin/ffmpeg.exe" -Force
-          Copy-Item (Join-Path $ffmpegBin.FullName "ffprobe.exe") "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取。
+          # 以前这里直接下 ffmpeg-release-essentials.zip（浮动最新版），
+          # 上游一发布新版本，构建出来的包就换了 ffmpeg，且无人察觉。
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-
-          $aria2Zip = "release/aria2-1.37.0-win-64bit-build1.zip"
-          $aria2Extract = "release/aria2"
-          Invoke-WebRequest `
-            -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" `
-            -OutFile $aria2Zip
-          if (Test-Path $aria2Extract) { Remove-Item $aria2Extract -Recurse -Force }
-          Expand-Archive -Path $aria2Zip -DestinationPath $aria2Extract -Force
-          $aria2Exe = Get-ChildItem -Path $aria2Extract -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          if (-not $aria2Exe) { throw "aria2c.exe not found" }
-          Copy-Item $aria2Exe.FullName "$bin/aria2c.exe" -Force
 
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
@@ -310,7 +270,7 @@ jobs:
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -324,8 +284,8 @@ jobs:
           It is intended for users without NVIDIA CUDA GPUs.
           Users can switch backends or install additional environments in Settings.
           "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:PYMSS_STUDIO_ACTIVE_RUNTIME_FILE = (Join-Path $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR "active-runtime.json")
+          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
+          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
           $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
           if (!(Test-Path $activeStatePath)) { throw "Staged CPU active runtime state is missing" }
           $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
@@ -349,7 +309,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - name: Upload CPU stage artifact
         uses: actions/upload-artifact@v4
@@ -383,7 +343,7 @@ jobs:
       - name: Upload Windows CPU portable archive artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-portable
+          name: MediaForge-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-portable
           path: release/${{ needs.windows-cpu-prepare.outputs.stage_name }}.7z
 
   windows-cpu-exe:
@@ -391,8 +351,8 @@ jobs:
     runs-on: windows-latest
     needs: windows-cpu-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-cpu-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-cpu
+      MEDIAFORGE_VERSION: ${{ needs.windows-cpu-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-cpu
     steps:
       - uses: actions/checkout@v4
 
@@ -402,8 +362,8 @@ jobs:
           package-suffix: windows-x64-cpu
           stage-name: ${{ needs.windows-cpu-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-cpu-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup
-          output-file: Pymss-Studio-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup
+          output-file: MediaForge-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup.exe
 
 
   windows-online-prepare:
@@ -414,7 +374,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-release-env
@@ -422,9 +382,9 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-online"
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
+          $stageName = "MediaForge-$version-windows-x64-online"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
           echo "stage_artifact=$stageName-stage" >> $env:GITHUB_OUTPUT
@@ -434,7 +394,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
       - name: Build Tauri production app
         env:
@@ -455,23 +415,12 @@ jobs:
         run: |
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "release/ffmpeg.zip"
-          Expand-Archive -Path "release/ffmpeg.zip" -DestinationPath "release/ffmpeg" -Force
-          $ffmpeg = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffmpeg.exe" | Select-Object -First 1
-          if (-not $ffmpeg) { throw "ffmpeg.exe not found" }
-          Copy-Item $ffmpeg.FullName "$bin/ffmpeg.exe" -Force
-          $ffprobe = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffprobe.exe" | Select-Object -First 1
-          if (-not $ffprobe) { throw "ffprobe.exe not found" }
-          Copy-Item $ffprobe.FullName "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取（见 scripts/fetch-third-party.ps1）
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-          Invoke-WebRequest -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile "release/aria2.zip"
-          Expand-Archive -Path "release/aria2.zip" -DestinationPath "release/aria2" -Force
-          $aria2 = Get-ChildItem "release/aria2" -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          if (-not $aria2) { throw "aria2c.exe not found" }
-          Copy-Item $aria2.FullName "$bin/aria2c.exe" -Force
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
           & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"
@@ -481,7 +430,7 @@ jobs:
         run: |
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -506,7 +455,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - name: Upload online stage artifact
         uses: actions/upload-artifact@v4
@@ -528,35 +477,35 @@ jobs:
         run: |
           $stageName = '${{ needs.windows-online-prepare.outputs.stage_name }}'
           Set-Content "release/$stageName/pymss-studio.portable" -Value "portable" -Encoding ASCII
-          $updateArchive = (Resolve-Path "release").Path + "\Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip"
+          $updateArchive = (Resolve-Path "release").Path + "\MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip"
            Push-Location release
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the Online portable archive" }
            Pop-Location
            Push-Location "release/$stageName"
            # Keep bundled tools in the portable archive only. Add bin here when a tool update needs to be distributed.
-           & "C:\Program Files\7-Zip\7z.exe" a -tzip $updateArchive "Pymss Studio.exe" "python"
+           & "C:\Program Files\7-Zip\7z.exe" a -tzip $updateArchive "MediaForge.exe" "python"
           if ($LASTEXITCODE -ne 0) { throw "Unable to create the managed update archive" }
           Pop-Location
           $updateSize = (Get-Item -LiteralPath $updateArchive).Length
           if ($updateSize -gt 512MB) { throw "Managed update archive exceeds the 512 MiB client limit" }
       - uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-portable
+          name: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-portable
           path: release/${{ needs.windows-online-prepare.outputs.stage_name }}.7z
       - name: Upload universal Windows update archive
         uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update
-          path: release/Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip
+          name: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update
+          path: release/MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip
 
   windows-online-exe:
     name: Windows x64 online setup exe
     runs-on: windows-latest
     needs: windows-online-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-online-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-online
+      MEDIAFORGE_VERSION: ${{ needs.windows-online-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-online
     steps:
       - uses: actions/checkout@v4
 
@@ -566,8 +515,8 @@ jobs:
           package-suffix: windows-x64-online
           stage-name: ${{ needs.windows-online-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-online-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup
-          output-file: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup
+          output-file: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup.exe
 
   windows-rocm-prepare:
     name: Windows x64 ROCm prepare
@@ -577,7 +526,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-release-env
@@ -585,9 +534,9 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-rocm"
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
+          $stageName = "MediaForge-$version-windows-x64-rocm"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
           echo "stage_artifact=$stageName-stage" >> $env:GITHUB_OUTPUT
@@ -597,7 +546,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
       - name: Build Tauri production app
         env:
@@ -618,21 +567,12 @@ jobs:
         run: |
           $bin = "release/bin"
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "release/ffmpeg.zip"
-          Expand-Archive -Path "release/ffmpeg.zip" -DestinationPath "release/ffmpeg" -Force
-          $ffmpeg = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffmpeg.exe" | Select-Object -First 1
-          Copy-Item $ffmpeg.FullName "$bin/ffmpeg.exe" -Force
-          $ffprobe = Get-ChildItem "release/ffmpeg" -Recurse -File -Filter "ffprobe.exe" | Select-Object -First 1
-          if (-not $ffprobe) { throw "ffprobe.exe not found" }
-          Copy-Item $ffprobe.FullName "$bin/ffprobe.exe" -Force
+          # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取（见 scripts/fetch-third-party.ps1）
+          ./scripts/fetch-third-party.ps1 -Destination $bin
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-          Invoke-WebRequest -Uri "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile "release/aria2.zip"
-          Expand-Archive -Path "release/aria2.zip" -DestinationPath "release/aria2" -Force
-          $aria2 = Get-ChildItem "release/aria2" -Recurse -File -Filter "aria2c.exe" | Select-Object -First 1
-          Copy-Item $aria2.FullName "$bin/aria2c.exe" -Force
           $vcRedist = "$bin/VC_redist.x64.exe"
           if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
           & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"
@@ -642,7 +582,7 @@ jobs:
         run: |
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -663,8 +603,8 @@ jobs:
           Requires Windows 11, a supported AMD GPU, and the matching AMD driver.
           Users can switch backends or install additional environments in Settings.
           "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:PYMSS_STUDIO_ACTIVE_RUNTIME_FILE = (Join-Path $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR "active-runtime.json")
+          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
+          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
           $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
           if (!(Test-Path $activeStatePath)) { throw "Staged ROCm active runtime state is missing" }
           $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
@@ -687,7 +627,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - uses: actions/upload-artifact@v4
         with:
@@ -715,7 +655,7 @@ jobs:
            Pop-Location
       - uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-portable
+          name: MediaForge-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-portable
           path: release/${{ needs.windows-rocm-prepare.outputs.stage_name }}.7z
 
   windows-rocm-exe:
@@ -723,8 +663,8 @@ jobs:
     runs-on: windows-latest
     needs: windows-rocm-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-rocm-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-rocm
+      MEDIAFORGE_VERSION: ${{ needs.windows-rocm-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-rocm
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build-windows-installer
@@ -733,5 +673,5 @@ jobs:
           package-suffix: windows-x64-rocm
           stage-name: ${{ needs.windows-rocm-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-rocm-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup
-          output-file: Pymss-Studio-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup
+          output-file: MediaForge-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup.exe

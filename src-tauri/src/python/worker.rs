@@ -157,6 +157,17 @@ fn requires_bootstrap_python(command: &str) -> bool {
     )
 }
 
+fn allows_bootstrap_without_runtime(command: &str) -> bool {
+    matches!(
+        command,
+        "media_library"
+            | "list_models"
+            | "env_info"
+            | "model_hub"
+            | "model_download"
+    )
+}
+
 fn select_worker_python(
     command: &str,
     bootstrap_python: &str,
@@ -168,7 +179,7 @@ fn select_worker_python(
     if let Some(python) = active_runtime_python {
         return Ok(python);
     }
-    if command == "test_connection" {
+    if command == "test_connection" || allows_bootstrap_without_runtime(command) {
         return Ok(bootstrap_python.to_string());
     }
     Err(AppError::Worker(
@@ -395,28 +406,137 @@ fn distinct_bundled_runtime_env(
     bundled.filter(|path| path.canonicalize().ok() != user_runtime)
 }
 
-fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
-    let user_file = storage::active_runtime_file(app)?;
-    if let Some((path, _source)) = resolve_active_runtime_record(&user_file) {
-        let is_managed = is_user_runtime_python_path(app, &path)?;
-        let is_debug_override = active_debug_override_path_allowed(
-            &user_file,
-            &path,
-            storage::is_development_executable(),
-        );
-        if (is_managed || is_debug_override) && active_path_backend_matches(&user_file, &path) {
-            return Ok(Some(path));
-        }
-    };
-    if let Some(envs_dir) = bundled_runtime_envs_dir(app)? {
-        let bundled_file = envs_dir.join("active-runtime.json");
-        if let Some((path, _source)) = resolve_active_runtime_record(&bundled_file) {
-            if is_bundled_runtime_python_path(&bundled_file, &path)? {
-                return Ok(Some(path));
-            }
+/// 候选的 `runtime-envs` 目录，按优先级排列。
+///
+/// 为什么不是"只有一处"：开发态的数据根与运行时根历史上不一致——
+/// 数据在 `.dev-data`，而 exe 旁边会留下一个只有 `.lock` 的空壳
+/// `target/debug/python-runtime/runtime-envs`。只看一处就会永远读到空壳。
+fn runtime_envs_candidates(app: &AppHandle) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(envs) = storage::runtime_envs_dir(app) {
+        candidates.push(envs);
+    }
+    if let Ok(root) = storage::data_root_dir(app) {
+        candidates.push(root.join("runtime-envs"));
+    }
+    if storage::is_development_executable() {
+        // 开发态兜底：项目根下的 `.dev-data/runtime-envs`
+        if let Some(project) = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent() {
+            candidates.push(project.join(".dev-data").join("runtime-envs"));
         }
     }
-    Ok(None)
+    if let Ok(Some(bundled)) = bundled_runtime_envs_dir(app) {
+        candidates.push(bundled);
+    }
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut unique: Vec<PathBuf> = Vec::new();
+    for candidate in candidates {
+        let key = candidate.canonicalize().unwrap_or_else(|_| candidate.clone());
+        if seen.iter().any(|existing| existing == &key) {
+            continue;
+        }
+        seen.push(key);
+        unique.push(candidate);
+    }
+    unique
+}
+
+fn python_under_envs_dir(envs_dir: &Path, python_path: &str) -> bool {
+    let root = envs_dir.canonicalize().unwrap_or_else(|_| envs_dir.to_path_buf());
+    PathBuf::from(python_path)
+        .parent()
+        .and_then(Path::parent)
+        .and_then(|env| env.canonicalize().ok())
+        .is_some_and(|env| env.starts_with(&root))
+}
+
+/// 从候选目录里挑出**第一个可用**的运行时记录。
+///
+/// 抽成纯函数是为了能测：这里的"空壳目录"曾经让开发态连续四轮报
+/// "没有安装运行时"——单测比真机点四次便宜得多。
+fn select_active_record(candidates: &[PathBuf], development: bool) -> Option<String> {
+    for envs_dir in candidates {
+        let file = envs_dir.join("active-runtime.json");
+        if !file.is_file() {
+            continue;
+        }
+        let Some((path, _source)) = resolve_active_runtime_record(&file) else {
+            continue;
+        };
+        let managed = python_under_envs_dir(envs_dir, &path);
+        let debug_override = active_debug_override_path_allowed(&file, &path, development);
+        if (managed || debug_override) && active_path_backend_matches(&file, &path) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
+    Ok(select_active_record(
+        &runtime_envs_candidates(app),
+        storage::is_development_executable(),
+    ))
+}
+
+#[cfg(test)]
+mod runtime_record_tests {
+    use super::*;
+    use std::fs;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let mut root = std::env::temp_dir();
+        root.push(format!("mediaforge-runtime-test-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    /// 造一个可用的 runtime-envs：`<envs>/<backend>/Scripts/python.exe` + 记录
+    fn make_envs(root: &Path, backend: &str) -> PathBuf {
+        let envs = root.join("runtime-envs");
+        let python = envs.join(backend).join("Scripts").join("python.exe");
+        fs::create_dir_all(python.parent().unwrap()).unwrap();
+        fs::write(&python, b"stub").unwrap();
+        let record = serde_json::json!({
+            "pythonPath": python.to_string_lossy(),
+            "backend": backend,
+        });
+        fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
+        envs
+    }
+
+    #[test]
+    fn skips_empty_shell_directories() {
+        let root = scratch("shell");
+        // 空壳：只有锁文件，没有 active-runtime.json（真实开发态的 target/debug 就是这样）
+        let shell = root.join("python-runtime").join("runtime-envs");
+        fs::create_dir_all(&shell).unwrap();
+        fs::write(shell.join(".runtime-management.lock"), b"").unwrap();
+
+        let real = make_envs(&root.join("data"), "cuda");
+        let picked = select_active_record(&[shell, real.clone()], true);
+        assert!(picked.is_some(), "空壳目录应被跳过，改用后面那个有记录的");
+        assert!(picked.unwrap().contains("python.exe"));
+    }
+
+    #[test]
+    fn rejects_a_record_whose_backend_disagrees_with_its_directory() {
+        let root = scratch("mismatch");
+        let envs = make_envs(&root, "cpu");
+        // 把记录里的 backend 改成 cuda，但目录名仍是 cpu → 必须拒绝
+        let record = serde_json::json!({
+            "pythonPath": envs.join("cpu").join("Scripts").join("python.exe").to_string_lossy(),
+            "backend": "cuda",
+        });
+        fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
+        assert_eq!(select_active_record(&[envs], false), None);
+    }
+
+    #[test]
+    fn returns_none_without_candidates() {
+        assert_eq!(select_active_record(&[], true), None);
+    }
 }
 
 fn resolve_runtime_overlay_for_record(
@@ -549,18 +669,6 @@ fn active_debug_override_path_allowed(
     record.debug_override && active_path_backend_matches(file, python_path)
 }
 
-fn is_user_runtime_python_path(app: &AppHandle, path: &str) -> AppResult<bool> {
-    let runtime_envs = storage::runtime_envs_dir(app)?;
-    let runtime_root = runtime_envs.canonicalize().unwrap_or(runtime_envs);
-    let python_path = PathBuf::from(&path);
-    let env_dir = python_path
-        .parent()
-        .and_then(Path::parent)
-        .map(Path::to_path_buf);
-    Ok(env_dir
-        .and_then(|path| path.canonicalize().ok())
-        .is_some_and(|path| path.starts_with(&runtime_root)))
-}
 
 pub(crate) fn bundled_bin_dirs(app: &AppHandle) -> AppResult<Vec<PathBuf>> {
     let resource = app.path().resource_dir().ok();
@@ -729,7 +837,22 @@ fn build_worker_command(
         .map(|python| active_runtime_overlay_path(app, python))
         .transpose()?
         .flatten();
-    let python = select_worker_python(command, &bootstrap_python, active_runtime_python)?;
+    let python = select_worker_python(command, &bootstrap_python, active_runtime_python).map_err(|error| {
+        // 这条错误信息要能自证：它找的是哪个目录、那里有没有 active-runtime.json，
+        // 否则用户只能看到"没有运行时"，而不知道应用到底在哪儿找。
+        let envs = storage::runtime_envs_dir(app)
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| "<unresolved>".into());
+        let record = runtime_envs_candidates(app)
+            .iter()
+            .map(|dir| {
+                let file = dir.join("active-runtime.json");
+                format!("{} (exists={})", file.display(), file.is_file())
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
+        AppError::Worker(format!("{error} [runtime-envs={envs}; record={record}]"))
+    })?;
     let python_for_log = python.clone();
     let worker_for_log = worker.clone();
     let mut cmd = Command::new(&python);
@@ -771,13 +894,13 @@ fn build_worker_command(
         .env_remove("PYMSS_STUDIO_TERMINAL_LOG");
     if let Ok(dir) = storage::runtime_envs_dir(app) {
         cmd.env(
-            "PYMSS_STUDIO_RUNTIME_ENVS_DIR",
+            "MEDIAFORGE_RUNTIME_ENVS_DIR",
             dir.to_string_lossy().to_string(),
         );
     }
     if let Ok(file) = storage::active_runtime_file(app) {
         cmd.env(
-            "PYMSS_STUDIO_ACTIVE_RUNTIME_FILE",
+            "MEDIAFORGE_ACTIVE_RUNTIME_FILE",
             file.to_string_lossy().to_string(),
         );
     }
@@ -817,7 +940,11 @@ fn build_worker_command(
         );
     }
     if let Ok(models_dir) = storage::models_dir(app) {
-        cmd.env("PYMSS_MODEL_DIR", models_dir.to_string_lossy().to_string());
+        cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
+        cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
+    }
+    if let Ok(data_root) = storage::data_root_dir(app) {
+        cmd.env("MEDIAFORGE_DATA_DIR", data_root.to_string_lossy().to_string());
     }
     // Keep the custom-model registry with the app's own state rather than in pymss's default
     // ~/.cache location, so a portable install carries its imported models with it.
@@ -1225,8 +1352,7 @@ fn worker_lifecycle_level(command: &str) -> &'static str {
             | "export_editor_mix"
             | "install_runtime"
             | "update_runtime_core"
-            | "download_model"
-    ) {
+        ) {
         "INFO"
     } else {
         "DEBUG"
@@ -1271,8 +1397,7 @@ fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
             event_type,
             "error" | "model_residual_cleanup_done" | "model_residual_cleanup_failed"
         ),
-        "download_model" => matches!(event_type, "error" | "download_done" | "task_cancelled"),
-        "install_runtime" => matches!(
+            "install_runtime" => matches!(
             event_type,
             "error" | "runtime_install_finished" | "task_cancelled"
         ),

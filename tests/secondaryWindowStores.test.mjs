@@ -66,7 +66,8 @@ function environment(initial = {}) {
           if (command === 'get_app_paths') {
             return { dataRoot: 'D:/data', settingsDir: 'D:/data/settings', modelsDir: 'D:/old-models', outputsDir: 'D:/outputs' }
           }
-          if (command === 'list_models') {
+          if (command === 'model_hub') return { ok: true, models: [], modelDir: args.payload.modelDir, count: 0, downloadedCount: 0 }
+    if (command === 'list_models') {
             return { models: [], categories: [], categoriesCn: [], modelDir: args.payload.modelDir }
           }
           if (command === 'get_model_storage_summary') return { models: [], modelDir: args.payload.modelDir }
@@ -269,6 +270,46 @@ test('secondary-window download progress cannot overwrite newer main-window pref
   assert.equal(child.models.downloadTasks.Model.progress, 51)
   assert.deepEqual(env.state['model-state'], baseline)
   assert.ok(env.writes.every(write => write.label === 'main'))
+})
+
+// --- 统一下载路径的回归测试 -------------------------------------------------
+// 旧实现（list_models + start_model_download）与新实现（model_hub +
+// start_model_hub_download）必须对 store 产生同样的状态迁移；这些断言不看命令名，
+// 只看"事件进来之后状态对不对"，所以删掉旧路径后它们仍然有效。
+
+test('a hub download reports progress on its task and completes into the model list', async () => {
+  const env = environment()
+  const main = env.instance('main')
+  await main.models.initialize()
+  await waitForSave()
+
+  const taskId = 'download_test-1'
+  main.models.handleWorkerEvent({ type: 'download_started', taskId, payload: { model: 'Model' } })
+  main.models.handleWorkerEvent({ type: 'download_progress', taskId, payload: { model: 'Model', progress: 42 } })
+  assert.equal(main.models.downloadTasks.Model.progress, 42)
+  assert.equal(main.models.downloadTasks.Model.status, 'downloading')
+
+  main.models.handleWorkerEvent({
+    type: 'download_done',
+    taskId,
+    payload: { model: 'Model', downloaded: ['Model.th'], skipped: [], modelDir: 'D:/models', modelInfo: { name: 'Model', downloaded: true } },
+  })
+  assert.equal(main.models.downloadTasks.Model?.status ?? 'done', 'done')
+  assert.equal(main.models.downloadStates.Model, 'done')
+})
+
+test('cancelling a hub download returns the task to a non-downloading state', async () => {
+  const env = environment()
+  const main = env.instance('main')
+  await main.models.initialize()
+  await waitForSave()
+
+  const taskId = 'download_test-2'
+  main.models.handleWorkerEvent({ type: 'download_started', taskId, payload: { model: 'Model' } })
+  main.models.handleWorkerEvent({ type: 'download_progress', taskId, payload: { model: 'Model', progress: 10 } })
+  main.models.handleWorkerEvent({ type: 'task_cancelled', taskId, payload: { model: 'Model' } })
+  assert.notEqual(main.models.downloadTasks.Model?.status, 'downloading')
+  assert.notEqual(main.models.downloadTasks.Model?.status, 'done')
 })
 
 test('secondary settings hydration and device reconciliation leave current settings and backend proxy intact', async () => {

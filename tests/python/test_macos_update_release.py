@@ -189,8 +189,8 @@ validate_bundle() { [ -f "$1/valid-signature" ]; }
     def test_channels_are_independent_and_keep_windows_artifact_contract(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            windows = "Pymss-Studio-1.2.3-windows-x64-update.zip"
-            macos = "Pymss-Studio-1.2.3-macos-arm64-update.app.tar.gz"
+            windows = "MediaForge-1.2.3-windows-x64-update.zip"
+            macos = "MediaForge-1.2.3-macos-arm64-update.app.tar.gz"
             for name in (windows, macos):
                 (root / name).write_bytes(b"archive")
                 (root / f"{name}.sig").write_text("signature", encoding="utf-8")
@@ -216,7 +216,7 @@ validate_bundle() { [ -f "$1/valid-signature" ]; }
     def test_macos_only_prerelease_does_not_publish_stable_channels(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            asset = "Pymss-Studio-1.2.3-macos-arm64-update.app.tar.gz"
+            asset = "MediaForge-1.2.3-macos-arm64-update.app.tar.gz"
             (root / asset).write_bytes(b"archive")
             (root / f"{asset}.sig").write_text("signature", encoding="utf-8")
             (root / f"{asset}.json").write_text(json.dumps({

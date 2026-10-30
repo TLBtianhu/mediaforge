@@ -1,0 +1,80 @@
+MediaForge — third-party notices
+=================================
+
+MediaForge is licensed under the GNU Affero General Public License v3.0
+(see LICENSE). It is a fork of, and builds on, the following projects.
+Their copyrights and licences are preserved here.
+
+Upstream projects
+-----------------
+
+1. pymss-studio — https://github.com/pymss-project/pymss-studio
+   Licence: AGPL-3.0
+   MediaForge started from this repository and keeps its desktop shell,
+   worker protocol, audio pipeline and documentation structure.
+
+2. pymss / pymss-core — https://github.com/pymss-project/pymss
+   Licence: AGPL-3.0
+   Audio separation inference engine. Installed as Python packages
+   (`pymss==2.1.12`, `pymss-core==0.1.14`) at build/run time, not vendored
+   into this repository.
+
+Bundled executables
+-------------------
+
+3. FFmpeg 9.0.2 (gyan.dev essentials build, GPLv3 enabled)
+   https://ffmpeg.org/ — https://www.gyan.dev/ffmpeg/builds/
+   Licence: GPL-3.0 (this build is configured with --enable-gpl
+   --enable-version3). Shipped as `bin/ffmpeg.exe` and `bin/ffprobe.exe`.
+   Source code: https://ffmpeg.org/download.html
+
+4. aria2 1.37.0
+   https://aria2.github.io/
+   Licence: GPL-2.0-or-later. Shipped as `bin/aria2c.exe`, used to download
+   the runtime asset with multiple connections and resumable transfers.
+   Source code: https://github.com/aria2/aria2
+
+5. Python 3.11 runtime (python.org embeddable/base distribution)
+   https://www.python.org/
+   Licence: PSF-2.0. Shipped as `python-runtime/` in the installer.
+
+6. Microsoft Visual C++ Redistributable (VC_redist.x64.exe)
+   https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+   Redistributed under Microsoft's redistribution terms; installed silently
+   when missing.
+
+Vendored source code
+--------------------
+
+7. RIFE (Practical-RIFE / RIFE v4.26)
+   https://github.com/hzwer/Practical-RIFE — https://github.com/hzwer/RIFE
+   Licence: MIT
+   Vendored under `python/media_ops/vendor/rife/` because the loader expects
+   a specific package layout. Frame interpolation weights are downloaded at
+   runtime, not shipped.
+
+Python packages inside the runtime asset
+----------------------------------------
+
+The runtime asset (`runtime-cuda-*.zip`, downloaded on first launch) is a
+Python environment that includes PyTorch, torchvision, OpenCV, spandrel,
+ultralytics, transformers, timm, kornia, basicsr, facexlib and others.
+Their licences are listed in `python/runtime-lock-media.txt` (package pins)
+and remain those of their respective authors. PyTorch is BSD-3-Clause;
+OpenCV is Apache-2.0; ultralytics is AGPL-3.0.
+
+Model weights
+-------------
+
+Model weights are never bundled. `python/media_ops/media_catalog.json` lists
+each model with its download URL, size and SPDX licence identifier
+(`licenseSpdx`). Licences differ per model and include MIT, Apache-2.0,
+BSD-3-Clause, AGPL-3.0 and — for BRIA RMBG-1.4 — a non-commercial licence
+(`BRIA-1.4-NC`). Users are responsible for complying with each model's terms;
+`docs/model-guide.md` shows the licence next to every model.
+
+Fonts, icons and UI dependencies
+--------------------------------
+
+Frontend dependencies are declared in package.json and retain their own
+licences (MIT and Apache-2.0 in the current tree).

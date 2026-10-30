@@ -18,12 +18,14 @@ import json
 import os
 import re
 import shutil
+import stat
 import time
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+import worker_paths
 from worker_protocol import emit, emit_error
 
 # Weights are loaded with ``torch.load`` (see pymss_core/checkpoint.py), so only formats it reads
@@ -314,21 +316,21 @@ def cmd_inspect_custom_model(payload: dict[str, Any]) -> int:
 # --------------------------------------------------------------------------------------
 
 def managed_root(model_dir: str | None = None) -> Path:
-    """Where copied weights live.
+    """Where copied weights live: ``<model_root>/custom``.
 
     Under the model directory so that existing storage accounting and the model-directory
     migration both already cover them.
 
-    The caller's `model_dir` wins over PYMSS_MODEL_DIR: that variable always holds the default
-    location, while the directory the user actually configured is passed per command (the same
-    way list_models and delete_model receive it). Reading only the environment would drop copies
-    into the default directory while every catalog model lived somewhere else."""
-    if model_dir:
-        root = Path(model_dir).expanduser()
-    else:
-        env_dir = os.environ.get("PYMSS_MODEL_DIR")
-        root = Path(env_dir) if env_dir else Path.home() / ".cache" / "pymss" / "models"
-    return root / "custom"
+    The caller's `model_dir` wins over the environment: the directory the user actually
+    configured is passed per command, while the environment holds the default. Reading only
+    the environment would drop copies into the default directory while every catalog model
+    lived somewhere else.
+
+    2026-10-29: 根目录的解析交给 `worker_paths.model_root()` —— 之前这里只认
+    `MEDIAFORGE_MODEL_DIR`，于是"只设了 MEDIAFORGE_MODEL_DIR"时，自定义模型会落到
+    `~/.cache/pymss/models/custom`，在模型库里看不见。
+    """
+    return worker_paths.model_root(model_dir) / "custom"
 
 
 def safe_model_name(name: str) -> bool:
@@ -339,13 +341,50 @@ def safe_model_name(name: str) -> bool:
     )
 
 
+def is_link_like(path: Path) -> bool:
+    """目录是不是"通到别处"的入口：符号链接、Windows junction、或任何重解析点。
+
+    为什么要自己判（2026-10-29 实测）：运行时是 **Python 3.11**，而 `Path.is_junction()`
+    是 3.12 才有的；`Path.is_symlink()` 在 Windows 上只认真正的符号链接，
+    **junction 的 reparse tag 是 MOUNT_POINT 不是 SYMLINK**，所以也返回 False。
+
+    结果就是：只写 `is_symlink() or getattr(..., 'is_junction', ...)` 的话，
+    在发布版上**这道保护是死代码**——用户把 `<模型目录>/custom` 做成 junction 指向别处，
+    导入会顺着链接写出去，删除会删到外面。
+
+    Python 3.8+ 在 Windows 的 `os.stat_result` 上提供 `st_file_attributes`，
+    用 FILE_ATTRIBUTE_REPARSE_POINT 位就能覆盖 junction / 符号链接 / 其它 reparse 点。
+    """
+    try:
+        if path.is_symlink():
+            return True
+    except OSError:
+        return False
+
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction):
+        try:
+            if is_junction():
+                return True
+        except OSError:
+            return False
+
+    try:
+        stats = os.lstat(path)
+    except OSError:
+        return False
+    attributes = getattr(stats, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(attributes & reparse_flag)
+
+
 def _managed_dir_for_name(model_dir: str | None, name: str) -> Path:
     if not safe_model_name(name):
         raise ValueError("Model name must be a valid directory name without paths or reserved characters")
-    root = managed_root(model_dir).parent.resolve() / "custom"
+    root = managed_root(model_dir)
     target = root / name
     for path in (root, target):
-        if path.is_symlink() or getattr(path, 'is_junction', lambda: False)():
+        if is_link_like(path):
             raise ValueError("Managed model directories must not be symbolic links or junctions")
         if path.exists() and not path.is_dir():
             raise ValueError("The managed model path is not a directory")

@@ -102,7 +102,7 @@ class LinuxReleaseTests(unittest.TestCase):
     def test_signed_appimage_advertises_manual_install_even_when_auto_updates_requested(self):
         with tempfile.TemporaryDirectory() as temporary:
             artifacts = Path(temporary)
-            asset = "Pymss-Studio-1.2.3-linux-x64.AppImage"
+            asset = "MediaForge-1.2.3-linux-x64.AppImage"
             (artifacts / asset).write_bytes(b"AppImage")
             (artifacts / f"{asset}.sig").write_text("release-signature", encoding="utf-8")
             generated = METADATA.generate(artifacts, {
@@ -117,12 +117,13 @@ class LinuxReleaseTests(unittest.TestCase):
             self.assertTrue(data["pymss_requires_manual_install"])
             self.assertEqual(set(data["platforms"]), {"linux-x86_64"})
             self.assertTrue(data["platforms"]["linux-x86_64"]["url"].endswith('/' + asset))
-            self.assertEqual(data["pymss_manual_install_url"], "https://github.com/pymss-project/pymss-studio/releases/tag/v1.2.3")
+            # 2026-10-29：手动安装链接已指向本仓库（原来是上游 pymss-project/pymss-studio）
+            self.assertEqual(data["pymss_manual_install_url"], "https://github.com/TLBtianhu/mediaforge/releases/tag/v1.2.3")
 
     def test_linux_prerelease_does_not_overwrite_stable_channel(self):
         with tempfile.TemporaryDirectory() as temporary:
             artifacts = Path(temporary)
-            asset = "Pymss-Studio-1.2.3-rc.1-linux-x64.AppImage"
+            asset = "MediaForge-1.2.3-rc.1-linux-x64.AppImage"
             (artifacts / asset).touch()
             (artifacts / f"{asset}.sig").write_text("release-signature", encoding="utf-8")
             self.assertEqual(METADATA.generate(artifacts, {
@@ -132,14 +133,14 @@ class LinuxReleaseTests(unittest.TestCase):
     def test_linux_channel_rejects_a_missing_signature(self):
         with tempfile.TemporaryDirectory() as temporary:
             artifacts = Path(temporary)
-            (artifacts / "Pymss-Studio-1.2.3-linux-x64.AppImage").touch()
+            (artifacts / "MediaForge-1.2.3-linux-x64.AppImage").touch()
             with self.assertRaises(FileNotFoundError):
                 METADATA.generate(artifacts, {"RELEASE_TAG": "v1.2.3"})
 
     def test_linux_online_install_requires_its_own_explicit_release_flag(self):
         with tempfile.TemporaryDirectory() as temporary:
             artifacts = Path(temporary)
-            asset = "Pymss-Studio-1.2.3-linux-x64.AppImage"
+            asset = "MediaForge-1.2.3-linux-x64.AppImage"
             (artifacts / asset).touch()
             (artifacts / f"{asset}.sig").write_text("release-signature", encoding="utf-8")
             METADATA.generate(artifacts, {

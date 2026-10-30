@@ -1,0 +1,851 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "id": "real-esrgan-x2",
+      "name": "RealESRGAN_x2plus.pth",
+      "label": "Real-ESRGAN 2×",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "video_mode": "frame",
+      "implemented": true,
+      "task": "super_resolution",
+      "size": 67061725,
+      "license": "BSD-3-Clause",
+      "description": "2× photo super-resolution, used by image and video restore.",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "sha256": "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb",
+      "status": "available",
+      "licenseSpdx": "BSD-3-Clause"
+    },
+    {
+      "id": "real-esrgan-x4",
+      "name": "RealESRGAN_x4plus.pth",
+      "label": "Real-ESRGAN 4×",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "video_mode": "frame",
+      "implemented": true,
+      "task": "super_resolution",
+      "size": 67040989,
+      "license": "BSD-3-Clause",
+      "description": "4× photo super-resolution, used for 2K/4K targets.",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "status": "available",
+      "licenseSpdx": "BSD-3-Clause"
+    },
+    {
+      "id": "lama",
+      "name": "big-lama.pt",
+      "label": "LaMa Inpainting",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "video_mode": "frame",
+      "implemented": true,
+      "task": "inpainting",
+      "size": 205669692,
+      "license": "Apache-2.0",
+      "description": "Mask-guided inpainting for watermark and object removal.",
+      "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt",
+      "capabilities": [
+        "watermark_removal"
+      ],
+      "roles": [
+        "inpainter"
+      ],
+      "params": {
+        "expand": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 0,
+          "maximum": 64
+        }
+      },
+      "sha256": "344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9",
+      "status": "available",
+      "licenseSpdx": "Apache-2.0"
+    },
+    {
+      "id": "watermark-yolo11x",
+      "name": "watermark_yolo11x.pt",
+      "label": "YOLO11x Watermark",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "video_mode": "frame",
+      "implemented": true,
+      "task": "watermark_detection",
+      "size": 114434898,
+      "license": "MIT (model card) / AGPL-3.0 (Ultralytics)",
+      "description": "Detects watermark and logo regions before LaMa repair.",
+      "url": "https://huggingface.co/corzent/yolo11x_watermark_detection/resolve/main/best.pt",
+      "capabilities": [
+        "watermark_removal"
+      ],
+      "roles": [
+        "detector"
+      ],
+      "sha256": "6ac71b6ab8db27ec7928b5176e60a359c65e1579a5c1d58cf2f98df30cf3085e",
+      "status": "available",
+      "licenseSpdx": "AGPL-3.0"
+    },
+    {
+      "id": "rife-v46",
+      "name": "rife-v4.26",
+      "label": "RIFE 4.26 插帧",
+      "modality": "video",
+      "modalities": [
+        "video"
+      ],
+      "implemented": true,
+      "task": "frame_interpolation",
+      "size": 49272602,
+      "license": "以 hzwer/RIFE 仓库 LICENSE 为准",
+      "description": "两帧之间插中间帧；输入宽高需为 32 的倍数。",
+      "url": "https://hf-mirror.com/hzwer/RIFE/resolve/main/RIFEv4.26_0921.zip",
+      "capabilities": [
+        "frame_interpolation"
+      ],
+      "roles": [
+        "interpolator"
+      ],
+      "status": "available",
+      "architecture": "RIFE",
+      "video_mode": "frame",
+      "params": {
+        "timestep": {
+          "type": "number",
+          "default": 0.5
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "propainter",
+      "name": "ProPainter.pth",
+      "label": "ProPainter",
+      "modality": "video",
+      "modalities": [
+        "video"
+      ],
+      "implemented": false,
+      "task": "video_inpainting",
+      "size": 0,
+      "license": "S-Lab License 1.0",
+      "description": "Native video inpainting for moving watermarks and objects. Adapter is next.",
+      "url": "",
+      "capabilities": [
+        "video_inpainting"
+      ],
+      "roles": [
+        "primary"
+      ],
+      "status": "planned",
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载",
+      "licenseSpdx": null
+    },
+    {
+      "id": "basicvsrpp",
+      "name": "BasicVSR_PlusPlus.pth",
+      "label": "BasicVSR++",
+      "modality": "video",
+      "modalities": [
+        "video"
+      ],
+      "implemented": false,
+      "task": "video_super_resolution",
+      "size": 0,
+      "license": "Apache-2.0",
+      "description": "Temporal video super-resolution. Catalog entry; adapter is next.",
+      "url": "",
+      "capabilities": [
+        "video_super_resolution"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "status": "planned",
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载",
+      "licenseSpdx": null
+    },
+    {
+      "id": "gfpgan-v14",
+      "name": "GFPGANv1.4.pth",
+      "label": "GFPGAN v1.4",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "implemented": false,
+      "task": "face_restoration",
+      "size": 0,
+      "license": "Apache-2.0",
+      "description": "Face restoration for old or degraded portraits. Adapter is next.",
+      "url": "",
+      "capabilities": [
+        "face_restoration"
+      ],
+      "roles": [
+        "face_restorer"
+      ],
+      "status": "planned",
+      "blockedReason": "依赖已装通（basicsr/facexlib/gfpgan + torchvision functional_tensor 垫片），GFPGANv1.pth（587 MB）也下好了。但参数扫描表明该权重与包内两种架构都不匹配：GFPGANv1Clean 在 (channel_multiplier, different_w, input_is_latent, sft_half) 全组合下最好也只有 166 个键不匹配（缺 conv_body_first.weight，说明权重是 Sequential 结构）；GFPGANv1 则在 cm=1/2 与 sft_half True/False 下都报 final_linear 形状不符。结论：这个 v1 权重与当前 gfpgan 1.3.8 的架构定义对不上，需要换官方 GFPGANv1.4.pth（配 GFPGANv1Clean）。",
+      "licenseSpdx": null
+    },
+    {
+      "id": "hat-l",
+      "name": "hat-l",
+      "label": "HAT-L",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "见上游仓库（未标注）",
+      "description": "混合注意力超分，质量高、显存占用大",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
+    },
+    {
+      "id": "dat-2",
+      "name": "dat-2",
+      "label": "DAT-2",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "见上游仓库（未标注）",
+      "description": "双聚合 Transformer 超分",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
+    },
+    {
+      "id": "codeformer",
+      "name": "codeformer",
+      "label": "CodeFormer",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "face_restoration",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "见上游仓库（未标注）",
+      "description": "带保真度权重的老照片人脸修复",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "codeformer.pth（359 MB）在 hf-mirror 上可下，但 CodeFormer 的架构代码依赖 basicsr，且需要人脸检测与对齐；本次已装通 basicsr/facexlib，先解决 GFPGAN 的架构匹配再复用它。",
+      "licenseSpdx": null
+    },
+    {
+      "id": "birefnet",
+      "name": "birefnet",
+      "label": "BiRefNet",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "matting",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "见上游仓库（未标注）",
+      "description": "高分辨率抠图",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "权重与代码可下载，依赖已装通（timm/kornia/kornia-rs + torchvision 垫片），transformers 远程代码能加载 BiRefNet 并在 CUDA 上 fp16 前向。但三种预处理都出不来可用掩膜：ImageNet 归一化 → 原始输出 3.2~14.8，sigmoid 后前景 100%；0-1 输入 → 前景 0%；(x-0.5)/0.5 → 前景 26.6%，但看图是**一团模糊光斑**，边缘完全不对。对照 handler.py：官方用 ImageNet 归一化 + 取 preds[0].squeeze()，与实测不符，说明这个 checkpoint 的输出版本/配置（mul_scl_ipt、decoder 结构）与仓库默认不一致。下一步：改用仓库自带的 inference 脚本或其 config.json 里的完整配置，而不是手拼预处理。",
+      "licenseSpdx": null
+    },
+    {
+      "id": "ddcolor",
+      "name": "ddcolor",
+      "label": "DDColor",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "colorization",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "见上游仓库（未标注）",
+      "description": "黑白照片上色",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
+    },
+    {
+      "id": "sam2",
+      "name": "sam2",
+      "label": "SAM 2",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "task": "segmentation",
+      "capabilities": [],
+      "roles": [],
+      "size": 0,
+      "license": "见上游仓库（未标注）",
+      "description": "提示式分割，体积大",
+      "implemented": false,
+      "status": "planned",
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
+    },
+    {
+      "id": "real-cugan-x4",
+      "name": "RealCUGAN_4x_denoise3x.pth",
+      "label": "Real-CUGAN 4× (denoise3x)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "RealCUGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 5636403,
+      "license": "以 bilibili/Real-CUGAN 仓库 LICENSE 为准",
+      "description": "面向动漫/插画的 4× 超分，denoise3x 变体自带较强降噪。",
+      "url": "https://www.modelscope.cn/models/bilibili/cv_bilibili_image-super-resolution/resolve/master/weights_v3/up4x-latest-denoise3x.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "scunet-color-real",
+      "name": "SCUNet_color_real_psnr.pth",
+      "label": "SCUNet (color real, PSNR)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "denoise",
+      "architecture": "SCUNet",
+      "capabilities": [
+        "denoise"
+      ],
+      "roles": [
+        "denoiser"
+      ],
+      "size": 71982841,
+      "license": "以 cszn/KAIR 仓库 LICENSE 为准",
+      "description": "彩色图盲去噪，PSNR 变体；输出尺寸与输入一致。",
+      "url": "https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_psnr.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {},
+      "licenseSpdx": "Apache-2.0"
+    },
+    {
+      "id": "swinir-m-x2",
+      "name": "SwinIR-M_x2_GAN.pth",
+      "label": "SwinIR-M 2× (real-world GAN)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "SwinIR",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66974517,
+      "license": "以 JingyunLiang/SwinIR 仓库 LICENSE 为准",
+      "description": "Transformer 超分（real-world 2× GAN 权重），细节强但 fp16 下会出 NaN，已自动降级 fp32。",
+      "url": "https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/003_realSR_BSRGAN_DFO_s64w8_SwinIR-M_x2_GAN.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 2
+        }
+      },
+      "licenseSpdx": "Apache-2.0"
+    },
+    {
+      "id": "real-esrgan-anime-x4",
+      "name": "RealESRGAN_x4plus_anime_6B.pth",
+      "label": "Real-ESRGAN x4plus (anime 6B)",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "task": "super_resolution",
+      "architecture": "RealESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 17938799,
+      "license": "BSD-3-Clause",
+      "description": "面向动漫/插画的 4× 超分，6B 变体更轻，线条更锐。",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "BSD-3-Clause"
+    },
+    {
+      "id": "yolo11n",
+      "name": "yolo11n.pt",
+      "label": "YOLO11n 目标检测",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "task": "object_detection",
+      "architecture": "YOLO11",
+      "capabilities": [
+        "object_detection"
+      ],
+      "roles": [
+        "detector"
+      ],
+      "size": 5613764,
+      "license": "AGPL-3.0 (Ultralytics)",
+      "description": "通用目标检测，输出 JSON（label/置信度/框），不生成图像。",
+      "url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "conf": {
+          "type": "number",
+          "default": 0.25
+        }
+      },
+      "licenseSpdx": "AGPL-3.0"
+    },
+    {
+      "id": "depth-anything-v2-small",
+      "name": "depth-anything-v2-small",
+      "label": "Depth Anything V2 (Small)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "depth",
+      "architecture": "DepthAnythingV2",
+      "capabilities": [
+        "depth"
+      ],
+      "roles": [
+        "depth_estimator"
+      ],
+      "size": 99175385,
+      "license": "Apache-2.0",
+      "description": "单目深度估计，输出归一化的灰度深度图（近白远黑）。",
+      "url": "https://hf-mirror.com/depth-anything/Depth-Anything-V2-Small-hf",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {},
+      "licenseSpdx": "Apache-2.0"
+    },
+    {
+      "id": "rmbg-1.4",
+      "name": "rmbg-1.4",
+      "label": "RMBG-1.4 抠图",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "matting",
+      "architecture": "BriaRMBG",
+      "capabilities": [
+        "matting"
+      ],
+      "roles": [
+        "background_remover"
+      ],
+      "size": 176735708,
+      "license": "BRIA RMBG-1.4（非商业许可，商用需向 BRIA 申请）",
+      "description": "通用背景移除，输出 RGBA（alpha 即前景概率）。",
+      "url": "https://hf-mirror.com/briaai/RMBG-1.4",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {},
+      "licenseSpdx": "BRIA-1.4-NC"
+    },
+    {
+      "id": "real-cugan-x2",
+      "name": "RealCUGAN_2x_denoise3x.pth",
+      "label": "Real-CUGAN 2× (denoise3x)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "RealCUGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 5147249,
+      "license": "以 bilibili/Real-CUGAN 仓库 LICENSE 为准",
+      "description": "面向动漫/插画的 2× 超分，denoise3x 变体自带较强降噪。",
+      "url": "https://www.modelscope.cn/models/bilibili/cv_bilibili_image-super-resolution/resolve/master/weights_v3/up2x-latest-denoise3x.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 2
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-ultrasharp-x4",
+      "name": "4x-UltraSharp.pth",
+      "label": "4x-UltraSharp",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66961958,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "社区常用的通用 4× 超分，锐度与噪点平衡较好。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x-UltraSharp.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-remacri-x4",
+      "name": "4x_foolhardy_Remacri.pth",
+      "label": "4x Remacri",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 67025055,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "写实向 4× 超分，纹理保留好，适合照片。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_foolhardy_Remacri.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-1x-denoise-realplksr",
+      "name": "1xDeNoise_realplksr_otf.pth",
+      "label": "1x DeNoise (realplksr otf)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "denoise",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "denoise"
+      ],
+      "roles": [
+        "denoiser"
+      ],
+      "size": 29559554,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "1× 去噪（不改变尺寸），适合轻噪点与压缩伪影。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/1xDeNoise_realplksr_otf.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {},
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-superscale-sp-x4",
+      "name": "4x_NMKD-Superscale-SP_178000_G.pth",
+      "label": "4x NMKD Superscale SP",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66958607,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "4× 超分，风格偏柔和自然，适合人像与风景。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-Superscale-SP_178000_G.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-nomos8kdat-x4",
+      "name": "4xNomos8kDAT.pth",
+      "label": "4x Nomos8kDAT",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 309317507,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "训练于 8000 张素材的 4× 超分，体积大（295 MB）但细节更稳。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4xNomos8kDAT.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-valar-x4",
+      "name": "4x_Valar_v1.pth",
+      "label": "4x Valar v1",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 67544144,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "4× 超分，锐度与纹理平衡，适合游戏截图与插画。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_Valar_v1.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-comix-x4",
+      "name": "4x_Fatality_Comix_260000_G.pth",
+      "label": "4x Fatality Comix",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66958607,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "4× 超分，面向漫画/线稿，边缘更硬。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_Fatality_Comix_260000_G.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    },
+    {
+      "id": "esrgan-yandereneoxl-x4",
+      "name": "4x_NMKD-YandereNeoXL_200k.pth",
+      "label": "4x NMKD YandereNeoXL",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66961958,
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
+      "description": "4× 超分，二次元/插画向，线条干净、色彩偏鲜。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-YandereNeoXL_200k.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "licenseSpdx": "MIT"
+    }
+  ]
+}
