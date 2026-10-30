@@ -116,6 +116,31 @@ ModelHubView.vue:173  invoke('start_model_hub_download')  ← 下载仍走 A 套
 
 验收：下载中进度条连续更新、完成后两个页面同时显示"已下载"、中途取消能回到未下载。
 
+## 2.9 调用方已清零（2026-10-30）
+
+```
+src 里对旧命令的引用：0（只剩 demo 桩与测试桩）
+stores/model.ts       列表 → model_hub，下载 → start_model_hub_download
+ModelHubView          列表 → model_hub，下载 → start_model_hub_download
+```
+
+删除 B 套的前置条件（无生产调用方）已满足，但**删除本身没做**，原因：
+
+* 下载链路只在类型检查和单测层面验证过
+* 事件是否真的带 `taskId` 回来、进度条是否连续、取消能否落回未下载——只能装一次点三下确认
+* 在确认之前删掉旧路径，等于把唯一的回退方案也删了
+
+删除清单（确认可用后再执行）：
+
+```
+1. python/worker_download.py：只服务旧路径的分支（保留 model_hub 复用的工具函数）
+2. python/worker.py：download_model 分支
+3. src-tauri/src/commands/app_cmd.rs：list_models、start_model_download 及注册
+4. src/demoRuntime.ts：list_models 桩改为 model_hub
+5. tests/secondaryWindowStores.test.mjs：list_models 桩删除
+6. tests/python：相关用例改为断言命令不存在
+```
+
 ## 3. 改动清单（按依赖顺序）
 
 ### 3.1 后端：让 A 套发出统一事件
