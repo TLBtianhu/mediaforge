@@ -255,7 +255,6 @@ fn main() {
             commands::app_cmd::manage_optional_runtime_package,
             commands::app_cmd::start_runtime_install,
             commands::app_cmd::cancel_runtime_install,
-            commands::app_cmd::cancel_runtime_core_update,
             commands::app_cmd::activate_runtime,
             commands::app_cmd::delete_runtime,
             commands::app_cmd::worker_health,

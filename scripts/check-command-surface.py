@@ -79,6 +79,37 @@ def agent_commands(implemented: set[str]) -> set[str]:
     return used
 
 
+
+# --- 第三层：前端 invoke 的 Tauri 命令 vs main.rs 注册 -----------------------
+# 这一层今天漏过一次：runtime_asset_status 没进旧安装包的二进制，
+# 前端 catch 掉异常后静默失效，界面上什么都看不出来。
+INVOKE = re.compile(r"\binvoke(?:<[^(]*>)?\(\s*['\"]([a-z][a-z0-9_]*)['\"]")
+REGISTER_BLOCK = re.compile(r"generate_handler!\[(.*?)\]", re.S)
+
+
+def frontend_invokes() -> dict[str, str]:
+    found: dict[str, str] = {}
+    for path in (ROOT / "src").rglob("*"):
+        if path.suffix not in {".ts", ".vue"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in INVOKE.finditer(text):
+            line = text[: match.start()].count(chr(10)) + 1
+            found.setdefault(match.group(1), f"{path.name}:{line}")
+    return found
+
+
+def registered_commands() -> set[str]:
+    text = (ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8", errors="replace")
+    block = REGISTER_BLOCK.search(text)
+    if not block:
+        return set()
+    names = set()
+    for entry in re.findall(r"[A-Za-z_][A-Za-z0-9_:]*", block.group(1)):
+        names.add(entry.split("::")[-1])
+    return names
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--strict", action="store_true", help="有差异时返回 1")
@@ -100,14 +131,23 @@ def main(argv: list[str] | None = None) -> int:
     print(f"三处都没有引用 : {len(orphan)}")
     for name in orphan[: args.limit]:
         print(f"  {name}")
+    invoked = frontend_invokes()
+    registered = registered_commands()
+    unregistered = sorted(name for name in invoked if name not in registered)
+    unused = sorted(name for name in registered if name not in invoked)
     print()
+    print(f"前端 invoke 的命令 {len(invoked)} 个，main.rs 注册 {len(registered)} 个")
+    print(f"前端调了但没注册 : {len(unregistered)}")
+    for name in unregistered[: args.limit]:
+        print(f"  {name}  <- {invoked[name]}")
+    print(f"注册了但前端没调 : {len(unused)}（agent/测试/内部可能用到，不一定是问题）")
     if missing:
         print("结论：存在'调用了却不存在的命令'，调用时会返回 UNKNOWN_COMMAND")
     elif orphan:
         print("结论：没有悬空调用，但有实现没人用（可能是给 frontend/测试留的入口）")
     else:
         print("结论：命令面一致")
-    if args.strict and missing:
+    if args.strict and (missing or unregistered):
         return 1
     return 0
 

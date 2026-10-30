@@ -617,14 +617,6 @@ pub async fn cancel_runtime_install(
     cancel_task(app, state, task_id).await
 }
 
-#[tauri::command]
-pub async fn cancel_runtime_core_update(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    task_id: String,
-) -> AppResult<bool> {
-    cancel_task(app, state, task_id).await
-}
 
 #[tauri::command]
 pub async fn activate_runtime(app: AppHandle, payload: Value) -> AppResult<Value> {
