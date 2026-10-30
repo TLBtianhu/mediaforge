@@ -24,6 +24,22 @@ def _request_id(payload: dict[str, Any]) -> str | None:
     return value or None
 
 
+def _capability_model(payload: dict[str, Any], capability: str, role: str) -> str:
+    """图像独有能力（去噪/深度/抠图/检测）的模型选择。
+
+    这些能力没有 video_step planner，走不了 steps/bindings 路由，
+    所以在入口处统一读 payload.modelId；没给就用能力的默认绑定。
+    """
+    override = str(payload.get("modelId") or "").strip()
+    if override:
+        return override
+    # 兼容上一轮先加的单一字段
+    legacy = str(payload.get("denoiserModelId") or "").strip()
+    if capability == "denoise" and legacy:
+        return legacy
+    return str(capabilities.default_bindings(capability)[role])
+
+
 def cmd_media_image(payload: dict[str, Any]) -> int:
     operation = "media_image"
     request_id = _request_id(payload)
@@ -75,10 +91,8 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                     # 允许指定替代去噪模型；不指定就用能力的默认绑定。
                     # 图像独有能力（去噪/深度/抠图/检测）走不了 video_step 的 steps 路由，
                     # 所以模型选择必须在这里透传。
-                    override = str(payload.get("denoiserModelId") or "").strip()
-                    step["params"].update({})
-                    if override:
-                        step["bindings"] = {"denoiser": override}
+                    chosen = _capability_model(payload, "denoise", "denoiser")
+                    step["params"].update({"modelOverride": chosen})
         if len(steps) != 1:
             return emit_error(
                 "MEDIA_ONE_MODEL_PER_TASK",
@@ -87,8 +101,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             )
 
         if mode == "detect":
-            binding = capabilities.default_bindings("object_detection")["detector"]
-            model_path = capabilities.model_path(str(binding))
+            model_path = capabilities.model_path(_capability_model(payload, "object_detection", "detector"))
             outputs = []
             failed = []
             for source in inputs:
@@ -109,8 +122,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return 0
 
         if mode == "depth":
-            binding = capabilities.default_bindings("depth")["depth_estimator"]
-            model_dir = capabilities.model_path(str(binding))
+            model_dir = capabilities.model_path(_capability_model(payload, "depth", "depth_estimator"))
             outputs = []
             failed = []
             for source in inputs:
@@ -131,8 +143,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return 0
 
         if mode == "matting":
-            binding = capabilities.default_bindings("matting")["background_remover"]
-            model_dir = capabilities.model_path(str(binding))
+            model_dir = capabilities.model_path(_capability_model(payload, "matting", "background_remover"))
             outputs = []
             failed = []
             for source in inputs:

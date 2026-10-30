@@ -612,7 +612,11 @@ class ImageRestorer:
             elif capability == "denoise":
                 if progress:
                     progress(fraction, "去噪中…")
-                model_id = str(bindings.get("denoiser") or capabilities.default_bindings("denoise")["denoiser"])
+                # 去噪是图像独有能力：worker 通过 params.modelOverride 传入选中的模型，
+                # 没传就用能力的默认绑定。
+                # modelOverride 必须优先于 bindings：normalize_steps 会把默认绑定填进 bindings，
+                # 若先看 bindings，用户选的模型永远不生效。
+                model_id = str(params.get("modelOverride") or bindings.get("denoiser") or capabilities.default_bindings("denoise")["denoiser"])
                 image = run_scale1_model(
                     capabilities.model_path(model_id),
                     image,
