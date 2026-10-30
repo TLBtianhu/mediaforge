@@ -21,6 +21,18 @@ def run(script: str, label: str) -> bool:
     return completed.returncode == 0
 
 
+def ensure_runtime() -> None:
+    """用系统 python 跑时，自动切到应用运行时——否则依赖检查看不到 torch。"""
+    import importlib.util
+    import os
+
+    if importlib.util.find_spec("torch") is not None or os.environ.get("MEDIAFORGE_SKIP_REEXEC"):
+        return
+    candidate = Path(os.environ["USERPROFILE"]) / ".mediaforge" / "runtime-envs" / "cuda" / "Scripts" / "python.exe"
+    if candidate.is_file() and Path(sys.executable).resolve() != candidate.resolve():
+        os.execv(str(candidate), [str(candidate), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
 def main(argv: list[str]) -> int:
     only_deps = "--deps" in argv
     only_smoke = "--smoke" in argv
@@ -38,4 +50,5 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    ensure_runtime()
     raise SystemExit(main(sys.argv[1:]))
