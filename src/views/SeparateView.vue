@@ -1626,6 +1626,8 @@ onMounted(async () => {
   if (!app.envInfo && !app.envLoading) {
     app.checkEnvInBackground().catch(() => {})
   }
+  // 别的页面可能刚下载过模型；这里补一次刷新，避免"已下载但本页看不到"。
+  if (!modelsLoaded.value) void model.loadModels()
   try {
     unlistenDragDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
       if (beginnerGuide.demoActive) { isDragging.value = false; return }

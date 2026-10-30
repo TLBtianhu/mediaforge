@@ -73,7 +73,8 @@ const runtimeManifestSyncRequired = computed(() => runtimeCoreSyncAvailable(
   activeRuntime.value,
   app.runtimeInfo?.manifestVersion,
 ))
-const runtimeCoreUpdateAvailable = computed(() => app.runtimeCoreUpdateSupported && (runtimeVersionUpdateAvailable.value || runtimeManifestSyncRequired.value))
+// 运行时内核跟随应用版本固定；不主动提示上游更新（上游 2.2.0 改了本项目依赖的私有 API）。
+const runtimeCoreUpdateAvailable = computed(() => false && app.runtimeCoreUpdateSupported && (runtimeVersionUpdateAvailable.value || runtimeManifestSyncRequired.value))
 const runtimeCorePromptBlocked = computed(() => app.runtimeInfoLoading || app.runtimeCoreVersionsLoading
   || ['preparing', 'prepared', 'updating'].includes(app.runtimeCoreUpdateStatus))
 const runtimeCorePromptContent = computed(() => t(

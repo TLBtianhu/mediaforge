@@ -17,8 +17,11 @@ import {
   VideocamOutline,
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import { useModelStore } from '@/stores/model'
 
 defineOptions({ name: 'ModelHubView' })
+
+const modelStore = useModelStore()
 
 type Modality = 'all' | 'audio' | 'image' | 'video'
 type ModelRecord = {
@@ -197,6 +200,9 @@ onMounted(async () => {
         requestId.value = ''
         message.success(t('modelHub.downloaded'))
         void load()
+        // 音频模型走 audio_tool_* 通道，共享 model store 收不到 download_done，
+        // 必须在这里主动刷新，否则音频处理页仍认为"未下载"。
+        void modelStore.loadModels()
         return
       }
       if (payload?.type === 'error') {
