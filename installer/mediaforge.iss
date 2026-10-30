@@ -53,12 +53,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "python-runtime\runtime-envs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\python-runtime\runtime-envs\*"; DestDir: "{userprofile}\.mediaforge\runtime-envs"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: not DirExists(ExpandConstant('{userprofile}\.mediaforge\runtime-envs\cuda')) Excludes: "active-runtime.json"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Check: ShouldInstallBundledRuntimeEnvs
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 
 [Dirs]
 ; Keep the bootstrap interpreter read-only. Only managed environments need user write access.
-Name: "{userprofile}\.mediaforge\runtime-envs"
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

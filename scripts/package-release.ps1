@@ -93,6 +93,12 @@ Write-Host "[2/6] staging"
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item "$root\src-tauri\target\release\pymss-studio.exe" "$stage\MediaForge.exe" -Force
 foreach ($item in @('python', 'python-runtime', 'integrations')) {
+    # python-runtime\runtime-envs 不进安装包：它是可替换资产，走独立的运行时包。
+    if ($item -eq 'python-runtime' -and (Test-Path (Join-Path $root 'python-runtime\runtime-envs'))) {
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        Copy-Item (Join-Path $root 'python-runtime') $stage -Recurse -Force -Exclude 'runtime-envs'
+        continue
+    }
     $source = Join-Path $root $item
     $target = Join-Path $stage $item
     if (-not (Test-Path $source)) { throw "缺少 $item，无法打包" }
@@ -136,7 +142,37 @@ if (-not $SkipZip) {
 }
 
 
-Write-Host "[4/6] 更新包（不含运行时，签名可选）"
+Write-Host "# 运行时资产包（独立于版本发布，按 sha256 寻址）
+$runtimeAssetId = if ($env:MEDIAFORGE_RUNTIME_ASSET_ID) { $env:MEDIAFORGE_RUNTIME_ASSET_ID } else { 'runtime-cuda-2026.10.1' }
+$runtimeSrc = Join-Path $root 'python-runtime\runtime-envs\cuda'
+$runtimeOut = Join-Path $root 'release\runtime'
+$runtimeZip = Join-Path $runtimeOut "$runtimeAssetId.zip"
+$runtimeManifest = Join-Path $runtimeOut "$runtimeAssetId.json"
+if (Test-Path $runtimeSrc) {
+    New-Item -ItemType Directory -Force -Path $runtimeOut | Out-Null
+    if (-not (Test-Path $runtimeZip)) {
+        Write-Host "  打包运行时资产（$runtimeAssetId，约 5 GB，几分钟）"
+        Compress-Folder -Source $runtimeSrc -Destination $runtimeZip -Label $runtimeAssetId
+    } else {
+        Write-Host ("  运行时包已存在: {0} MB" -f [Math]::Round((Get-Item $runtimeZip).Length/1MB,1))
+    }
+    $hash = (Get-FileHash $runtimeZip -Algorithm SHA256).Hash.ToLower()
+    $manifest = [ordered]@{
+        assetId = $runtimeAssetId
+        backend = 'cuda'
+        unpackRoot = 'cuda'
+        size = (Get-Item $runtimeZip).Length
+        sha256 = $hash
+        urls = @("https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/$runtimeAssetId.zip")
+    }
+    $manifest | ConvertTo-Json -Depth 4 | Set-Content $runtimeManifest -Encoding UTF8
+    Write-Host "  manifest: $runtimeManifest"
+    Write-Host "  sha256: $hash"
+} else {
+    Write-Host "  跳过运行时资产包（源码树里没有 python-runtime\runtime-envs\cuda）"
+}
+
+[4/6] 更新包（不含运行时，签名可选）"
 $updateRoot = "$out\update-stage"
 if (Test-Path $updateRoot) { Remove-Item $updateRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $updateRoot | Out-Null
