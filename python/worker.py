@@ -26,10 +26,6 @@ def run_command(command: str, payload: dict) -> int:
         configure_process_proxy(load_proxy_config())
         from worker_bootstrap import cmd_runtime_core_versions
         return cmd_runtime_core_versions(payload)
-    if command == "update_runtime_core":
-        configure_process_proxy(load_proxy_config())
-        from worker_bootstrap import cmd_update_runtime_core
-        return cmd_update_runtime_core(payload)
     if command == "plugin_marketplace":
         configure_process_proxy(load_proxy_config())
         from worker_plugins import cmd_plugin_marketplace
