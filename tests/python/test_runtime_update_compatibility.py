@@ -36,7 +36,7 @@ def manifest(*, generation=1, python="3.12", torch="torch==2.7.1", common=None):
 
 def package_config():
     return {
-        "productName": "Pymss Studio", "identifier": "studio.pymss.desktop", "version": "0.0.19",
+        "productName": "Pymss Studio", "identifier": "studio.mediaforge.desktop", "version": "0.0.19",
         "app": {"windows": [{"width": 1280}]},
         "bundle": {"resources": ["../python/*.py"], "targets": ["app", "dmg"]},
         "plugins": {"updater": {"pubkey": "existing-public-key"}},

@@ -24,11 +24,20 @@ def runtime_contract(manifest: dict) -> dict:
     }
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def production_identifier() -> str:
+    """生产 bundle identifier 的唯一真源是 tauri.conf.json —— 硬编码它会在改名时悄悄失效。"""
+    configuration = json.loads((ROOT / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
+    return str(configuration["identifier"])
+
+
 def build_archive(app: Path, output: Path) -> dict:
     app = app.resolve(strict=True)
     with (app / "Contents/Info.plist").open("rb") as source:
         info = plistlib.load(source)
-    if info.get("CFBundleIdentifier") != "studio.pymss.desktop":
+    if info.get("CFBundleIdentifier") != production_identifier():
         raise ValueError("Unexpected macOS application identifier")
     manifests = [
         app / "Contents/Resources" / prefix / "python/runtime-manifest.json"

@@ -13,12 +13,21 @@ import sys
 import tempfile
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def production_identifier() -> str:
+    """生产 bundle identifier 的唯一真源是 tauri.conf.json。"""
+    with (ROOT / "src-tauri" / "tauri.conf.json").open(encoding="utf-8") as source:
+        return str(json.load(source)["identifier"])
+
+
 def executable_path(path: Path) -> Path:
     path = path.resolve(strict=True)
     if path.is_dir() and path.suffix == ".app":
         with (path / "Contents/Info.plist").open("rb") as source:
             info = plistlib.load(source)
-        if info.get("CFBundleIdentifier") != "studio.pymss.desktop":
+        if info.get("CFBundleIdentifier") != production_identifier():
             raise ValueError(
                 "The staged application does not use the production bundle identifier"
             )

@@ -130,7 +130,7 @@ class NativePluginReleaseTests(unittest.TestCase):
             plistlib.dump(
                 {
                     "CFBundleExecutable": "pymss-studio",
-                    "CFBundleIdentifier": "studio.pymss.desktop",
+                    "CFBundleIdentifier": "studio.mediaforge.desktop",
                 },
                 out,
             )
@@ -188,7 +188,7 @@ class NativePluginReleaseTests(unittest.TestCase):
             plistlib.dump(
                 {
                     "CFBundleExecutable": "pymss-studio",
-                    "CFBundleIdentifier": "studio.pymss.desktop.vstlab",
+                    "CFBundleIdentifier": "studio.mediaforge.desktop.vstlab",
                 },
                 out,
             )
@@ -201,7 +201,7 @@ class NativePluginReleaseTests(unittest.TestCase):
             plistlib.dump(
                 {
                     "CFBundleExecutable": "../outside",
-                    "CFBundleIdentifier": "studio.pymss.desktop",
+                    "CFBundleIdentifier": "studio.mediaforge.desktop",
                 },
                 out,
             )
@@ -334,7 +334,7 @@ class NativePluginBuildEntryTests(unittest.TestCase):
         self.assertNotIn("identifier", overlay)
         self.assertNotIn("productName", overlay)
         self.assertNotIn("build", overlay)
-        self.assertEqual(base["identifier"], "studio.pymss.desktop")
+        self.assertEqual(base["identifier"], "studio.mediaforge.desktop")
         macos = overlay["bundle"]["macOS"]
         self.assertTrue(macos["hardenedRuntime"])
         with (ROOT / "src-tauri" / macos["entitlements"]).open("rb") as source:

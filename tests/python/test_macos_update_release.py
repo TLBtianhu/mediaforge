@@ -149,7 +149,7 @@ validate_bundle() { [ -f "$1/valid-signature" ]; }
         (resources / "runtime-manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
         with (contents / "Info.plist").open("wb") as target:
             plistlib.dump({
-                "CFBundleIdentifier": "studio.pymss.desktop",
+                "CFBundleIdentifier": "studio.mediaforge.desktop",
                 "CFBundleShortVersionString": "1.2.3",
                 "CFBundleExecutable": "pymss-studio",
             }, target)

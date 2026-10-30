@@ -388,7 +388,9 @@ def _managed_dir_for_name(model_dir: str | None, name: str) -> Path:
             raise ValueError("Managed model directories must not be symbolic links or junctions")
         if path.exists() and not path.is_dir():
             raise ValueError("The managed model path is not a directory")
-    return target
+    # 用 realpath 规范化：Windows 上同一个目录可能是 8.3 短名（RUNNER~1）也可能是长名，
+    # 注册进库的路径必须是稳定形式，否则后续 UI 显示与迁移都对不上。
+    return Path(os.path.realpath(str(target)))
 
 
 def _copy_with_progress(source: Path, target: Path, task_id: str | None, label: str) -> None:
@@ -727,9 +729,14 @@ def cmd_relink_custom_model(payload: dict[str, Any]) -> int:
 
 
 def _normalized(path: str) -> str:
-    """Comparable form of a path. normcase matters on Windows, where the same file is routinely
-    spelled with different casing and separators."""
-    return os.path.normcase(os.path.normpath(str(path)))
+    """Comparable form of a path.
+
+    normcase 处理大小写与分隔符；realpath 还要处理 Windows 的 8.3 短名：
+    CI 上 TEMP 是 RUNNER~1 形式，而同一目录的长名是 runneradmin 形式，
+    只做 normpath 会让"就是同一个文件"的两条路径比较不相等，进而让包含判断误判，
+    把受管模型当成外部的（该备份的时候不备份、该删的时候不删）。
+    """
+    return os.path.normcase(os.path.realpath(os.path.expanduser(str(path))))
 
 
 def _remapped_path(path: str, from_root: str, to_root: str) -> str | None:
@@ -744,7 +751,7 @@ def _remapped_path(path: str, from_root: str, to_root: str) -> str | None:
     prefix = normalized_from.rstrip(os.sep) + os.sep
     if not normalized_path.startswith(prefix):
         return None
-    relative = Path(str(path)).relative_to(Path(from_root))
+    relative = Path(_normalized(path)).relative_to(Path(_normalized(from_root)))
     return str(Path(to_root) / relative)
 
 
