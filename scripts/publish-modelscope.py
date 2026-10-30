@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -41,6 +42,39 @@ def _api():
     from modelscope.hub.api import HubApi
 
     return HubApi
+
+
+def head_matches(remote: str, expected: int, *, attempts: int = 4, delay: float = 15.0) -> bool:
+    """匿名 HEAD 校验，带重试。
+
+    魔搭的 CDN 有传播延迟：刚 commit 完立刻查会 404，过十几秒才 200。
+    不重试的话每次发布都会误报"数据集还是私有"，让人误以为上传失败。
+    """
+    url = PUBLIC_BASE + remote
+    last: str = ""
+    for attempt in range(1, attempts + 1):
+        try:
+            request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "MediaForge/0.1"})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                length = int(response.headers.get("Content-Length") or 0)
+            if length == expected:
+                print(f"  anonymous HEAD {response.status} {length} bytes -> OK" + ("" if attempt == 1 else f"（第 {attempt} 次）"))
+                return True
+            print(f"  anonymous HEAD {response.status} {length} != {expected} -> SIZE MISMATCH")
+            return False
+        except urllib.error.HTTPError as exc:
+            last = f"HTTP {exc.code}"
+            if exc.code == 403:
+                print(f"  anonymous HEAD failed: {last}（数据集是私有的，需要设为公开）")
+                return False
+        except Exception as exc:  # noqa: BLE001
+            last = type(exc).__name__
+        if attempt < attempts:
+            print(f"  HEAD {last}，{delay:.0f} 秒后重试（{attempt}/{attempts - 1}）")
+            time.sleep(delay)
+    print(f"  anonymous HEAD failed after {attempts} attempts: {last}"
+          "（可能是传播延迟，也可能是文件确实不存在）")
+    return False
 
 
 def upload(paths: list[Path], *, dry_run: bool = False) -> int:
@@ -74,21 +108,7 @@ def upload(paths: list[Path], *, dry_run: bool = False) -> int:
             failures += 1
             continue
 
-        # 匿名回读：这是"别人能不能下"的唯一可信证据
-        url = PUBLIC_BASE + remote
-        try:
-            request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "MediaForge/0.1"})
-            with urllib.request.urlopen(request, timeout=60) as response:
-                length = int(response.headers.get("Content-Length") or 0)
-            ok = length == path.stat().st_size
-            print(f"  anonymous HEAD {response.status} {length} bytes -> {'OK' if ok else 'SIZE MISMATCH'}")
-            if not ok:
-                failures += 1
-        except urllib.error.HTTPError as exc:
-            print(f"  anonymous HEAD failed: HTTP {exc.code}（数据集很可能还是私有）")
-            failures += 1
-        except Exception as exc:  # noqa: BLE001
-            print(f"  anonymous HEAD failed: {type(exc).__name__}")
+        if not head_matches(remote, path.stat().st_size):
             failures += 1
 
     return failures
@@ -99,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("files", nargs="*", type=Path)
     parser.add_argument("--check", action="store_true", help="只检查令牌与网络，不传")
     parser.add_argument("--dry-run", action="store_true", help="只打印将要上传什么")
+    parser.add_argument("--verify-only", action="store_true", help="只做匿名回读，不重新上传")
     args = parser.parse_args(argv)
 
     if args.check and not args.files:
@@ -112,6 +133,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.files:
         parser.error("没有指定要上传的文件")
+    if args.verify_only:
+        failures = sum(0 if head_matches(REMOTE_PREFIX + p.name, p.stat().st_size) else 1 for p in args.files)
+        return 1 if failures else 0
     return 1 if upload(args.files, dry_run=args.dry_run) else 0
 
 
