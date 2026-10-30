@@ -37,6 +37,24 @@ def sample_image() -> Path:
     return target
 
 
+def make_watermarked_sample(source: Path, target: Path) -> bool:
+    """在原图上画一块醒目的"水印"，给检测器一个明确目标。"""
+    try:
+        import cv2
+        import numpy as np
+
+        image = cv2.imread(str(source))
+        if image is None:
+            return False
+        height, width = image.shape[:2]
+        cv2.rectangle(image, (width // 4, height // 3), (width * 3 // 4, height * 2 // 3), (255, 255, 255), -1)
+        cv2.putText(image, "WATERMARK", (width // 5, height // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        return bool(cv2.imwrite(str(target), image))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def run(payload: dict) -> tuple[bool, str]:
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False)
@@ -103,17 +121,27 @@ def main() -> int:
         elif task == "frame_interpolation":
             payload["mode"] = "interpolate"
             payload["inputs"] = [str(sample), str(sample)]
-        elif task == "inpainting":
-            results.append((item["id"], "skip", "需要遮罩，单独验证"))
-            continue
-        elif task == "watermark_detection":
-            results.append((item["id"], "skip", "属于组合流程，单独验证"))
+        elif task in {"inpainting", "watermark_detection"}:
+            # 这两个只有组合起来才有入口：检测器找框、修复器填洞。
+            # 所以用同一张带人工水印的图跑一次 watermark 流程，两个模型一起验证。
             continue
         else:
             results.append((item["id"], "skip", f"未知任务 {task}"))
             continue
         ok, detail = run(payload)
         results.append((item["id"], "pass" if ok else "FAIL", detail))
+
+    combo = OUTPUTS / "watermarked.png"
+    if make_watermarked_sample(sample, combo):
+        ok, detail = run({
+            "operation": "media_image",
+            "mode": "watermark",
+            "conf": 0.01,
+            "inputs": [str(combo)],
+            "outputDir": str(OUTPUTS / "combo"),
+        })
+        status = "pass" if ok else "FAIL"
+        results.append(("watermark 组合（检测+修复）", status, detail))
 
     width = max(len(r[0]) for r in results)
     failures = 0
