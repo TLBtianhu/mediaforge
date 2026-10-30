@@ -28,7 +28,11 @@
         "run": {
           "handler": "media_tool",
           "kind": "task",
-          "operations": ["image", "video", "workflow"],
+          "operations": [
+            "image",
+            "video",
+            "workflow"
+          ],
           "summary": "执行一次媒体任务；单步走 image/video，多步走 workflow"
         },
         "models.list": {
@@ -48,13 +52,27 @@
         }
       },
       "events": {
-        "task.started": ["media_task_started"],
-        "task.progress": ["audio_tool_progress"],
-        "task.result": ["audio_tool_result"],
-        "task.failed": ["error"],
-        "asset.progress": ["media_library_progress"],
-        "asset.done": ["media_library_result"],
-        "asset.failed": ["media_library_error"]
+        "task.started": [
+          "media_task_started"
+        ],
+        "task.progress": [
+          "audio_tool_progress"
+        ],
+        "task.result": [
+          "audio_tool_result"
+        ],
+        "task.failed": [
+          "error"
+        ],
+        "asset.progress": [
+          "media_library_progress"
+        ],
+        "asset.done": [
+          "media_library_result"
+        ],
+        "asset.failed": [
+          "media_library_error"
+        ]
       }
     }
   },
@@ -74,5 +92,6 @@
       "catalog.state",
       "app.state"
     ]
-  }
+  },
+  "mcpSchemaVersion": 1
 }

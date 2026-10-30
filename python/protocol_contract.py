@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = 1
+MCP_SCHEMA_VERSION = 1
 
 
 class ProtocolError(ValueError):
@@ -100,3 +101,16 @@ def declared_legacy_events() -> set[str]:
 def canonical_events() -> list[str]:
     data = load_protocol()
     return list((data.get("events") or {}).get("canonical") or [])
+
+
+def mcp_schema_version() -> int:
+    """MCP 工具面的协议版本。与 protocol.json 的声明必须一致。"""
+    data = load_protocol()
+    version = data.get("mcpSchemaVersion")
+    if version != MCP_SCHEMA_VERSION:
+        raise ProtocolError(
+            "MCP_SCHEMA_MISMATCH",
+            f"protocol.json 的 mcpSchemaVersion={version!r}，本程序支持 {MCP_SCHEMA_VERSION}；"
+            "工具面不兼容，请更新应用或重新生成 manifest",
+        )
+    return int(version)

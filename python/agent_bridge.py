@@ -420,7 +420,16 @@ class Bridge:
 
     def _contract_tools(self) -> list[dict[str, Any]]:
         tools: list[dict[str, Any]] = []
-        for tool in agent_contract.build_contract()["tools"]:
+        try:
+            contract = agent_contract.build_contract()
+        except agent_contract.ContractMismatchError as error:
+            # 工具面协议对不上时，保留一条可读诊断：调用方知道该升级，而不是看到空列表。
+            return [{
+                "name": "agent_contract",
+                "description": f"工具面协议不匹配（{error.code}）：{error}",
+                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+            }]
+        for tool in contract["tools"]:
             if tool.get("bridgeTool"):
                 continue  # 已经以历史名字暴露过了
             description = f"{tool['title']} — {tool['description']}"
@@ -642,7 +651,10 @@ class Bridge:
         if name == "capabilities_list":
             return self.capabilities()
         if name == "agent_contract":
-            return agent_contract.build_contract()
+            try:
+                return agent_contract.build_contract()
+            except agent_contract.ContractMismatchError as error:
+                return {"ok": False, "code": error.code, "error": str(error)}
         if name == "evaluate_media":
             return media_eval.evaluate(
                 [str(value) for value in arguments.get("inputs") or []],
@@ -734,6 +746,8 @@ class Bridge:
         """
         try:
             tool = agent_contract.find_tool(name)
+        except agent_contract.ContractMismatchError as error:
+            return {"ok": False, "tool": name, "code": error.code, "error": str(error)}
         except KeyError:
             raise ValueError(f"unknown tool: {name}") from None
         # 确认标记不是工具参数：先摘掉，再按契约校验，最后才判断审批

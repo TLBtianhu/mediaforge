@@ -26,6 +26,14 @@ from typing import Any
 
 CONTRACT_VERSION = 1
 
+
+class ContractMismatchError(ValueError):
+    """工具面协议不匹配。带 code，让 MCP 侧能把可读错误交给调用方。"""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
 APPROVAL_LEVELS: dict[str, str] = {
     "none": "只读或纯计算，不需要确认。",
     "confirm": "会写文件/占用较长时间；直接执行前应让用户知道。",
@@ -67,8 +75,9 @@ def _result_event(name: str, command: str, operation: str | None) -> str | None:
     explicit = RESULT_EVENTS.get(name)
     if explicit:
         return explicit
-    # 媒体与音频工具都经 audio_tools 收口，终止事件统一是它
-    if command == "audio_tools":
+    # 音频仍经 audio_tools；媒体自 P1 起有了自己的 media_tool 入口，
+    # 但两者终止事件目前都还是历史名（P2 双发 task.result，P7 才改名）。
+    if command in {"audio_tools", "media_tool"}:
         return "audio_tool_result"
     return None
 
@@ -102,6 +111,7 @@ def _tool(
     evaluate: str | None = None,
     available: bool = True,
     params_schema: dict[str, Any] | None = None,
+    models: list[str] | None = None,
 ) -> dict[str, Any]:
     if approval not in APPROVAL_LEVELS:
         raise ValueError(f"unknown approval level {approval!r} for {name}")
@@ -122,6 +132,8 @@ def _tool(
         "evaluate": evaluate,
         # 步骤参数的可接受范围（能力声明的 params，范围与槽位词汇表对齐）
         "paramsSchema": params_schema,
+        # 这个工具当前能选的模型 id（来自 catalog）；catalog 增删会自动反映到这里
+        "models": list(models or []),
         "resultEvent": _result_event(name, command, operation),
         "available": bool(available),
         # 已经在桥接里以别的名字暴露过的话，这里记下来（避免重复上表）
@@ -226,6 +238,8 @@ def _media_tools() -> list[dict[str, Any]]:
         except Exception:  # noqa: BLE001
             bindings = {}
         is_available = capability["id"] in implemented
+        # 模型清单来自能力声明（catalog 的 id）；新增模型只要登记进能力就会出现在工具里
+        models = [str(item) for item in capability.get("modelIds") or []]
         for modality in capability["modalities"]:
             name = f"media.{modality}.{capability['id']}"
             description = (
@@ -238,7 +252,7 @@ def _media_tools() -> list[dict[str, Any]]:
                     capability["label"],
                     description,
                     "media",
-                    "audio_tools",
+                    "media_tool",
                     operation="media_image" if modality == "image" else "media_workflow",
                     approval="confirm",
                     cost="seconds" if modality == "image" else "minutes",
@@ -248,6 +262,7 @@ def _media_tools() -> list[dict[str, Any]]:
                     evaluate="media.evaluate",
                     available=is_available,
                     params_schema=_capability_params(capability["id"]),
+                    models=models,
                 )
             )
     return tools
@@ -381,10 +396,10 @@ def _native_tools() -> list[dict[str, Any]]:
         # 自评价
         # 多步编排：worker 侧 media_image/media_video 只接受单步，多步必须走 media_workflow
         _tool("media.image.workflow", "图像多步工作流", "按顺序执行多个能力（如先去水印再放大），一次调用完成编排。",
-              "media", "audio_tools", operation="media_workflow", approval="confirm", cost="seconds",
+              "media", "media_tool", operation="media_workflow", approval="confirm", cost="seconds",
               input_schema=_MEDIA_STEPS_SCHEMA, produces="file", evaluate="media.evaluate"),
         _tool("media.video.workflow", "视频多步工作流", "按顺序执行多个能力；视频耗时按分钟计，走作业台账。",
-              "media", "audio_tools", operation="media_workflow", approval="confirm", cost="minutes",
+              "media", "media_tool", operation="media_workflow", approval="confirm", cost="minutes",
               long_running=True, input_schema=_MEDIA_STEPS_SCHEMA, produces="file", evaluate="media.evaluate"),
         _tool("media.precheck", "计划预检", "先问后做：检查输入是否可用、目标尺寸是否比原图大、图上有没有水印，返回可跳过/需要中止的步骤。",
               "media", "media_precheck", approval="none", cost="seconds",
@@ -467,7 +482,18 @@ def worker_commands() -> list[str]:
     return sorted(set(re.findall(r'command == "([a-z_]+)"', text)))
 
 
+def _ensure_mcp_compatible() -> int:
+    """工具面协议版本校验：唯一的判定点，build_contract 与 find_tool 都走这里。"""
+    from protocol_contract import ProtocolError, mcp_schema_version
+
+    try:
+        return mcp_schema_version()
+    except ProtocolError as error:
+        raise ContractMismatchError(error.code, str(error)) from error
+
+
 def build_contract() -> dict[str, Any]:
+    schema_version = _ensure_mcp_compatible()
     tools = _native_tools() + _media_tools() + _audio_tool_tools()
     names = [tool["name"] for tool in tools]
     duplicates = sorted({name for name in names if names.count(name) > 1})
@@ -476,6 +502,7 @@ def build_contract() -> dict[str, Any]:
     vocabulary = _slot_vocabulary()
     return {
         "version": CONTRACT_VERSION,
+        "mcpSchemaVersion": schema_version,
         "approvalLevels": APPROVAL_LEVELS,
         "costLevels": COST_LEVELS,
         # 槽位词汇表：UI 与 agent 共用同一份参数语义
@@ -521,6 +548,7 @@ def cmd_agent_contract(payload: dict[str, Any]) -> int:
 
 
 def find_tool(tool_name: str) -> dict[str, Any]:
+    _ensure_mcp_compatible()
     for tool in _native_tools() + _media_tools() + _audio_tool_tools():
         if tool["name"] == tool_name:
             return tool
