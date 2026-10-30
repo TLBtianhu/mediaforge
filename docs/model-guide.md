@@ -68,7 +68,7 @@
 ## 还没接的模型，以及卡在哪
 
 - **BasicVSR++**（`basicvsrpp`）：缺少权重地址与加载代码，尚不可下载
-- **BiRefNet**（`birefnet`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
+- **BiRefNet**（`birefnet`）：权重与代码可下载（ZhengPeng7/BiRefNet：model.safetensors 423.9 MB + birefnet.py + config）；依赖已装通（timm 1.0.30、kornia 0.9.0、torchvision functional_tensor 垫片），transformers 远程代码能加载成 BiRefNet，fp16 在 CUDA 上能前向。卡在输出解读：模型返回 [tensor(1,1,1024,1024)]，数值范围 3.2~14.8，直接当概率用前景占比 100%，套 sigmoid 后仍是 0.99~1.00，说明预处理或输出版本不对（很可能需要它自带的 biRefNet 前处理/多尺度输出约定）。下一步：读 birefnet.py 的 forward 与 BiRefNet_config 的 image_size / mean / std，按其约定跑。
 - **CodeFormer**（`codeformer`）：codeformer.pth（359 MB）在 hf-mirror 上可下，但 CodeFormer 的架构代码依赖 basicsr，且需要人脸检测与对齐；本次已装通 basicsr/facexlib，先解决 GFPGAN 的架构匹配再复用它。
 - **DAT-2**（`dat-2`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
 - **DDColor**（`ddcolor`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
