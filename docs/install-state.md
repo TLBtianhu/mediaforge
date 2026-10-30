@@ -12,7 +12,7 @@
 | 模型 | `<数据根>\models` | `<repo>\.dev-data\models` |
 | 输出 / 日志 / 设置 | `<数据根>\{outputs,logs,settings}` | `<repo>\.dev-data\{...}` |
 | 运行时环境 | `<安装目录>\python-runtime\runtime-envs` | `<repo>\.dev-data\runtime-envs` |
-| MCP 启动器 | `%LOCALAPPDATA%\MediaForge\bin\mediaforge-mcp.cmd` | 同一个（指向仓库根） |
+| MCP 启动器 | `%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd` | 同一个（指向仓库根） |
 | 安装指针 | `%LOCALAPPDATA%\MediaForge\home.txt` + `HKCU\Software\MediaForge\InstallDir` | 同一个（指向仓库根） |
 
 判定依据是 `storage.rs` 的 `resolve_data_root`：
@@ -64,7 +64,7 @@ Get-ItemProperty HKCU:\Software\MediaForge | Select InstallDir
 ### 3.2 集成侧
 
 ```
-%LOCALAPPDATA%\MediaForge\bin\mediaforge-mcp.cmd   ← 启动器（不含绝对路径）
+%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd   ← 启动器（不含绝对路径）
 DSH profile package.json:  "@local/mediaforge-mcp": "link:<安装目录>\integrations\dsh-mediaforge"
 DSH profile cordis.patch.yml: 一行 serverName: mediaforge
 ```

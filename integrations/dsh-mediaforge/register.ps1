@@ -22,7 +22,23 @@ $NOTE  = '# 由 MediaForge 安装器维护；这段区块会被整体替换，�
 
 if (-not $DshHome) { $DshHome = Join-Path $env:USERPROFILE '.dsh' }
 
-$launcher = Join-Path $env:LOCALAPPDATA 'MediaForge\bin\mediaforge-mcp.cmd'
+$launcher = Join-Path $env:USERPROFILE '.mediaforge\bin\mediaforge-mcp.cmd'
+
+# 安装器只会调这个脚本，不会调 setup.ps1；启动器必须在这里补出来，
+# 否则写进配置的是一个不存在的 .cmd，DSH 侧调用会直接失败。
+$binDir = Split-Path -Parent $launcher
+if (-not (Test-Path -LiteralPath $binDir)) {
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+}
+if (-not (Test-Path -LiteralPath $launcher)) {
+    $template = Join-Path $PSScriptRoot 'launcher.template.cmd'
+    if (Test-Path -LiteralPath $template) {
+        Copy-Item -LiteralPath $template -Destination $launcher -Force
+        Write-Host "launcher : $launcher (created)"
+    } else {
+        Write-Warning "launcher.template.cmd 缺失，无法生成启动器：$launcher"
+    }
+}
 if (-not $DryRun -and -not (Test-Path -LiteralPath $launcher)) {
     Write-Host "尚未生成启动器：$launcher"
     Write-Host '请先运行 setup.ps1 -AppRoot "<安装目录>"，或让安装器完成安装。'
@@ -49,7 +65,7 @@ function Get-Block {
         '        command: cmd'
         '        args:'
         '          - /c'
-        "          - '%LOCALAPPDATA%\MediaForge\bin\mediaforge-mcp.cmd'"
+        "          - '%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd'"
         '        failOnStartupError: false'
         '        toolCallTimeoutMs: 120000'
         $END
