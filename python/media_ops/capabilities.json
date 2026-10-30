@@ -228,6 +228,25 @@
           "default": 0.25
         }
       }
+    },
+    {
+      "id": "depth",
+      "label": "深度估计",
+      "labelEn": "Depth estimation",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "depth_estimator": {
+          "label": "深度模型",
+          "task": "depth",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:depth-anything-v2-small"
+      ],
+      "params": {}
     }
   ]
 }

@@ -10030,28 +10030,6 @@
       "notes": null
     },
     {
-      "id": "media:depth-anything-v2",
-      "name": "depth-anything-v2",
-      "family": "media",
-      "task": "depth",
-      "io": {
-        "in": "image",
-        "out": "depth",
-        "arity": 1
-      },
-      "architecture": null,
-      "source": {
-        "status": "local",
-        "repo": null,
-        "file": "depth-anything-v2"
-      },
-      "license": "",
-      "slots": [
-        "tile"
-      ],
-      "notes": null
-    },
-    {
       "id": "media:sam2",
       "name": "sam2",
       "family": "media",
@@ -10140,6 +10118,26 @@
         "conf"
       ],
       "notes": "输出 JSON，不产生图像文件"
+    },
+    {
+      "id": "media:depth-anything-v2-small",
+      "name": "depth-anything-v2-small",
+      "family": "media",
+      "task": "depth",
+      "io": {
+        "in": "image",
+        "out": "depth",
+        "arity": 1
+      },
+      "architecture": "DepthAnythingV2",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "depth-anything-v2-small"
+      },
+      "license": "Apache-2.0",
+      "slots": [],
+      "notes": "目录型模型：config.json + model.safetensors"
     }
   ]
 }

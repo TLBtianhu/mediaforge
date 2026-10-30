@@ -116,7 +116,7 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
 
 
 # 只在图像路径上实现的 capability（视频逐帧管线没有对应 planner）。
-IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection")
+IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth")
 
 
 def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:
@@ -156,6 +156,35 @@ def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | No
             # 只取中心区域，边缘交给相邻块的重叠部分
             output[top:bottom, left:right] = array[top - y0 : top - y0 + (bottom - top), left - x0 : left - x0 + (right - left)]
     return output
+
+
+def estimate_depth(model_dir: str | Path, image: np.ndarray) -> np.ndarray:
+    """Depth-Anything-V2 深度估计，输出 0-255 的灰度图（近白远黑）。
+
+    模型目录里有 config.json + model.safetensors；原始预测是视差，数值范围不稳定，
+    所以按当前图的最小/最大值归一化后再存图——同一条命令前后两次结果可比。
+    """
+    import torch
+    from PIL import Image as PILImage
+    from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+
+    device = pick_device()
+    processor = AutoImageProcessor.from_pretrained(str(model_dir))
+    model = AutoModelForDepthEstimation.from_pretrained(str(model_dir))
+    model.eval().to(device)
+
+    pil = PILImage.fromarray(ensure_rgb_uint8(image))
+    inputs = processor(images=pil, return_tensors="pt").to(device)
+    with torch.inference_mode():
+        predicted = model(**inputs).predicted_depth
+    predicted = torch.nn.functional.interpolate(
+        predicted.unsqueeze(1), size=pil.size[::-1], mode="bicubic", align_corners=False
+    )[0, 0]
+    depth = predicted.detach().cpu().numpy().astype("float32")
+    low, high = float(depth.min()), float(depth.max())
+    span = high - low
+    normalized = (depth - low) / span if span > 1e-6 else np.zeros_like(depth)
+    return (normalized * 255.0).clip(0, 255).astype("uint8")
 
 
 def detect_objects(model_path: str | Path, image: np.ndarray, conf: float = 0.25) -> list[dict]:

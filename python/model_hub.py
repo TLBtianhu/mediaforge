@@ -78,7 +78,9 @@ def _media_files(item: dict) -> list[dict]:
 
 
 def _status(files: list[dict], root: Path) -> tuple[bool, bool, list[str]]:
-    missing = [str(root / file["path"]) for file in files if not (root / file["path"]).is_file()]
+    # 目录型模型（例如 depth-anything 的 config.json + safetensors 目录）没有单个权重文件，
+    # 所以这里用 exists 而不是 is_file。
+    missing = [str(root / file["path"]) for file in files if not (root / file["path"]).exists()]
     partial = any(
         (root / file["path"]).is_file()
         and int(file.get("size") or 0) > 0
