@@ -233,6 +233,12 @@ begin
     'python "%MF_ROOT%\python\agent_bridge.py" --stdio' + #13#10 +
     'exit /b %ERRORLEVEL%' + #13#10;
   SaveStringToFile(Target, Content, False);
+
+  // 指针文件与注册表：启动器在这两处之一找到安装目录。
+  // 两个都写，是为了"用户手滑删掉一个"时还能连上。
+  SaveStringToFile(ExpandConstant('{localappdata}\\MediaForge\\home.txt'),
+    ExpandConstant('{app}') + #13#10, False);
+  RegWriteStringValue(HKCU, 'Software\\MediaForge', 'InstallDir', ExpandConstant('{app}'));
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
