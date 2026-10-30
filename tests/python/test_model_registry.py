@@ -45,7 +45,9 @@ class ShapeTests(unittest.TestCase):
     def test_signatures_come_from_a_small_vocabulary(self) -> None:
         """类型签名必须是小集合——这正是"统一 schema"能成立的前提。"""
         signatures = {reg.signature(item) for item in reg.models()}
-        self.assertLessEqual(len(signatures), 6, f"签名种类过多：{signatures}")
+        # 词表在 0.0.16 扩过一次：新增 depth / mask / json 三种媒体输出，
+        # 因为去噪、深度、抠图、检测这些能力的输出不再都是"媒体->媒体"。
+        self.assertLessEqual(len(signatures), 9, f"签名种类过多：{signatures}")
         self.assertTrue({"image->image", "video->video"} <= signatures)
 
 

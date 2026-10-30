@@ -115,6 +115,10 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
     return np.clip(blended, 0, 255).round().astype(np.uint8)
 
 
+# 只在图像路径上实现的 capability（视频逐帧管线没有对应 planner）。
+IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise",)
+
+
 def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:
     """跑 scale=1 的模型（去噪/修复这类输出尺寸不变的网络）。
 
