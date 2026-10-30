@@ -6,7 +6,7 @@
 .DESCRIPTION
   检查的是**用户拿到的东西**，不是开发树。默认按安装包的布局检查：
 
-      <Root>\Pymss Studio.exe
+      <Root>\MediaForge.exe
       <Root>\python\worker.py
       <Root>\python-runtime\runtime-envs\<backend>\Scripts\python.exe
       <Root>\bin\ffmpeg.exe  ffprobe.exe  aria2c.exe
@@ -20,7 +20,7 @@
 
 .EXAMPLE
   # 验证解压出来的发布包（推荐：在干净用户账户里跑）
-  .\verify-release-runtime.ps1 -Root D:\stage\Pymss-Studio-0.0.13-windows-x64-cuda `
+  .\verify-release-runtime.ps1 -Root D:\stage\MediaForge-0.0.13-windows-x64-cuda `
       -ModelDir C:\Models -Sample C:\samples\cat.png
 
 .EXAMPLE
@@ -126,7 +126,7 @@ Write-Host ("验证目标：$Root" + $(if ($packaged) { '（发布形态）' } e
 Write-Host ''
 
 # ── 1. 目录形态 ─────────────────────────────────────────────────────────────
-$exeNames = @('Pymss Studio.exe', 'pymss-studio.exe', 'MediaForge.exe')
+$exeNames = @('MediaForge.exe', 'pymss-studio.exe', 'MediaForge.exe')
 $exe = $null
 foreach ($name in $exeNames) {
     $path = Join-Path $Root $name

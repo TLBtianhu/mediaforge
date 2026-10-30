@@ -70,7 +70,7 @@ fn embedded_update_public_key() -> &'static str {
     }
 }
 // Replace the executable last so an interrupted update can still boot the old UI and recover.
-const MANAGED_PATHS: [&str; 3] = ["python", "bin", "Pymss Studio.exe"];
+const MANAGED_PATHS: [&str; 3] = ["python", "bin", "MediaForge.exe"];
 const MAX_UPDATE_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_UPDATE_FILES: usize = 10_000;
 const MAX_UPDATE_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -723,7 +723,7 @@ fn configure_updater(app: &AppHandle, builder: UpdaterBuilder) -> AppResult<Upda
 fn source_client(app: &AppHandle) -> AppResult<reqwest::Client> {
     let (direct, proxy) = updater_proxy(app)?;
     configure_update_client(update_sources::http_client_builder(), direct, proxy)
-        .user_agent("Pymss-Studio-Updater")
+        .user_agent("MediaForge-Updater")
         .timeout(UPDATE_CHECK_TIMEOUT)
         .build()
         .map_err(|error| AppError::Worker(error.to_string()))
@@ -852,7 +852,7 @@ fn spawn_helper(args: &[std::ffi::OsString], elevated: bool) -> AppResult<()> {
 }
 
 fn recover_interrupted_update(pid: u32, root: PathBuf, backup: PathBuf, elevated: bool) -> AppResult<()> {
-    wait_for_process_exit(pid, &root.join("Pymss Studio.exe"))?;
+    wait_for_process_exit(pid, &root.join("MediaForge.exe"))?;
     let _update_mutex = acquire_update_mutex()?;
     recover_interrupted_update_with(&root, &backup, || relaunch_application_if_needed(&root, elevated))
 }
@@ -987,7 +987,7 @@ fn extract_portable_payload(bytes: &[u8], stage: &Path) -> AppResult<()> {
         let mut output = fs::File::create(destination)?;
         std::io::copy(&mut entry, &mut output)?;
     }
-    for required in ["Pymss Studio.exe", "python/worker.py"] {
+    for required in ["MediaForge.exe", "python/worker.py"] {
         if !stage.join(required).is_file() {
             let _ = fs::remove_dir_all(stage);
             return Err(AppError::Worker(format!("Portable update archive is missing {required}")));
@@ -1001,7 +1001,7 @@ fn validate_payload_path(path: &Path) -> AppResult<()> {
     let Some(Component::Normal(top)) = components.next() else {
         return Err(AppError::Worker("Portable update archive contains an invalid path".into()));
     };
-    if !matches!(top.to_str(), Some("Pymss Studio.exe" | "python" | "bin")) {
+    if !matches!(top.to_str(), Some("MediaForge.exe" | "python" | "bin")) {
         return Err(AppError::Worker("Portable update archive contains an unmanaged file".into()));
     }
     if path.components().any(|component| !matches!(component, Component::Normal(_))) {
@@ -1022,7 +1022,7 @@ fn apply_managed_update(
     signature: String,
     elevated: bool,
 ) -> AppResult<()> {
-    wait_for_process_exit(pid, &root.join("Pymss Studio.exe"))?;
+    wait_for_process_exit(pid, &root.join("MediaForge.exe"))?;
     let _update_mutex = acquire_update_mutex()?;
     validate_update_version(&version)?;
     let distribution = distribution_at(&root)
@@ -1089,7 +1089,7 @@ fn apply_managed_update(
             }
             let current = root.join(name);
             if current.exists() {
-                if name == "Pymss Studio.exe" {
+                if name == "MediaForge.exe" {
                     replace_executable(&current, &stage.join(name), Some(&backup.join(name)))?;
                     moved.push(name);
                     replaced.push(name);
@@ -1441,14 +1441,14 @@ fn verify_updated_application(root: &Path, elevated: bool, mut child: std::proce
 fn launch_application(root: &Path, elevated: bool) -> AppResult<std::process::Child> {
     if elevated {
         // Reuse the user's Explorer process so the normal UI does not inherit the helper's UAC token.
-        return Ok(Command::new("explorer.exe").arg(root.join("Pymss Studio.exe")).spawn()?);
+        return Ok(Command::new("explorer.exe").arg(root.join("MediaForge.exe")).spawn()?);
     }
-    Ok(Command::new(root.join("Pymss Studio.exe")).spawn()?)
+    Ok(Command::new(root.join("MediaForge.exe")).spawn()?)
 }
 
 #[cfg(windows)]
 fn verify_elevated_application(root: &Path) -> AppResult<()> {
-    let exe = root.join("Pymss Studio.exe");
+    let exe = root.join("MediaForge.exe");
     let mut observed = false;
     for _ in 0..80 {
         if application_is_running(&exe)? {
@@ -1480,7 +1480,7 @@ fn application_is_running(exe: &Path) -> AppResult<bool> {
 
 #[cfg(not(windows))]
 fn launch_application(root: &Path, _elevated: bool) -> AppResult<std::process::Child> {
-    Ok(Command::new(root.join("Pymss Studio.exe")).spawn()?)
+    Ok(Command::new(root.join("MediaForge.exe")).spawn()?)
 }
 
 #[cfg(not(windows))]
@@ -1509,7 +1509,7 @@ fn wait_for_process_exit(pid: u32, executable: &Path) -> AppResult<()> {
 
 fn relaunch_application_if_needed(root: &Path, elevated: bool) -> AppResult<()> {
     #[cfg(windows)]
-    if application_is_running(&root.join("Pymss Studio.exe"))? {
+    if application_is_running(&root.join("MediaForge.exe"))? {
         // A second copy can still be alive after an update attempt failed. Do not
         // launch another copy on top of it; repeated retries would otherwise
         // accumulate processes and keep the executable locked.
@@ -1645,7 +1645,7 @@ fn restore_portable_backup(root: &Path, backup: &Path) -> AppResult<()> {
             continue;
         }
         let replacement = root.join(name);
-        if name == "Pymss Studio.exe" && replacement.exists() {
+        if name == "MediaForge.exe" && replacement.exists() {
             replace_executable(&replacement, &previous, None)?;
             continue;
         }
@@ -1673,7 +1673,7 @@ fn rollback_partial_replacement(
         if !replacement.exists() {
             continue;
         }
-        if *name == "Pymss Studio.exe" {
+        if *name == "MediaForge.exe" {
             continue;
         }
         let result = if replacement.is_dir() {
@@ -1692,7 +1692,7 @@ fn rollback_partial_replacement(
             continue;
         }
         if destination.exists() {
-            if *name == "Pymss Studio.exe" {
+            if *name == "MediaForge.exe" {
                 if let Err(error) = replace_executable(&destination, &previous, None) {
                     failures.push(format!("unable to restore {name}: {error}"));
                 }
@@ -1758,7 +1758,7 @@ mod tests {
     #[test]
     fn update_payload_rejects_unmanaged_paths() {
         assert!(validate_payload_path(Path::new("data/settings/app.json")).is_err());
-        assert!(validate_payload_path(Path::new("../Pymss Studio.exe")).is_err());
+        assert!(validate_payload_path(Path::new("../MediaForge.exe")).is_err());
         assert!(validate_payload_path(Path::new("python/../worker.py")).is_err());
         assert!(validate_payload_path(Path::new("python/worker.py")).is_ok());
     }
@@ -1884,13 +1884,13 @@ mod tests {
 
     #[test]
     fn release_signature_cannot_be_reused_for_another_version() {
-        let signature = "untrusted comment: signature from tauri secret key\nRUSwXCRg9i11qZVeGcC91Q+ga6LNd9cnA5apzJD88EF9u5pWcmzJSRISDih2gqePAAT6XxRH4N73pv9RKnYnQ8E4Pca958Nf+Ag=\ntrusted comment: timestamp:1792132803\tfile:Pymss-Studio-0.0.20-windows-x64-update.zip\nKgHDaCK/VlKdFjhEV5Z/G+YmfoHBwkhRzSiwXXh/ZCcxmp6BDLxEw/9MucO2waR2s2FWAUa+0h1isXVdymJHBw==\n";
+        let signature = "untrusted comment: signature from tauri secret key\nRUSwXCRg9i11qZVeGcC91Q+ga6LNd9cnA5apzJD88EF9u5pWcmzJSRISDih2gqePAAT6XxRH4N73pv9RKnYnQ8E4Pca958Nf+Ag=\ntrusted comment: timestamp:1792132803\tfile:MediaForge-0.0.20-windows-x64-update.zip\nKgHDaCK/VlKdFjhEV5Z/G+YmfoHBwkhRzSiwXXh/ZCcxmp6BDLxEw/9MucO2waR2s2FWAUa+0h1isXVdymJHBw==\n";
         // This test checks filename binding before cryptographic verification.
-        let signature = signature.replace("Pymss-Studio-0.0.20-windows-x64-update.zip", &crate::update_sources::archive_name("0.0.20"));
+        let signature = signature.replace("MediaForge-0.0.20-windows-x64-update.zip", &crate::update_sources::archive_name("0.0.20"));
         let encoded = base64::engine::general_purpose::STANDARD.encode(&signature);
         assert!(super::decode_release_signature(&encoded, "0.0.20").is_ok());
         assert!(super::decode_release_signature(&encoded, "99.0.0").is_err());
-        let duplicate = signature.replace("\nKgHD", "\tfile:Pymss-Studio-0.0.20-windows-x64-update.zip\nKgHD");
+        let duplicate = signature.replace("\nKgHD", "\tfile:MediaForge-0.0.20-windows-x64-update.zip\nKgHD");
         assert!(super::decode_release_signature(&base64::engine::general_purpose::STANDARD.encode(duplicate), "0.0.20").is_err());
     }
 
@@ -1913,7 +1913,7 @@ mod tests {
     #[ignore = "Downloads and verifies the public signed update ZIP without installing it"]
     fn live_modelscope_signed_package() {
         tauri::async_runtime::block_on(async {
-            let client = crate::update_sources::http_client_builder().user_agent("Pymss-Studio-Updater").timeout(std::time::Duration::from_secs(45)).build().unwrap();
+            let client = crate::update_sources::http_client_builder().user_agent("MediaForge-Updater").timeout(std::time::Duration::from_secs(45)).build().unwrap();
             let manifest = crate::update_sources::modelscope_manifest(&client, "prerelease-v1-windows-x64-update.json").await.unwrap();
             let raw: serde_json::Value = client.get(manifest.endpoint).send().await.unwrap().json().await.unwrap();
             let version = raw["version"].as_str().unwrap();
@@ -1996,11 +1996,11 @@ mod tests {
         fs::write(root.join("python").join("original.txt"), "original").unwrap();
         fs::create_dir_all(root.join("bin")).unwrap();
         fs::write(root.join("bin").join("original.txt"), "original-bin").unwrap();
-        fs::write(backup.join("Pymss Studio.exe"), "old-exe").unwrap();
+        fs::write(backup.join("MediaForge.exe"), "old-exe").unwrap();
 
         restore_portable_backup(&root, &backup).unwrap();
 
-        assert_eq!(fs::read_to_string(root.join("Pymss Studio.exe")).unwrap(), "old-exe");
+        assert_eq!(fs::read_to_string(root.join("MediaForge.exe")).unwrap(), "old-exe");
         assert_eq!(fs::read_to_string(root.join("python").join("original.txt")).unwrap(), "original");
         assert_eq!(fs::read_to_string(root.join("bin").join("original.txt")).unwrap(), "original-bin");
         let _ = fs::remove_dir_all(root);

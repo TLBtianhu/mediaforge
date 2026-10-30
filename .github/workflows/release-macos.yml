@@ -266,7 +266,7 @@ jobs:
           VERSION="${PYMSS_VERSION#v}"
           APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
           codesign --verify --deep --strict "$APP"
-          python3 scripts/build-macos-update.py "$APP" "release/Pymss-Studio-${VERSION}-macos-arm64-update.app.tar.gz"
+          python3 scripts/build-macos-update.py "$APP" "release/MediaForge-${VERSION}-macos-arm64-update.app.tar.gz"
 
       - name: Verify macOS update logic
         run: |
@@ -290,14 +290,14 @@ jobs:
             -srcfolder "$STAGE" \
             -ov \
             -format UDZO \
-            "release/Pymss-Studio-${VERSION}-macos-${{ matrix.arch }}-mlx.dmg"
+            "release/MediaForge-${VERSION}-macos-${{ matrix.arch }}-mlx.dmg"
           rm -rf "$STAGE"
           echo "PYMSS_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ env.PYMSS_VERSION }}-macos-${{ matrix.arch }}-mlx
+          name: MediaForge-${{ env.PYMSS_VERSION }}-macos-${{ matrix.arch }}-mlx
           path: |
             release/*.dmg
             release/*-macos-arm64-update.app.tar.gz*

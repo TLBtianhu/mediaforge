@@ -41,7 +41,7 @@ class GitHubRedirectHandler(HTTPRedirectHandler):
 def github_json(path: str, token: str, accept: str = "application/vnd.github+json"):
     headers = {
         "Accept": accept,
-        "User-Agent": "Pymss-Studio-Release-Notes",
+        "User-Agent": "MediaForge-Release-Notes",
         "X-GitHub-Api-Version": "2026-03-10",
     }
     if token:
@@ -119,7 +119,7 @@ def render_release_notes(
     for slug, platform, purpose, formats in PACKAGE_TYPES:
         links = []
         for suffix, label in formats:
-            name = f"Pymss-Studio-{version}-{slug}{suffix}"
+            name = f"MediaForge-{version}-{slug}{suffix}"
             if name in assets:
                 links.append(f"[{label}]({download_root}/{quote(name, safe='')})")
         if links:

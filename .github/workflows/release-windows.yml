@@ -29,7 +29,7 @@ jobs:
         run: |
           $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
           if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-cuda"
+          $stageName = "MediaForge-$version-windows-x64-cuda"
           $artifactName = "$stageName-stage"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
@@ -107,7 +107,7 @@ jobs:
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -156,7 +156,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - name: Upload CUDA stage artifact
         uses: actions/upload-artifact@v4
@@ -191,7 +191,7 @@ jobs:
       - name: Upload Windows portable archive artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-portable
+          name: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-portable
           path: release/${{ needs.windows-cuda-prepare.outputs.stage_name }}.7z
 
   windows-cuda-exe:
@@ -209,8 +209,8 @@ jobs:
           package-suffix: windows-x64-cuda
           stage-name: ${{ needs.windows-cuda-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-cuda-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup
-          output-file: Pymss-Studio-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup
+          output-file: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup.exe
 
   windows-cpu-prepare:
     name: Windows x64 CPU prepare
@@ -232,7 +232,7 @@ jobs:
         run: |
           $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
           if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-cpu"
+          $stageName = "MediaForge-$version-windows-x64-cpu"
           $artifactName = "$stageName-stage"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
@@ -310,7 +310,7 @@ jobs:
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -349,7 +349,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - name: Upload CPU stage artifact
         uses: actions/upload-artifact@v4
@@ -383,7 +383,7 @@ jobs:
       - name: Upload Windows CPU portable archive artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-portable
+          name: MediaForge-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-portable
           path: release/${{ needs.windows-cpu-prepare.outputs.stage_name }}.7z
 
   windows-cpu-exe:
@@ -402,8 +402,8 @@ jobs:
           package-suffix: windows-x64-cpu
           stage-name: ${{ needs.windows-cpu-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-cpu-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup
-          output-file: Pymss-Studio-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup
+          output-file: MediaForge-${{ needs.windows-cpu-prepare.outputs.version }}-windows-x64-cpu-setup.exe
 
 
   windows-online-prepare:
@@ -424,7 +424,7 @@ jobs:
         run: |
           $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
           if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-online"
+          $stageName = "MediaForge-$version-windows-x64-online"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
           echo "stage_artifact=$stageName-stage" >> $env:GITHUB_OUTPUT
@@ -481,7 +481,7 @@ jobs:
         run: |
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -506,7 +506,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - name: Upload online stage artifact
         uses: actions/upload-artifact@v4
@@ -528,27 +528,27 @@ jobs:
         run: |
           $stageName = '${{ needs.windows-online-prepare.outputs.stage_name }}'
           Set-Content "release/$stageName/pymss-studio.portable" -Value "portable" -Encoding ASCII
-          $updateArchive = (Resolve-Path "release").Path + "\Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip"
+          $updateArchive = (Resolve-Path "release").Path + "\MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip"
            Push-Location release
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the Online portable archive" }
            Pop-Location
            Push-Location "release/$stageName"
            # Keep bundled tools in the portable archive only. Add bin here when a tool update needs to be distributed.
-           & "C:\Program Files\7-Zip\7z.exe" a -tzip $updateArchive "Pymss Studio.exe" "python"
+           & "C:\Program Files\7-Zip\7z.exe" a -tzip $updateArchive "MediaForge.exe" "python"
           if ($LASTEXITCODE -ne 0) { throw "Unable to create the managed update archive" }
           Pop-Location
           $updateSize = (Get-Item -LiteralPath $updateArchive).Length
           if ($updateSize -gt 512MB) { throw "Managed update archive exceeds the 512 MiB client limit" }
       - uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-portable
+          name: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-portable
           path: release/${{ needs.windows-online-prepare.outputs.stage_name }}.7z
       - name: Upload universal Windows update archive
         uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update
-          path: release/Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip
+          name: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update
+          path: release/MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip
 
   windows-online-exe:
     name: Windows x64 online setup exe
@@ -566,8 +566,8 @@ jobs:
           package-suffix: windows-x64-online
           stage-name: ${{ needs.windows-online-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-online-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup
-          output-file: Pymss-Studio-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup
+          output-file: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-setup.exe
 
   windows-rocm-prepare:
     name: Windows x64 ROCm prepare
@@ -587,7 +587,7 @@ jobs:
         run: |
           $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
           if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
-          $stageName = "Pymss-Studio-$version-windows-x64-rocm"
+          $stageName = "MediaForge-$version-windows-x64-rocm"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
           echo "stage_artifact=$stageName-stage" >> $env:GITHUB_OUTPUT
@@ -642,7 +642,7 @@ jobs:
         run: |
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/Pymss Studio.exe"
+          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
           Copy-Item "python" "$stage/python" -Recurse
           Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
           Copy-Item "release/bin" "$stage/bin" -Recurse
@@ -687,7 +687,7 @@ jobs:
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
-          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/Pymss Studio.exe" --platform windows
+          python scripts/verify-native-plugins.py "release/${{ steps.meta.outputs.stage_name }}/MediaForge.exe" --platform windows
           if ($LASTEXITCODE -ne 0) { throw "Staged native plugin helper verification failed" }
       - uses: actions/upload-artifact@v4
         with:
@@ -715,7 +715,7 @@ jobs:
            Pop-Location
       - uses: actions/upload-artifact@v4
         with:
-          name: Pymss-Studio-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-portable
+          name: MediaForge-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-portable
           path: release/${{ needs.windows-rocm-prepare.outputs.stage_name }}.7z
 
   windows-rocm-exe:
@@ -733,5 +733,5 @@ jobs:
           package-suffix: windows-x64-rocm
           stage-name: ${{ needs.windows-rocm-prepare.outputs.stage_name }}
           stage-artifact: ${{ needs.windows-rocm-prepare.outputs.stage_artifact }}
-          output-artifact: Pymss-Studio-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup
-          output-file: Pymss-Studio-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup.exe
+          output-artifact: MediaForge-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup
+          output-file: MediaForge-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-setup.exe

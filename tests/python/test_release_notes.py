@@ -35,14 +35,14 @@ class ReleaseNotesTests(unittest.TestCase):
         self.release = {"tag_name": "v1.2.3", "id": 42}
 
     def test_windows_supplement_preserves_published_macos_links_and_update_state(self):
-        mac = "Pymss-Studio-1.2.3-macos-arm64-mlx.dmg"
-        windows = "Pymss-Studio-1.2.3-windows-x64-cpu-setup.exe"
+        mac = "MediaForge-1.2.3-macos-arm64-mlx.dmg"
+        windows = "MediaForge-1.2.3-windows-x64-cpu-setup.exe"
         metadata_name = "prerelease-v1-macos-arm64-update.json"
         (self.artifacts / windows).touch()
         (self.artifacts / "prerelease-v1-windows-x64-update.json").write_text(
             json.dumps(update_metadata(False)), encoding="utf-8",
         )
-        published = [asset(mac, 1), asset(metadata_name, 2), asset("Pymss-Studio-1.2.2-linux-x64.AppImage", 3)]
+        published = [asset(mac, 1), asset(metadata_name, 2), asset("MediaForge-1.2.2-linux-x64.AppImage", 3)]
         with mock.patch.object(NOTES, "github_json", side_effect=[self.release, published, update_metadata()]) as api:
             assets, metadata = NOTES.fetch_published_release(self.artifacts, "v1.2.3", "owner/repo", "token")
         self.assertEqual(api.call_args_list[-1].args, ("/repos/owner/repo/releases/assets/2", "token", "application/octet-stream"))
@@ -58,7 +58,7 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertEqual(rendered.count("Improve startup."), 1)
 
     def test_current_metadata_takes_precedence_without_downloading_the_old_copy(self):
-        package = "Pymss-Studio-1.2.3-windows-x64-cpu-setup.exe"
+        package = "MediaForge-1.2.3-windows-x64-cpu-setup.exe"
         metadata_name = "prerelease-v1-windows-x64-update.json"
         (self.artifacts / package).touch()
         (self.artifacts / metadata_name).write_text(json.dumps(update_metadata(False)), encoding="utf-8")
@@ -88,14 +88,14 @@ class ReleaseNotesTests(unittest.TestCase):
 
     def test_asset_pagination_keeps_packages_after_the_first_page(self):
         first = [asset(f"checksum-{index}", index + 10) for index in range(100)]
-        package = "Pymss-Studio-1.2.3-linux-x64.AppImage"
+        package = "MediaForge-1.2.3-linux-x64.AppImage"
         with mock.patch.object(NOTES, "github_json", side_effect=[self.release, first, [asset(package, 110)]]) as api:
             assets, _metadata = NOTES.fetch_published_release(self.artifacts, "v1.2.3", "owner/repo", "")
         self.assertIn(package, assets)
         self.assertEqual(api.call_args_list[-1].args[0], "/repos/owner/repo/releases/42/assets?per_page=100&page=2")
 
     def test_mismatched_published_metadata_and_tag_are_rejected(self):
-        package = "Pymss-Studio-1.2.3-macos-arm64-mlx.dmg"
+        package = "MediaForge-1.2.3-macos-arm64-mlx.dmg"
         with self.assertRaisesRegex(ValueError, "metadata version"):
             NOTES.render_release_notes(
                 self.artifacts, self.notes, "v1.2.3", published_assets={package},

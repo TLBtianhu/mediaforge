@@ -1,7 +1,7 @@
 """把发布包上传到魔搭数据集，作为国内镜像。
 
     python scripts/publish-modelscope.py --check
-    python scripts/publish-modelscope.py release/Pymss-Studio-*.exe release/Pymss-Studio-*.zip
+    python scripts/publish-modelscope.py release/MediaForge-*.exe release/MediaForge-*.zip
 
 令牌来自 `scripts/dev_env.py`（环境变量 → `.dev-data/dev.env` → 历史文件）。
 上传后会用**匿名**请求回读文件大小，确认别人真的能下——只看"上传成功"不够，

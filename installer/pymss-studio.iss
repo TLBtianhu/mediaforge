@@ -4,7 +4,7 @@
 #define MyAppName "MediaForge"
 #define MyAppVersion GetEnv("PYMSS_VERSION") == "" ? "0.0.1" : GetEnv("PYMSS_VERSION")
 #define MyAppPublisher "TheSmallHanCat"
-#define MyAppExeName "Pymss Studio.exe"
+#define MyAppExeName "MediaForge.exe"
 #define SourceDir GetEnv("PYMSS_PORTABLE_DIR")
 #define OutputDir GetEnv("PYMSS_INSTALLER_OUTPUT") == "" ? "..\release" : GetEnv("PYMSS_INSTALLER_OUTPUT")
 #define PackageSuffix GetEnv("PYMSS_PACKAGE_SUFFIX") == "" ? "windows-x64-cuda" : GetEnv("PYMSS_PACKAGE_SUFFIX")
@@ -28,7 +28,7 @@ SetupArchitecture=x64
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 OutputDir={#OutputDir}
-OutputBaseFilename=Pymss-Studio-{#MyAppVersion}-{#PackageSuffix}-setup
+OutputBaseFilename=MediaForge-{#MyAppVersion}-{#PackageSuffix}-setup
 Compression=lzma2/max
 LZMAUseSeparateProcess=yes
 LZMADictionarySize=1048576

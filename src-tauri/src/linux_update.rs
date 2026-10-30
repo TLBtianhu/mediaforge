@@ -153,7 +153,7 @@ mod platform {
             direct,
             proxy,
         )
-        .user_agent("Pymss-Studio-Updater")
+        .user_agent("MediaForge-Updater")
         .build()
         .map_err(|e| failure(e.without_url().to_string()))?;
         let mut response = client

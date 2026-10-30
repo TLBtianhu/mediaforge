@@ -34,7 +34,7 @@ impl RecoveryFixture {
             ("data/outputs/audio.wav", "saved-audio"),
             ("python-runtime/runtime-envs/active-runtime.json", "{\"backend\":\"cpu\",\"pythonPath\":\"cpu/Scripts/python.exe\"}"),
             ("python-runtime/runtime-envs/cpu/Lib/site-packages/package.py", "saved-runtime"),
-            ("Pymss Studio.exe", "new-executable"),
+            ("MediaForge.exe", "new-executable"),
             ("python/worker.py", "new-worker"),
             ("bin/ffmpeg.exe", "original-tool"),
         ] {
@@ -60,7 +60,7 @@ impl RecoveryFixture {
         for (path, value) in [
             ("python/worker.py", "old-worker"),
             ("bin/ffmpeg.exe", "old-tool"),
-            ("Pymss Studio.exe", "old-executable"),
+            ("MediaForge.exe", "old-executable"),
         ] {
             self.write(&self.backup.join(path), value.as_bytes());
         }
@@ -104,7 +104,7 @@ impl RecoveryFixture {
         for (name, content) in [
             ("python/worker.py", "old-worker"),
             ("bin/ffmpeg.exe", "old-tool"),
-            ("Pymss Studio.exe", "old-executable"),
+            ("MediaForge.exe", "old-executable"),
         ] {
             assert_eq!(fs::read_to_string(self.root.join(name)).unwrap(), content);
         }
@@ -306,7 +306,7 @@ fn partial_recovery_snapshot_preserves_paths_already_restored_or_never_backed_up
         fixture.run(interrupted, || Ok(())).unwrap();
         assert_eq!(fs::read_to_string(fixture.root.join("python/worker.py")).unwrap(), "old-worker");
         assert_eq!(fs::read_to_string(fixture.root.join("bin/ffmpeg.exe")).unwrap(), "original-tool");
-        assert_eq!(fs::read_to_string(fixture.root.join("Pymss Studio.exe")).unwrap(), "old-executable");
+        assert_eq!(fs::read_to_string(fixture.root.join("MediaForge.exe")).unwrap(), "old-executable");
     }
 }
 
@@ -337,7 +337,7 @@ fn restart_failure_after_prepared_cleanup_keeps_the_quarantined_marker() {
         assert!(fixture.run(interrupted, || Err(restart_error())).is_err());
         assert!(!transaction_path(&fixture.root).exists());
         assert_eq!(fixture.quarantined_markers().len(), 1);
-        assert_eq!(fs::read_to_string(fixture.root.join("Pymss Studio.exe")).unwrap(), "new-executable");
+        assert_eq!(fs::read_to_string(fixture.root.join("MediaForge.exe")).unwrap(), "new-executable");
     }
 }
 
@@ -366,7 +366,7 @@ fn deny_delete(path: &Path) -> fs::File {
 #[test]
 fn partial_restore_failure_retains_recovery_state_and_can_be_retried() {
     for interrupted in [true, false] {
-        for locked_path in ["bin/ffmpeg.exe", "Pymss Studio.exe"] {
+        for locked_path in ["bin/ffmpeg.exe", "MediaForge.exe"] {
             let fixture = RecoveryFixture::new();
             fixture.populate_backup(UpdatePhase::Replacing);
             let marker = fs::read(transaction_path(&fixture.root)).unwrap();
@@ -374,7 +374,7 @@ fn partial_restore_failure_retains_recovery_state_and_can_be_retried() {
             assert!(fixture.run(interrupted, || panic!("unexpected restart")).is_err());
             assert_eq!(fs::read(transaction_path(&fixture.root)).unwrap(), marker);
             assert!(fixture.backup.join(locked_path).is_file());
-            assert!(fixture.backup.join("Pymss Studio.exe").is_file());
+            assert!(fixture.backup.join("MediaForge.exe").is_file());
             assert_eq!(fs::read_to_string(fixture.root.join("python/worker.py")).unwrap(), "old-worker");
             drop(lock);
             fixture.run(interrupted, || Ok(())).unwrap();

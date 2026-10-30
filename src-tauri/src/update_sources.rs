@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use url::Url;
 
 // 2026-10-29 修：原来两个源都指向 upstream（pymss-project/pymss-studio 与
-// huanlinoto/Pymss-Studio-Dist），也就是本构建的"自动更新"会去装**上游**的包。
+// huanlinoto/MediaForge-Dist），也就是本构建的"自动更新"会去装**上游**的包。
 // GitHub 源已改为本仓库；ModelScope 数据集属于上游，改之前必须先有自己的数据集，
 // 否则会静默安装别人的构建。
 //
@@ -210,11 +210,11 @@ pub fn archive_name(version: &str) -> String {
 
 fn archive_name_for(version: &str, platform: &str) -> String {
     if platform == "macos-arm64" {
-        format!("Pymss-Studio-{version}-macos-arm64-update.app.tar.gz")
+        format!("MediaForge-{version}-macos-arm64-update.app.tar.gz")
     } else if platform == "linux-x64" {
-        format!("Pymss-Studio-{version}-linux-x64.AppImage")
+        format!("MediaForge-{version}-linux-x64.AppImage")
     } else {
-        format!("Pymss-Studio-{version}-windows-x64-update.zip")
+        format!("MediaForge-{version}-windows-x64-update.zip")
     }
 }
 
@@ -273,15 +273,15 @@ mod tests {
     fn macos_update_sources_require_the_matching_archive_and_architecture() {
         let files = paths(&[
             "1.0.0/stable-v1-macos-arm64-update.json",
-            "1.0.0/Pymss-Studio-1.0.0-macos-arm64-update.app.tar.gz",
+            "1.0.0/MediaForge-1.0.0-macos-arm64-update.app.tar.gz",
             "2.0.0/stable-v1-macos-arm64-update.json",
-            "2.0.0/Pymss-Studio-2.0.0-windows-x64-update.zip",
+            "2.0.0/MediaForge-2.0.0-windows-x64-update.zip",
         ]);
         assert_eq!(latest_mirror_manifest(&files, "stable-v1-macos-arm64-update.json").unwrap().version, "1.0.0");
-        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v1.0.0/Pymss-Studio-1.0.0-macos-arm64-update.app.tar.gz").unwrap();
+        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v1.0.0/MediaForge-1.0.0-macos-arm64-update.app.tar.gz").unwrap();
         if MODELSCOPE_MIRROR_ENABLED {
             let mirror = archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "macos-arm64").unwrap();
-            assert!(mirror.path().ends_with("/1.0.0/Pymss-Studio-1.0.0-macos-arm64-update.app.tar.gz"));
+            assert!(mirror.path().ends_with("/1.0.0/MediaForge-1.0.0-macos-arm64-update.app.tar.gz"));
         } else {
             // 默认构建里第三方镜像不存在（见 MODELSCOPE_MIRROR_ENABLED）
             assert!(archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "macos-arm64").is_none());
@@ -298,12 +298,12 @@ mod tests {
     fn linux_update_sources_require_an_appimage_instead_of_a_windows_archive() {
         let files = paths(&[
             "1.0.0/stable-v1-linux-x64-update.json",
-            "1.0.0/Pymss-Studio-1.0.0-linux-x64.AppImage",
+            "1.0.0/MediaForge-1.0.0-linux-x64.AppImage",
             "2.0.0/stable-v1-linux-x64-update.json",
-            "2.0.0/Pymss-Studio-2.0.0-windows-x64-update.zip",
+            "2.0.0/MediaForge-2.0.0-windows-x64-update.zip",
         ]);
         assert_eq!(latest_mirror_manifest(&files, "stable-v1-linux-x64-update.json").unwrap().version, "1.0.0");
-        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v1.0.0/Pymss-Studio-1.0.0-linux-x64.AppImage").unwrap();
+        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v1.0.0/MediaForge-1.0.0-linux-x64.AppImage").unwrap();
         assert_eq!(
             archive_url_for(&github, "1.0.0", UpdateProvider::Modelscope, "linux-x64").is_some(),
             MODELSCOPE_MIRROR_ENABLED
@@ -315,9 +315,9 @@ mod tests {
     fn discovery_respects_channel_versions_and_complete_uploads() {
         let files = paths(&[
             "0.0.19/stable-v1-windows-x64-update.json",
-            "0.0.19/Pymss-Studio-0.0.19-windows-x64-update.zip",
+            "0.0.19/MediaForge-0.0.19-windows-x64-update.zip",
             "0.0.20/prerelease-v1-windows-x64-update.json",
-            "0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip",
+            "0.0.20/MediaForge-0.0.20-windows-x64-update.zip",
             "0.0.21/stable-v1-windows-x64-update.json",
             "../stable-v1-windows-x64-update.json",
         ]);
@@ -341,9 +341,9 @@ mod tests {
     fn discovery_supports_semver_prereleases_and_build_metadata() {
         let files = paths(&[
             "1.0.0-rc.1/prerelease.json",
-            "1.0.0-rc.1/Pymss-Studio-1.0.0-rc.1-windows-x64-update.zip",
+            "1.0.0-rc.1/MediaForge-1.0.0-rc.1-windows-x64-update.zip",
             "1.0.0+build.2/prerelease.json",
-            "1.0.0+build.2/Pymss-Studio-1.0.0+build.2-windows-x64-update.zip",
+            "1.0.0+build.2/MediaForge-1.0.0+build.2-windows-x64-update.zip",
         ]);
         assert_eq!(
             latest_mirror_manifest(&files, "prerelease.json")
@@ -358,12 +358,12 @@ mod tests {
         let archive_url = |original: &Url, version: &str, provider| {
             archive_url_for(original, version, provider, "windows-x64")
         };
-        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip").unwrap();
+        let github = Url::parse("https://github.com/TLBtianhu/mediaforge/releases/download/v0.0.20/MediaForge-0.0.20-windows-x64-update.zip").unwrap();
         if MODELSCOPE_MIRROR_ENABLED {
             let mirror = archive_url(&github, "0.0.20", UpdateProvider::Modelscope).unwrap();
             assert!(mirror
                 .as_str()
-                .ends_with("/0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip"));
+                .ends_with("/0.0.20/MediaForge-0.0.20-windows-x64-update.zip"));
             assert_eq!(
                 archive_url(&mirror, "0.0.20", UpdateProvider::Github),
                 Some(github.clone())
@@ -435,7 +435,7 @@ mod tests {
             ]}})
             .to_string(),
             serde_json::json!({"Code": 200, "Data": {"TotalCount": 3, "Files": [
-                {"Type":"blob", "Path":"0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip"},
+                {"Type":"blob", "Path":"0.0.20/MediaForge-0.0.20-windows-x64-update.zip"},
                 {"Type":"blob", "Path":"0.0.21/prerelease.json"},
             ]}})
             .to_string(),
@@ -465,7 +465,7 @@ mod tests {
             serde_json::json!([]),
             serde_json::json!([
                 {"Type":"blob", "Path":"0.0.20/prerelease-v1-windows-x64-update.json"},
-                {"Type":"blob", "Path":"0.0.20/Pymss-Studio-0.0.20-windows-x64-update.zip"},
+                {"Type":"blob", "Path":"0.0.20/MediaForge-0.0.20-windows-x64-update.zip"},
             ]),
             serde_json::json!([
                 {"Type":"blob", "Path":"0.0.21/stable-v1-windows-x64-update.json"},
@@ -515,7 +515,7 @@ mod tests {
     fn live_modelscope_update_catalog() {
         let manifest = tauri::async_runtime::block_on(async {
             let client = http_client_builder()
-                .user_agent("Pymss-Studio-Updater")
+                .user_agent("MediaForge-Updater")
                 .timeout(Duration::from_secs(10))
                 .build()
                 .unwrap();

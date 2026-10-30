@@ -137,35 +137,35 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-          pattern: Pymss-Studio-${{ steps.release_meta.outputs.version }}-windows-x64-*-portable
+          pattern: MediaForge-${{ steps.release_meta.outputs.version }}-windows-x64-*-portable
       - name: Download Windows setup artifacts
         if: needs.windows.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-          pattern: Pymss-Studio-${{ steps.release_meta.outputs.version }}-windows-x64-*-setup
+          pattern: MediaForge-${{ steps.release_meta.outputs.version }}-windows-x64-*-setup
       - name: Download Windows update archives
         if: needs.windows.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-          pattern: Pymss-Studio-${{ steps.release_meta.outputs.version }}-windows-x64-update
+          pattern: MediaForge-${{ steps.release_meta.outputs.version }}-windows-x64-update
       - name: Download macOS release artifacts
         if: needs.macos.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-          pattern: Pymss-Studio-${{ steps.release_meta.outputs.version }}-macos-*-mlx
+          pattern: MediaForge-${{ steps.release_meta.outputs.version }}-macos-*-mlx
       - name: Download Linux release artifacts
         if: needs.linux.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-          pattern: Pymss-Studio-${{ steps.release_meta.outputs.version }}-linux-x64-appimage
+          pattern: MediaForge-${{ steps.release_meta.outputs.version }}-linux-x64-appimage
       - name: Validate release asset sizes
         shell: bash
         run: |
@@ -302,8 +302,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Uploading pms/${RELEASE_VERSION}/ to HuggingFace dataset HuanLin/Pymss-Studio-Dist:${RELEASE_VERSION}"
-          uvx --from "huggingface_hub[cli]" hf upload --type dataset HuanLin/Pymss-Studio-Dist "pms/${RELEASE_VERSION}" "${RELEASE_VERSION}"
+          echo "Uploading pms/${RELEASE_VERSION}/ to HuggingFace dataset HuanLin/MediaForge-Dist:${RELEASE_VERSION}"
+          uvx --from "huggingface_hub[cli]" hf upload --type dataset HuanLin/MediaForge-Dist "pms/${RELEASE_VERSION}" "${RELEASE_VERSION}"
           echo "HuggingFace dataset upload completed."
 
       - name: Upload release files to ModelScope dataset
@@ -311,6 +311,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Uploading pms/${RELEASE_VERSION}/ to ModelScope dataset huanlinoto/Pymss-Studio-Dist:${RELEASE_VERSION}"
-          uvx modelscope upload --repo-type dataset huanlinoto/Pymss-Studio-Dist "pms/${RELEASE_VERSION}" "${RELEASE_VERSION}"
+          echo "Uploading pms/${RELEASE_VERSION}/ to ModelScope dataset huanlinoto/MediaForge-Dist:${RELEASE_VERSION}"
+          uvx modelscope upload --repo-type dataset huanlinoto/MediaForge-Dist "pms/${RELEASE_VERSION}" "${RELEASE_VERSION}"
           echo "ModelScope dataset upload completed."
