@@ -339,7 +339,11 @@ src-tauri/               Tauri 2 / Rust
 
 ## 许可证与上游
 
-- 本项目沿用 **AGPL-3.0**。
+- 本项目沿用 **AGPL-3.0**（完整文本见 [LICENSE](LICENSE)）。
 - 基于 [pymss-project/pymss-studio](https://github.com/pymss-project/pymss-studio) fork，保留上游版权与许可证。
 - 音频推理核心来自 [pymss-project/pymss](https://github.com/pymss-project/pymss)。
+- 随包分发的第三方组件（FFmpeg、aria2、Python 运行时、RIFE 代码）与它们的许可证见 [NOTICE](NOTICE)。
+- 模型权重各自遵循自己的许可证：每个模型的 SPDX 标识写在 `python/media_ops/media_catalog.json`，
+  可读版本见 [docs/model-guide.md](docs/model-guide.md)（其中 `BRIA-1.4-NC` 为非商业许可）。
+- 安全策略见 [SECURITY.md](SECURITY.md)，参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 - 上游 README 与完整音频功能文档见上游仓库。
