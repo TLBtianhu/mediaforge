@@ -10159,6 +10159,29 @@
         "tile"
       ],
       "notes": null
+    },
+    {
+      "id": "media:esrgan-remacri-x4",
+      "name": "4x_foolhardy_Remacri.pth",
+      "family": "media",
+      "task": "upscale",
+      "io": {
+        "in": "image",
+        "out": "image",
+        "arity": 1
+      },
+      "architecture": "ESRGAN",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "4x_foolhardy_Remacri.pth"
+      },
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "slots": [
+        "scale",
+        "tile"
+      ],
+      "notes": null
     }
   ]
 }

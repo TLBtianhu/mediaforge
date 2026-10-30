@@ -592,6 +592,38 @@
           "maximum": 4
         }
       }
+    },
+    {
+      "id": "esrgan-remacri-x4",
+      "name": "4x_foolhardy_Remacri.pth",
+      "label": "4x Remacri",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 67025055,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "写实向 4× 超分，纹理保留好，适合照片。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_foolhardy_Remacri.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     }
   ]
 }
