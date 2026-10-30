@@ -10074,28 +10074,6 @@
       "notes": null
     },
     {
-      "id": "media:yolo11-detect",
-      "name": "yolo11-detect",
-      "family": "media",
-      "task": "object_detection",
-      "io": {
-        "in": "image",
-        "out": "json",
-        "arity": 1
-      },
-      "architecture": null,
-      "source": {
-        "status": "local",
-        "repo": null,
-        "file": "yolo11-detect"
-      },
-      "license": "",
-      "slots": [
-        "tile"
-      ],
-      "notes": null
-    },
-    {
       "id": "media:swinir-m-x2",
       "name": "SwinIR-M_x2_GAN.pth",
       "family": "media",
@@ -10140,6 +10118,28 @@
         "tile"
       ],
       "notes": null
+    },
+    {
+      "id": "media:yolo11n",
+      "name": "yolo11n.pt",
+      "family": "media",
+      "task": "object_detection",
+      "io": {
+        "in": "image",
+        "out": "json",
+        "arity": 1
+      },
+      "architecture": "YOLO11",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "yolo11n.pt"
+      },
+      "license": "AGPL-3.0 (Ultralytics)",
+      "slots": [
+        "conf"
+      ],
+      "notes": "输出 JSON，不产生图像文件"
     }
   ]
 }

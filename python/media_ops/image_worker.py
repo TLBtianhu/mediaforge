@@ -1,6 +1,9 @@
 """Worker command for MediaForge image restoration."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import os
 import traceback
 from typing import Any
@@ -31,7 +34,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return emit_error("MEDIA_IMAGE_INVALID", "No output directory", request_id=request_id)
 
         mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale", "denoise", "custom"}:
+        if mode not in {"upscale", "watermark", "watermark_upscale", "denoise", "detect", "custom"}:
             return emit_error("MEDIA_IMAGE_INVALID", f"Unknown image mode: {mode}", request_id=request_id)
         scale = float(payload.get("scale") or 2.0)
         target = image_ops.resolve_target(
@@ -74,6 +77,28 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 "One task may run exactly one capability/model. Use a workflow for multiple steps.",
                 request_id=request_id,
             )
+
+        if mode == "detect":
+            binding = capabilities.default_bindings("object_detection")["detector"]
+            model_path = capabilities.model_path(str(binding))
+            outputs = []
+            failed = []
+            for source in inputs:
+                try:
+                    boxes = image_ops.detect_objects(model_path, image_ops.read_image(source), conf=float(payload.get("conf") or 0.25))
+                    sidecar = Path(output_dir) / f"{Path(source).stem}_detect.json"
+                    sidecar.parent.mkdir(parents=True, exist_ok=True)
+                    sidecar.write_text(json.dumps({"source": str(source), "boxes": boxes}, ensure_ascii=False, indent=2), encoding="utf-8")
+                    outputs.append({"path": str(sidecar), "size": sidecar.stat().st_size, "boxes": boxes})
+                except Exception as exc:  # noqa: BLE001
+                    failed.append(failures.describe(source, exc))
+            emit(
+                "audio_tool_result",
+                {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
+                 "total": len(inputs), "completed": len(outputs), "warnings": []},
+                request_id=request_id,
+            )
+            return 0
 
         restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, tile=int(payload.get("tile") or 0) or 512)
         outputs: list[dict] = []

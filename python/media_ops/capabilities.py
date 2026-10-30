@@ -343,6 +343,14 @@ def default_model_by_scale(capability_id: str, scale: int) -> str:
 def steps_from_mode(mode: str) -> list[dict[str, Any]]:
     """Compatibility bridge for existing UI modes."""
     steps: list[dict[str, Any]] = []
+    if mode in {"detect"}:
+        steps.append(
+            {
+                "capability": "object_detection",
+                "bindings": default_bindings("object_detection"),
+                "params": {},
+            }
+        )
     if mode in {"denoise"}:
         steps.append(
             {

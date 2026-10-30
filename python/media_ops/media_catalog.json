@@ -381,25 +381,6 @@
       "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
     },
     {
-      "id": "yolo11-detect",
-      "name": "yolo11-detect",
-      "label": "YOLO11 Detect",
-      "modality": "image",
-      "modalities": [
-        "image",
-        "video"
-      ],
-      "task": "object_detection",
-      "capabilities": [],
-      "roles": [],
-      "size": 0,
-      "license": "",
-      "description": "通用目标检测",
-      "implemented": false,
-      "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
-    },
-    {
       "id": "real-cugan-x4",
       "name": "RealCUGAN_4x_denoise3x.pth",
       "label": "Real-CUGAN 4× (denoise3x)",
@@ -518,6 +499,37 @@
           "default": 4,
           "minimum": 1,
           "maximum": 4
+        }
+      }
+    },
+    {
+      "id": "yolo11n",
+      "name": "yolo11n.pt",
+      "label": "YOLO11n 目标检测",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "task": "object_detection",
+      "architecture": "YOLO11",
+      "capabilities": [
+        "object_detection"
+      ],
+      "roles": [
+        "detector"
+      ],
+      "size": 5613764,
+      "license": "AGPL-3.0 (Ultralytics)",
+      "description": "通用目标检测，输出 JSON（label/置信度/框），不生成图像。",
+      "url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "conf": {
+          "type": "number",
+          "default": 0.25
         }
       }
     }

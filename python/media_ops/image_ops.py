@@ -116,7 +116,7 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
 
 
 # 只在图像路径上实现的 capability（视频逐帧管线没有对应 planner）。
-IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise",)
+IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection")
 
 
 def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:
@@ -156,6 +156,27 @@ def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | No
             # 只取中心区域，边缘交给相邻块的重叠部分
             output[top:bottom, left:right] = array[top - y0 : top - y0 + (bottom - top), left - x0 : left - x0 + (right - left)]
     return output
+
+
+def detect_objects(model_path: str | Path, image: np.ndarray, conf: float = 0.25) -> list[dict]:
+    """YOLO 系列检测：返回 label / confidence / box，不产生图像文件。
+
+    ultralytics 的 predict 需要路径或 ndarray；这里传 ndarray（BGR→RGB 由它自己处理）。
+    """
+    from ultralytics import YOLO
+
+    model = YOLO(str(model_path))
+    result = model.predict(ensure_rgb_uint8(image), conf=float(conf), verbose=False)[0]
+    names = getattr(model, "names", {})
+    boxes = []
+    for box in result.boxes:
+        cls = int(box.cls[0])
+        boxes.append({
+            "label": names.get(cls, str(cls)),
+            "confidence": round(float(box.conf[0]), 4),
+            "box": [round(float(v), 2) for v in box.xyxy[0].tolist()],
+        })
+    return boxes
 
 
 class RealESRGANUpscaler:

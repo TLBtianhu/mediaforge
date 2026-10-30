@@ -204,6 +204,30 @@
         "media:scunet-color-real"
       ],
       "params": {}
+    },
+    {
+      "id": "object_detection",
+      "label": "目标检测",
+      "labelEn": "Object detection",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "detector": {
+          "label": "检测模型",
+          "task": "object_detection",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:yolo11n"
+      ],
+      "params": {
+        "conf": {
+          "type": "number",
+          "default": 0.25
+        }
+      }
     }
   ]
 }
