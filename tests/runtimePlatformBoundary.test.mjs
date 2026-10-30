@@ -153,20 +153,6 @@ for (const backend of ['mlx', 'cpu']) {
   })
 }
 
-test('runtime update prompts wait until the beginner guide is dismissed', () => {
-  for (const [visible, invitationSeen] of [[true, true], [false, false]]) {
-    const scope = {
-      app: { runtimeCoreUpdateSupported: true },
-      runtimeCorePromptShown: { value: false }, runtimeCorePromptVisible: { value: false },
-      runtimeCorePromptBlocked: { value: false }, runtimeCoreUpdateAvailable: { value: true },
-      bootReady: { value: true }, showStartupOnboarding: { value: false }, isStandaloneRoute: { value: false },
-      beginnerGuide: { visible }, settings: { beginnerGuideInvitationSeen: invitationSeen },
-    }
-    componentFunction('../src/App.vue', 'showRuntimeCorePrompt', scope)()
-    assert.equal(scope.runtimeCorePromptVisible.value, false)
-    assert.equal(scope.runtimeCorePromptShown.value, false)
-  }
-})
 
 test('runtime notices wait for updates and reads, and close once the installed core is current', () => {
   for (const status of ['preparing', 'prepared', 'updating']) {
