@@ -146,7 +146,7 @@
         "interpolator"
       ],
       "status": "planned",
-      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
+      "blockedReason": "权重与代码都能拿到：hf-mirror 的 hzwer/RIFE 里 RIFEv4.26_0921.zip（21.8 MB）同时包含 flownet.pkl 与 IFNet_HDv3.py / RIFE_HDv3.py。但它是训练目录式布局，RIFE_HDv3.load_model 期望 `train_log/<version>/flownet.pkl` 且从 `train_log` 导入 IFNet，当前运行时报 No module named 'train_log.IFNet_HDv3'。下一步：把代码放进 train_log/ 包、或直接实例化 IFNet 并 load_state_dict 绕过路径逻辑。"
     },
     {
       "id": "propainter",
