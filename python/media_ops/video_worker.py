@@ -30,7 +30,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         if not output_dir:
             return emit_error("MEDIA_VIDEO_INVALID", "No output directory", request_id=request_id)
         mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale", "custom"}:
+        if mode not in {"upscale", "watermark", "watermark_upscale", "interpolate", "custom"}:
             return emit_error("MEDIA_VIDEO_INVALID", f"Unknown video mode: {mode}", request_id=request_id)
         detect_mode = str(payload.get("detectMode") or "fixed").strip().lower()
         if detect_mode not in {"fixed", "per_frame"}:
@@ -63,6 +63,32 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             upscaler_id = str(upscale_step["bindings"]["upscaler"])
             preferred_scale = capabilities.model_scale(upscaler_id)
             model_paths["upscaler_x2" if preferred_scale == 2 else "upscaler_x4"] = str(capabilities.model_path(upscaler_id))
+        if mode == "interpolate":
+            from . import capabilities as _capabilities
+            model_id = str(payload.get("modelId") or "").strip() or _capabilities.default_bindings("frame_interpolation")["interpolator"]
+            model_dir = _capabilities.model_path(model_id)
+            outputs = []
+            failed = []
+            for source in inputs:
+                try:
+                    outputs.append(
+                        video_ops.interpolate_video(
+                            model_dir, source, output_dir,
+                            factor=int(payload.get("factor") or 2),
+                            crf=int(payload.get("crf") or 18),
+                            progress=lambda f, m: emit("audio_tool_progress", {"fraction": f, "message": m}, request_id=request_id),
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    failed.append(failures.describe(source, exc))
+            emit(
+                "audio_tool_result",
+                {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
+                 "total": len(inputs), "completed": len(outputs), "warnings": []},
+                request_id=request_id,
+            )
+            return 0
+
         restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, model_paths=model_paths)
         target = image_ops.resolve_target(
             str(payload.get("target") or "none"),

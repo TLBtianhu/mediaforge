@@ -433,6 +433,92 @@ def _stream(
         shutil.rmtree(work, ignore_errors=True)
 
 
+def interpolate_video(
+    model_dir: str | Path,
+    source: str | Path,
+    output_dir: str | Path,
+    factor: int = 2,
+    crf: int = 18,
+    preset: str = "medium",
+    progress=None,
+) -> dict:
+    """整段视频插帧：抽帧 → 相邻帧插中间帧 → 按新帧率回封。
+
+    走临时目录而不是内存流，因为插帧需要"成对"访问帧，而现有管道是逐帧单向的。
+    音轨直接复用源文件的，不重新编码音频。
+    """
+    import shutil
+    import tempfile
+
+    from . import image_ops
+
+    factor = max(2, int(factor))
+    src = Path(source)
+    meta = ffmpeg.probe(src)
+    # probe 把帧率放在 meta["video"]["fps"]，顶层没有 fps 键——写错过一次，
+    # 结果回封按 30fps 硬算，输出时长只有源视频的三分之一。
+    fps = float((meta.get("video") or {}).get("fps") or meta.get("fps") or 0) or 30.0
+    work = Path(tempfile.mkdtemp(prefix="mf-interp-"))
+    frames_dir = work / "frames"
+    out_frames = work / "out"
+    frames_dir.mkdir()
+    out_frames.mkdir()
+    try:
+        if progress:
+            progress(0.05, "解出原始帧…")
+        subprocess.run(
+            [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+             "-i", str(src), "-vsync", "0", str(frames_dir / "f_%06d.png")],
+            check=True, capture_output=True,
+        )
+        frames = sorted(frames_dir.glob("f_*.png"))
+        if len(frames) < 2:
+            raise ValueError("视频至少需要两帧才能插帧")
+
+        writer = 0
+        for index in range(len(frames) - 1):
+            first = frames[index]
+            second = frames[index + 1]
+            writer += 1
+            shutil.copyfile(first, out_frames / f"o_{writer:06d}.png")
+            a = image_ops.read_image(first)
+            b = image_ops.read_image(second)
+            for step in range(1, factor):
+                writer += 1
+                middle = image_ops.interpolate_frames(model_dir, a, b, step / factor)
+                image_ops.write_image(out_frames / f"o_{writer:06d}.png", middle)
+            if progress and index % 10 == 0:
+                progress(0.05 + 0.85 * index / max(len(frames) - 1, 1), f"插帧 {index + 1}/{len(frames) - 1}")
+        writer += 1
+        shutil.copyfile(frames[-1], out_frames / f"o_{writer:06d}.png")
+
+        if progress:
+            progress(0.92, "回封视频…")
+        target = Path(output_dir) / f"{src.stem}_interp{src.suffix}"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-framerate", f"{fps * factor:.6f}", "-i", str(out_frames / "o_%06d.png"),
+            "-i", str(src),
+            "-map", "0:v:0", "-map", "1:a:0?",
+            "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
+            "-c:a", "copy", "-shortest", str(target),
+        ]
+        subprocess.run(command, check=True, capture_output=True)
+        if progress:
+            progress(1.0, "完成")
+        return {
+            "path": str(target),
+            "source": str(src),
+            "size": target.stat().st_size,
+            "fps": round(fps * factor, 3),
+            "frames": writer,
+            "factor": factor,
+        }
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def process_video(
     input_path: str | Path,
     output_dir: str | Path,
