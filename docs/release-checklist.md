@@ -87,3 +87,32 @@ python scripts\publish-modelscope.py release\MediaForge-*setup.exe release\Media
 # 集成自检
 powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\verify.ps1"
 ```
+
+## 更新签名的密钥归属（0.0.16 修正）
+
+发布前必须确认：`src-tauri/tauri.conf.json` 里 `plugins.updater.pubkey` 必须与**签名所用的私钥**
+配对，否则更新包在客户端会验签失败。
+
+0.0.16 之前这里是上游的 key（id `A9752DF660245CB0`），而发布用的私钥是本项目的
+（id `7F91B4AEE4F5BA7A`）——两者不匹配，即使配了 endpoint 更新也会被拒。现已改为本项目公钥。
+
+自查方法（不需要私钥）：
+
+```bash
+# 解出 .sig 里的 key id，应该与 tauri.conf.json 的 pubkey 文本里那串十六进制一致
+python - <<'PY'
+import base64, json, pathlib
+sig = pathlib.Path("release/MediaForge-<版本>-windows-x64-update.zip.sig").read_text().strip()
+blob = base64.b64decode(base64.b64decode(sig).decode().splitlines()[1])
+print("sig key id:", blob[2:10][::-1].hex().upper())
+conf = json.load(open("src-tauri/tauri.conf.json", encoding="utf-8"))
+pub = base64.b64decode(conf["plugins"]["updater"]["pubkey"]).decode()
+print("conf pubkey:", pub.splitlines()[0])
+PY
+```
+
+另外 `plugins.updater.endpoints` 目前是空数组（`[]`）——**自动更新没有启用**，
+用户靠手动下载新安装包。要启用需要发布 `latest.json`（Tauri v2 静态清单）
+并把地址填进 endpoints；在此之前不要把 endpoints 填成不存在的地址，否则
+客户端每次启动都会请求失败。
+
