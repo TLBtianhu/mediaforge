@@ -23,6 +23,14 @@ import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
 
+// 图像独有能力：没有视频帧适配器，必须走 mode + modelId 入口
+const IMAGE_ONLY_MODES: Record<string, string> = {
+  denoise: 'denoise',
+  depth: 'depth',
+  matting: 'matting',
+  object_detection: 'detect',
+}
+
 defineOptions({ name: 'ImageView' })
 
 type OutputFile = {
@@ -206,16 +214,26 @@ async function run() {
   journalCreatedAt.value = journalNow()
   journal('running', 0, status.value)
   try {
-    await invoke('start_audio_tool', {
-      payload: {
-        operation: 'media_image',
-        requestId: requestId.value,
-        inputs: inputs.value,
-        outputDir: outputDir.value,
-        steps: stepsToRun,
-        modelDir: modelDir.value,
-      },
-    })
+    // 图像独有能力（去噪/深度/抠图/检测）没有视频帧适配器，走 steps 会被拒
+    // （"mixed pipeline steps are not supported by the current frame adapter"），
+    // 所以单步且是这类能力时改成 mode + modelId 的入口。
+    const imageOnlyMode = stepsToRun.length === 1
+      ? IMAGE_ONLY_MODES[stepsToRun[0].capability]
+      : undefined
+    const payload: Record<string, unknown> = {
+      operation: 'media_image',
+      requestId: requestId.value,
+      inputs: inputs.value,
+      outputDir: outputDir.value,
+      modelDir: modelDir.value,
+    }
+    if (imageOnlyMode) {
+      payload.mode = imageOnlyMode
+      payload.modelId = Object.values(stepsToRun[0].bindings || {})[0]
+    } else {
+      payload.steps = stepsToRun
+    }
+    await invoke('start_audio_tool', { payload })
   } catch (error) {
     busy.value = false
     status.value = error instanceof Error ? error.message : String(error)
