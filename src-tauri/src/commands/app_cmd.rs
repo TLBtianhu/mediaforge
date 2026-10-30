@@ -257,10 +257,6 @@ pub async fn start_env_check(app: AppHandle, request_id: String) -> AppResult<Va
     Ok(serde_json::json!({ "started": true }))
 }
 
-#[tauri::command]
-pub async fn list_models(app: AppHandle, payload: Option<Value>) -> AppResult<Value> {
-    run_worker_with_payload(&app, "list_models", payload)
-}
 
 #[tauri::command]
 pub async fn debug_catalog_info(app: AppHandle) -> AppResult<Value> {
@@ -424,34 +420,6 @@ pub async fn download_model(app: AppHandle, payload: Value) -> AppResult<Value> 
     run_worker_with_payload(&app, "download_model", Some(payload))
 }
 
-#[tauri::command]
-pub async fn start_model_download(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    payload: Value,
-) -> AppResult<Value> {
-    let model = payload
-        .get("model")
-        .and_then(Value::as_str)
-        .ok_or_else(|| AppError::Worker("missing model".into()))?;
-    let task_id = payload
-        .get("taskId")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            format!(
-                "download_{}_{}",
-                model.replace(|c: char| !c.is_ascii_alphanumeric(), "_"),
-                chrono_like_timestamp()
-            )
-        });
-    let mut payload = payload;
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("taskId".to_string(), Value::String(task_id.clone()));
-    }
-    spawn_worker_background(app, state, "download_model", task_id.clone(), payload)?;
-    Ok(serde_json::json!({ "taskId": task_id, "started": true }))
-}
 
 #[tauri::command]
 pub async fn update_proxy_settings(
