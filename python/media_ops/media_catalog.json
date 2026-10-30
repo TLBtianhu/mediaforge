@@ -223,7 +223,7 @@
         "face_restorer"
       ],
       "status": "planned",
-      "blockedReason": "spandrel 不支持该架构（当前 42 个架构里没有 CodeFormer/GFPGAN）；还需要 facexlib 做人脸检测，而运行时没有装 facexlib/basicsr。接入需要自带网络实现并新增依赖，属于独立工作量。"
+      "blockedReason": "依赖已装通：basicsr 1.4.2 + facexlib 0.3.0 + gfpgan 1.3.8 已进运行时，并给 torchvision 补了 functional_tensor 垫片，gfpgan 的两种架构（GFPGANv1/GFPGANv1Clean）都能导入；权重 GFPGANv1.pth（587 MB）也从 hf-mirror 下好。卡在架构与权重不匹配：GFPGANv1Clean 载入 missing=83/unexpected=83，GFPGANv1 在 channel_multiplier=2/sft_half=False 下报 size mismatch（final_linear 形状不符）。下一步：换官方 GFPGANv1.4.pth（GitHub release，需代理）对应 GFPGANv1Clean，或按 v1 的真实构造参数重试。"
     },
     {
       "id": "hat-l",
@@ -277,7 +277,7 @@
       "description": "带保真度权重的老照片人脸修复",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "spandrel 不支持该架构（当前 42 个架构里没有 CodeFormer/GFPGAN）；还需要 facexlib 做人脸检测，而运行时没有装 facexlib/basicsr。接入需要自带网络实现并新增依赖，属于独立工作量。"
+      "blockedReason": "codeformer.pth（359 MB）在 hf-mirror 上可下，但 CodeFormer 的架构代码依赖 basicsr，且需要人脸检测与对齐；本次已装通 basicsr/facexlib，先解决 GFPGAN 的架构匹配再复用它。"
     },
     {
       "id": "birefnet",
