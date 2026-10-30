@@ -20,8 +20,6 @@ import {
   detectRuntimePlatform,
   recommendedRuntimeBackend,
   runtimeAcceleratorReady,
-  runtimeCoreUpdateAvailable,
-  runtimeCoreSyncAvailable,
   runtimeEnvironmentForBackend,
   runtimeManifestStatus,
   runtimeLoadError,
@@ -189,10 +187,8 @@ watch(() => app.runtimeInstallLogs.at(-1), () => {
   }
 })
 const runtimeInstalling = computed(() => app.runtimeInstallStatus === 'installing')
-const runtimeCoreActionPending = ref(false)
-const runtimeCoreUpdating = computed(() => app.runtimeCoreUpdateStatus === 'updating' || app.runtimeCoreUpdateStatus === 'preparing')
 // Runtime detection and install/switch/delete all access the runtime state, so only one may run at a time.
-const runtimeBusy = computed(() => runtimeDetecting.value || runtimeInstalling.value || runtimeCoreUpdating.value || runtimeCoreActionPending.value || runtimeActivating.value !== null || runtimeDeleting.value !== null)
+const runtimeBusy = computed(() => runtimeDetecting.value || runtimeInstalling.value || runtimeActivating.value !== null || runtimeDeleting.value !== null)
 const runtimeCurrentError = computed(() => {
   const error = runtimeLoadError(app.runtimeInfo, app.envInfo)
   return error.toLowerCase().includes('winerror 1455') ? t('settings.runtimePageFileError') : error
@@ -210,13 +206,6 @@ const runtimeCurrentLabel = computed(() => {
   return runtimeCurrentBackend.value ? runtimeBackendName(runtimeCurrentBackend.value) : t('settings.envNotChecked')
 })
 const installedRuntimes = computed(() => app.runtimeInfo?.installedEnvironments || [])
-const latestPymssVersion = computed(() => app.runtimeCoreVersions?.packages?.pymss?.latestVersion || null)
-const latestPymssCoreVersion = computed(() => app.runtimeCoreVersions?.packages?.['pymss-core']?.latestVersion || null)
-const runtimeCoreVersionCheckReady = computed(() => (
-  !app.runtimeCoreVersionsLoading
-  && Boolean(latestPymssVersion.value)
-  && Boolean(latestPymssCoreVersion.value)
-))
 
 type BackendCardState = 'active' | 'installed' | 'not_installed'
 
@@ -569,67 +558,6 @@ async function detectRuntime() {
   if (runtimeBusy.value) return
   void refreshRuntimeCoreVersions(true)
   await refreshRuntimeStatus(true)
-}
-
-async function runRuntimeCoreOperation(card: { backend: RuntimeBackend; env?: InstalledRuntime }, mode: RuntimeCoreMode) {
-  if (!app.runtimeCoreUpdateSupported || runtimeBusy.value || runtimeCoreActionPending.value) return
-  runtimeCoreActionPending.value = true
-  try {
-    const plan = await app.prepareRuntimeCoreUpdate(card.backend, runtimeMirror.value, currentLocale.value, {
-      pythonPath: card.env?.pythonPath,
-      mode,
-    })
-    const title = mode === 'rollback' ? 'settings.runtimeCoreRollback' : mode === 'update'
-      ? 'settings.runtimeCoreUpdateTitle' : mode === 'repair'
-        ? 'settings.runtimeDependencyRepairTitle' : 'settings.runtimeCoreSyncTitle'
-    const confirmed = await confirmRuntimeAction(
-      t(title),
-      t('settings.runtimeCorePlanContent', {
-        current: plan.currentVersions.pymss || t('settings.runtimeCoreVersionUnknown'),
-        coreCurrent: plan.currentVersions['pymss-core'] || t('settings.runtimeCoreVersionUnknown'),
-        latest: plan.targetVersions.pymss,
-        coreLatest: plan.targetVersions['pymss-core'],
-        count: plan.dependencyCount,
-        channel: t(plan.channel === 'prerelease' ? 'settings.updateChannelPrerelease' : 'settings.updateChannelStable'),
-      }),
-      t(mode === 'rollback' ? 'settings.runtimeCoreRollback' : mode === 'update' ? 'settings.runtimeCoreUpdate' : 'settings.runtimeCoreSync'),
-    )
-    if (!confirmed) {
-      app.discardRuntimeCorePlan(plan.id)
-      return
-    }
-    await app.updateRuntimeCore(plan.backend, plan.mirror, currentLocale.value, {
-      pythonPath: plan.pythonPath,
-      mode: plan.mode,
-      planId: plan.id,
-    })
-  } catch (error) {
-    if (app.runtimeCoreUpdateStatus !== 'cancelled') message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeCoreActionPending.value = false
-  }
-}
-
-async function updateRuntimeCore(card: { backend: RuntimeBackend; env?: InstalledRuntime }) {
-  await runRuntimeCoreOperation(card, 'update')
-}
-
-async function repairRuntimeDependencies(card: RuntimeBackendCard) {
-  if (!app.runtimeManagementSupported) return
-  await runRuntimeCoreOperation(card, 'repair')
-}
-
-const runtimeCoreCancelling = ref(false)
-async function cancelRuntimeCoreUpdate() {
-  if (runtimeCoreCancelling.value) return
-  runtimeCoreCancelling.value = true
-  try {
-    await app.cancelRuntimeCoreUpdate()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeCoreCancelling.value = false
-  }
 }
 
 const proxyModeOptions = computed(() => [
