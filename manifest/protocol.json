@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "_comment": [
+    "唯一契约：命令表、事件表、以及它们与历史命名的映射。",
+    "manifest/ 下的四个文件都由这里约定的 schemaVersion 约束；",
+    "程序启动时校验，不匹配就明确拒绝，不做隐式兼容（1.0.0 之前）。",
+    "本阶段只声明 media 域，音频域等 P4/P5 再接入。"
+  ],
+  "domains": {
+    "media": {
+      "label": "图像 / 视频媒体处理",
+      "commands": {
+        "capabilities": {
+          "handler": "media_capabilities",
+          "kind": "query",
+          "summary": "能力清单：角色、模型、参数 schema，UI 与 MCP 共用"
+        },
+        "precheck": {
+          "handler": "media_precheck",
+          "kind": "query",
+          "summary": "任务前置检查：输入可用性、目标尺寸、是否检测到水印"
+        },
+        "library": {
+          "handler": "media_library",
+          "kind": "query",
+          "summary": "素材索引：列出 / 导入 / 移除 / 标签 / 统计"
+        },
+        "run": {
+          "handler": "media_tool",
+          "kind": "task",
+          "operations": ["image", "video", "workflow"],
+          "summary": "执行一次媒体任务；单步走 image/video，多步走 workflow"
+        },
+        "models.list": {
+          "handler": "model_hub",
+          "kind": "query",
+          "summary": "统一模型目录（音频 + 图像/视频），带状态与许可"
+        },
+        "models.info": {
+          "handler": "model_info",
+          "kind": "query",
+          "summary": "单个模型的详情与可下载性"
+        },
+        "models.download": {
+          "handler": "model_download",
+          "kind": "task",
+          "summary": "按 catalog 的 url/size 下载一个模型"
+        }
+      },
+      "events": {
+        "task.started": ["media_task_started"],
+        "task.progress": ["audio_tool_progress"],
+        "task.result": ["audio_tool_result"],
+        "task.failed": ["error"],
+        "asset.progress": ["media_library_progress"],
+        "asset.done": ["media_library_result"],
+        "asset.failed": ["media_library_error"]
+      }
+    }
+  },
+  "events": {
+    "_comment": "规范事件名 → 历史事件的映射。P2 起代码发规范名，历史名只做过渡转发，P7 删除。",
+    "canonical": [
+      "task.started",
+      "task.progress",
+      "task.log",
+      "task.result",
+      "task.failed",
+      "task.cancelled",
+      "asset.progress",
+      "asset.done",
+      "asset.failed",
+      "runtime.state",
+      "catalog.state",
+      "app.state"
+    ]
+  }
+}

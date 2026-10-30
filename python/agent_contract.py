@@ -420,6 +420,14 @@ INTERNAL_COMMANDS: dict[str, str] = {
     "health": "由 system.health 覆盖。",
     "failure_stats": "由 system.failure_stats 覆盖。",
     "list_models": "由 model.list 覆盖。",
+    "media_tool": (
+        "P1 契约入口：与 audio_tools + operation=media_* 等价。agent 侧暂时仍走 audio_tools，"
+        "等 P6 由 manifest 生成工具后切换到这里。"
+    ),
+    "protocol_call": (
+        "契约分发入口，内部使用：domain+command 由 manifest/protocol.json 解析后转调现有 handler；"
+        "对外工具将由 manifest 生成（P6），不直接暴露这个命令。"
+    ),
     "model_info": "由 model.inspect 覆盖。",
     "model_interface": "由 model.interface 覆盖。",
     "delete_model": "由 model.delete 覆盖。",

@@ -15,6 +15,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def run_command(command: str, payload: dict) -> int:
+    # 契约入口：manifest/protocol.json 声明 domain.command → 现有 handler。
+    # 旧的命令名继续可用（P1 是适配期），新代码走这一条，便于 P2/P3 收敛。
+    if command == "protocol_call":
+        from protocol_contract import ProtocolError, handler_for
+
+        domain = str(payload.get("domain") or "").strip()
+        name = str(payload.get("command") or "").strip()
+        inner = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+        try:
+            handler = handler_for(domain, name)
+        except ProtocolError as exc:
+            return emit_error(exc.code, str(exc))
+        if handler == "protocol_call":
+            return emit_error("PROTOCOL_INVALID", "protocol_call 不能指向自己")
+        return run_command(handler, inner)
     if command == "runtime_info":
         from worker_bootstrap import cmd_runtime_info
         return cmd_runtime_info(payload)
@@ -66,6 +81,12 @@ def run_command(command: str, payload: dict) -> int:
     if command == "env_info":
         from worker_models import cmd_env_info
         return cmd_env_info()
+    if command == "media_tool":
+        # 契约里的 media.run 指向这里。旧的 audio_tools + operation=media_* 入口
+        # 继续可用（适配期），新代码走这一条。
+        from media_ops.worker import cmd_media_tool
+
+        return cmd_media_tool(payload)
     if command == "media_precheck":
         from media_ops.precheck import precheck
 
