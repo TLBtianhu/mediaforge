@@ -2966,6 +2966,9 @@
     "body": "Separation, upscaling and transcoding need a local runtime. It downloads once and later versions reuse it.",
     "start": "Prepare",
     "downloading": "Preparing…",
-    "failed": "Preparation failed, you can retry"
+    "failed": "Preparation failed, you can retry",
+    "staleTitle": "Runtime needs an update",
+    "staleBody": "The local runtime is missing image/video dependencies or is out of date. One update fixes it.",
+    "update": "Update runtime"
   }
 }

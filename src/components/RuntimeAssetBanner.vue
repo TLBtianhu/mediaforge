@@ -13,6 +13,7 @@ const app = useAppStore()
 const models = useModelStore()
 
 const installed = ref(true)
+const stale = ref(false)
 const checked = ref(false)
 const running = ref(false)
 const percent = ref(0)
@@ -29,10 +30,14 @@ async function refreshStatus() {
   try {
     const status = await invoke<{
       installed: boolean
+      stale?: boolean
       size: number
       sha256: string
     }>('runtime_asset_status')
     installed.value = Boolean(status.installed)
+    // stale=true 表示本地那份运行时存在但不是当前版本（缺依赖或版本不符），
+    // 这时的文案要说"需要更新"，否则用户会以为要重装整个应用。
+    stale.value = Boolean(status.stale)
     totalMb.value = Math.round((status.size || 0) / 1024 / 1024)
   } catch (err) {
     // 命令不存在（旧版本）时不要打扰用户
@@ -96,10 +101,10 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="visible" class="runtime-asset-banner" role="status">
     <div class="runtime-asset-banner__head">
-      <strong>{{ t('runtimeAsset.title') }}</strong>
+      <strong>{{ stale ? t('runtimeAsset.staleTitle') : t('runtimeAsset.title') }}</strong>
       <span class="runtime-asset-banner__size">{{ totalMb }} MB</span>
     </div>
-    <p class="runtime-asset-banner__body">{{ t('runtimeAsset.body') }}</p>
+    <p class="runtime-asset-banner__body">{{ stale ? t('runtimeAsset.staleBody') : t('runtimeAsset.body') }}</p>
     <div v-if="running" class="runtime-asset-banner__progress">
       <div class="runtime-asset-banner__bar">
         <div class="runtime-asset-banner__fill" :style="{ width: `${percent}%` }" />
@@ -109,7 +114,7 @@ onBeforeUnmount(() => {
     <p v-if="error" class="runtime-asset-banner__error">{{ error }}</p>
     <div class="runtime-asset-banner__actions">
       <n-button size="small" type="primary" :loading="running" :disabled="!canStart" @click="startInstall">
-        {{ running ? t('runtimeAsset.downloading') : t('runtimeAsset.start') }}
+        {{ running ? t('runtimeAsset.downloading') : stale ? t('runtimeAsset.update') : t('runtimeAsset.start') }}
       </n-button>
     </div>
   </div>

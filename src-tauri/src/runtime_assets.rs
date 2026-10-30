@@ -21,8 +21,8 @@ use crate::storage;
 
 /// 当前应用钉死的运行时资产。换运行时 = 发新版应用，绝不后台偷偷升。
 pub const ASSET_ID: &str = "runtime-cuda-2026.10.1";
-pub const ASSET_SHA256: &str = "b6fe2cae6729ffae42ed2293c6fe02488aa7a7e2e26558b0beafee934d7598bd";
-pub const ASSET_SIZE: u64 = 3_336_360_556;
+pub const ASSET_SHA256: &str = "c1f0b3baf5db864955917b9432832dc7391bf1f5bbafae9e6f80bad2a3e452ac";
+pub const ASSET_SIZE: u64 = 3483253620;
 /// 同一份资产的两个源，按实测速度排序。
 ///
 /// HF 官方域名在国内不可达（实测 443 超时），所以这里写的是社区镜像 hf-mirror：
@@ -34,6 +34,9 @@ pub const ASSET_URLS: [&str; 2] = [
 ];
 const BACKEND: &str = "cuda";
 const PROGRESS_EVENT: &str = "mediaforge://runtime-asset";
+/// 安装成功后写入的标记，用来判断"本地这份是不是当前钉死的资产"。
+/// 不能每次启动去算 5 GB 的 sha256，那样冷启动要多花几十秒。
+const ASSET_MARKER: &str = ".asset-id";
 
 fn envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(storage::data_root_dir(app)?.join("runtime-envs"))
@@ -49,7 +52,22 @@ fn python_path(app: &AppHandle) -> AppResult<PathBuf> {
 
 /// 运行时是否已就位（只看解释器在不在，不重算 5 GB 的哈希）。
 pub fn is_ready(app: &AppHandle) -> bool {
-    python_path(app).map(|path| path.is_file()).unwrap_or(false)
+    python_path(app).map(|path| path.is_file()).unwrap_or(false) && marker_matches(app)
+}
+
+/// 本地运行时是否就是当前资产（标记里的 id 与 sha256 都要对上）。
+fn marker_matches(app: &AppHandle) -> bool {
+    let Ok(dir) = backend_dir(app) else {
+        return false;
+    };
+    let Ok(text) = fs::read_to_string(dir.join(ASSET_MARKER)) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return false;
+    };
+    value.get("assetId").and_then(Value::as_str) == Some(ASSET_ID)
+        && value.get("sha256").and_then(Value::as_str) == Some(ASSET_SHA256)
 }
 
 fn aria2_path(app: &AppHandle) -> AppResult<PathBuf> {
@@ -96,13 +114,15 @@ fn emit(app: &AppHandle, stage: &str, downloaded: u64, message: &str) {
 #[tauri::command]
 pub fn runtime_asset_status(app: AppHandle) -> AppResult<Value> {
     let python = python_path(&app)?;
-    let ready = python.is_file();
+    let present = python.is_file();
+    let ready = present && marker_matches(&app);
     Ok(json!({
         "assetId": ASSET_ID,
         "sha256": ASSET_SHA256,
         "size": ASSET_SIZE,
         "backend": BACKEND,
         "installed": ready,
+        "stale": present && !ready,
         "dir": backend_dir(&app)?.display().to_string(),
         "python": if ready { Some(python.display().to_string()) } else { None },
     }))
@@ -155,6 +175,9 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
     });
     fs::write(envs.join("active-runtime.json"), record.to_string())
         .map_err(|error| error.to_string())?;
+    // 标记最后写：它存在就意味着这份运行时是完整的、且与当前二进制钉死的资产一致。
+    let marker = json!({ "assetId": ASSET_ID, "sha256": ASSET_SHA256 });
+    fs::write(target.join(ASSET_MARKER), marker.to_string()).map_err(|error| error.to_string())?;
 
     let _ = fs::remove_dir_all(&staging);
     emit(app, "done", ASSET_SIZE, "运行时已就绪");
