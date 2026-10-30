@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import traceback
+from pathlib import Path
 from typing import Any
 
 from worker_protocol import emit, emit_error
@@ -62,6 +63,18 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         if upscale_step:
             upscaler_id = str(upscale_step["bindings"]["upscaler"])
             preferred_scale = capabilities.model_scale(upscaler_id)
+            # 绑定的模型权重可能不在本机（例如只装了 x4）。这种情况下退到任意一个
+            # 真有文件的 upscale 模型，而不是让整条视频管线因为缺一个用不到的倍率而失败。
+            bound_path = capabilities.model_path(upscaler_id)
+            if not Path(bound_path).exists():
+                for candidate in (capabilities.capability("upscale") or {}).get("modelIds") or []:
+                    try:
+                        if Path(capabilities.model_path(candidate)).exists():
+                            upscaler_id = candidate
+                            preferred_scale = capabilities.model_scale(candidate)
+                            break
+                    except Exception:  # noqa: BLE001
+                        continue
             model_paths["upscaler_x2" if preferred_scale == 2 else "upscaler_x4"] = str(capabilities.model_path(upscaler_id))
         if mode == "interpolate":
             from . import capabilities as _capabilities
