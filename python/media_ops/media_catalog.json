@@ -32,7 +32,8 @@
         }
       },
       "sha256": "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb",
-      "status": "available"
+      "status": "planned",
+      "blockedReason": "目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。它同时是视频超分 x2 的依赖（video_ops 初始化即要求 x2/x4 都在）。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。"
     },
     {
       "id": "real-esrgan-x4",
