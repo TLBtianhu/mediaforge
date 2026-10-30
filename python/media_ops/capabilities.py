@@ -363,6 +363,14 @@ def steps_from_mode(mode: str) -> list[dict[str, Any]]:
                 "params": {},
             }
         )
+    if mode in {"interpolate"}:
+        steps.append(
+            {
+                "capability": "frame_interpolation",
+                "bindings": default_bindings("frame_interpolation"),
+                "params": {},
+            }
+        )
     if mode in {"watermark", "watermark_upscale"}:
         steps.append(
             {

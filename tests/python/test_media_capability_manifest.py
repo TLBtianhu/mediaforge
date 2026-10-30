@@ -28,12 +28,11 @@ from media_ops import capabilities  # noqa: E402
 # 变大的意思是"又画了一张饼"，那是产品决定，不该由代码悄悄接受。
 PLANNED_CAPABILITIES = {
     "face_restoration",
-    "frame_interpolation",
     "video_inpainting",
     "video_super_resolution",
 }
 
-ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth", "matting"}
+ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth", "matting", "frame_interpolation"}
 
 
 class CapabilityManifestTests(unittest.TestCase):

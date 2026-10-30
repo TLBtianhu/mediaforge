@@ -802,7 +802,7 @@
     },
     {
       "id": "media:rife-v46",
-      "name": "rife_v4.6.pth",
+      "name": "rife-v4.26",
       "family": "media",
       "task": "frame_interpolation",
       "io": {
@@ -814,14 +814,11 @@
       "source": {
         "status": "local",
         "repo": null,
-        "file": "rife_v4.6.pth"
+        "file": "rife-v4.26"
       },
-      "license": "MIT",
-      "slots": [
-        "multiplier",
-        "scene_cut"
-      ],
-      "notes": "catalog 标记为未实现"
+      "license": "以 hzwer/RIFE 仓库 LICENSE 为准",
+      "slots": [],
+      "notes": "目录型：flownet.pkl 需同时在根与 train_log/<ver>/ 下；代码在 vendor/rife"
     },
     {
       "id": "media:lama",

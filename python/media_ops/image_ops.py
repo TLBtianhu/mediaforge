@@ -116,7 +116,7 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
 
 
 # 只在图像路径上实现的 capability（视频逐帧管线没有对应 planner）。
-IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth", "matting")
+IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth", "matting", "frame_interpolation")
 
 
 def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:
@@ -156,6 +156,49 @@ def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | No
             # 只取中心区域，边缘交给相邻块的重叠部分
             output[top:bottom, left:right] = array[top - y0 : top - y0 + (bottom - top), left - x0 : left - x0 + (right - left)]
     return output
+
+
+_VENDOR_RIFE = Path(__file__).resolve().parent / "vendor" / "rife"
+_RIFE_MODEL_CACHE: dict[str, object] = {}
+
+
+def interpolate_frames(model_dir: str | Path, first: np.ndarray, second: np.ndarray, timestep: float = 0.5) -> np.ndarray:
+    """RIFE 两帧插值，返回中间帧（与输入同尺寸、同通道）。
+
+    上游代码是按训练目录布局写的：RIFE_HDv3 同时从 model 和 train_log 两个包导入，
+    所以仓库里 vendor/rife 下把这两个包都放了一份；权重目录则要求 flownet.pkl
+    同时出现在根目录和 train_log/<version>/ 下。
+
+    另外两条硬约束：
+    * 输入宽高必须是 32 的倍数（否则内部 concat 尺寸对不上）；
+    * 张量必须和模型在同一设备上。
+    """
+    import sys
+    import torch
+
+    if str(_VENDOR_RIFE) not in sys.path:
+        sys.path.insert(0, str(_VENDOR_RIFE))
+    from RIFE_HDv3 import Model  # type: ignore[import-not-found]
+
+    directory = str(model_dir)
+    model = _RIFE_MODEL_CACHE.get(directory)
+    if model is None:
+        model = Model()
+        model.load_model(directory, -1)
+        _RIFE_MODEL_CACHE[directory] = model
+    device = next(model.flownet.parameters()).device
+
+    height, width = ensure_rgb_uint8(first).shape[:2]
+    height -= height % 32
+    width -= width % 32
+    a = ensure_rgb_uint8(first)[:height, :width].astype("float32") / 255.0
+    b = ensure_rgb_uint8(second)[:height, :width].astype("float32") / 255.0
+    t0 = torch.from_numpy(a).permute(2, 0, 1).unsqueeze(0).to(device)
+    t1 = torch.from_numpy(b).permute(2, 0, 1).unsqueeze(0).to(device)
+    with torch.inference_mode():
+        middle = model.inference(t0, t1, float(timestep), scale=1.0)
+    array = middle.clamp(0, 1)[0].permute(1, 2, 0).cpu().numpy()
+    return (array * 255.0).round().astype("uint8")
 
 
 def remove_background(model_dir: str | Path, image: np.ndarray) -> np.ndarray:

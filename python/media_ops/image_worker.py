@@ -52,7 +52,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return emit_error("MEDIA_IMAGE_INVALID", "No output directory", request_id=request_id)
 
         mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale", "denoise", "detect", "depth", "matting", "custom"}:
+        if mode not in {"upscale", "watermark", "watermark_upscale", "denoise", "detect", "depth", "matting", "interpolate", "custom"}:
             return emit_error("MEDIA_IMAGE_INVALID", f"Unknown image mode: {mode}", request_id=request_id)
         scale = float(payload.get("scale") or 2.0)
         target = image_ops.resolve_target(
@@ -159,6 +159,27 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 "audio_tool_result",
                 {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
                  "total": len(inputs), "completed": len(outputs), "warnings": []},
+                request_id=request_id,
+            )
+            return 0
+
+        if mode == "interpolate":
+            if len(inputs) < 2:
+                return emit_error("MEDIA_IMAGE_INVALID", "插帧需要两张图作为前后帧", request_id=request_id)
+            model_id = _capability_model(payload, "frame_interpolation", "interpolator")
+            model_dir = capabilities.model_path(model_id)
+            source_a, source_b = inputs[0], inputs[1]
+            middle = image_ops.interpolate_frames(
+                model_dir, image_ops.read_image(source_a), image_ops.read_image(source_b),
+                float(payload.get("timestep") or 0.5),
+            )
+            target_path = Path(output_dir) / f"{Path(source_a).stem}_{Path(source_b).stem}_interp.png"
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            image_ops.write_image(target_path, middle)
+            emit(
+                "audio_tool_result",
+                {"operation": operation, "outputs": [{"path": str(target_path), "size": target_path.stat().st_size}],
+                 "failed": [], "skipped": [], "total": 1, "completed": 1, "warnings": []},
                 request_id=request_id,
             )
             return 0
