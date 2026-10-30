@@ -9919,29 +9919,6 @@
       "notes": null
     },
     {
-      "id": "media:real-cugan",
-      "name": "real-cugan",
-      "family": "media",
-      "task": "upscale",
-      "io": {
-        "in": "image",
-        "out": "image",
-        "arity": 1
-      },
-      "architecture": null,
-      "source": {
-        "status": "local",
-        "repo": null,
-        "file": "real-cugan"
-      },
-      "license": "",
-      "slots": [
-        "scale",
-        "tile"
-      ],
-      "notes": null
-    },
-    {
       "id": "media:codeformer",
       "name": "codeformer",
       "family": "media",
@@ -10154,6 +10131,29 @@
         "file": "RealCUGAN_2x_denoise3x.pth"
       },
       "license": "以 bilibili/Real-CUGAN 仓库 LICENSE 为准",
+      "slots": [
+        "scale",
+        "tile"
+      ],
+      "notes": null
+    },
+    {
+      "id": "media:esrgan-ultrasharp-x4",
+      "name": "4x-UltraSharp.pth",
+      "family": "media",
+      "task": "upscale",
+      "io": {
+        "in": "image",
+        "out": "image",
+        "arity": 1
+      },
+      "architecture": "ESRGAN",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "4x-UltraSharp.pth"
+      },
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
       "slots": [
         "scale",
         "tile"

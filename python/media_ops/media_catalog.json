@@ -254,24 +254,6 @@
       "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
     },
     {
-      "id": "real-cugan",
-      "name": "real-cugan",
-      "label": "Real-CUGAN",
-      "modality": "image",
-      "modalities": [
-        "image"
-      ],
-      "task": "super_resolution",
-      "capabilities": [],
-      "roles": [],
-      "size": 0,
-      "license": "",
-      "description": "轻量动漫向超分",
-      "implemented": false,
-      "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
-    },
-    {
       "id": "codeformer",
       "name": "codeformer",
       "label": "CodeFormer",
@@ -576,6 +558,38 @@
           "default": 2,
           "minimum": 1,
           "maximum": 2
+        }
+      }
+    },
+    {
+      "id": "esrgan-ultrasharp-x4",
+      "name": "4x-UltraSharp.pth",
+      "label": "4x-UltraSharp",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66961958,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "社区常用的通用 4× 超分，锐度与噪点平衡较好。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x-UltraSharp.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
         }
       }
     }
