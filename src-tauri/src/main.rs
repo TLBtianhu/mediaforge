@@ -24,6 +24,7 @@ mod session_log;
 mod single_instance;
 mod state;
 mod runtime_assets;
+mod version_check;
 mod storage;
 mod terminal;
 mod update_manager;
@@ -134,6 +135,8 @@ fn main() {
             commands::plugin_host::plugin_host_cleanup_render,
             runtime_assets::runtime_asset_status,
             runtime_assets::runtime_asset_install,
+            version_check::versions_check,
+            version_check::versions_accept_runtime,
             commands::app_cmd::cancel_task,
             commands::app_cmd::write_frontend_log,
             commands::app_cmd::close_current_window,

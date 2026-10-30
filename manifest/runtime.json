@@ -21,7 +21,13 @@
         "object_detection",
         "frame_interpolation"
       ],
-      "notes": "当前唯一发布版本；视频/图像与音频共用同一套解释器，按任务起独立进程。"
+      "notes": "当前唯一发布版本；视频/图像与音频共用同一套解释器，按任务起独立进程。",
+      "sha256": "7a1040eb6ed5510e1ede30ef90314a6a5993f94eee409c1ef224fb5d6559784d",
+      "size": 3616417066,
+      "urls": [
+        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.10.2.zip",
+        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-2026.10.2.zip"
+      ]
     }
   ]
 }

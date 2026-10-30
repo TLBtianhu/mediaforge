@@ -21,10 +21,13 @@ const downloadedMb = ref(0)
 const totalMb = ref(0)
 const stage = ref('')
 const error = ref('')
+// 远端 versions.json 声明了另一份运行时（与本地不同）时，用同一块横幅提示切换
+const remoteRuntime = ref('')
 let unlisten: UnlistenFn | null = null
 
-const visible = computed(() => checked.value && !installed.value)
+const visible = computed(() => checked.value && (!installed.value || Boolean(remoteRuntime.value)))
 const canStart = computed(() => !running.value && !error.value)
+const remoteAvailable = computed(() => Boolean(remoteRuntime.value))
 
 async function refreshStatus() {
   try {
@@ -46,6 +49,31 @@ async function refreshStatus() {
   } finally {
     checked.value = true
   }
+}
+
+async function checkVersions() {
+  try {
+    const result = await invoke<{
+      available?: { runtime?: boolean }
+      remote?: { runtime?: string }
+    }>('versions_check')
+    remoteRuntime.value = result?.available?.runtime ? String(result?.remote?.runtime || '') : ''
+  } catch {
+    // 没有网络、没有发布清单、或签名不通过：都按"没有更新"处理，不打扰用户
+    remoteRuntime.value = ''
+  }
+}
+
+async function acceptRemoteRuntime() {
+  if (!canStart.value) return
+  try {
+    await invoke('versions_accept_runtime')
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return
+  }
+  remoteRuntime.value = ''
+  await startInstall()
 }
 
 async function startInstall() {
@@ -73,6 +101,7 @@ async function onProgress(payload: { stage?: string; percent?: number; downloade
   if (payload.stage === 'done') {
     running.value = false
     installed.value = true
+    remoteRuntime.value = ''
     // worker 每条命令都会重读 active-runtime.json，所以这里只需刷新状态，不用重启应用。
     await Promise.all([
       app.checkRuntimeInfo().catch(() => {}),
@@ -83,6 +112,7 @@ async function onProgress(payload: { stage?: string; percent?: number; downloade
 
 onMounted(async () => {
   await refreshStatus()
+  if (installed.value) await checkVersions()
   try {
     unlisten = await listen('mediaforge://runtime-asset', event => {
       onProgress(event.payload as Parameters<typeof onProgress>[0])
@@ -101,10 +131,10 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="visible" class="runtime-asset-banner" role="status">
     <div class="runtime-asset-banner__head">
-      <strong>{{ stale ? t('runtimeAsset.staleTitle') : t('runtimeAsset.title') }}</strong>
+      <strong>{{ remoteAvailable ? t('runtimeAsset.newRuntimeTitle') : stale ? t('runtimeAsset.staleTitle') : t('runtimeAsset.title') }}</strong>
       <span class="runtime-asset-banner__size">{{ totalMb }} MB</span>
     </div>
-    <p class="runtime-asset-banner__body">{{ stale ? t('runtimeAsset.staleBody') : t('runtimeAsset.body') }}</p>
+    <p class="runtime-asset-banner__body">{{ remoteAvailable ? t('runtimeAsset.newRuntimeBody', { asset: remoteRuntime }) : stale ? t('runtimeAsset.staleBody') : t('runtimeAsset.body') }}</p>
     <div v-if="running" class="runtime-asset-banner__progress">
       <div class="runtime-asset-banner__bar">
         <div class="runtime-asset-banner__fill" :style="{ width: `${percent}%` }" />
@@ -113,8 +143,8 @@ onBeforeUnmount(() => {
     </div>
     <p v-if="error" class="runtime-asset-banner__error">{{ error }}</p>
     <div class="runtime-asset-banner__actions">
-      <n-button size="small" type="primary" :loading="running" :disabled="!canStart" @click="startInstall">
-        {{ running ? t('runtimeAsset.downloading') : stale ? t('runtimeAsset.update') : t('runtimeAsset.start') }}
+      <n-button size="small" type="primary" :loading="running" :disabled="!canStart" @click="remoteAvailable ? acceptRemoteRuntime() : startInstall()">
+        {{ running ? t('runtimeAsset.downloading') : remoteAvailable ? t('runtimeAsset.switchRuntime') : stale ? t('runtimeAsset.update') : t('runtimeAsset.start') }}
       </n-button>
     </div>
   </div>

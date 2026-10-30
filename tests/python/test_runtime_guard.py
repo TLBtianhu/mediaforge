@@ -16,13 +16,15 @@ from media_ops import runtime_guard  # noqa: E402
 
 
 class RuntimeManifestTests(unittest.TestCase):
-    def test_manifest_declares_the_asset_the_binary_pins(self) -> None:
+    def test_manifest_is_the_single_source_for_the_pinned_asset(self) -> None:
         data = runtime_guard.load_manifest()
         self.assertEqual(data["schemaVersion"], runtime_guard.SCHEMA_VERSION)
-        rust = (ROOT / "src-tauri" / "src" / "runtime_assets.rs").read_text(encoding="utf-8")
-        pinned = rust.split('pub const ASSET_ID: &str = "', 1)[1].split('"', 1)[0]
         ids = [item["assetId"] for item in data["runtimes"]]
-        self.assertIn(pinned, ids, "runtime.json 与 Rust 里钉死的资产必须一致")
+        self.assertIn(data["fallbackAssetId"], ids, "fallbackAssetId 必须指向清单里的一项")
+        # P5 起 Rust 不再写死资产常量，而是直接 include 这份清单。
+        rust = (ROOT / "src-tauri" / "src" / "runtime_assets.rs").read_text(encoding="utf-8")
+        self.assertIn('include_str!("../../manifest/runtime.json")', rust)
+        self.assertNotIn("pub const ASSET_SHA256", rust, "资产信息应只在 manifest 里")
 
     def test_every_declared_capability_exists_in_the_capability_manifest(self) -> None:
         declared = {item["id"] for item in json.loads(
