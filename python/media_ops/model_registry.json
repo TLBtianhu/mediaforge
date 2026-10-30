@@ -10117,6 +10117,29 @@
         "tile"
       ],
       "notes": "fp16 会产生 NaN，加载器会自动降级 fp32"
+    },
+    {
+      "id": "media:real-esrgan-anime-x4",
+      "name": "RealESRGAN_x4plus_anime_6B.pth",
+      "family": "media",
+      "task": "upscale",
+      "io": {
+        "in": "image",
+        "out": "image",
+        "arity": 1
+      },
+      "architecture": "RealESRGAN",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "RealESRGAN_x4plus_anime_6B.pth"
+      },
+      "license": "BSD-3-Clause",
+      "slots": [
+        "scale",
+        "tile"
+      ],
+      "notes": null
     }
   ]
 }

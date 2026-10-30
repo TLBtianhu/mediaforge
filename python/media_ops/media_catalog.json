@@ -215,7 +215,7 @@
         "face_restorer"
       ],
       "status": "planned",
-      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
+      "blockedReason": "spandrel 不支持该架构（当前 42 个架构里没有 CodeFormer/GFPGAN）；还需要 facexlib 做人脸检测，而运行时没有装 facexlib/basicsr。接入需要自带网络实现并新增依赖，属于独立工作量。"
     },
     {
       "id": "hat-l",
@@ -287,7 +287,7 @@
       "description": "带保真度权重的老照片人脸修复",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+      "blockedReason": "spandrel 不支持该架构（当前 42 个架构里没有 CodeFormer/GFPGAN）；还需要 facexlib 做人脸检测，而运行时没有装 facexlib/basicsr。接入需要自带网络实现并新增依赖，属于独立工作量。"
     },
     {
       "id": "rmbg-1.4",
@@ -485,6 +485,39 @@
           "default": 2,
           "minimum": 1,
           "maximum": 2
+        }
+      }
+    },
+    {
+      "id": "real-esrgan-anime-x4",
+      "name": "RealESRGAN_x4plus_anime_6B.pth",
+      "label": "Real-ESRGAN x4plus (anime 6B)",
+      "modality": "image",
+      "modalities": [
+        "image",
+        "video"
+      ],
+      "task": "super_resolution",
+      "architecture": "RealESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 17938799,
+      "license": "BSD-3-Clause",
+      "description": "面向动漫/插画的 4× 超分，6B 变体更轻，线条更锐。",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
         }
       }
     }
