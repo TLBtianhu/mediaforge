@@ -404,20 +404,6 @@ const themeOverrides = computed(() => {
             </n-button>
           </template>
         </n-modal>
-        <n-modal v-model:show="runtimeCorePromptVisible" preset="dialog" type="warning" :mask-closable="false" :closable="false">
-          <template #header>
-            {{ t('settings.runtimeCoreStartupTitle') }}
-          </template>
-          <div>{{ runtimeCorePromptContent }}</div>
-          <template #action>
-            <n-button secondary @click="runtimeCorePromptVisible = false">
-              {{ t('settings.runtimeCoreStartupLater') }}
-            </n-button>
-            <n-button type="warning" @click="openRuntimeSettings">
-              {{ t('settings.runtimeCoreStartupOpenSettings') }}
-            </n-button>
-          </template>
-        </n-modal>
         <n-modal
           :show="updates.isInstallOverlayVisible"
           preset="card"
