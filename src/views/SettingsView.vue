@@ -241,7 +241,6 @@ type RuntimeBackendCard = {
   installing: boolean
   pymssVersion: string
   pymssCoreVersion: string
-  coreUpdateAvailable: boolean
 }
 
 const runtimePlatform = computed(() => detectRuntimePlatform(app.runtimeInfo))
@@ -312,9 +311,6 @@ const runtimeBackendCards = computed(() => {
       // older app even when PyPI already reports the same pymss/core versions.
       // Offer the no-Torch-reinstall core sync so the environment metadata and
       // any manifest-declared pymss extras are brought up to date.
-      const coreUpdateAvailable = app.runtimeCoreUpdateSupported && isActive && env?.coreUpdateSupported !== false && (
-        runtimeCoreUpdateAvailable(env, app.runtimeCoreVersions, app.runtimeInfo?.manifestVersion)
-      )
       const gpuBackend = item.backend === 'cuda' || item.backend === 'rocm' || item.backend === 'mlx'
       // A cancelled or failed install leaves its venv behind without an install state, so the
       // backend reads as not installed while still holding gigabytes. Surface it so the space
@@ -348,7 +344,6 @@ const runtimeBackendCards = computed(() => {
         installing: runtimeInstalling.value && app.runtimeInstallBackend === item.backend,
         pymssVersion,
         pymssCoreVersion,
-        coreUpdateAvailable,
       })
     }
   }
@@ -778,14 +773,6 @@ const buildFingerprint = computed(() => {
   return parts.length ? parts.join(' · ') : t('settings.buildFingerprintUnavailable')
 })
 
-watch(() => app.runtimeCoreUpdateStatus, (status, previous) => {
-  if (previous !== 'updating') return
-  if (status === 'success') {
-    message.success(t(app.runtimeCoreUpdateMode === 'repair'
-      ? 'settings.runtimeDependencyRepairSuccess'
-      : 'settings.runtimeCoreUpdateSuccess'))
-  }
-})
 function isOfficialRepositoryBuild(info: BuildInfo) {
   return info.official
     && info.repository === officialRepository
@@ -1859,16 +1846,6 @@ onMounted(async () => {
               </div>
             </n-alert>
 
-            <n-alert v-if="app.runtimeCoreUpdateStatus === 'error'" type="error" :show-icon="true">
-              <div class="runtime-install-error">
-                <div class="runtime-install-error__message">{{ app.runtimeCoreUpdateMessage }}</div>
-                <div class="runtime-install-error__actions">
-                  <n-button v-if="app.runtimeInfo?.logPath" size="small" tertiary @click="revealPath(app.runtimeInfo.logPath)">
-                    {{ t('settings.runtimeOpenInstallLog') }}
-                  </n-button>
-                </div>
-              </div>
-            </n-alert>
 
             <div v-if="!runtimeInstalling && app.runtimeInstallLogs.length" class="runtime-log-trigger">
               <n-button size="small" tertiary @click="runtimeLogDialogVisible = true">
