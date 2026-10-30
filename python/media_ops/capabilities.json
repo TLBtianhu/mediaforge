@@ -22,7 +22,8 @@
         "media:real-esrgan-x4",
         "media:real-cugan-x4",
         "media:swinir-m-x2",
-        "media:real-esrgan-anime-x4"
+        "media:real-esrgan-anime-x4",
+        "media:real-cugan-x2"
       ],
       "params": {
         "target": {

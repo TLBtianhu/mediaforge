@@ -546,6 +546,38 @@
       "status": "available",
       "video_mode": "frame",
       "params": {}
+    },
+    {
+      "id": "real-cugan-x2",
+      "name": "RealCUGAN_2x_denoise3x.pth",
+      "label": "Real-CUGAN 2× (denoise3x)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "RealCUGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 5147249,
+      "license": "以 bilibili/Real-CUGAN 仓库 LICENSE 为准",
+      "description": "面向动漫/插画的 2× 超分，denoise3x 变体自带较强降噪。",
+      "url": "https://www.modelscope.cn/models/bilibili/cv_bilibili_image-super-resolution/resolve/master/weights_v3/up2x-latest-denoise3x.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 2
+        }
+      }
     }
   ]
 }

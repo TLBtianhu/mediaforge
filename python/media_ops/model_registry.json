@@ -10136,6 +10136,29 @@
       "license": "BRIA RMBG-1.4（非商业许可）",
       "slots": [],
       "notes": "在 transformers 5.x 下需要给 BriaRMBG 补 all_tied_weights_keys 属性"
+    },
+    {
+      "id": "media:real-cugan-x2",
+      "name": "RealCUGAN_2x_denoise3x.pth",
+      "family": "media",
+      "task": "upscale",
+      "io": {
+        "in": "image",
+        "out": "image",
+        "arity": 1
+      },
+      "architecture": "RealCUGAN",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "RealCUGAN_2x_denoise3x.pth"
+      },
+      "license": "以 bilibili/Real-CUGAN 仓库 LICENSE 为准",
+      "slots": [
+        "scale",
+        "tile"
+      ],
+      "notes": null
     }
   ]
 }
