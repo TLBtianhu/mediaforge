@@ -22,6 +22,7 @@ import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import { journalJob, journalNow } from '@/utils/operationJournal'
 import { useSettingsStore } from '@/stores/settings'
+import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 // 图像独有能力：没有视频帧适配器，必须走 mode + modelId 入口
 const IMAGE_ONLY_MODES: Record<string, string> = {
@@ -316,12 +317,12 @@ onMounted(async () => {
       const id = payload?.requestId || payload?.taskId
       if (!requestId.value || id !== requestId.value) return
 
-      if (payload?.type === 'audio_tool_progress' && payload.payload) {
+      if (isTaskProgress(payload?.type) && payload.payload) {
         onProgress(payload.payload)
         journal('running', Number(payload.payload.fraction || 0), String(payload.payload.current || status.value))
         return
       }
-      if (payload?.type === 'audio_tool_result' && payload.payload) {
+      if (isTaskResult(payload?.type) && payload.payload) {
         const result = payload.payload
         outputs.value = result.outputs || []
         failedCount.value = result.failed?.length || 0

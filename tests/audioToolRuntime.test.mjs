@@ -12,6 +12,17 @@ const code = ts.transpileModule(source.statements
   .map(statement => statement.getText(source)).join('\n'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText
+
+// runtime.ts 通过 @/utils/taskEvents 判断任务事件。测试把模块转译后放进隔离上下文，
+// 所以这里把那个模块也转译并注入——测试里不再写一份"哪些事件名算任务"的映射，
+// 否则 P7 删旧名时测试会成为唯一还认旧名的地方。
+const taskEventsSource = ts.transpileModule(
+  readFileSync(new URL('../src/utils/taskEvents.ts', import.meta.url), 'utf8'),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } },
+).outputText
+const taskEventsSandbox = { exports: {} }
+vm.runInNewContext(taskEventsSource, taskEventsSandbox)
+const taskEvents = taskEventsSandbox.exports
 const locale = JSON.parse(readFileSync(new URL('../src/i18n/zh-CN.json', import.meta.url), 'utf8'))
 const flush = () => new Promise(setImmediate)
 
@@ -28,6 +39,7 @@ async function createRuntime(t, { autoStart = true, listenGate, launchGate } = {
   let cancelCommand = async () => true
   vm.runInNewContext(code, {
     exports, computed, inject, reactive, ref, setInterval, clearInterval,
+    ...taskEvents,
     window: { __TAURI_INTERNALS__: {} },
     useI18n: () => ({ t: (key, values = {}) => (key.split('.').reduce((value, segment) => value?.[segment], locale) || key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match) }),
     useMessage: () => Object.fromEntries(['success', 'warning', 'error', 'info'].map(level => [level, text => messages.push({ level, text })])),

@@ -485,24 +485,16 @@ def set_event_sink(sink: Any) -> None:
     _EVENT_SINK = sink
 
 
-def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: str | None = None, task_id: str | None = None) -> None:
-    payload = payload or {}
-    if event_type in _LOG_EVENTS and payload.get("schemaVersion") != 1:
-        source, logger = _LOG_EVENTS[event_type]
-        context = {key: value for key, value in payload.items() if key not in {"message", "level", "detail", "nodeId"}}
-        canonical = log_record(
-            str(payload.get("message") or ""),
-            source=source,
-            logger=logger,
-            event=event_type,
-            level=payload.get("level"),
-            detail=payload.get("detail"),
-            task_id=task_id,
-            request_id=request_id,
-            node_id=payload.get("nodeId"),
-            context=context,
-        )
-        payload = {**_safe_log_value(payload), **canonical}
+# P2 过渡：媒体任务沿用 audio_tool_* 的历史事件名，这里同时发出规范名。
+# 前端改为按域订阅后，旧名只在 P7 之前保留，删除时不需要再动业务代码。
+_CANONICAL_TASK_EVENTS = {
+    "audio_tool_progress": "task.progress",
+    "audio_tool_result": "task.result",
+}
+
+
+def _write_event(event_type: str, payload: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
+    """底层写出：sink 或 stdout，不含任何业务判断。"""
     sink = _EVENT_SINK
     if sink is not None:
         sink(event_type, payload, request_id, task_id)
@@ -530,6 +522,30 @@ def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: 
                     raise
                 time.sleep(0.05 * (attempt + 1))
 
+
+
+def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: str | None = None, task_id: str | None = None) -> None:
+    payload = payload or {}
+    if event_type in _LOG_EVENTS and payload.get("schemaVersion") != 1:
+        source, logger = _LOG_EVENTS[event_type]
+        context = {key: value for key, value in payload.items() if key not in {"message", "level", "detail", "nodeId"}}
+        canonical = log_record(
+            str(payload.get("message") or ""),
+            source=source,
+            logger=logger,
+            event=event_type,
+            level=payload.get("level"),
+            detail=payload.get("detail"),
+            task_id=task_id,
+            request_id=request_id,
+            node_id=payload.get("nodeId"),
+            context=context,
+        )
+        payload = {**_safe_log_value(payload), **canonical}
+    canonical = _CANONICAL_TASK_EVENTS.get(event_type)
+    if canonical:
+        _write_event(canonical, payload, request_id, task_id)
+    _write_event(event_type, payload, request_id, task_id)
 
 def _write_protocol_message(stream: TextIO, message: str) -> None:
     # Writing bytes avoids another Windows TextIOWrapper flush failure for redirected stdout;

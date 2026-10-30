@@ -8,6 +8,7 @@ import type {
   AudioToolActivityState, AudioToolKey, AudioToolLogEntry, AudioToolPhase,
   AudioToolProgress, AudioToolRecovery, AudioToolResult, AudioToolViewState, AudioToolWarning,
 } from './types'
+import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 const MAX_ACTIVITY_LOGS = 100
 const AUDIO_TOOL_PHASES = new Set<AudioToolPhase>([
@@ -397,14 +398,14 @@ export function createAudioToolRuntime(): AudioToolRuntime {
           }
           return
         }
-        if (workerEvent.type === 'audio_tool_result') {
+        if (isTaskResult(workerEvent.type)) {
           if (pending && eventId === pending.id) {
             pendingRequest = undefined
             pending.resolve(workerEvent.payload as AudioToolResult)
           }
           return
         }
-        if (workerEvent.type !== 'audio_tool_progress') return
+        if (!isTaskProgress(workerEvent.type)) return
         const payload = workerEvent.payload
         if (!pending || eventId !== pending.id || !payload?.operation || payload.operation !== busyTool.value) return
         recordProgress(payload.operation, {

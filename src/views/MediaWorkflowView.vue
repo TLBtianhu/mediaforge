@@ -11,6 +11,7 @@ import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
+import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 defineOptions({ name: 'MediaWorkflowView' })
 
@@ -119,11 +120,11 @@ onMounted(async () => {
     const payload = event.payload
     const id = payload?.requestId || payload?.taskId || null
     if (!requestId || id !== requestId) return
-    if (payload?.type === 'audio_tool_progress' && payload.payload) {
+    if (isTaskProgress(payload?.type) && payload.payload) {
       onProgress(payload.payload)
       return
     }
-    if (payload?.type === 'audio_tool_result' && payload.payload) {
+    if (isTaskResult(payload?.type) && payload.payload) {
       const result = payload.payload
       outputs.value = Array.isArray(result.outputs) ? result.outputs as WorkflowOutput[] : []
       busy.value = false

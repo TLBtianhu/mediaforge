@@ -18,6 +18,7 @@ import {
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useModelStore } from '@/stores/model'
+import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 defineOptions({ name: 'ModelHubView' })
 
@@ -191,13 +192,13 @@ onMounted(async () => {
       const payload = event.payload
       const id = payload?.requestId || payload?.taskId
       if (!requestId.value || id !== requestId.value) return
-      if (payload?.type === 'audio_tool_progress' && payload.payload) {
+      if (isTaskProgress(payload?.type) && payload.payload) {
         if (downloadingId.value) {
           progress.value = { ...progress.value, [downloadingId.value]: Math.round(Number(payload.payload.fraction || 0) * 100) }
         }
         return
       }
-      if (payload?.type === 'audio_tool_result') {
+      if (isTaskResult(payload?.type)) {
         downloadingId.value = ''
         requestId.value = ''
         message.success(t('modelHub.downloaded'))
