@@ -6,13 +6,13 @@
 # 任何一步失败都会打印它试过的位置，方便直接定位，而不是只看到"没有工具"。
 $ErrorActionPreference = 'Stop'
 
-$launcher = Join-Path $env:LOCALAPPDATA 'MediaForge\bin\mediaforge-mcp.cmd'
-$homeFile = Join-Path $env:LOCALAPPDATA 'MediaForge\home.txt'
+$launcher = Join-Path $env:USERPROFILE '.mediaforge\bin\mediaforge-mcp.cmd'
+$homeFile = Join-Path $env:USERPROFILE '.mediaforge\home.txt'
 
 Write-Host '== 1. 启动器 =='
 if (-not (Test-Path -LiteralPath $launcher)) {
     Write-Host "  MISSING: $launcher"
-    Write-Host '  修：powershell -ExecutionPolicy Bypass -File setup.ps1 -AppRoot "C:\Program Files\MediaForge"'
+    Write-Host '  修：powershell -ExecutionPolicy Bypass -File setup.ps1 -AppRoot "<安装目录>"'
     exit 1
 }
 Write-Host "  OK: $launcher"
@@ -27,6 +27,7 @@ if (Test-Path -LiteralPath $homeFile) {
 }
 $reg = Get-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name InstallDir -ErrorAction SilentlyContinue
 Write-Host "  registry InstallDir = $(if ($reg) { $reg.InstallDir } else { '(未设置)' })"
+Write-Host "  用户级安装兜底 = $(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs\MediaForge\python\agent_bridge.py'))"
 Write-Host "  Program Files 兜底 = $(Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'MediaForge\python\agent_bridge.py'))"
 
 Write-Host '== 3. MCP 握手 =='

@@ -39,6 +39,21 @@ if (-not (Test-Path -LiteralPath $launcher)) {
         Write-Warning "launcher.template.cmd 缺失，无法生成启动器：$launcher"
     }
 }
+
+# 安装路径指针：本脚本位于 <安装目录>\integrations\dsh-mediaforge，向上两级就是根。
+# 安装器自己也会写一次注册表；这里再写一次是为了覆盖便携版与"先解压后装 DSH"的情况，
+# 让启动器在没有任何安装器参与时也能找到应用。
+$appRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+if (-not $DryRun -and (Test-Path -LiteralPath (Join-Path $appRoot 'python\agent_bridge.py'))) {
+    New-Item -Path 'HKCU:\Software\MediaForge' -Force | Out-Null
+    New-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name 'InstallDir' -Value $appRoot -PropertyType String -Force | Out-Null
+    [System.IO.File]::WriteAllText(
+        (Join-Path $env:USERPROFILE '.mediaforge\home.txt'),
+        $appRoot,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+    Write-Host "home     : $appRoot"
+}
 if (-not $DryRun -and -not (Test-Path -LiteralPath $launcher)) {
     Write-Host "尚未生成启动器：$launcher"
     Write-Host '请先运行 setup.ps1 -AppRoot "<安装目录>"，或让安装器完成安装。'

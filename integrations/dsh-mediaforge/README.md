@@ -31,13 +31,13 @@ powershell -ExecutionPolicy Bypass -File register.ps1
 ```yaml
 config:
   command: cmd
-  args: [/c, '%LOCALAPPDATA%\MediaForge\bin\mediaforge-mcp.cmd']
+  args: [/c, '%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd']
 ```
 
 启动器在用户级固定位置，负责找到应用：
 
 ```
-MEDIAFORGE_HOME → 注册表 HKCU\Software\MediaForge\InstallDir → %ProgramFiles%\MediaForge
+MEDIAFORGE_HOME → 注册表 HKCU\Software\MediaForge\InstallDir → %LOCALAPPDATA%\Programs\MediaForge → %ProgramFiles%\MediaForge
 ```
 
 所以同一份包能服务开发树、安装版、便携版；应用换了位置，只需重跑 `setup.ps1`。
