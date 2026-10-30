@@ -362,24 +362,6 @@
       "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
     },
     {
-      "id": "scunet",
-      "name": "scunet",
-      "label": "SCUNet",
-      "modality": "image",
-      "modalities": [
-        "image"
-      ],
-      "task": "denoise",
-      "capabilities": [],
-      "roles": [],
-      "size": 0,
-      "license": "",
-      "description": "盲去噪",
-      "implemented": false,
-      "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
-    },
-    {
       "id": "depth-anything-v2",
       "name": "depth-anything-v2",
       "label": "Depth Anything V2",
@@ -466,6 +448,31 @@
           "maximum": 4
         }
       }
+    },
+    {
+      "id": "scunet-color-real",
+      "name": "SCUNet_color_real_psnr.pth",
+      "label": "SCUNet (color real, PSNR)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "denoise",
+      "architecture": "SCUNet",
+      "capabilities": [
+        "denoise"
+      ],
+      "roles": [
+        "denoiser"
+      ],
+      "size": 71982841,
+      "license": "以 cszn/KAIR 仓库 LICENSE 为准",
+      "description": "彩色图盲去噪，PSNR 变体；输出尺寸与输入一致。",
+      "url": "https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_psnr.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {}
     }
   ]
 }

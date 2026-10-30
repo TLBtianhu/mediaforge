@@ -343,6 +343,14 @@ def default_model_by_scale(capability_id: str, scale: int) -> str:
 def steps_from_mode(mode: str) -> list[dict[str, Any]]:
     """Compatibility bridge for existing UI modes."""
     steps: list[dict[str, Any]] = []
+    if mode in {"denoise"}:
+        steps.append(
+            {
+                "capability": "denoise",
+                "bindings": default_bindings("denoise"),
+                "params": {},
+            }
+        )
     if mode in {"watermark", "watermark_upscale"}:
         steps.append(
             {

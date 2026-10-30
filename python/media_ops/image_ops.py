@@ -115,6 +115,45 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
     return np.clip(blended, 0, 255).round().astype(np.uint8)
 
 
+def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:
+    """跑 scale=1 的模型（去噪/修复这类输出尺寸不变的网络）。
+
+    与超分不同，这里不放大也不重采样，只把同一尺寸的结果拼回去；
+    分块是为了让 4K 图不会一次吃满显存，块间留 overlap 以避免接缝。
+    """
+    import torch
+    from spandrel import ModelLoader
+
+    dev = device or pick_device()
+    descriptor = ModelLoader().load_from_file(str(model_path))
+    model = getattr(descriptor, "model", descriptor)
+    model.eval().to(dev)
+
+    source = ensure_rgb_uint8(image)
+    height, width = source.shape[:2]
+    step = max(64, int(tile))
+    pad = max(0, int(overlap))
+    output = np.zeros_like(source)
+
+    for top in range(0, height, step):
+        for left in range(0, width, step):
+            bottom = min(top + step, height)
+            right = min(left + step, width)
+            y0 = max(0, top - pad)
+            x0 = max(0, left - pad)
+            y1 = min(height, bottom + pad)
+            x1 = min(width, right + pad)
+            patch = source[y0:y1, x0:x1]
+            tensor = torch.from_numpy(np.array(patch, copy=True)).permute(2, 0, 1).float().div(255.0).unsqueeze(0).to(dev)
+            with torch.inference_mode():
+                restored = model(tensor)
+            array = restored.clamp(0.0, 1.0)[0].permute(1, 2, 0).cpu().numpy()
+            array = (array * 255.0).round().astype(np.uint8)
+            # 只取中心区域，边缘交给相邻块的重叠部分
+            output[top:bottom, left:right] = array[top - y0 : top - y0 + (bottom - top), left - x0 : left - x0 + (right - left)]
+    return output
+
+
 class RealESRGANUpscaler:
     def __init__(self, paths: dict[int, str], device: str = "cuda", tile: int = 512, context: int = 16):
         self.paths = {int(key): str(value) for key, value in paths.items()}
@@ -465,6 +504,17 @@ class ImageRestorer:
                 if progress:
                     progress(fraction, "LaMa 修复中…")
                 image = self.inpainter_for(inpainter_path).inpaint(image, mask)
+            elif capability == "denoise":
+                if progress:
+                    progress(fraction, "去噪中…")
+                model_id = str(bindings.get("denoiser") or capabilities.default_bindings("denoise")["denoiser"])
+                image = run_scale1_model(
+                    capabilities.model_path(model_id),
+                    image,
+                    device=self.device,
+                    tile=self.tile,
+                )
+                info["steps"].append({"capability": capability, "model": model_id})
             elif capability == "upscale":
                 if progress:
                     progress(fraction, "Real-ESRGAN 超分中…")
@@ -505,10 +555,8 @@ class ImageRestorer:
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
         steps = steps or capabilities.steps_from_mode(mode)
-        suffix = "_".join(
-            "clean" if step.get("capability") == "watermark_removal" else "sr"
-            for step in steps
-        )
+        _SUFFIX = {"watermark_removal": "clean", "denoise": "denoise", "upscale": "sr"}
+        suffix = "_".join(_SUFFIX.get(str(step.get("capability")), "out") for step in steps)
         target_path = output_root / f"{source.stem}_{suffix}.png"
         if target_path.resolve() == source.resolve():
             target_path = output_root / f"{source.stem}_{suffix}_out.png"

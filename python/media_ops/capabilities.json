@@ -183,6 +183,25 @@
           "default": 0
         }
       }
+    },
+    {
+      "id": "denoise",
+      "label": "去噪",
+      "labelEn": "Denoise",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "denoiser": {
+          "label": "去噪模型",
+          "task": "denoise",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:scunet-color-real"
+      ],
+      "params": {}
     }
   ]
 }
