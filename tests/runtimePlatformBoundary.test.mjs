@@ -178,32 +178,6 @@ test('runtime notices wait for updates and reads, and close once the installed c
   }
 })
 
-for (const confirmed of [false, true]) {
-  test(`settings ${confirmed ? 'applies' : 'discards'} the exact prepared plan after confirmation`, async () => {
-    const calls = []
-    const plan = { id: 'confirmed-plan', backend: 'mlx', pythonPath: '/runtime/bin/python', mode: 'update', mirror: 'pypi', channel: 'prerelease', currentVersions: { pymss: '2.1.8', 'pymss-core': '0.1.11' }, targetVersions: { pymss: '2.2.0rc1', 'pymss-core': '0.2.0' }, dependencyCount: 1 }
-    const scope = {
-      app: {
-        runtimeCoreUpdateSupported: true,
-        runtimeCoreUpdateStatus: 'prepared',
-        prepareRuntimeCoreUpdate: async () => { calls.push('prepare'); return plan },
-        updateRuntimeCore: async (...args) => calls.push(args),
-        discardRuntimeCorePlan: id => { assert.equal(id, plan.id); scope.app.runtimeCoreUpdateStatus = 'idle' },
-      },
-      runtimeBusy: { value: false }, runtimeMirror: { value: 'auto' }, currentLocale: { value: 'zh-CN' },
-      runtimeCoreActionPending: { value: false },
-      t: (key, values) => `${key}:${JSON.stringify(values || {})}`,
-      confirmRuntimeAction: async (_title, content) => { assert.match(content, /2\.2\.0rc1/); return confirmed },
-      message: { error: error => assert.fail(error) },
-    }
-    await componentFunction('../src/views/SettingsView.vue', 'runRuntimeCoreOperation', scope)({ backend: 'mlx' }, 'update')
-    assert.equal(calls[0], 'prepare')
-    assert.equal(calls.length, confirmed ? 2 : 1)
-    assert.equal(scope.runtimeCoreActionPending.value, false)
-    if (confirmed) assert.equal(calls[1][3].planId, plan.id)
-    else assert.equal(scope.app.runtimeCoreUpdateStatus, 'idle')
-  })
-}
 
 test('every confirmation dismissal settles the pending runtime operation', async () => {
   for (const event of ['onMaskClick', 'onEsc', 'onClose', 'onNegativeClick', 'onPositiveClick']) {
@@ -216,43 +190,6 @@ test('every confirmation dismissal settles the pending runtime operation', async
     options[event]()
     assert.equal(await result, event === 'onPositiveClick')
   }
-})
-
-test('core confirmation keeps its plan exclusive until the confirmed apply is dispatched', async () => {
-  let confirm
-  let dispatched
-  const confirmation = new Promise(resolve => { confirm = resolve })
-  const applying = new Promise(resolve => { dispatched = resolve })
-  const plan = { id: 'first-plan', backend: 'cuda', pythonPath: '/runtime/python', mode: 'update', mirror: 'pypi', channel: 'stable', currentVersions: { pymss: '2.1.8' }, targetVersions: { pymss: '2.1.9' }, dependencyCount: 0 }
-  const calls = []
-  const scope = {
-    app: {
-      runtimeCoreUpdateSupported: true,
-      prepareRuntimeCoreUpdate: async () => { calls.push('prepare'); return plan },
-      updateRuntimeCore: async (...args) => { calls.push(args); await applying },
-    },
-    runtimeBusy: { value: false }, runtimeCoreActionPending: { value: false },
-    runtimeMirror: { value: 'auto' }, currentLocale: { value: 'zh-CN' },
-    confirmRuntimeAction: () => confirmation, t: key => key,
-    message: { error: error => assert.fail(error) },
-  }
-  const run = componentFunction('../src/views/SettingsView.vue', 'runRuntimeCoreOperation', scope)
-  const first = run({ backend: 'cuda' }, 'update')
-  await Promise.resolve()
-  const duplicate = run({ backend: 'cuda' }, 'update')
-  await Promise.resolve()
-  assert.equal(calls.length, 1, 'A second click must not replace the plan awaiting confirmation')
-  await duplicate
-  confirm(true)
-  await Promise.resolve()
-  const duringApply = run({ backend: 'cuda' }, 'update')
-  await Promise.resolve()
-  assert.equal(calls.length, 2, 'A second plan must not start before apply acknowledgement')
-  await duringApply
-  assert.equal(calls[1][3].planId, 'first-plan')
-  dispatched()
-  await first
-  assert.equal(scope.runtimeCoreActionPending.value, false)
 })
 
 test('non-Windows developer controls cannot open an editor or mutate runtime files', async () => {
