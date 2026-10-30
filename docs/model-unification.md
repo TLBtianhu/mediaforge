@@ -85,6 +85,37 @@ A 334 条 / B 326 条
 
 下一步：`src/stores/model.ts` 换数据源 → 三页联调 → 删 B 套。
 
+## 2.8 列表已统一，下载还没（下一步的真正难点）
+
+现状（2026-10-30）：
+
+```
+stores/model.ts:803   invoke('model_hub')                 ← 列表已统一
+stores/model.ts:1164  invoke('start_model_download')      ← 下载仍走 B 套
+ModelHubView.vue:173  invoke('start_model_hub_download')  ← 下载仍走 A 套
+```
+
+也就是说**两个页面看同一份列表，但下载还是两条路**。
+
+切下载时要对齐的是"身份"：
+
+* B 套按 `taskId`（`download_<...>`）关联事件，store 的处理器用
+  `taskId?.startsWith('download_')` 判断归属；
+* A 套按 `requestId` 关联，事件里没有 `taskId`。
+
+所以直接改 invoke 会让进度条**静默不动**——事件到了，但 store 认不出是自己的。
+
+两种收敛方式（择一，别混）：
+
+1. **A 套补 taskId**：`start_model_hub_download` 接受并透传 `taskId`，
+   事件里带上同一个 id，store 不用改判定逻辑。
+2. **store 认 requestId**：把 `downloadTaskIndex` 改成 requestId 键，
+   同时保留 taskId 兼容。
+
+推荐 1：身份是后端产生的，前端只消费；改动集中在一处。
+
+验收：下载中进度条连续更新、完成后两个页面同时显示"已下载"、中途取消能回到未下载。
+
 ## 3. 改动清单（按依赖顺序）
 
 ### 3.1 后端：让 A 套发出统一事件
