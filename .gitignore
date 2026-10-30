@@ -72,6 +72,11 @@ cookie.txt
 !README.zh-CN.md
 !CONTRIBUTING.md
 !DEVELOPMENT.md
+# 开源相关的对外文件：这些必须进仓库，否则公开仓库里根本没有它们
+# （SECURITY.md 之前被 *.md 忽略掉了，提交时被静默跳过）
+!SECURITY.md
+!CODE_OF_CONDUCT.md
+!CHANGELOG.md
 docs/*
 !docs/**/
 !docs/**/*.md
