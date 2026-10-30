@@ -415,10 +415,6 @@ pub async fn start_cleanup_model_residual_files(
     Ok(serde_json::json!({ "taskId": task_id, "started": true }))
 }
 
-#[tauri::command]
-pub async fn download_model(app: AppHandle, payload: Value) -> AppResult<Value> {
-    run_worker_with_payload(&app, "download_model", Some(payload))
-}
 
 
 #[tauri::command]

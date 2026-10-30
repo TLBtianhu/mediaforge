@@ -148,7 +148,6 @@ fn main() {
             commands::app_cmd::list_open_editor_projects_for_tasks,
             commands::app_cmd::list_orphaned_editor_projects,
             commands::app_cmd::delete_orphaned_editor_projects,
-            commands::app_cmd::download_model,
             commands::app_cmd::editor_project_exists,
             commands::app_cmd::export_editor_mix,
             commands::app_cmd::start_editor_mix_export,

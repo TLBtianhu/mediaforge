@@ -137,9 +137,6 @@ def run_command(command: str, payload: dict) -> int:
     if command == "cleanup_model_residual_files":
         from worker_models import cmd_cleanup_model_residual_files
         return cmd_cleanup_model_residual_files(payload)
-    if command == "download_model":
-        from worker_download import cmd_download_model
-        return cmd_download_model(payload)
     if command == "test_connection":
         from worker_connection import cmd_test_connection
         return cmd_test_connection(payload)
