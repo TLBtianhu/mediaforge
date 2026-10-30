@@ -223,7 +223,7 @@
         "face_restorer"
       ],
       "status": "planned",
-      "blockedReason": "依赖已装通：basicsr 1.4.2 + facexlib 0.3.0 + gfpgan 1.3.8 已进运行时，并给 torchvision 补了 functional_tensor 垫片，gfpgan 的两种架构（GFPGANv1/GFPGANv1Clean）都能导入；权重 GFPGANv1.pth（587 MB）也从 hf-mirror 下好。卡在架构与权重不匹配：GFPGANv1Clean 载入 missing=83/unexpected=83，GFPGANv1 在 channel_multiplier=2/sft_half=False 下报 size mismatch（final_linear 形状不符）。下一步：换官方 GFPGANv1.4.pth（GitHub release，需代理）对应 GFPGANv1Clean，或按 v1 的真实构造参数重试。"
+      "blockedReason": "依赖已装通（basicsr/facexlib/gfpgan + torchvision functional_tensor 垫片），GFPGANv1.pth（587 MB）也下好了。但参数扫描表明该权重与包内两种架构都不匹配：GFPGANv1Clean 在 (channel_multiplier, different_w, input_is_latent, sft_half) 全组合下最好也只有 166 个键不匹配（缺 conv_body_first.weight，说明权重是 Sequential 结构）；GFPGANv1 则在 cm=1/2 与 sft_half True/False 下都报 final_linear 形状不符。结论：这个 v1 权重与当前 gfpgan 1.3.8 的架构定义对不上，需要换官方 GFPGANv1.4.pth（配 GFPGANv1Clean）。"
     },
     {
       "id": "hat-l",
@@ -742,6 +742,38 @@
       "license": "以上游模型卡为准（uwg/upscaler 汇总）",
       "description": "4× 超分，锐度与纹理平衡，适合游戏截图与插画。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_Valar_v1.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
+    },
+    {
+      "id": "esrgan-comix-x4",
+      "name": "4x_Fatality_Comix_260000_G.pth",
+      "label": "4x Fatality Comix",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66958607,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "4× 超分，面向漫画/线稿，边缘更硬。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_Fatality_Comix_260000_G.pth",
       "implemented": true,
       "status": "available",
       "video_mode": "frame",
