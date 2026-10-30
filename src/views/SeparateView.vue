@@ -573,7 +573,9 @@ function normalizeStemOrder(order: string[], stems: string[]) {
   return next
 }
 
-const orderedOutputStems = computed(() => ensembleEnabled.value
+// 合奏模式下输出只有一个 stem（用用户起的名字）；但切到 workflow 模式时是在编排
+// 每个模型各自的输出，这时仍然是按模型 stem 命名，所以要看 runMode。
+const orderedOutputStems = computed(() => (ensembleEnabled.value && runMode.value !== 'workflow')
   ? [ensembleStem.value.trim()].filter(Boolean)
   : normalizeStemOrder(customStemOrder.value, checkedOutputStems.value))
 const outputNamingConfig = computed(() => ({

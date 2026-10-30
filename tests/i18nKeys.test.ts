@@ -16,6 +16,9 @@ const i18nDir = path.join(srcDir, 'i18n')
  *   t(`settings.themeAccent${...}`)  — SettingsView.vue, StartupOnboarding.vue
  *   t(`nav.${route.name}`)           — TitleBar.vue
  *   advanced-editor node metadata    — litegraph/nodeLocalization.ts
+ *   t(`runtimeStatus.stage.${stage}`)      — SideNav.vue（stage 名来自 worker 事件）
+ *   t(`runtimeStatus.connection.${state}`) — SideNav.vue
+ *   t(`plan.capabilities.${id}`)           — ImageView.vue / VideoView.vue / WorkflowView.vue
  */
 const DYNAMIC_KEY_PREFIXES = [
   'settings.themeAccent',
@@ -24,6 +27,9 @@ const DYNAMIC_KEY_PREFIXES = [
   'workflows.advancedEditor.nodes.',
   'workflows.advancedEditor.fields.',
   'workflows.advancedEditor.menu.',
+  'runtimeStatus.stage.',
+  'runtimeStatus.connection.',
+  'plan.capabilities.',
 ]
 
 /**
