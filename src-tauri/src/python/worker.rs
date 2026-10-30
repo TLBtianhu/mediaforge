@@ -1352,8 +1352,7 @@ fn worker_lifecycle_level(command: &str) -> &'static str {
             | "export_editor_mix"
             | "install_runtime"
             | "update_runtime_core"
-            | "download_model"
-    ) {
+        ) {
         "INFO"
     } else {
         "DEBUG"
@@ -1398,8 +1397,7 @@ fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
             event_type,
             "error" | "model_residual_cleanup_done" | "model_residual_cleanup_failed"
         ),
-        "download_model" => matches!(event_type, "error" | "download_done" | "task_cancelled"),
-        "install_runtime" => matches!(
+            "install_runtime" => matches!(
             event_type,
             "error" | "runtime_install_finished" | "task_cancelled"
         ),

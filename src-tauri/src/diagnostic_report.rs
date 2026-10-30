@@ -764,7 +764,7 @@ pub(crate) fn summarize_request(command: &str, payload: &Value) -> Value {
             "audio-tools"
         }
         "export_editor_mix" | "start_editor_mix_export" => "editor-export",
-        "download_model" | "start_model_download" | "download_tool_model" => "model-download",
+        "download_tool_model" => "model-download",
         "delete_model"
         | "delete_tool_model"
         | "import_custom_model"
