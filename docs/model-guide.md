@@ -68,7 +68,7 @@
 ## 还没接的模型，以及卡在哪
 
 - **BasicVSR++**（`basicvsrpp`）：缺少权重地址与加载代码，尚不可下载
-- **BiRefNet**（`birefnet`）：权重与代码可下载（ZhengPeng7/BiRefNet：model.safetensors 423.9 MB + birefnet.py + config）；依赖已装通（timm 1.0.30、kornia 0.9.0、torchvision functional_tensor 垫片），transformers 远程代码能加载成 BiRefNet，fp16 在 CUDA 上能前向。卡在输出解读：模型返回 [tensor(1,1,1024,1024)]，数值范围 3.2~14.8，直接当概率用前景占比 100%，套 sigmoid 后仍是 0.99~1.00，说明预处理或输出版本不对（很可能需要它自带的 biRefNet 前处理/多尺度输出约定）。下一步：读 birefnet.py 的 forward 与 BiRefNet_config 的 image_size / mean / std，按其约定跑。
+- **BiRefNet**（`birefnet`）：权重与代码可下载，依赖已装通（timm/kornia/kornia-rs + torchvision 垫片），transformers 远程代码能加载 BiRefNet 并在 CUDA 上 fp16 前向。但三种预处理都出不来可用掩膜：ImageNet 归一化 → 原始输出 3.2~14.8，sigmoid 后前景 100%；0-1 输入 → 前景 0%；(x-0.5)/0.5 → 前景 26.6%，但看图是**一团模糊光斑**，边缘完全不对。对照 handler.py：官方用 ImageNet 归一化 + 取 preds[0].squeeze()，与实测不符，说明这个 checkpoint 的输出版本/配置（mul_scl_ipt、decoder 结构）与仓库默认不一致。下一步：改用仓库自带的 inference 脚本或其 config.json 里的完整配置，而不是手拼预处理。
 - **CodeFormer**（`codeformer`）：codeformer.pth（359 MB）在 hf-mirror 上可下，但 CodeFormer 的架构代码依赖 basicsr，且需要人脸检测与对齐；本次已装通 basicsr/facexlib，先解决 GFPGAN 的架构匹配再复用它。
 - **DAT-2**（`dat-2`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
 - **DDColor**（`ddcolor`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
