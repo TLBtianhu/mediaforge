@@ -116,7 +116,7 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
 
 
 # 只在图像路径上实现的 capability（视频逐帧管线没有对应 planner）。
-IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth")
+IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth", "matting")
 
 
 def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:
@@ -156,6 +156,34 @@ def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | No
             # 只取中心区域，边缘交给相邻块的重叠部分
             output[top:bottom, left:right] = array[top - y0 : top - y0 + (bottom - top), left - x0 : left - x0 + (right - left)]
     return output
+
+
+def remove_background(model_dir: str | Path, image: np.ndarray) -> np.ndarray:
+    """RMBG-1.4 抠图，返回 RGBA。
+
+    注意两点，都是踩过的：
+    * 输入按官方做法归一化 (x - 0.5)，不是 ImageNet mean/std；
+    * 模型返回 (side_outputs, ...) 的 tuple，`out[0][-1]` 已经是 0-1 的概率，
+      再套一次 sigmoid 会把前景压扁到 0.5 附近。
+    """
+    import torch
+    from PIL import Image as PILImage
+    from transformers import AutoModelForImageSegmentation
+
+    device = pick_device()
+    model = AutoModelForImageSegmentation.from_pretrained(str(model_dir), trust_remote_code=True)
+    model.eval().to(device)
+    rgb = ensure_rgb_uint8(image)
+    pil = PILImage.fromarray(rgb)
+    tensor = torch.from_numpy(rgb.astype("float32") / 255.0).permute(2, 0, 1).unsqueeze(0)
+    tensor = (tensor - 0.5)
+    tensor = torch.nn.functional.interpolate(tensor, size=(1024, 1024), mode="bilinear", align_corners=False).to(device)
+    with torch.inference_mode():
+        outputs = model(tensor)
+    mask = outputs[0][-1]
+    mask = torch.nn.functional.interpolate(mask, size=pil.size[::-1], mode="bilinear", align_corners=False)[0, 0]
+    alpha = (mask.detach().cpu().numpy() * 255.0).clip(0, 255).astype("uint8")
+    return np.dstack([rgb, alpha])
 
 
 def estimate_depth(model_dir: str | Path, image: np.ndarray) -> np.ndarray:

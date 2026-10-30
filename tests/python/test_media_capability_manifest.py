@@ -33,7 +33,7 @@ PLANNED_CAPABILITIES = {
     "video_super_resolution",
 }
 
-ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth"}
+ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth", "matting"}
 
 
 class CapabilityManifestTests(unittest.TestCase):

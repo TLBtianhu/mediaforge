@@ -36,7 +36,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return emit_error("MEDIA_IMAGE_INVALID", "No output directory", request_id=request_id)
 
         mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale", "denoise", "detect", "depth", "custom"}:
+        if mode not in {"upscale", "watermark", "watermark_upscale", "denoise", "detect", "depth", "matting", "custom"}:
             return emit_error("MEDIA_IMAGE_INVALID", f"Unknown image mode: {mode}", request_id=request_id)
         scale = float(payload.get("scale") or 2.0)
         target = image_ops.resolve_target(
@@ -113,6 +113,28 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                     target_path = Path(output_dir) / f"{Path(source).stem}_depth.png"
                     target_path.parent.mkdir(parents=True, exist_ok=True)
                     image_ops.write_image(target_path, np.stack([depth] * 3, axis=-1))
+                    outputs.append({"path": str(target_path), "size": target_path.stat().st_size})
+                except Exception as exc:  # noqa: BLE001
+                    failed.append(failures.describe(source, exc))
+            emit(
+                "audio_tool_result",
+                {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
+                 "total": len(inputs), "completed": len(outputs), "warnings": []},
+                request_id=request_id,
+            )
+            return 0
+
+        if mode == "matting":
+            binding = capabilities.default_bindings("matting")["background_remover"]
+            model_dir = capabilities.model_path(str(binding))
+            outputs = []
+            failed = []
+            for source in inputs:
+                try:
+                    rgba = image_ops.remove_background(model_dir, image_ops.read_image(source))
+                    target_path = Path(output_dir) / f"{Path(source).stem}_matte.png"
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    image_ops.write_image(target_path, rgba)
                     outputs.append({"path": str(target_path), "size": target_path.stat().st_size})
                 except Exception as exc:  # noqa: BLE001
                     failed.append(failures.describe(source, exc))

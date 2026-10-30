@@ -343,6 +343,8 @@ def default_model_by_scale(capability_id: str, scale: int) -> str:
 def steps_from_mode(mode: str) -> list[dict[str, Any]]:
     """Compatibility bridge for existing UI modes."""
     steps: list[dict[str, Any]] = []
+    if mode in {"matting"}:
+        steps.append({"capability": "matting", "bindings": default_bindings("matting"), "params": {}})
     if mode in {"depth"}:
         steps.append({"capability": "depth", "bindings": default_bindings("depth"), "params": {}})
     if mode in {"detect"}:

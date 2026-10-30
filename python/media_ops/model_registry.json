@@ -9964,28 +9964,6 @@
       "notes": null
     },
     {
-      "id": "media:rmbg-1.4",
-      "name": "rmbg-1.4",
-      "family": "media",
-      "task": "matting",
-      "io": {
-        "in": "image",
-        "out": "mask",
-        "arity": 1
-      },
-      "architecture": null,
-      "source": {
-        "status": "local",
-        "repo": null,
-        "file": "rmbg-1.4"
-      },
-      "license": "",
-      "slots": [
-        "tile"
-      ],
-      "notes": null
-    },
-    {
       "id": "media:birefnet",
       "name": "birefnet",
       "family": "media",
@@ -10138,6 +10116,26 @@
       "license": "Apache-2.0",
       "slots": [],
       "notes": "目录型模型：config.json + model.safetensors"
+    },
+    {
+      "id": "media:rmbg-1.4",
+      "name": "rmbg-1.4",
+      "family": "media",
+      "task": "matting",
+      "io": {
+        "in": "image",
+        "out": "mask",
+        "arity": 1
+      },
+      "architecture": "BriaRMBG",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "rmbg-1.4"
+      },
+      "license": "BRIA RMBG-1.4（非商业许可）",
+      "slots": [],
+      "notes": "在 transformers 5.x 下需要给 BriaRMBG 补 all_tied_weights_keys 属性"
     }
   ]
 }

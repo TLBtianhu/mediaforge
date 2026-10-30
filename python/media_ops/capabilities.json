@@ -247,6 +247,25 @@
         "media:depth-anything-v2-small"
       ],
       "params": {}
+    },
+    {
+      "id": "matting",
+      "label": "抠图",
+      "labelEn": "Matting",
+      "modalities": [
+        "image"
+      ],
+      "roles": {
+        "background_remover": {
+          "label": "抠图模型",
+          "task": "matting",
+          "required": true
+        }
+      },
+      "modelIds": [
+        "media:rmbg-1.4"
+      ],
+      "params": {}
     }
   ]
 }
