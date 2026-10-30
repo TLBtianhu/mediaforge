@@ -93,17 +93,16 @@ Write-Host "[2/6] staging"
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item "$root\src-tauri\target\release\pymss-studio.exe" "$stage\MediaForge.exe" -Force
 foreach ($item in @('python', 'python-runtime', 'integrations')) {
-    # python-runtime\runtime-envs 不进安装包：它是可替换资产，走独立的运行时包。
-    if ($item -eq 'python-runtime' -and (Test-Path (Join-Path $root 'python-runtime\runtime-envs'))) {
-        New-Item -ItemType Directory -Force -Path $stage | Out-Null
-        Copy-Item (Join-Path $root 'python-runtime') $stage -Recurse -Force -Exclude 'runtime-envs'
-        continue
-    }
     $source = Join-Path $root $item
     $target = Join-Path $stage $item
     if (-not (Test-Path $source)) { throw "缺少 $item，无法打包" }
     if (Test-Path $target) { Remove-Item $target -Recurse -Force }
     Copy-Item $source $target -Recurse
+}
+# 运行时是独立资产包，不随安装包分发（5 GB，且可跨版本复用）。
+if (Test-Path "$stage\python-runtime\runtime-envs") {
+    Remove-Item "$stage\python-runtime\runtime-envs" -Recurse -Force
+    Write-Host "  staging 已剔除 python-runtime\runtime-envs"
 }
 if (-not (Test-Path "$stage\python\safe_fs.py")) { throw "staging 缺少 python\safe_fs.py" }
 if (-not (Test-Path "$stage\integrations\dsh-mediaforge\cordis.patch.yml")) { throw "staging 缺少 DSH 集成包" }
@@ -142,7 +141,8 @@ if (-not $SkipZip) {
 }
 
 
-Write-Host "# 运行时资产包（独立于版本发布，按 sha256 寻址）
+# 运行时资产包（独立于版本发布，按 sha256 寻址）
+Write-Host "运行时资产包"
 $runtimeAssetId = if ($env:MEDIAFORGE_RUNTIME_ASSET_ID) { $env:MEDIAFORGE_RUNTIME_ASSET_ID } else { 'runtime-cuda-2026.10.1' }
 $runtimeSrc = Join-Path $root 'python-runtime\runtime-envs\cuda'
 $runtimeOut = Join-Path $root 'release\runtime'
@@ -169,10 +169,10 @@ if (Test-Path $runtimeSrc) {
     Write-Host "  manifest: $runtimeManifest"
     Write-Host "  sha256: $hash"
 } else {
-    Write-Host "  跳过运行时资产包（源码树里没有 python-runtime\runtime-envs\cuda）"
+    Write-Host "  跳过（源码树里没有 python-runtime\runtime-envs\cuda）"
 }
 
-[4/6] 更新包（不含运行时，签名可选）"
+Write-Host "[4/6] 更新包（不含运行时，签名可选）"
 $updateRoot = "$out\update-stage"
 if (Test-Path $updateRoot) { Remove-Item $updateRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $updateRoot | Out-Null
