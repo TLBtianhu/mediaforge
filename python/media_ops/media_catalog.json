@@ -218,24 +218,6 @@
       "blockedReason": "缺少权重地址与加载代码，尚不可下载"
     },
     {
-      "id": "swinir-large",
-      "name": "swinir-large",
-      "label": "SwinIR Large",
-      "modality": "image",
-      "modalities": [
-        "image"
-      ],
-      "task": "super_resolution",
-      "capabilities": [],
-      "roles": [],
-      "size": 0,
-      "license": "",
-      "description": "Transformer 超分，2/3/4 倍可选",
-      "implemented": false,
-      "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
-    },
-    {
       "id": "hat-l",
       "name": "hat-l",
       "label": "HAT-L",
@@ -473,6 +455,38 @@
       "status": "available",
       "video_mode": "frame",
       "params": {}
+    },
+    {
+      "id": "swinir-m-x2",
+      "name": "SwinIR-M_x2_GAN.pth",
+      "label": "SwinIR-M 2× (real-world GAN)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "SwinIR",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66974517,
+      "license": "以 JingyunLiang/SwinIR 仓库 LICENSE 为准",
+      "description": "Transformer 超分（real-world 2× GAN 权重），细节强但 fp16 下会出 NaN，已自动降级 fp32。",
+      "url": "https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/003_realSR_BSRGAN_DFO_s64w8_SwinIR-M_x2_GAN.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 2
+        }
+      }
     }
   ]
 }

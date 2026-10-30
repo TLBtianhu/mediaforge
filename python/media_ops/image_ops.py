@@ -192,13 +192,8 @@ class RealESRGANUpscaler:
         import torch
 
         tensor = torch.from_numpy(np.array(tile_rgb, copy=True)).permute(2, 0, 1).float().div(255.0).unsqueeze(0).to(self.device)
-        if self.device == "cuda":
-            tensor = tensor.half()
-            with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.float16):
-                output = model(tensor)
-        else:
-            with torch.inference_mode():
-                output = model(tensor)
+        # 统一走兜底路径：cuda 上先试 fp16，出现 NaN 或类型错误就降级 fp32。
+        output = self._ensure_finite(model, tensor)
         output = torch.clamp(output.float(), 0, 1).detach()[0].permute(1, 2, 0).cpu().numpy()
         return (output * 255.0).round().astype(np.uint8)
 
@@ -211,6 +206,34 @@ class RealESRGANUpscaler:
             return image, h, w
         border = cv2.BORDER_REFLECT_101 if min(h, w) > 4 else cv2.BORDER_REPLICATE
         return cv2.copyMakeBorder(image, 0, ph, 0, pw, border), h, w
+
+    def _ensure_finite(self, model, tensor):
+        """跑一次并保证输出有限；不行就用 fp32 重跑。
+
+        SwinIR 这类网络内部有 fp32 常量，fp16 下会产出 NaN 或直接报
+        "expected scalar type Half but found Float"。与其为每个模型维护一个精度字段，
+        不如在出错时降级一次——结果正确优先于速度。
+        """
+        import torch
+
+        def run(device_type, dtype):
+            local = tensor
+            if device_type == "cuda":
+                local = tensor.half()
+                with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=dtype):
+                    return model(local)
+            with torch.inference_mode():
+                return model(local)
+
+        try:
+            output = run(self.device, torch.float16) if self.device == "cuda" else run("cpu", torch.float32)
+        except RuntimeError:
+            output = None
+        if output is not None and torch.isfinite(output).all():
+            return output
+        model.float()
+        with torch.inference_mode():
+            return model(tensor.float())
 
     def _upscale_with_model(self, image: np.ndarray, scale: int) -> np.ndarray:
         model, real_scale = self._load(scale)

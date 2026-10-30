@@ -9873,29 +9873,6 @@
       "notes": null
     },
     {
-      "id": "media:swinir-large",
-      "name": "swinir-large",
-      "family": "media",
-      "task": "upscale",
-      "io": {
-        "in": "image",
-        "out": "image",
-        "arity": 1
-      },
-      "architecture": null,
-      "source": {
-        "status": "local",
-        "repo": null,
-        "file": "swinir-large"
-      },
-      "license": "",
-      "slots": [
-        "scale",
-        "tile"
-      ],
-      "notes": null
-    },
-    {
       "id": "media:hat-l",
       "name": "hat-l",
       "family": "media",
@@ -10117,6 +10094,29 @@
         "tile"
       ],
       "notes": null
+    },
+    {
+      "id": "media:swinir-m-x2",
+      "name": "SwinIR-M_x2_GAN.pth",
+      "family": "media",
+      "task": "upscale",
+      "io": {
+        "in": "image",
+        "out": "image",
+        "arity": 1
+      },
+      "architecture": "SwinIR",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "SwinIR-M_x2_GAN.pth"
+      },
+      "license": "以 JingyunLiang/SwinIR 仓库 LICENSE 为准",
+      "slots": [
+        "scale",
+        "tile"
+      ],
+      "notes": "fp16 会产生 NaN，加载器会自动降级 fp32"
     }
   ]
 }
