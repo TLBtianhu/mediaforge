@@ -1636,7 +1636,6 @@ onMounted(async () => {
           <article class="about-info-card runtime-envs-card">
             <div class="runtime-envs-card__content">
             <n-alert v-if="!app.runtimeManagementSupported" type="info" :bordered="false">
-              {{ t('settings.runtimeCoreUpdatePlatformHint') }}
             </n-alert>
             <div class="section-title section-title--plain">
               <span class="section-title__icon">
@@ -1725,12 +1724,6 @@ onMounted(async () => {
                 <div v-if="card.env" class="runtime-env-card__meta">
                   <span v-if="card.env.torchVersion">{{ t('settings.runtimeTorchVersion', { version: card.env.torchVersion }) }}</span>
                   <span>{{ runtimeCoreVersionLabel(card) }}</span>
-                  <span v-if="runtimeCoreVersionCheckReady && card.coreUpdateAvailable" class="runtime-env-card__accel runtime-env-card__accel--warn">
-                    {{ t('settings.runtimeCoreUpdateAvailable', {
-                      pymss: latestPymssVersion || t('settings.runtimeCoreVersionUnknown'),
-                      core: latestPymssCoreVersion || t('settings.runtimeCoreVersionUnknown'),
-                    }) }}
-                  </span>
                   <span v-if="runtimeAcceleratorReady(card.env, card.backend)" class="runtime-env-card__accel runtime-env-card__accel--ok">{{ t('settings.runtimeAcceleratorAvailable') }}</span>
                   <span v-else-if="card.backend !== 'cpu'" class="runtime-env-card__accel">{{ t('settings.runtimeAcceleratorUnavailable') }}</span>
                   <span v-if="card.diskLabel">{{ t('settings.runtimeDiskUsage', { size: card.diskLabel }) }}</span>
@@ -1824,26 +1817,9 @@ onMounted(async () => {
                     </n-button>
                   </div>
                 </div>
-                <div v-if="card.state === 'active' && runtimeCoreUpdating" class="runtime-env-card__progress">
-                  <n-spin size="small" />
-                  <span class="runtime-env-card__progress-msg">
-                    {{ app.runtimeCoreUpdateStatus === 'preparing' ? t('settings.runtimeCorePreparing') : app.runtimeCoreUpdateMessage || t(app.runtimeCoreUpdateMode === 'repair'
-                      ? 'settings.runtimeDependencyRepairing'
-                      : 'settings.runtimeCoreUpdating') }}
-                  </span>
-                  <n-button size="tiny" tertiary :loading="runtimeCoreCancelling" :disabled="app.runtimeCoreUpdateStage === 'activate'" @click="cancelRuntimeCoreUpdate">
-                    {{ t('common.cancel') }}
-                  </n-button>
-                </div>
               </div>
             </div>
             </Transition>
-            <n-alert v-if="app.runtimeCoreUpdateStatus === 'error'" type="error" :bordered="false">
-              {{ app.runtimeCoreUpdateMessage }}
-            </n-alert>
-            <n-alert v-else-if="app.runtimeCoreUpdateStatus === 'success' || app.runtimeCoreUpdateStatus === 'cancelled'" :type="app.runtimeCoreUpdateStatus === 'success' ? 'success' : 'info'" :bordered="false">
-              {{ t(app.runtimeCoreUpdateStatus === 'success' ? 'settings.runtimeCoreOperationSuccess' : 'settings.runtimeCoreOperationCancelled') }}
-            </n-alert>
 
             <p v-if="runtimeDiskTotalLabel" class="setting-row__hint runtime-disk-total">
               {{ t('settings.runtimeDiskTotal', { size: runtimeDiskTotalLabel }) }}
