@@ -305,7 +305,7 @@
       "description": "通用背景移除",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+      "blockedReason": "权重与代码可下载（model.pth 176 MB + briarmbg.py），但官方代码依赖 transformers 4.x 的 PreTrainedModel 接口；当前运行时是 transformers 5.22.1，加载时报 'BriaRMBG object has no attribute all_tied_weights_keys'。解决方式：锁 transformers<5，或把代码改成 nn.Module 直接 load_state_dict。"
     },
     {
       "id": "birefnet",
@@ -359,7 +359,7 @@
       "description": "单目深度估计",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+      "blockedReason": "HF 上有 -hf 变体（model.safetensors 99 MB + config.json），需要 transformers>=4.45 的 DepthAnythingForDepthEstimation；尚未实测能否在 transformers 5.x 下直接加载。"
     },
     {
       "id": "sam2",
