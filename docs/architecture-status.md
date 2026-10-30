@@ -9,7 +9,7 @@
 模型列表        唯一来源 model_hub（334 条：音频 326 / 图像 5 / 视频 3）
                  GUI 与 agent 都走它，实测 count=334 一致
 模型下载        唯一路径 start_model_hub_download → worker model_download
-运行时          内容寻址资产（runtime-cuda-2026.10.1，sha256 钉死在二进制里）
+运行时          内容寻址资产（runtime-cuda-2026.10.2，sha256 钉死在二进制里）
                  存放 ~/.mediaforge/runtime-envs/cuda，装完写 .asset-id 标记
 安装             per-user，仅两个根：程序 %LOCALAPPDATA%\Programs，状态 ~/.mediaforge
 命令面           三层对账：Rust→worker / agent→worker / 前端→Tauri

@@ -143,7 +143,7 @@ if (-not $SkipZip) {
 
 # 运行时资产包（独立于版本发布，按 sha256 寻址）
 Write-Host "运行时资产包"
-$runtimeAssetId = if ($env:MEDIAFORGE_RUNTIME_ASSET_ID) { $env:MEDIAFORGE_RUNTIME_ASSET_ID } else { 'runtime-cuda-2026.10.1' }
+$runtimeAssetId = if ($env:MEDIAFORGE_RUNTIME_ASSET_ID) { $env:MEDIAFORGE_RUNTIME_ASSET_ID } else { 'runtime-cuda-2026.10.2' }
 $runtimeSrc = Join-Path $root 'python-runtime\runtime-envs\cuda'
 $runtimeOut = Join-Path $root 'release\runtime'
 $runtimeZip = Join-Path $runtimeOut "$runtimeAssetId.zip"

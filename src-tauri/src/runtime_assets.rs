@@ -20,17 +20,17 @@ use crate::error::{AppError, AppResult};
 use crate::storage;
 
 /// 当前应用钉死的运行时资产。换运行时 = 发新版应用，绝不后台偷偷升。
-pub const ASSET_ID: &str = "runtime-cuda-2026.10.1";
-pub const ASSET_SHA256: &str = "c1f0b3baf5db864955917b9432832dc7391bf1f5bbafae9e6f80bad2a3e452ac";
-pub const ASSET_SIZE: u64 = 3483253620;
+pub const ASSET_ID: &str = "runtime-cuda-2026.10.2";
+pub const ASSET_SHA256: &str = "7a1040eb6ed5510e1ede30ef90314a6a5993f94eee409c1ef224fb5d6559784d";
+pub const ASSET_SIZE: u64 = 3616417066;
 /// 同一份资产的两个源，按实测速度排序。
 ///
 /// HF 官方域名在国内不可达（实测 443 超时），所以这里写的是社区镜像 hf-mirror：
 /// 实测单连接 5.5 MB/s，而魔搭单连接约 1.2 MB/s、四连接聚合约 3 MB/s。
 /// aria2c 支持"同一文件多个 URI"，前一个失败会自动换下一个，因此备用源是零成本冗余。
 pub const ASSET_URLS: [&str; 2] = [
-    "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.10.1.zip",
-    "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-2026.10.1.zip",
+    "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.10.2.zip",
+    "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-2026.10.2.zip",
 ];
 const BACKEND: &str = "cuda";
 const PROGRESS_EVENT: &str = "mediaforge://runtime-asset";

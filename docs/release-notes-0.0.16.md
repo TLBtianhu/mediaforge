@@ -26,7 +26,7 @@
 **运行时解耦**
 
 ```
-资产             runtime-cuda-2026.10.1.zip（3.18 GB）+ manifest（sha256/size/urls）
+资产             runtime-cuda-2026.10.2.zip（3.45 GB）+ manifest（sha256/size/urls）
 存放             %USERPROFILE%\.mediaforge\runtime-envs\cuda
 下载             aria2c 4 连接、断点续传；先校验 sha256 再解压；指针最后写
 双源             hf-mirror.com（实测 5.55 MB/s）优先，魔搭（4 连接约 3 MB/s）兜底
@@ -120,6 +120,19 @@ DSH 集成        启动器创建 + cordis 配置指向 ~/.mediaforge/bin
 - **Real-ESRGAN 2×**：目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。视频管线现在会退到已安装的超分模型，所以缺它只影响 2× 选项，不再阻塞整条视频超分。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。
 - **SAM 2**：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
 
+## 运行时资产升级到 2026.10.2（媒体依赖齐全）
+
+旧的 2026.10.1 包里没有 `transformers` / `timm` / `kornia` / `basicsr` / `facexlib` / `gfpgan`，
+而这一版新增了深度、抠图能力，装旧包的用户点这些功能会直接 `ModuleNotFoundError`。
+
+新资产按"已验证能跑 20 个模型"的那套环境打包，并做了两件事：
+
+1. 解压后用它自己的解释器跑了一遍媒体冒烟：19/19 通过；
+2. 记录完整依赖清单 `python/runtime-lock-media.txt`（106 个包），
+   与两个 requirements 文件比对，无缺项。
+
+二进制里的 `ASSET_ID` / `ASSET_SHA256` / `ASSET_SIZE` 已同步，老用户会看到"需要更新运行时"。
+
 ## 技术债（已记录，不在本版处理）
 
 ```
@@ -160,7 +173,7 @@ HF 主源          HEAD 200，大小与常量一致
 setup.exe        MediaForge-0.0.16-windows-x64-cuda-setup.exe     63.1 MB
 portable.zip     MediaForge-0.0.16-windows-x64-portable.zip     120.1 MB
 update.zip       MediaForge-0.0.16-windows-x64-update.zip        98.5 MB（已签名）
-运行时包         runtime-cuda-2026.10.1.zip                  3483253620 字节
+运行时包         runtime-cuda-2026.10.2.zip                  3616417066 字节
                  sha256 c1f0b3baf5db864955917b9432832dc7391bf1f5bbafae9e6f80bad2a3e452ac
 
 双源复核（匿名 HEAD）
