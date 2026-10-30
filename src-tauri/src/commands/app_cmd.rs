@@ -3470,24 +3470,6 @@ pub struct TrashResult {
     pub failed: Vec<String>,
 }
 
-#[tauri::command]
-pub async fn start_runtime_core_update(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    payload: Value,
-) -> AppResult<Value> {
-    let task_id = payload
-        .get("taskId")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("runtime_core_update_{}", chrono_like_timestamp()));
-    let mut payload = payload;
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("taskId".to_string(), Value::String(task_id.clone()));
-    }
-    spawn_worker_background(app, state, "update_runtime_core", task_id.clone(), payload)?;
-    Ok(serde_json::json!({ "taskId": task_id, "started": true }))
-}
 
 fn is_ignored_empty_dir_file(path: &Path) -> bool {
     path.file_name()
