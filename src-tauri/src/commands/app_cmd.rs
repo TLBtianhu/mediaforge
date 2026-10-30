@@ -283,10 +283,6 @@ pub async fn get_model_info(app: AppHandle, payload: Value) -> AppResult<Value> 
     run_worker_with_payload(&app, "model_info", Some(payload))
 }
 
-#[tauri::command]
-pub async fn delete_model(app: AppHandle, payload: Value) -> AppResult<Value> {
-    run_worker_with_payload(&app, "delete_model", Some(payload))
-}
 
 #[tauri::command]
 pub async fn inspect_custom_model(app: AppHandle, payload: Value) -> AppResult<Value> {
@@ -1896,10 +1892,6 @@ pub async fn delete_orphaned_editor_projects(
     Ok(remove_editor_project_dirs(&root, &project_ids, &task_ids))
 }
 
-#[tauri::command]
-pub async fn scan_editor_assets(paths: Vec<String>) -> AppResult<ScanAudioPathsResult> {
-    scan_audio_paths(paths).await
-}
 
 #[tauri::command]
 pub async fn import_editor_assets(
@@ -2258,11 +2250,6 @@ fn prepare_editor_export_payload(app: &AppHandle, mut payload: Value) -> AppResu
     Ok(payload)
 }
 
-#[tauri::command]
-pub async fn export_editor_mix(app: AppHandle, payload: Value) -> AppResult<Value> {
-    let payload = prepare_editor_export_payload(&app, payload)?;
-    run_worker_with_payload(&app, "export_editor_mix", Some(payload))
-}
 
 #[tauri::command]
 pub async fn start_editor_mix_export(
@@ -3264,10 +3251,6 @@ pub async fn scan_media_paths(paths: Vec<String>) -> AppResult<ScanAudioPathsRes
     Ok(ScanAudioPathsResult { files, warnings })
 }
 
-#[tauri::command]
-pub async fn list_audio_files(path: String) -> AppResult<Vec<String>> {
-    Ok(scan_audio_paths(vec![path]).await?.files)
-}
 
 fn resolve_reveal_path(app: &AppHandle, path: &str) -> AppResult<PathBuf> {
     let target = PathBuf::from(path);

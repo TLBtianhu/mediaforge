@@ -110,6 +110,25 @@ def registered_commands() -> set[str]:
     return names
 
 
+
+def frontend_name_mentions(names: set[str]) -> dict[str, str]:
+    """命令名可能在某个常量或映射表里出现，再被动态 invoke 传出去。
+
+    只认"引号包住的完整名字"，避免把前缀相同的标识符误判成引用。
+    """
+    found: dict[str, str] = {}
+    for path in (ROOT / "src").rglob("*"):
+        if path.suffix not in {".ts", ".vue"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for name in names:
+            if name in found:
+                continue
+            index = text.find(name)
+            if index >= 0:
+                found[name] = f"{path.name}:{text[:index].count(chr(10)) + 1}"
+    return found
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--strict", action="store_true", help="有差异时返回 1")
@@ -140,7 +159,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"前端调了但没注册 : {len(unregistered)}")
     for name in unregistered[: args.limit]:
         print(f"  {name}  <- {invoked[name]}")
-    print(f"注册了但前端没调 : {len(unused)}（agent/测试/内部可能用到，不一定是问题）")
+    mentioned = frontend_name_mentions(registered)
+    only_mentioned = [name for name in unused if name in mentioned]
+    unreachable = [name for name in unused if name not in mentioned]
+    print(f"注册了但没直接 invoke : {len(unused)}")
+    print(f"  其中在源码里作为字面量出现（动态调用/映射表）: {len(only_mentioned)}")
+    for name in only_mentioned[: args.limit]:
+        print(f"    {name}  <- {mentioned[name]}")
+    print(f"  全仓库找不到任何引用（疑似不可达）: {len(unreachable)}")
+    for name in unreachable[: args.limit]:
+        print(f"    {name}")
     if missing:
         print("结论：存在'调用了却不存在的命令'，调用时会返回 UNKNOWN_COMMAND")
     elif orphan:
