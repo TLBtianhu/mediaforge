@@ -536,10 +536,9 @@
       "description": "单目深度估计，输出归一化的灰度深度图（近白远黑）。",
       "url": "https://hf-mirror.com/depth-anything/Depth-Anything-V2-Small-hf",
       "implemented": true,
-      "status": "planned",
+      "status": "available",
       "video_mode": "frame",
-      "params": {},
-      "blockedReason": "模型与代码已就绪：hf-mirror 上 96 MB safetensors，transformers 5.22.1 能加载并在 0.8 秒内出深度图；但通过 worker（audio_tools → media_image mode=depth）调用时报 No module named 'transformers'，而同一解释器直接 import 正常。说明 worker 进程的 sys.path/环境与交互式解释器不同，需要先定位这一点才能标可用。"
+      "params": {}
     }
   ]
 }
