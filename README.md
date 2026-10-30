@@ -7,16 +7,21 @@
 | 国内（推荐，免登录） | https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist | 单连接约 1 MB/s，可用下载器加速 |
 | GitHub Releases | https://github.com/TLBtianhu/mediaforge/releases | 需要能访问 GitHub |
 
-- 安装包：`MediaForge-<版本>-windows-x64-cuda-setup.exe`（约 1.85 GB）
-- 便携版：`MediaForge-<版本>-windows-x64-portable.zip`（约 3.3 GB，解压即用，无需管理员）
+- 安装包：`MediaForge-<版本>-windows-x64-cuda-setup.exe`（约 63 MB）
+- 便携版：`MediaForge-<版本>-windows-x64-portable.zip`（约 120 MB，解压即用，无需管理员）
+
+安装包**不内置运行时**：首次启动会下载约 3.45 GB 的 CUDA 运行包（解压后约 5.6 GB），
+从 hf-mirror 或魔搭任选其一，校验 sha256 后解压。模型权重也不随包，按需下载。
 
 ## 30 秒上手
 
 1. 双击安装包 → SmartScreen 点「更多信息 → 仍要运行」→ 一路下一步（**安装位置固定，不用选**）
-2. 打开应用 → 模型库 → 下载一个模型（例如 Real-ESRGAN 2×，约 64 MB）
+   安装目录是 `%LOCALAPPDATA%\Programs\MediaForge`，不需要管理员权限
+2. 首次启动等运行包下完（右下角卡片有进度），然后到模型库下载一个模型（例如 Real-ESRGAN 2×，约 64 MB）
 3. 图像处理 → 拖入图片 → 选超分和模型 → 开始转换
 
-数据固定放在 `C:\Users\<你>\.mediaforge`，**卸载不会删除模型**；升级就是重新装一遍新安装包，数据原样保留。
+数据固定放在 `C:\Users\<你>\.mediaforge`（运行时、模型、输出都在这里），**卸载不会删除模型**；
+升级就是重新装一遍新安装包，数据原样保留。换掉运行时版本时应用会提示更新，旧包会被替换。
 
 ## 想用 agent 调它？
 
@@ -24,13 +29,13 @@
 如果你是「先装应用、后装 Harness」，补跑一次即可：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\register.ps1"
+powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\register.ps1"
 ```
 
 然后重启 Harness，新对话里说「用 mediaforge 列一下模型」。自检命令：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\verify.ps1"
+powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\verify.ps1"
 ```
 
 ## 当前进度
@@ -41,7 +46,7 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integratio
 - [x] 复用 PyMSS worker 事件协议（`audio_tool_progress` / `audio_tool_result`）
 - [x] Tauri release 构建通过
 - [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
-- [x] 统一模型库：音频 326 + 图像/视频 8，统一检索、状态与下载
+- [x] 统一模型库：音频 + 图像/视频 30 个条目（21 个可用），统一检索、状态与下载
 - [x] 音频模型与图像/视频模型合并为同一目录
 - [x] 侧栏常驻运行状态：任务进度、队列、设备、最近失败
 - [x] 图像超分/去水印：Real-ESRGAN + YOLO + LaMa，支持目标分辨率与前后对比
@@ -97,8 +102,8 @@ python/media_ops/
 
 页面：`#/image`
 
-- 三种模式：仅超分、仅去水印、去水印 + 超分
-- Real-ESRGAN 2× / 4×，或 1080p / 2K / 4K / 自定义目标分辨率
+- 6 个能力：超分、去噪、抠图、深度、检测、插帧（能力与模型都从后端读取）
+- 超分 12 个模型可选（Real-ESRGAN / Real-CUGAN / SwinIR / ESRGAN 社区权重），或 1080p / 2K / 4K / 自定义目标分辨率
 - 适配方式：等比、留黑边、拉伸、裁剪填满
 - YOLO11x 水印检测 + LaMa 修复，阈值/遮罩扩展可调
 - 前后对比滑块、处理信息（输出尺寸、检测框、耗时、设备）
@@ -119,7 +124,7 @@ RealESRGAN_x4plus.pth
 页面：`#/video`
 
 - FFmpeg 抽帧 → 逐帧去水印/超分 → H.264 合帧 + 原音频回封
-- 三种模式：仅超分、仅去水印、去水印 + 超分
+- 逐帧超分（4×）、整段视频插帧（RIFE，2×）、水印修复
 - 固定遮罩（快）/ 逐帧检测（移动水印）
 - 1080p / 2K / 4K / 自定义目标分辨率
 - 支持只处理前 N 秒预览
@@ -132,8 +137,9 @@ RealESRGAN_x4plus.pth
 
 一个页面、一个目录、一个下载通道：
 
-- 音频 326 个模型 + 图像/视频 8 个模型（共 334）
-- 图像/视频：4 个已接入（Real-ESRGAN x2/x4、LaMa、YOLO）+ 4 个目录待接入（RIFE、ProPainter、BasicVSR++、GFPGAN）
+- 音频模型 + 图像/视频 30 个条目：21 个可用、9 个已标注阻塞原因
+- 图像/视频覆盖 6 个能力（超分 12、去噪 2、抠图 1、深度 1、检测 1、插帧 1，另有 LaMa 修复与水印检测）
+- 每个可用模型都写过 SPDX 许可与体积；选型建议见 `docs/model-guide.md`
 - 图像/视频支持自定义流程：按能力添加步骤、每个角色绑定模型
 - 旧“去水印 + 超分”保留为预设，不再是唯一能力
 - 视频 Tab 同时包含 4 个逐帧复用的图像模型和 3 个原生视频模型
@@ -204,7 +210,7 @@ MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Ag
 
 ## 模型下载
 
-图像处理需要约 430MB 权重：
+图像/视频权重按需下载（单个 5 MB – 300 MB 不等）：
 
 ```bash
 python download_models.py
@@ -221,8 +227,8 @@ python download_models.py --proxy http://127.0.0.1:7897
 | 环境 | 启动方式 | 数据 / 缓存 | 用途 |
 | --- | --- | --- | --- |
 | 开发 | `.\scripts\dev.ps1` | `.dev-data/`、`.dev-webview/` | 日常改代码、看实际效果 |
-| 干净包验证 | `.\scripts\clean-test.ps1 -Exe "C:\Program Files\MediaForge\MediaForge.exe"` | 系统临时目录，关闭即删 | 验证“首次启动、无个性化配置”的发布包 |
-| 狗粮 / 长期用户 | `.\scripts\dogfood.ps1 -Exe "C:\Program Files\MediaForge\MediaForge.exe"` | 用户目录 `.mediaforge` + 默认 WebView2 | 模拟真实用户持续使用与跨版本更新 |
+| 干净包验证 | `.\scripts\clean-test.ps1 -Exe "%LOCALAPPDATA%\Programs\MediaForge\MediaForge.exe"` | 系统临时目录，关闭即删 | 验证“首次启动、无个性化配置”的发布包 |
+| 狗粮 / 长期用户 | `.\scripts\dogfood.ps1 -Exe "%LOCALAPPDATA%\Programs\MediaForge\MediaForge.exe"` | 用户目录 `.mediaforge` + 默认 WebView2 | 模拟真实用户持续使用与跨版本更新 |
 
 > `src-tauri/target/release` 会被应用识别为开发构建。干净包验证和狗粮必须指向**安装后的 exe**，不能用 target 下的产物。
 
