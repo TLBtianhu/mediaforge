@@ -17,8 +17,12 @@ SignPath Foundation 给开源项目免费签名：证书和私钥在他们的 HS
 vars.SIGNPATH_ORGANIZATION_ID      SignPath 组织 ID（UUID）
 vars.SIGNPATH_PROJECT_SLUG         项目 slug，例如 mediaforge
 vars.SIGNPATH_SIGNING_POLICY_SLUG  签名策略 slug，例如 release-signing
+vars.SIGNPATH_CONNECTOR_URL        Pipeline Connector 的 GitHub Actions endpoint（官方 action 必填）
 secrets.SIGNPATH_API_TOKEN         在 SignPath 网页生成的 API token
 ```
+
+`SIGNPATH_CONNECTOR_URL` 容易漏：SignPath 的 action 把它列为必填输入，但要在
+SignPath 项目里**先创建一个 GitHub Actions connector** 才会给出这个地址。
 
 **没有配置时不会失败**：安装包照常构建，只是没有签名（日志里不会有签名步骤）。
 

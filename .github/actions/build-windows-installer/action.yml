@@ -96,6 +96,9 @@ runs:
       if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
       uses: signpath/github-action-submit-signing-request@v2
       with:
+        # connector-url 是 SignPath 官方 action 的必填输入（Pipeline Connector 的
+        # GitHub Actions endpoint），在 SignPath 项目里创建连接器后才有这个地址。
+        connector-url: ${{ vars.SIGNPATH_CONNECTOR_URL }}
         api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
         organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
         project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}

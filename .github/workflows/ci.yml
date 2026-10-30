@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # 允许手动跑一次完整 CI：fork 转公开后首次验证、或排查只在 CI 上出现的问题时用
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
