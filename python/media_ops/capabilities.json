@@ -25,7 +25,8 @@
         "media:real-esrgan-anime-x4",
         "media:real-cugan-x2",
         "media:esrgan-ultrasharp-x4",
-        "media:esrgan-remacri-x4"
+        "media:esrgan-remacri-x4",
+        "media:esrgan-superscale-sp-x4"
       ],
       "params": {
         "target": {

@@ -649,6 +649,38 @@
       "status": "available",
       "video_mode": "frame",
       "params": {}
+    },
+    {
+      "id": "esrgan-superscale-sp-x4",
+      "name": "4x_NMKD-Superscale-SP_178000_G.pth",
+      "label": "4x NMKD Superscale SP",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 66958607,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "4× 超分，风格偏柔和自然，适合人像与风景。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-Superscale-SP_178000_G.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     }
   ]
 }
