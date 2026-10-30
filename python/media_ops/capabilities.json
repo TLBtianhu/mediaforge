@@ -204,7 +204,8 @@
         }
       },
       "modelIds": [
-        "media:scunet-color-real"
+        "media:scunet-color-real",
+        "media:esrgan-1x-denoise-realplksr"
       ],
       "params": {}
     },

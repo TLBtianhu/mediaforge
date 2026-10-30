@@ -72,7 +72,13 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 elif step["capability"] == "upscale":
                     step["params"].update({"scale": scale, "target": target, "fit": fit})
                 elif step["capability"] == "denoise":
+                    # 允许指定替代去噪模型；不指定就用能力的默认绑定。
+                    # 图像独有能力（去噪/深度/抠图/检测）走不了 video_step 的 steps 路由，
+                    # 所以模型选择必须在这里透传。
+                    override = str(payload.get("denoiserModelId") or "").strip()
                     step["params"].update({})
+                    if override:
+                        step["bindings"] = {"denoiser": override}
         if len(steps) != 1:
             return emit_error(
                 "MEDIA_ONE_MODEL_PER_TASK",

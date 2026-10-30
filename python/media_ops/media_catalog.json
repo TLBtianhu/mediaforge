@@ -624,6 +624,31 @@
           "maximum": 4
         }
       }
+    },
+    {
+      "id": "esrgan-1x-denoise-realplksr",
+      "name": "1xDeNoise_realplksr_otf.pth",
+      "label": "1x DeNoise (realplksr otf)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "denoise",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "denoise"
+      ],
+      "roles": [
+        "denoiser"
+      ],
+      "size": 29559554,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "1× 去噪（不改变尺寸），适合轻噪点与压缩伪影。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/1xDeNoise_realplksr_otf.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {}
     }
   ]
 }
