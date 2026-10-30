@@ -206,7 +206,7 @@ fn bundled_runtime_envs_from(resource: Option<&Path>, exe_dir: &Path) -> Option<
 }
 
 pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    if let Some(value) = std::env::var_os("PYMSS_STUDIO_RUNTIME_ENVS_DIR") {
+    if let Some(value) = std::env::var_os("MEDIAFORGE_RUNTIME_ENVS_DIR") {
         if !value.is_empty() {
             return Ok(PathBuf::from(value));
         }

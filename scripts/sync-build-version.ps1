@@ -1,12 +1,12 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$Version = $env:PYMSS_VERSION
+  [string]$Version = $env:MEDIAFORGE_VERSION
 )
 
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  throw "PYMSS_VERSION is empty. Provide -Version or set the PYMSS_VERSION environment variable."
+  throw "MEDIAFORGE_VERSION is empty. Provide -Version or set the MEDIAFORGE_VERSION environment variable."
 }
 
 $NormalizedVersion = $Version.Trim()

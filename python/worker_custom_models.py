@@ -327,7 +327,7 @@ def managed_root(model_dir: str | None = None) -> Path:
     lived somewhere else.
 
     2026-10-29: 根目录的解析交给 `worker_paths.model_root()` —— 之前这里只认
-    `PYMSS_MODEL_DIR`，于是"只设了 MEDIAFORGE_MODEL_DIR"时，自定义模型会落到
+    `MEDIAFORGE_MODEL_DIR`，于是"只设了 MEDIAFORGE_MODEL_DIR"时，自定义模型会落到
     `~/.cache/pymss/models/custom`，在模型库里看不见。
     """
     return worker_paths.model_root(model_dir) / "custom"

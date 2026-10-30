@@ -19,7 +19,7 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.os }}
     env:
-      PYMSS_VERSION: ${{ inputs.version }}
+      MEDIAFORGE_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,9 +27,9 @@ jobs:
 
       - name: Sync build version metadata
         run: |
-          VERSION="${PYMSS_VERSION#v}"
+          VERSION="${MEDIAFORGE_VERSION#v}"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?(\+[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
-            echo "Invalid semantic version: $PYMSS_VERSION" >&2
+            echo "Invalid semantic version: $MEDIAFORGE_VERSION" >&2
             exit 1
           fi
           python3 - "$VERSION" <<'PY'
@@ -263,7 +263,7 @@ jobs:
 
       - name: Build managed macOS update archive from final signed app
         run: |
-          VERSION="${PYMSS_VERSION#v}"
+          VERSION="${MEDIAFORGE_VERSION#v}"
           APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
           codesign --verify --deep --strict "$APP"
           python3 scripts/build-macos-update.py "$APP" "release/MediaForge-${VERSION}-macos-arm64-update.app.tar.gz"
@@ -275,7 +275,7 @@ jobs:
 
       - name: Build DMG with hdiutil
         run: |
-          VERSION="${PYMSS_VERSION#v}"
+          VERSION="${MEDIAFORGE_VERSION#v}"
           mkdir -p release
           APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
           if [ -z "$APP" ]; then
@@ -292,12 +292,12 @@ jobs:
             -format UDZO \
             "release/MediaForge-${VERSION}-macos-${{ matrix.arch }}-mlx.dmg"
           rm -rf "$STAGE"
-          echo "PYMSS_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "MEDIAFORGE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MediaForge-${{ env.PYMSS_VERSION }}-macos-${{ matrix.arch }}-mlx
+          name: MediaForge-${{ env.MEDIAFORGE_VERSION }}-macos-${{ matrix.arch }}-mlx
           path: |
             release/*.dmg
             release/*-macos-arm64-update.app.tar.gz*

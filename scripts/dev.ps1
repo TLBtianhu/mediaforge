@@ -23,7 +23,7 @@ $env:MEDIAFORGE_DATA_ROOT = $dataRoot
 $env:MEDIAFORGE_DATA_DIR = $dataRoot
 $env:MEDIAFORGE_MODEL_DIR = Join-Path $dataRoot "models"
 $env:WEBVIEW2_USER_DATA_FOLDER = $webViewRoot
-$env:PYMSS_STUDIO_RUNTIME_ENVS_DIR = $runtimeEnvs
+$env:MEDIAFORGE_RUNTIME_ENVS_DIR = $runtimeEnvs
 
 Write-Host "MediaForge dev profile"
 Write-Host "  data:     $dataRoot"

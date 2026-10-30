@@ -497,7 +497,7 @@ def _select_device() -> str:
 def _configure_model_cache(payload: dict[str, Any]) -> Path | None:
     model_root = str(payload.get("modelDir") or "").strip()
     if not model_root:
-        model_root = os.environ.get("PYMSS_MODEL_DIR", "").strip()
+        model_root = os.environ.get("MEDIAFORGE_MODEL_DIR", "").strip()
     if not model_root:
         return None
 

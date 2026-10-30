@@ -37,8 +37,8 @@ def _default_runtime_envs_dir() -> Path:
     return executable.parent / "runtime-envs"
 
 
-RUNTIME_ENVS_DIR = Path(os.environ.get("PYMSS_STUDIO_RUNTIME_ENVS_DIR") or _default_runtime_envs_dir())
-ACTIVE_RUNTIME_FILE = Path(os.environ.get("PYMSS_STUDIO_ACTIVE_RUNTIME_FILE") or RUNTIME_ENVS_DIR / "active-runtime.json")
+RUNTIME_ENVS_DIR = Path(os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR") or _default_runtime_envs_dir())
+ACTIVE_RUNTIME_FILE = Path(os.environ.get("MEDIAFORGE_ACTIVE_RUNTIME_FILE") or RUNTIME_ENVS_DIR / "active-runtime.json")
 BUNDLED_RUNTIME_ENVS_DIR = Path(os.environ["PYMSS_STUDIO_BUNDLED_RUNTIME_ENVS_DIR"]) if os.environ.get("PYMSS_STUDIO_BUNDLED_RUNTIME_ENVS_DIR") else None
 ALLOW_DEBUG_RUNTIME_OVERRIDE = os.environ.get("PYMSS_STUDIO_ALLOW_DEBUG_RUNTIME_OVERRIDE") == "1"
 

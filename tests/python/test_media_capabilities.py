@@ -70,7 +70,7 @@ class ModelDirResolutionTests(unittest.TestCase):
 
     ENV_KEYS = (
         "MEDIAFORGE_MODEL_DIR",
-        "PYMSS_MODEL_DIR",
+        "MEDIAFORGE_MODEL_DIR",
         "MEDIAFORGE_DATA_DIR",
         "MEDIAFORGE_DATA_ROOT",
     )
@@ -91,7 +91,7 @@ class ModelDirResolutionTests(unittest.TestCase):
     def test_follows_the_data_root_env(self) -> None:
         with mock.patch.dict(os.environ, {"MEDIAFORGE_DATA_ROOT": r"C:\tmp\mf-data"}):
             os.environ.pop("MEDIAFORGE_MODEL_DIR", None)
-            os.environ.pop("PYMSS_MODEL_DIR", None)
+            os.environ.pop("MEDIAFORGE_MODEL_DIR", None)
             self.assertEqual(capabilities.model_dir(), Path(r"C:\tmp\mf-data") / "models")
 
     def test_explicit_model_dir_wins_over_data_root(self) -> None:

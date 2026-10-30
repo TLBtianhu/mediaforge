@@ -2,9 +2,9 @@
 
 2026-10-29 之前，「模型放在哪」有五个入口各算一遍：
 
-    model_hub.model_dir()                    MEDIAFORGE_MODEL_DIR → PYMSS_MODEL_DIR → DATA_ROOT/models → ~/.mediaforge/models
+    model_hub.model_dir()                    MEDIAFORGE_MODEL_DIR → MEDIAFORGE_MODEL_DIR → DATA_ROOT/models → ~/.mediaforge/models
     media_ops.capabilities.model_dir()       同上，但兜底是仓库根 <repo>/models（打包后=安装目录，只读）
-    worker_custom_models.managed_root()      只认 PYMSS_MODEL_DIR → ~/.cache/pymss/models
+    worker_custom_models.managed_root()      只认 MEDIAFORGE_MODEL_DIR → ~/.cache/pymss/models
     worker_models._default_model_dir()       复制了 pymss 自己的兜底（含仓库 all_models）
     agent_bridge                             每次把绝对路径塞进 payload
 
@@ -45,7 +45,7 @@ except ImportError as exc:  # pragma: no cover - 取决于解释器里装了什�
 
 ENV_KEYS = (
     "MEDIAFORGE_MODEL_DIR",
-    "PYMSS_MODEL_DIR",
+    "MEDIAFORGE_MODEL_DIR",
     "MEDIAFORGE_DATA_DIR",
     "MEDIAFORGE_DATA_ROOT",
 )
@@ -91,7 +91,7 @@ class ModelRootConsistencyTests(unittest.TestCase):
     def test_pymss_model_dir_is_honoured_when_it_is_the_only_hint(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             override = Path(raw) / "pymss-weights"
-            with mock.patch.dict(os.environ, env_without_overrides(PYMSS_MODEL_DIR=str(override)), clear=True):
+            with mock.patch.dict(os.environ, env_without_overrides(MEDIAFORGE_MODEL_DIR=str(override)), clear=True):
                 roots = self.roots()
         self.assert_all_equal(roots, override)
 

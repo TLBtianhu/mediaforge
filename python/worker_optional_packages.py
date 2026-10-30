@@ -82,7 +82,7 @@ class RuntimeContext:
 
 
 def _runtime_envs_dir() -> Path:
-    configured = str(os.environ.get("PYMSS_STUDIO_RUNTIME_ENVS_DIR") or "").strip()
+    configured = str(os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR") or "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
     if sys.platform == "darwin":
@@ -104,7 +104,7 @@ def _runtime_identity(*, backend: str | None = None, executable: Path | None = N
 
 
 def _active_runtime_backend() -> str:
-    active_file = str(os.environ.get("PYMSS_STUDIO_ACTIVE_RUNTIME_FILE") or "").strip()
+    active_file = str(os.environ.get("MEDIAFORGE_ACTIVE_RUNTIME_FILE") or "").strip()
     candidates = [Path(active_file)] if active_file else []
     bundled = str(os.environ.get("PYMSS_STUDIO_BUNDLED_RUNTIME_ENVS_DIR") or "").strip()
     if bundled:

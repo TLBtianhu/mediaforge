@@ -45,7 +45,7 @@ runs:
         }
         & $iscc --version
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup compiler version check failed" }
-        "PYMSS_ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "MEDIAFORGE_ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
     - name: Download staged package
       uses: actions/download-artifact@v4
       with:
@@ -54,8 +54,8 @@ runs:
     - name: Build Inno Setup installer with LZMA2
       shell: pwsh
       env:
-        PYMSS_VERSION: ${{ inputs.version }}
-        PYMSS_PACKAGE_SUFFIX: ${{ inputs.package-suffix }}
+        MEDIAFORGE_VERSION: ${{ inputs.version }}
+        MEDIAFORGE_PACKAGE_SUFFIX: ${{ inputs.package-suffix }}
       run: |
         $stageFull = (Resolve-Path "release/${{ inputs.stage-name }}").Path
         $releaseFull = (Resolve-Path "release").Path
@@ -63,9 +63,9 @@ runs:
         subst $drive $stageFull
         if ($LASTEXITCODE -ne 0) { throw "Unable to map $stageFull to $drive" }
         try {
-          $env:PYMSS_PORTABLE_DIR = $drive
-          $env:PYMSS_INSTALLER_OUTPUT = $releaseFull
-          & $env:PYMSS_ISCC "installer\pymss-studio.iss"
+          $env:MEDIAFORGE_PORTABLE_DIR = $drive
+          $env:MEDIAFORGE_INSTALLER_OUTPUT = $releaseFull
+          & $env:MEDIAFORGE_ISCC "installer\mediaforge.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
         } finally {
           subst $drive /D | Out-Null

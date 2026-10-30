@@ -1557,7 +1557,7 @@ export const useModelStore = defineStore('model', () => {
     }
     try {
       // The configured model directory travels with the request: copies must land beside the
-      // catalog models, and the worker's PYMSS_MODEL_DIR only ever holds the default location.
+      // catalog models, and the worker's MEDIAFORGE_MODEL_DIR only ever holds the default location.
       await invoke('start_custom_model_import', {
         payload: { ...request, taskId, modelDir: settings.modelDir || null },
       })

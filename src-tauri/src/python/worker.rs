@@ -669,18 +669,6 @@ fn active_debug_override_path_allowed(
     record.debug_override && active_path_backend_matches(file, python_path)
 }
 
-fn is_user_runtime_python_path(app: &AppHandle, path: &str) -> AppResult<bool> {
-    let runtime_envs = storage::runtime_envs_dir(app)?;
-    let runtime_root = runtime_envs.canonicalize().unwrap_or(runtime_envs);
-    let python_path = PathBuf::from(&path);
-    let env_dir = python_path
-        .parent()
-        .and_then(Path::parent)
-        .map(Path::to_path_buf);
-    Ok(env_dir
-        .and_then(|path| path.canonicalize().ok())
-        .is_some_and(|path| path.starts_with(&runtime_root)))
-}
 
 pub(crate) fn bundled_bin_dirs(app: &AppHandle) -> AppResult<Vec<PathBuf>> {
     let resource = app.path().resource_dir().ok();
@@ -906,13 +894,13 @@ fn build_worker_command(
         .env_remove("PYMSS_STUDIO_TERMINAL_LOG");
     if let Ok(dir) = storage::runtime_envs_dir(app) {
         cmd.env(
-            "PYMSS_STUDIO_RUNTIME_ENVS_DIR",
+            "MEDIAFORGE_RUNTIME_ENVS_DIR",
             dir.to_string_lossy().to_string(),
         );
     }
     if let Ok(file) = storage::active_runtime_file(app) {
         cmd.env(
-            "PYMSS_STUDIO_ACTIVE_RUNTIME_FILE",
+            "MEDIAFORGE_ACTIVE_RUNTIME_FILE",
             file.to_string_lossy().to_string(),
         );
     }
@@ -952,7 +940,7 @@ fn build_worker_command(
         );
     }
     if let Ok(models_dir) = storage::models_dir(app) {
-        cmd.env("PYMSS_MODEL_DIR", models_dir.to_string_lossy().to_string());
+        cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
         cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
     }
     if let Ok(data_root) = storage::data_root_dir(app) {

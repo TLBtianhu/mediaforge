@@ -17,7 +17,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +27,8 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
           $stageName = "MediaForge-$version-windows-x64-cuda"
           $artifactName = "$stageName-stage"
           echo "version=$version" >> $env:GITHUB_OUTPUT
@@ -42,7 +42,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
 
       - name: Build Tauri production app
@@ -121,8 +121,8 @@ jobs:
           NVIDIA driver is required for GPU acceleration.
           Users can switch backends or install additional environments in Settings.
           "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:PYMSS_STUDIO_ACTIVE_RUNTIME_FILE = (Join-Path $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR "active-runtime.json")
+          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
+          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
           $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
           if (!(Test-Path $activeStatePath)) { throw "Staged CUDA active runtime state is missing" }
           $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
@@ -199,8 +199,8 @@ jobs:
     runs-on: windows-latest
     needs: windows-cuda-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-cuda-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-cuda
+      MEDIAFORGE_VERSION: ${{ needs.windows-cuda-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-cuda
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build-windows-installer
@@ -220,7 +220,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -230,8 +230,8 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
           $stageName = "MediaForge-$version-windows-x64-cpu"
           $artifactName = "$stageName-stage"
           echo "version=$version" >> $env:GITHUB_OUTPUT
@@ -245,7 +245,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
 
       - name: Build Tauri production app
@@ -324,8 +324,8 @@ jobs:
           It is intended for users without NVIDIA CUDA GPUs.
           Users can switch backends or install additional environments in Settings.
           "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:PYMSS_STUDIO_ACTIVE_RUNTIME_FILE = (Join-Path $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR "active-runtime.json")
+          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
+          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
           $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
           if (!(Test-Path $activeStatePath)) { throw "Staged CPU active runtime state is missing" }
           $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
@@ -391,8 +391,8 @@ jobs:
     runs-on: windows-latest
     needs: windows-cpu-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-cpu-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-cpu
+      MEDIAFORGE_VERSION: ${{ needs.windows-cpu-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-cpu
     steps:
       - uses: actions/checkout@v4
 
@@ -414,7 +414,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-release-env
@@ -422,8 +422,8 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
           $stageName = "MediaForge-$version-windows-x64-online"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
@@ -434,7 +434,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
       - name: Build Tauri production app
         env:
@@ -555,8 +555,8 @@ jobs:
     runs-on: windows-latest
     needs: windows-online-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-online-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-online
+      MEDIAFORGE_VERSION: ${{ needs.windows-online-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-online
     steps:
       - uses: actions/checkout@v4
 
@@ -577,7 +577,7 @@ jobs:
       stage_name: ${{ steps.meta.outputs.stage_name }}
       stage_artifact: ${{ steps.meta.outputs.stage_artifact }}
     env:
-      PYMSS_VERSION_INPUT: ${{ inputs.version }}
+      MEDIAFORGE_VERSION_INPUT: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-release-env
@@ -585,8 +585,8 @@ jobs:
         id: meta
         shell: pwsh
         run: |
-          $version = $env:PYMSS_VERSION_INPUT.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:PYMSS_VERSION_INPUT" }
+          $version = $env:MEDIAFORGE_VERSION_INPUT.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$') { throw "Invalid semantic version: $env:MEDIAFORGE_VERSION_INPUT" }
           $stageName = "MediaForge-$version-windows-x64-rocm"
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
@@ -597,7 +597,7 @@ jobs:
       - name: Sync build version metadata
         shell: pwsh
         env:
-          PYMSS_VERSION: ${{ steps.meta.outputs.version }}
+          MEDIAFORGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./scripts/sync-build-version.ps1
       - name: Build Tauri production app
         env:
@@ -663,8 +663,8 @@ jobs:
           Requires Windows 11, a supported AMD GPU, and the matching AMD driver.
           Users can switch backends or install additional environments in Settings.
           "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:PYMSS_STUDIO_ACTIVE_RUNTIME_FILE = (Join-Path $env:PYMSS_STUDIO_RUNTIME_ENVS_DIR "active-runtime.json")
+          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
+          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
           $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
           if (!(Test-Path $activeStatePath)) { throw "Staged ROCm active runtime state is missing" }
           $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
@@ -723,8 +723,8 @@ jobs:
     runs-on: windows-latest
     needs: windows-rocm-prepare
     env:
-      PYMSS_VERSION: ${{ needs.windows-rocm-prepare.outputs.version }}
-      PYMSS_PACKAGE_SUFFIX: windows-x64-rocm
+      MEDIAFORGE_VERSION: ${{ needs.windows-rocm-prepare.outputs.version }}
+      MEDIAFORGE_PACKAGE_SUFFIX: windows-x64-rocm
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build-windows-installer

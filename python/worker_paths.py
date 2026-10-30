@@ -17,7 +17,7 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
 
     1. ``override`` —— payload 里的 ``modelDir`` / 调用方显式参数
     2. ``MEDIAFORGE_MODEL_DIR``
-    3. ``PYMSS_MODEL_DIR``
+    3. ``MEDIAFORGE_MODEL_DIR``
     4. ``data_root`` 参数 / ``MEDIAFORGE_DATA_DIR`` / ``MEDIAFORGE_DATA_ROOT`` 下的 ``models``
     5. ``~/.mediaforge/models`` —— 打包版的默认值
 
@@ -36,7 +36,7 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
     if explicit:
         return Path(explicit).expanduser()
 
-    for key in ("MEDIAFORGE_MODEL_DIR", "PYMSS_MODEL_DIR"):
+    for key in ("MEDIAFORGE_MODEL_DIR", "MEDIAFORGE_MODEL_DIR"):
         value = str(os.environ.get(key) or "").strip()
         if value:
             return Path(value).expanduser()
@@ -52,7 +52,7 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
 def export_model_root(model_dir: Any) -> None:
     """把 payload 里的 `modelDir` 固化成进程环境变量（三个 media worker 共用）。
 
-    为什么**两个都写**：`model_root()` 认 `MEDIAFORGE_MODEL_DIR` / `PYMSS_MODEL_DIR`，
+    为什么**两个都写**：`model_root()` 认 `MEDIAFORGE_MODEL_DIR` / `MEDIAFORGE_MODEL_DIR`，
     而 pymss 自己的 `DEFAULT_MODEL_DIR` 是在**导入时**求值的——只写前者的话，
     之后才 import pymss 的代码仍然会落到 `~/.cache/pymss/models`。
     两边都写，才能保证"同一份模型根"这句话在整个进程里成立。
@@ -64,7 +64,7 @@ def export_model_root(model_dir: Any) -> None:
     if not text:
         return
     os.environ["MEDIAFORGE_MODEL_DIR"] = text
-    os.environ["PYMSS_MODEL_DIR"] = text
+    os.environ["MEDIAFORGE_MODEL_DIR"] = text
 
 
 def normalize_output_dir(value: Any) -> str:

@@ -34,16 +34,12 @@ New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 $launcher = Join-Path $binDir 'mediaforge-mcp.cmd'
 Copy-Item -LiteralPath $template -Destination $launcher -Force
 
-# 2) 指针文件：一行路径，启动器优先读它
-$homeFile = Join-Path $stateDir 'home.txt'
-[System.IO.File]::WriteAllText($homeFile, $root + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
 
 # 3) 注册表兜底（用户级，不需要管理员）
 New-Item -Path 'HKCU:\Software\MediaForge' -Force | Out-Null
 New-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name 'InstallDir' -Value $root -PropertyType String -Force | Out-Null
 
 Write-Host "launcher : $launcher"
-Write-Host "home.txt : $homeFile  -> $root"
 Write-Host "registry : HKCU\Software\MediaForge\InstallDir = $root"
 Write-Host ""
 Write-Host "next: install this bundle in DSH (plugin_manager install_bundle -> $PSScriptRoot)"

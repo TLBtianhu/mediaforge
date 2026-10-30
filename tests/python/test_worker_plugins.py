@@ -28,8 +28,8 @@ class PluginMarketplaceTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.work = Path(self.temp.name)
         self.environment = mock.patch.dict(os.environ, {
-            "PYMSS_STUDIO_RUNTIME_ENVS_DIR": str(self.work / "runtimes"),
-            "PYMSS_STUDIO_ACTIVE_RUNTIME_FILE": str(self.work / "active.json"),
+            "MEDIAFORGE_RUNTIME_ENVS_DIR": str(self.work / "runtimes"),
+            "MEDIAFORGE_ACTIVE_RUNTIME_FILE": str(self.work / "active.json"),
             "PYMSS_PLUGINS_DIR": str(self.work / "manual"),
         })
         self.environment.start()

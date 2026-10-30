@@ -331,7 +331,7 @@ class ImportPipelineTests(unittest.TestCase):
     def _run(self, payload, register_error=None, verify_error=None):
         verify = mock.Mock(side_effect=verify_error) if verify_error else mock.Mock()
         # Patched by the name the import pipeline actually calls.
-        env = {"PYMSS_MODEL_DIR": str(self.models_dir), "PYMSS_STUDIO_CUSTOM_MODEL_META": str(self.sidecar)}
+        env = {"MEDIAFORGE_MODEL_DIR": str(self.models_dir), "PYMSS_STUDIO_CUSTOM_MODEL_META": str(self.sidecar)}
         with mock.patch.dict(os_environ_target, env, clear=False), \
              mock.patch.dict("sys.modules", {
                  "pymss": mock.Mock(),
@@ -389,7 +389,7 @@ class ImportPipelineTests(unittest.TestCase):
 
     def test_no_partial_file_survives_a_failed_copy(self):
         # A half-written checkpoint would later load as corrupt, so it must not be left behind.
-        with mock.patch.dict(os_environ_target, {"PYMSS_MODEL_DIR": str(self.models_dir)}, clear=False), \
+        with mock.patch.dict(os_environ_target, {"MEDIAFORGE_MODEL_DIR": str(self.models_dir)}, clear=False), \
              mock.patch.dict("sys.modules", {"pymss": mock.Mock(), "pymss.model_registry": self._registry()}), \
              mock.patch.object(Path, "replace", side_effect=OSError("disk full")), \
              redirect_stdout(self.stdout):
@@ -518,7 +518,7 @@ class ImportPipelineTests(unittest.TestCase):
             order.append("register")
             return FakeRegisteredEntry(name, model_type, model_path, kwargs.get("config_path"))
 
-        with mock.patch.dict(os_environ_target, {"PYMSS_MODEL_DIR": str(self.models_dir)}, clear=False),              mock.patch.dict("sys.modules", {
+        with mock.patch.dict(os_environ_target, {"MEDIAFORGE_MODEL_DIR": str(self.models_dir)}, clear=False),              mock.patch.dict("sys.modules", {
                  "pymss": mock.Mock(),
                  "pymss.model_registry": mock.Mock(register_model=register_model),
              }),              mock.patch.object(ccm, "_verify_model_loads", verify),              redirect_stdout(self.stdout):
@@ -622,7 +622,7 @@ class UnregisterTests(unittest.TestCase):
             self.unregistered.append(name)
             return FakeRegisteredEntry(name, "mel_band_roformer", "")
 
-        with mock.patch.dict(os_environ_target, {"PYMSS_STUDIO_CUSTOM_MODEL_META": str(self.sidecar), "PYMSS_MODEL_DIR": str(self.root)}, clear=False), \
+        with mock.patch.dict(os_environ_target, {"PYMSS_STUDIO_CUSTOM_MODEL_META": str(self.sidecar), "MEDIAFORGE_MODEL_DIR": str(self.root)}, clear=False), \
              mock.patch.dict("sys.modules", {
                  "pymss": mock.Mock(),
                  "pymss.model_registry": mock.Mock(unregister_model=unregister_model),
@@ -800,13 +800,13 @@ class ManagedRootTests(unittest.TestCase):
     """Copies must land beside the catalog models, wherever the user put those."""
 
     def test_the_configured_model_directory_wins_over_the_environment(self):
-        # PYMSS_MODEL_DIR always holds the default location; the directory the user actually
+        # MEDIAFORGE_MODEL_DIR always holds the default location; the directory the user actually
         # configured arrives per command, the same way list_models receives it.
-        with mock.patch.dict(os_environ_target, {"PYMSS_MODEL_DIR": r"/default/models"}, clear=False):
+        with mock.patch.dict(os_environ_target, {"MEDIAFORGE_MODEL_DIR": r"/default/models"}, clear=False):
             self.assertEqual(ccm.managed_root("/configured/models"), Path("/configured/models/custom"))
 
     def test_the_environment_is_the_fallback(self):
-        with mock.patch.dict(os_environ_target, {"PYMSS_MODEL_DIR": r"/default/models"}, clear=False):
+        with mock.patch.dict(os_environ_target, {"MEDIAFORGE_MODEL_DIR": r"/default/models"}, clear=False):
             self.assertEqual(ccm.managed_root(None), Path("/default/models/custom"))
 
 
