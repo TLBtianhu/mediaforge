@@ -1,7 +1,7 @@
 //! BPM & key analysis tool, run in-process with the vendored `rba` engine.
 //!
-//! Events mirror the Python audio tool protocol (`audio_tool_progress`,
-//! `audio_tool_result`, `error`, `task_cancelled`) so the frontend runtime
+//! Events follow the canonical task protocol (`task.progress`, `task.result`,
+//! `error`, `task_cancelled`) so the frontend runtime
 //! treats this tool like any other.
 
 use crate::error::{AppError, AppResult};
@@ -102,7 +102,7 @@ fn run(app: &AppHandle, request_id: &str, inputs: &[PathBuf], cancelled: &Atomic
         if cancelled.load(Ordering::SeqCst) {
             return None;
         }
-        emit(app, "audio_tool_progress", request_id, json!({
+        emit(app, "task.progress", request_id, json!({
             "operation": operation, "completed": index, "total": total,
             "current": file_name(path), "phase": if bpm_only { "calculating" } else { "analyzing_tempo_key" },
         }));
@@ -195,7 +195,7 @@ fn start_native_analysis(app: &AppHandle, state: &AppState, payload: Value) -> A
         };
         match result {
             Some(result) if result["succeeded"].as_u64().is_some_and(|count| count > 0) => {
-                emit(&handle, "audio_tool_result", &task_id, result)
+                emit(&handle, "task.result", &task_id, result)
             }
             Some(result) => {
                 let message = result["failed"][0]["message"].as_str().unwrap_or("Analysis failed").to_string();
@@ -231,9 +231,9 @@ mod tests {
     #[test]
     fn native_analysis_envelope_retains_worker_event_contract() {
         let payload = json!({ "operation": "tempo_key", "succeeded": 1, "items": [] });
-        let envelope = native_envelope("audio_tool_result", "analysis-request", payload.clone());
+        let envelope = native_envelope("task.result", "analysis-request", payload.clone());
         let serialized = serde_json::to_value(envelope).unwrap();
-        assert_eq!(serialized["type"], "audio_tool_result");
+        assert_eq!(serialized["type"], "task.result");
         assert_eq!(serialized["requestId"], "analysis-request");
         assert_eq!(serialized["taskId"], "analysis-request");
         assert_eq!(serialized["payload"], payload);
@@ -243,8 +243,8 @@ mod tests {
     #[test]
     fn native_midi_envelope_preserves_operation_and_action() {
         let payload = json!({ "operation": "midi", "action": "detect_bpm", "bpm": 128.0 });
-        let envelope = native_envelope("audio_tool_result", "midi-request", payload.clone());
-        assert_eq!(envelope.event_type, "audio_tool_result");
+        let envelope = native_envelope("task.result", "midi-request", payload.clone());
+        assert_eq!(envelope.event_type, "task.result");
         assert_eq!(envelope.request_id.as_deref(), Some("midi-request"));
         assert_eq!(envelope.task_id.as_deref(), Some("midi-request"));
         assert_eq!(envelope.payload, payload);

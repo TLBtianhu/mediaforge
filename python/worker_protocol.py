@@ -485,8 +485,9 @@ def set_event_sink(sink: Any) -> None:
     _EVENT_SINK = sink
 
 
-# P2 过渡：媒体任务沿用 audio_tool_* 的历史事件名，这里同时发出规范名。
-# 前端改为按域订阅后，旧名只在 P7 之前保留，删除时不需要再动业务代码。
+# 历史事件名 → 规范事件名。P7 起边界处只发出规范名：
+# 调用方（音频工具、媒体 worker、模型库）仍按历史名书写的代码不需要逐个改，
+# 但管道上再也不会同时出现两个名字。
 _CANONICAL_TASK_EVENTS = {
     "audio_tool_progress": "task.progress",
     "audio_tool_result": "task.result",
@@ -542,10 +543,7 @@ def emit(event_type: str, payload: dict[str, Any] | None = None, *, request_id: 
             context=context,
         )
         payload = {**_safe_log_value(payload), **canonical}
-    canonical = _CANONICAL_TASK_EVENTS.get(event_type)
-    if canonical:
-        _write_event(canonical, payload, request_id, task_id)
-    _write_event(event_type, payload, request_id, task_id)
+    _write_event(_CANONICAL_TASK_EVENTS.get(event_type, event_type), payload, request_id, task_id)
 
 def _write_protocol_message(stream: TextIO, message: str) -> None:
     # Writing bytes avoids another Windows TextIOWrapper flush failure for redirected stdout;

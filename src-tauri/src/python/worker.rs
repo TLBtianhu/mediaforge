@@ -1263,7 +1263,7 @@ fn log_worker_event_with_scope(
         .unwrap_or_default();
     let level = if envelope.event_type == "error" || envelope.event_type.ends_with("_failed") {
         "ERROR"
-    } else if envelope.event_type == "audio_tool_result"
+    } else if matches!(envelope.event_type.as_str(), "task.result" | "task.result")
         && envelope.payload.get("failed").and_then(Value::as_array).is_some_and(|items| !items.is_empty()) {
         "WARN"
     } else if envelope.event_type == "workflow_execution" && !execution.ends_with("progress") {
@@ -1379,7 +1379,7 @@ fn is_significant_worker_event(event_type: &str) -> bool {
     ["started", "finished", "done", "failed", "cancelled"]
         .iter()
         .any(|suffix| event_type.ends_with(suffix))
-        || matches!(event_type, "task_start" | "audio_tool_result" | "editor_mix_exported")
+        || matches!(event_type, "task_start" | "task.result" | "task.result" | "editor_mix_exported")
 }
 
 fn worker_lifecycle_level(command: &str) -> &'static str {
@@ -1466,7 +1466,9 @@ fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
         "infer" | "infer_workflow" => {
             matches!(event_type, "error" | "task_done" | "task_cancelled")
         }
-        "audio_tools" => matches!(event_type, "error" | "audio_tool_result" | "task_cancelled"),
+        "audio_tools" | "media_tool" => {
+            matches!(event_type, "error" | "task.result" | "task.result" | "task_cancelled")
+        }
         "run_operation" => {
             matches!(event_type, "error" | "operation_result" | "task_cancelled")
         }
@@ -2791,12 +2793,12 @@ mod tests {
     fn audio_tool_result_is_a_background_terminal_event() {
         assert!(is_background_terminal_event(
             "audio_tools",
-            "audio_tool_result"
+            "task.result"
         ));
         assert!(is_background_terminal_event("audio_tools", "error"));
         assert!(!is_background_terminal_event(
             "audio_tools",
-            "audio_tool_progress"
+            "task.progress"
         ));
     }
 
@@ -3166,7 +3168,7 @@ mod tests {
         assert_eq!(record.context["nodeCount"], 5);
         assert_eq!(record.context["nodeProgress"], 0.25);
         let tool: super::WorkerEnvelope = serde_json::from_value(serde_json::json!({
-            "type": "audio_tool_result", "requestId": "tool-1",
+            "type": "task.result", "requestId": "tool-1",
             "payload": {"operation": "asr", "action": "transcribe", "succeeded": 1,
                 "items": [{"text": "private transcript", "path": "private-input.wav"}],
                 "failed": [{"path": "other-private-input.wav"}], "warnings": ["warning"]}

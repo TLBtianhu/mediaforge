@@ -1,15 +1,14 @@
 /**
  * 任务事件的域级判断。
  *
- * P2 之前，媒体任务复用音频的事件名（`audio_tool_progress` / `audio_tool_result`），
- * 于是每个视图都要自己认这两个字符串。现在后端同时发规范名（`task.progress` /
- * `task.result`），前端统一从这里判断：
+ * 后端在边界处把历史事件名（`audio_tool_*`）统一映射成 `task.progress` /
+ * `task.result`，管道上只有规范名。前端只认规范名：
  *
- *   - 新代码只写 `isTaskProgress(...)`，不再关心事件叫哪个名字；
- *   - P7 删掉历史名时，只需要改这个文件里的两个集合。
+ *   - 新代码只写 `isTaskProgress(...)` / `isTaskResult(...)`；
+ *   - 再加事件类型时改这里的集合，不需要动各个视图。
  */
-const TASK_PROGRESS_TYPES = new Set(['task.progress', 'audio_tool_progress'])
-const TASK_RESULT_TYPES = new Set(['task.result', 'audio_tool_result'])
+const TASK_PROGRESS_TYPES = new Set(['task.progress'])
+const TASK_RESULT_TYPES = new Set(['task.result'])
 
 export function isTaskProgress(type: string | null | undefined): boolean {
   return typeof type === 'string' && TASK_PROGRESS_TYPES.has(type)

@@ -128,7 +128,7 @@ test('a completed task awaiting startup acknowledgement is not cancelled again',
   await flush()
   const cancellation = runtime.cancel()
   const result = { operation: 'tempo_key', items: [], succeeded: 1 }
-  emit('audio_tool_result', result)
+  emit('task.result', result)
   launchGate.resolve()
   assert.equal(await work, result)
   assert.equal(await cancellation, false)
@@ -213,14 +213,14 @@ test('MIDI BPM detection updates tempo and leaves transcription on its Python en
   midi.inputPath.value = 'vocals.wav'
   const detecting = midi.detectBpm()
   await flush()
-  emit('audio_tool_result', { operation: 'midi', action: 'detect_bpm', bpm: 128.2, roundedBpm: 128, succeeded: 1 })
+  emit('task.result', { operation: 'midi', action: 'detect_bpm', bpm: 128.2, roundedBpm: 128, succeeded: 1 })
   await detecting
   assert.equal(midi.bpm.value, 128)
   assert.equal(messages.at(-1).text, '已检测到速度：128 BPM')
   const conversion = runtime.execute('midi', { inputPath: 'vocals.wav', bpm: 128 })
   await flush()
   assert.equal(calls.at(-1).command, 'start_audio_tool')
-  emit('audio_tool_result', { operation: 'midi', bpm: 128, noteCount: 12 })
+  emit('task.result', { operation: 'midi', bpm: 128, noteCount: 12 })
   assert.equal((await conversion).noteCount, 12)
 })
 
@@ -264,7 +264,7 @@ test('a result arriving during cancellation remains a successful result', async 
   const result = { operation: 'tempo_key', items: [], succeeded: 1 }
   const work = runtime.execute('tempo_key', { inputs: ['audio.wav'] })
   await flush()
-  setCancel(async () => { emit('audio_tool_result', result); return false })
+  setCancel(async () => { emit('task.result', result); return false })
   assert.equal(await runtime.cancel(), false)
   assert.equal(await work, result)
   assert.equal(runtime.stateFor('tempo_key').value.error, '')
@@ -280,7 +280,7 @@ test('loudness target deviations keep measurements and produce a localized warni
     warnings: ['loudness_target_not_reached'],
     measurements: [{ path: 'audio_loudness.wav', inputLevel: -12, outputLevel: -12.2, target: -5, unit: 'dB', withinTolerance: false }],
   }
-  emit('audio_tool_result', result)
+  emit('task.result', result)
   assert.equal(await work, result)
   assert.equal(runtime.stateFor('loudness').value.result.measurements[0].outputLevel, -12.2)
   assert.deepEqual(messages, [{ level: 'warning', text: locale.tools.loudnessTargetNotReached }])
@@ -297,7 +297,7 @@ test('true peak limit warnings remain visible when loudness is within tolerance'
     measurements: [{ path: 'square_loudness.mp3', inputLevel: -6.5, outputLevel: -6.3, target: -5, unit: 'dB',
       withinTolerance: true, outputTruePeak: -2.66, maxTruePeak: -3, withinTruePeakLimit: false }],
   }
-  emit('audio_tool_result', result)
+  emit('task.result', result)
   assert.equal(await work, result)
   assert.equal(runtime.stateFor('loudness').value.result.measurements[0].outputTruePeak, -2.66)
   assert.deepEqual(messages, [{ level: 'warning', text: locale.tools.loudnessTruePeakExceeded }])

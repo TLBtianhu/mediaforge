@@ -269,7 +269,7 @@ impl DiagnosticContext {
             } else if record.event == "worker.exit"
                 || matches!(
                     record.event.as_str(),
-                    "audio_tool_result"
+                    "task.result"
                         | "editor_mix_exported"
                         | "task_done"
                         | "task_finished"
@@ -500,7 +500,7 @@ mod tests {
             "worker",
             Some("warn"),
             "worker",
-            "audio_tool_result",
+            "task.result",
             "Some inputs failed",
         );
         result.task_id = Some("tools-1".into());

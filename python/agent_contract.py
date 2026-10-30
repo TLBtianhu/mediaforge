@@ -75,10 +75,9 @@ def _result_event(name: str, command: str, operation: str | None) -> str | None:
     explicit = RESULT_EVENTS.get(name)
     if explicit:
         return explicit
-    # 音频仍经 audio_tools；媒体自 P1 起有了自己的 media_tool 入口，
-    # 但两者终止事件目前都还是历史名（P2 双发 task.result，P7 才改名）。
+    # 音频仍经 audio_tools，媒体经 media_tool；两者都收口到规范终止事件。
     if command in {"audio_tools", "media_tool"}:
-        return "audio_tool_result"
+        return "task.result"
     return None
 
 _WORKER = Path(__file__).with_name("worker.py")
@@ -436,8 +435,7 @@ INTERNAL_COMMANDS: dict[str, str] = {
     "failure_stats": "由 system.failure_stats 覆盖。",
     "list_models": "由 model.list 覆盖。",
     "media_tool": (
-        "P1 契约入口：与 audio_tools + operation=media_* 等价。agent 侧暂时仍走 audio_tools，"
-        "等 P6 由 manifest 生成工具后切换到这里。"
+        "由 media.* 工具覆盖：P6 起工具直接派发到这个入口，不再经过 audio_tools。"
     ),
     "protocol_call": (
         "契约分发入口，内部使用：domain+command 由 manifest/protocol.json 解析后转调现有 handler；"
@@ -471,7 +469,7 @@ INTERNAL_COMMANDS: dict[str, str] = {
     "agent_contract": "由 system.contract 覆盖。",
     "evaluate_media": "由 media.evaluate 覆盖。",
     "media_precheck": "由 media.precheck 覆盖。",
-    "audio_tools": "由 media.* / audio.* 覆盖（同一个命令，多种 operation）。",
+    "audio_tools": "由 audio.* 工具覆盖（媒体不再经过这里）。",
     "media_capabilities": "由契约的 media.* 条目覆盖。",
 }
 

@@ -388,12 +388,12 @@ class OperationKernel:
     def _consume(self, job: Job, event: dict[str, Any]) -> None:
         kind = str(event.get("type") or "")
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        if kind == "audio_tool_progress":
+        if kind == "task.progress":
             job.update(
                 fraction=float(payload.get("fraction") or 0),
                 message=str(payload.get("current") or payload.get("message") or "running"),
             )
-        elif kind in {"audio_tool_result", "media_image_result", "media_video_result"}:
+        elif kind in {"task.result", "media_image_result", "media_video_result"}:
             failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
             if failed:
                 first = failed[0] if isinstance(failed[0], dict) else {"error": str(failed[0])}

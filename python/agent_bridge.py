@@ -159,7 +159,7 @@ class Bridge:
     def probe(self, inputs: list[str]) -> dict[str, Any]:
         if not inputs:
             return {"ok": False, "error": "inputs must contain at least one file"}
-        job = self.jobs.start("audio_tools", {"operation": "media_probe", "inputs": inputs})
+        job = self.jobs.start("media_tool", {"operation": "media_probe", "inputs": inputs})
         return self._wait(job, timeout=55)
 
     def convert(
@@ -238,7 +238,7 @@ class Bridge:
                     "expand": int((watermark or {}).get("params", {}).get("expand") or 8),
                 }
             )
-        job = self.jobs.start("audio_tools", payload)
+        job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
     def workflow_start(
@@ -289,7 +289,7 @@ class Bridge:
             "height": int(options.get("height") or 0),
             "fit": str(options.get("fit") or "contain"),
         }
-        job = self.jobs.start("audio_tools", payload)
+        job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
     def plan(self, input_path: str, steps: list[dict[str, Any]]) -> dict[str, Any]:

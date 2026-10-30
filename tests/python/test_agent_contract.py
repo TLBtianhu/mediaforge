@@ -88,7 +88,7 @@ class ResultContractTests(unittest.TestCase):
         tools = {tool["name"]: tool for tool in agent_contract.build_contract()["tools"]}
         self.assertEqual(tools["system.health"]["resultEvent"], "health")
         self.assertEqual(tools["system.contract"]["resultEvent"], "agent_contract")
-        self.assertEqual(tools["media.image.upscale"]["resultEvent"], "audio_tool_result")
+        self.assertEqual(tools["media.image.upscale"]["resultEvent"], "task.result")
 
     def test_declared_result_event_matches_what_dispatch_returns(self) -> None:
         import agent_contract as contract

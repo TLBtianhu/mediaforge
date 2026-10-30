@@ -9,8 +9,8 @@ test('canonical task events are recognised', () => {
 })
 
 test('legacy names stay recognised until P7 removes them', () => {
-  assert.equal(isTaskProgress('audio_tool_progress'), true)
-  assert.equal(isTaskResult('audio_tool_result'), true)
+  assert.equal(isTaskProgress('task.progress'), true)
+  assert.equal(isTaskResult('task.result'), true)
 })
 
 test('other domains are not mistaken for task events', () => {

@@ -1,6 +1,6 @@
 """逐个跑一遍 catalog 里 available 的模型，确认"标着可用就能跑出东西"。
 
-走真实入口（worker.py audio_tools），不是直接调函数——这样连路由、模式、
+走真实入口（worker.py media_tool），不是直接调函数——这样连路由、模式、
 payload 形状都一起验证。任何一项失败就以非零退出，便于放进 CI。
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ def run(payload: dict) -> tuple[bool, str]:
         path = handle.name
     try:
         proc = subprocess.run(
-            [str(PYTHON), str(WORKER), "audio_tools", "--payload", path],
+            [str(PYTHON), str(WORKER), "media_tool", "--payload", path],
             cwd=str(ROOT), capture_output=True, text=True, timeout=900,
         )
         lines = [line for line in proc.stdout.splitlines() if line.startswith("{")]

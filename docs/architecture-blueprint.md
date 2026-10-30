@@ -136,3 +136,27 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 - delta 更新、自动升级包（只做检测 + 整包替换）
 - Authenticode（锦上添花，不是门槛）
 - 把音频引擎重写成自己的（保持外部，用适配器隔离）
+
+## 5. 实现状态（2026-10-31，0.0.23）
+
+| 阶段 | 状态 | 落地物 |
+|---|---|---|
+| P1 契约 | 完成 | `manifest/protocol.json`、`protocol_contract.py`、`media_tool`/`protocol_call` |
+| P2 事件 | 完成 | 边界处映射为 `task.*`，前端按域判断 |
+| P3 边界 | 完成 | `app_core/`（library/registry/interface），引擎零反向依赖，CI 检查 |
+| P4 运行时 | 完成 | `manifest/runtime.json` 带能力/sha/urls，并列目录 + `active-runtime.json` |
+| P5 更新 | 完成 | 签名 `versions.json`、`versions_check`、`versions_accept_runtime` |
+| P6 工具面 | 完成 | 工具由能力生成，`mcpSchemaVersion` 校验，模型清单随 catalog 变 |
+| P7 收尾 | 本轮 | 规范事件唯一化、schemaVersion 冻结为 1 |
+
+冻结项：
+
+- `protocol.json` / `runtime.json` 的 `schemaVersion` 固定为 1；不兼容变更走主版本号。
+- 管道上只有 `task.*` / 资产事件；`audio_tool_*` 仅作为代码里的书写别名，由 `emit()` 转成规范名。
+- 三条版本轴：app（整包安装）、runtime（并列目录 + 指针）、catalog（整份覆盖）。
+
+仍然保留、明确不在本轮处理的：
+
+- `update_manager.rs`（1872 行旧 latest.json 更新路径）：`endpoints` 为空，实际不运行；下线需要单独决定。
+- 音频引擎仍是外部 pymss 包，通过 `audio_tools` 适配器接入。
+
