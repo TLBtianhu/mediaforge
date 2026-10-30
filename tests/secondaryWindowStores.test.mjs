@@ -66,7 +66,8 @@ function environment(initial = {}) {
           if (command === 'get_app_paths') {
             return { dataRoot: 'D:/data', settingsDir: 'D:/data/settings', modelsDir: 'D:/old-models', outputsDir: 'D:/outputs' }
           }
-          if (command === 'list_models') {
+          if (command === 'model_hub') return { ok: true, models: [], modelDir: args.payload.modelDir, count: 0, downloadedCount: 0 }
+    if (command === 'list_models') {
             return { models: [], categories: [], categoriesCn: [], modelDir: args.payload.modelDir }
           }
           if (command === 'get_model_storage_summary') return { models: [], modelDir: args.payload.modelDir }

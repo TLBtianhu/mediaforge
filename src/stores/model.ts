@@ -799,13 +799,10 @@ export const useModelStore = defineStore('model', () => {
     isLoading.value = true
     error.value = null
     try {
-      const result = await invoke<ModelsPayload>('list_models', {
+      // 统一数据源：模型库（model_hub）是唯一真相，字段已与其对齐。
+      const result = await invoke<ModelsPayload>('model_hub', {
         payload: {
-          category: null,
-          supportedOnly: false,
-          includeLocalState: true,
-          includeCustom: true,
-          includeInterfaces: true,
+          modality: 'all',
           modelDir: settings.modelDir || null,
         },
       })
