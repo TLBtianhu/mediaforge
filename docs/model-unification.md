@@ -62,6 +62,29 @@ supported 判定）已经存在，直接复用，不要重写。
 python scripts/compare-model-apis.py --strict   # 退出码 0 才算完成
 ```
 
+## 2.7 字段合并结果（2026-10-30）
+
+`_audio_record` 补齐了选择器要读的字段（值全部来自 catalog 与已解析路径，
+没有新增判定逻辑）：
+
+```
+supported / sizeBytes / modelPath / configPath / source / modelType / targetStem
+```
+
+对账（对账规则也修正为"只在 B 有值而 A 缺失时算缺口"）：
+
+```
+A 334 条 / B 326 条
+只存在于 B 的模型  0
+缺必需字段的条目   0 / 326
+```
+
+注意 `slots` / `slotTask` 在两边**都为空**：音频页的槽位面板走的是
+`model_interface` 命令，不从列表里取。所以它们不构成切换阻塞，但切换后要单独验
+一次槽位面板。
+
+下一步：`src/stores/model.ts` 换数据源 → 三页联调 → 删 B 套。
+
 ## 3. 改动清单（按依赖顺序）
 
 ### 3.1 后端：让 A 套发出统一事件

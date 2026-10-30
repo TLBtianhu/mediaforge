@@ -95,7 +95,13 @@ def main(argv: list[str] | None = None) -> int:
 
     incomplete: list[tuple[str, list[str]]] = []
     for name in sorted(set(a_models) & set(b_models)):
-        absent = [field for field in REQUIRED if a_models[name].get(field) in (None, "", [])]
+        # 只在"B 有值、A 没有"时才算缺口：有的模型本来就没有 config 文件，
+        # 两边都空是正常状态，不该记成未统一。
+        absent = [
+            field for field in REQUIRED
+            if b_models[name].get(field) not in (None, "", [])
+            and a_models[name].get(field) in (None, "", [])
+        ]
         if absent:
             incomplete.append((name, absent))
 

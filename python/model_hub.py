@@ -117,6 +117,16 @@ def _audio_record(item: dict, root: Path, source: str) -> dict:
         "runtime": "pymss",
         "implemented": True,
         "downloadable": True,
+        # --- 与 list_models（B 套）对齐的字段 ---------------------------------
+        # 选择器和推理读这些值：少了它们，音频页会把模型判成"不可用"。
+        # 值全部来自 catalog 与已解析的文件路径，不引入新的判定逻辑。
+        "supported": bool(item.get("supported", True)),
+        "sizeBytes": int(item.get("size_bytes") or 0),
+        "modelPath": str(root / files[0]["path"]) if files else "",
+        "configPath": str(root / files[1]["path"]) if len(files) > 1 else "",
+        "source": "catalog",
+        "modelType": str(item.get("model_type") or item.get("architecture") or ""),
+        "targetStem": str(item.get("target_stem") or ""),
     }
 
 
