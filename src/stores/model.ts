@@ -1161,16 +1161,14 @@ export const useModelStore = defineStore('model', () => {
       }
       const currentTask = downloadTasks.value[name]
       if (!currentTask || currentTask.taskId !== taskId || currentTask.status !== 'preparing') return false
-      await invoke<{ taskId: string; started: boolean }>('start_model_download', {
-        payload: {
-          taskId,
-          model: name,
-          modelDir: settings.modelDir || null,
-          source: settings.downloadSource,
-          downloadMethod: settings.downloadMethod,
-          endpoint: null,
-          force,
-        },
+      // 统一到模型库下载：requestId 同时充当 taskId，事件里带回同一个 id，
+      // 这样 store 的事件处理器不用改判定逻辑（仍按 taskId 关联）。
+      const modelId = String((models.value.find((item) => item.name === name) as { id?: string })?.id || name)
+      await invoke<{ taskId: string; started: boolean }>('start_model_hub_download', {
+        requestId: taskId,
+        modelId,
+        modelDir: settings.modelDir || null,
+        source: settings.downloadSource,
       })
       const startedTask = downloadTasks.value[name]
       if (!startedTask || startedTask.taskId !== taskId) {
