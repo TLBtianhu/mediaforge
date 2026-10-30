@@ -72,7 +72,9 @@ cookie.txt
 !README.zh-CN.md
 !CONTRIBUTING.md
 !DEVELOPMENT.md
-docs/
+docs/*
+!docs/**/
+!docs/**/*.md
 .omc/
 .spec-workflow/
 
@@ -99,3 +101,6 @@ native/target/
 native/vendor/soundcraft-vst3-host/tests/fixture/target/
 data-vst-lab/
 .cache/
+
+# 设计/发布文档要进仓库（docs/ 曾整体被忽略，导致文档只存在于本机）
+!docs/**/*.md
