@@ -221,11 +221,13 @@ pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
         // 运行时默认却在 exe 旁边的 `python-runtime`，于是 `pnpm tauri dev` 永远
         // 报 "No active runtime environment is installed"。
         // 数据根下存在 runtime-envs 时优先用它，开发态与数据目录保持一致。
-        if is_development_executable() {
-            if let Ok(candidate) = data_root_dir(app).map(|root| root.join("runtime-envs")) {
-                if candidate.is_dir() {
-                    return Ok(candidate);
-                }
+        // 运行时属于"可变状态"，必须待在可写的数据根里：
+        // 装到 %LOCALAPPDATA%\Programs 之后，程序目录虽然也归用户所有，
+        // 但把 2.5 GB 的可替换资产塞进程序目录会让升级/卸载互相牵连。
+        // 因此数据根下有 runtime-envs 就用它，没有才回落程序目录（仅兼容老布局）。
+        if let Ok(candidate) = data_root_dir(app).map(|root| root.join("runtime-envs")) {
+            if candidate.is_dir() {
+                return Ok(candidate);
             }
         }
         Ok(runtime_root_dir(app)?.join("runtime-envs"))

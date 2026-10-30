@@ -14,13 +14,14 @@
 #endif
 
 [Setup]
+PrivilegesRequired=lowest
 ; Unique AppId for MediaForge. Do not reuse AppIds from other projects. Keep it stable or in-place upgrades break.
 AppId={{34A687CC-EE1D-401D-8FE1-98E4061C32CB}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppVerName={#MyAppName} {#MyAppVersion}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={localappdata}\Programs\{#MyAppName}
 ; 用户不选目录：安装位置是常量，升级自然落在同一处。
 DisableDirPage=yes
 DefaultGroupName={#MyAppName}
@@ -52,12 +53,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "python-runtime\runtime-envs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\python-runtime\runtime-envs\*"; DestDir: "{app}\python-runtime\runtime-envs"; Excludes: "active-runtime.json"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Check: ShouldInstallBundledRuntimeEnvs
+Source: "{#SourceDir}\python-runtime\runtime-envs\*"; DestDir: "{userprofile}\.mediaforge\runtime-envs"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: not DirExists(ExpandConstant('{userprofile}\.mediaforge\runtime-envs\cuda')) Excludes: "active-runtime.json"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Check: ShouldInstallBundledRuntimeEnvs
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 
 [Dirs]
 ; Keep the bootstrap interpreter read-only. Only managed environments need user write access.
-Name: "{app}\python-runtime\runtime-envs"; Permissions: users-modify
+Name: "{userprofile}\.mediaforge\runtime-envs"
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -66,8 +67,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Run]
 ; 安装结束把 MediaForge 接进 DeepSeek Harness（没有 DSH 时脚本自己跳过）。
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\integrations\dsh-mediaforge\register.ps1"""; StatusMsg: "Registering MediaForge with DeepSeek Harness..."; Flags: runhidden waituntilterminated skipifdoesntexist
-Filename: "{app}\bin\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Flags: waituntilterminated runhidden skipifdoesntexist; Check: not IsVCRedistX64Installed
-Filename: "{cmd}"; Parameters: "/C del /F /Q ""{app}\bin\VC_redist.x64.exe"""; Flags: runhidden waituntilterminated skipifdoesntexist; Check: not IsVCRedistX64Installed
+Filename: "{app}\bin\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Flags: waituntilterminated runhidden skipifdoesntexist; Check: IsAdminInstallMode and not IsVCRedistX64Installed
+Filename: "{cmd}"; Parameters: "/C del /F /Q ""{app}\bin\VC_redist.x64.exe"""; Flags: runhidden waituntilterminated skipifdoesntexist; Check: IsAdminInstallMode and not IsVCRedistX64Installed
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -122,7 +123,7 @@ begin
     Exit;
   end;
   Result := FileExists(
-    ExpandConstant('{app}\python-runtime\runtime-envs\') + Backend + '\Scripts\python.exe'
+    ExpandConstant('{userprofile}\.mediaforge\runtime-envs\') + Backend + '\Scripts\python.exe'
   );
 end;
 
@@ -167,7 +168,7 @@ var
   PythonExe: string;
   Content: string;
 begin
-  EnvDir := ExpandConstant('{app}') + '\python-runtime\runtime-envs\' + Backend;
+  EnvDir := ExpandConstant('{userprofile}\.mediaforge\runtime-envs\') + Backend;
   ConfigPath := EnvDir + '\pyvenv.cfg';
   PythonRuntimeDir := ExpandConstant('{app}') + '\python-runtime';
   PythonExe := PythonRuntimeDir + '\python.exe';
