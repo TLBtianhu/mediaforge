@@ -110,3 +110,29 @@ HF 主源          HEAD 200，大小与常量一致
 ```
 
 如果没有这次核对，用户装上是"能分离、不能超分"，而错误信息只会说缺模块。
+
+## 最终产物与双源状态（收尾实测）
+
+```
+setup.exe        MediaForge-0.0.16-windows-x64-cuda-setup.exe     63.1 MB
+portable.zip     MediaForge-0.0.16-windows-x64-portable.zip     120.1 MB
+update.zip       MediaForge-0.0.16-windows-x64-update.zip        98.5 MB（已签名）
+运行时包         runtime-cuda-2026.10.1.zip                  3483253620 字节
+                 sha256 c1f0b3baf5db864955917b9432832dc7391bf1f5bbafae9e6f80bad2a3e452ac
+
+双源复核（匿名 HEAD）
+  hf-mirror.com  200  3483253620  OK
+  魔搭            200  3483253620  OK
+```
+
+两个源的大小都与代码里钉死的常量一致，因此"双源"不只是配置里写了两个地址，
+而是两份内容确实相同、且都可匿名下载。
+
+## 运行时代替验证（不点按钮的等价路径）
+
+```
+用本地包解压替换 ~/.mediaforge/runtime-envs/cuda，并写入 .asset-id
+→ 重启应用：卡片消失（stale 判定生效）
+→ torch 2.7.1+cu128 / cuda True / cv2 5.0.0 / spandrel 0.4.2 全部可 import
+→ worker media_capabilities 能执行
+```
