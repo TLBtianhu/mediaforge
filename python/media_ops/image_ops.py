@@ -672,7 +672,14 @@ class ImageRestorer:
                     progress(fraction, "Real-ESRGAN 超分中…")
                 model_id = str(bindings.get("upscaler") or capabilities.default_bindings("upscale")["upscaler"])
                 model_scale = capabilities.model_scale(model_id)
-                upscaler = self.upscaler_for(self.model_paths["upscaler_x2"], self.model_paths["upscaler_x4"])
+                # 用户选的模型要真的被加载：以前这里固定用 model_paths 里的默认 x2/x4，
+                # 于是选 real-cugan-x2 或 swinir-m-x2 时仍然去加载 RealESRGAN_x2plus，
+                # 权重不在就直接失败（冒烟测试抓到的就是这个）。
+                chosen = str(capabilities.model_path(model_id))
+                upscaler = self.upscaler_for(
+                    chosen if model_scale == 2 else self.model_paths["upscaler_x2"],
+                    chosen if model_scale != 2 else self.model_paths["upscaler_x4"],
+                )
                 image, actual = upscaler.upscale(
                     image,
                     scale=float(params.get("scale") or model_scale),
