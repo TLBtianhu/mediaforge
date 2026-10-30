@@ -77,6 +77,49 @@ DSH 集成        启动器创建 + cordis 配置指向 ~/.mediaforge/bin
 5. 安装器内 VC++ 运行库步骤在 per-user 模式下跳过，依赖系统已有版本
 ```
 
+## 媒体模型：本版新增 19 个可用模型（0.0.16 起）
+
+这一版把"图像/视频处理"从只有 4 个模型扩到 19 个，并且每个都在真实素材上验证过。
+模型清单与选型建议见 `docs/model-guide.md`（由 catalog 自动生成）。
+
+| 能力 | 可用模型 |
+|---|---|
+| 超分 | Real-ESRGAN 4×、Real-CUGAN 4× (denoise3x)、SwinIR-M 2× (real-world GAN)、Real-ESRGAN x4plus (anime 6B)、Real-CUGAN 2× (denoise3x)、4x-UltraSharp、4x Remacri、4x NMKD Superscale SP、4x Nomos8kDAT、4x Valar v1、4x Fatality Comix |
+| 去噪 | SCUNet (color real, PSNR)、1x DeNoise (realplksr otf) |
+| 抠图 | RMBG-1.4 抠图 |
+| 深度 | Depth Anything V2 (Small) |
+| 检测 | YOLO11n 目标检测 |
+| 修复 | LaMa Inpainting |
+| 插帧 | RIFE 4.26 插帧 |
+
+### 本版新增的能力（之前没有）
+
+- **去噪**：输出尺寸不变，`scunet-color-real` 与 `esrgan-1x-denoise-realplksr` 两个选择。
+- **抠图**：RMBG-1.4，输出 RGBA，alpha 边缘有过渡像素（实测半透明像素占 1.7%）。
+- **深度**：Depth Anything V2，输出归一化灰度深度图。
+- **检测**：YOLO11n，输出 JSON（label / 置信度 / 框），不产生图像。
+- **插帧**：RIFE 4.26，支持"两张图出中间帧"和"整段视频插帧"。
+
+### 视频管线
+
+- 视频插帧：抽帧 → 相邻帧插中间帧 → 按新帧率回封，音轨直接复制。
+  实测 1.00 秒 10 fps → 0.95 秒 20 fps。
+- 视频超分：逐帧放大，实测 448×448 → 1792×1792，时长不变。
+  注意这是逐帧处理，**没有时序一致性**，快速运动画面可能有闪烁。
+
+### 计划中的 10 个模型与阻塞原因
+
+- **BasicVSR++**：缺少权重地址与加载代码，尚不可下载
+- **BiRefNet**：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
+- **CodeFormer**：codeformer.pth（359 MB）在 hf-mirror 上可下，但 CodeFormer 的架构代码依赖 basicsr，且需要人脸检测与对齐；本次已装通 basicsr/facexlib，先解决 GFPGAN 的架构匹配再复用它。
+- **DAT-2**：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
+- **DDColor**：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
+- **GFPGAN v1.4**：依赖已装通（basicsr/facexlib/gfpgan + torchvision functional_tensor 垫片），GFPGANv1.pth（587 MB）也下好了。但参数扫描表明该权重与包内两种架构都不匹配：GFPGANv1Clean 在 (channel_multiplier, different_
+- **HAT-L**：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
+- **ProPainter**：缺少权重地址与加载代码，尚不可下载
+- **Real-ESRGAN 2×**：目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。视频管线现在会退到已安装的超分模型，所以缺它只影响 2× 选项，不再阻塞整条视频超分。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。
+- **SAM 2**：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
+
 ## 技术债（已记录，不在本版处理）
 
 ```
