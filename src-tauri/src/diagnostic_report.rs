@@ -764,7 +764,10 @@ pub(crate) fn summarize_request(command: &str, payload: &Value) -> Value {
             "audio-tools"
         }
         "export_editor_mix" | "start_editor_mix_export" => "editor-export",
-        "download_tool_model" => "model-download",
+        // 模型下载命令有三个名字：旧工具名、worker 的 model_download、以及
+        // diagnostics 里长期使用的 download_model。少认一个，日志摘要就会把它
+        // 归到 "other"，里面的 model/source 不再走截断与脱敏逻辑。
+        "download_tool_model" | "model_download" | "download_model" => "model-download",
         "delete_model"
         | "delete_tool_model"
         | "import_custom_model"
