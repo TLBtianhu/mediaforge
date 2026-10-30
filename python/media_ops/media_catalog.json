@@ -146,7 +146,7 @@
         "interpolator"
       ],
       "status": "planned",
-      "blockedReason": "权重与代码都能拿到：hf-mirror 的 hzwer/RIFE 里 RIFEv4.26_0921.zip（21.8 MB）同时包含 flownet.pkl 与 IFNet_HDv3.py / RIFE_HDv3.py。但它是训练目录式布局，RIFE_HDv3.load_model 期望 `train_log/<version>/flownet.pkl` 且从 `train_log` 导入 IFNet，当前运行时报 No module named 'train_log.IFNet_HDv3'。下一步：把代码放进 train_log/ 包、或直接实例化 IFNet 并 load_state_dict 绕过路径逻辑。"
+      "blockedReason": "推理已跑通，缺的是接入视频管线：hzwer/RIFE 的 RIFEv4.26_0921.zip 里 flownet.pkl + 代码可用，按以下布局可加载并成功插帧（448x448，0.2 秒，中间帧与两帧平均差 0.0055/0.0062）：\n  RIFE_HDv3.py 放根目录；model/ 与 train_log/ 两个包都要有 IFNet_HDv3.py、warplayer.py、loss.py、refine.py；\n  flownet.pkl 同时放根目录与 train_log/RIFEv4.26_0921/；\n  输入必须是 32 的倍数，张量要 .to(model device)。\n下一步：在 video_worker 里加 frame_interpolation 模式（读视频→抽帧→插帧→回封），这一层没走过，属于新管线。"
     },
     {
       "id": "propainter",
