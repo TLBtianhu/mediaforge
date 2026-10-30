@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import ffmpeg
+from media_ops import ffmpeg
 
 SUPPORTED_SUFFIXES = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".ts", ".mts", ".wmv", ".flv",

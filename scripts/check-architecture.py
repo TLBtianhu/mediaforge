@@ -33,6 +33,7 @@ FORBIDDEN_IMPORTS = {
     "embedded_loop",
     "media_eval",
     "protocol_contract",
+    "app_core",
 }
 
 

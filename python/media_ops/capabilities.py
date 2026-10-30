@@ -221,9 +221,9 @@ _PARAM_TYPES: dict[str, Any] = {
 
 def _slot_ranges() -> dict[str, dict[str, Any]]:
     try:
-        from . import interface as model_interface
+        from .slots import vocabulary
 
-        return model_interface.vocabulary()
+        return vocabulary()
     except Exception:  # noqa: BLE001
         return {}
 

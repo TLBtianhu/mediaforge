@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-REGISTRY_PATH = Path(__file__).with_name("model_registry.json")
+REGISTRY_PATH = Path(__file__).resolve().parents[1] / "media_ops" / "model_registry.json"
 
 VALID_IO_TYPES = {"image", "video", "audio", "audio*", "mask", "depth", "midi", "text", "json"}
 VALID_SOURCE_STATUS = {"verified", "local", "arch-only", "catalog"}

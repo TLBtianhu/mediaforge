@@ -140,7 +140,7 @@ def _recovery_actions() -> dict[str, str]:
 
 def load_task_slots() -> dict[str, Any]:
     try:
-        from media_ops import registry
+        from app_core import registry
 
         return registry.tasks()
     except Exception:  # noqa: BLE001
@@ -149,7 +149,7 @@ def load_task_slots() -> dict[str, Any]:
 
 def _slot_vocabulary() -> dict[str, dict[str, Any]]:
     try:
-        from media_ops import interface as model_interface
+        from app_core import interface as model_interface
 
         return model_interface.vocabulary()
     except Exception:  # noqa: BLE001

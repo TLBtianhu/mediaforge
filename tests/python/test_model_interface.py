@@ -16,8 +16,8 @@ PYTHON_DIR = ROOT / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-from media_ops import interface as iface  # noqa: E402
-from media_ops import registry as reg  # noqa: E402
+from app_core import interface as iface  # noqa: E402
+from app_core import registry as reg  # noqa: E402
 
 SLOTS_TS = ROOT / "src" / "litegraph" / "slots.ts"
 

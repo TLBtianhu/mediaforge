@@ -121,6 +121,9 @@ jobs:
           python -m pip install --disable-pip-version-check --prefer-binary \
             -r python/requirements-ci.txt
 
+      - name: Check architecture invariants
+        run: python scripts/check-architecture.py
+
       - name: Run all tests
         run: pnpm test:all
 

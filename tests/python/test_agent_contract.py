@@ -109,7 +109,7 @@ class SlotVocabularyTests(unittest.TestCase):
         cls.contract = agent_contract.build_contract()
 
     def test_contract_exposes_the_slot_vocabulary(self) -> None:
-        from media_ops import interface as model_interface
+        from app_core import interface as model_interface
 
         self.assertEqual(set(self.contract["slots"]), set(model_interface.SLOT_DEFAULTS))
         self.assertGreaterEqual(len(self.contract["slots"]), 20)
