@@ -75,3 +75,37 @@ available 模型的文件都在。缺文件时冒烟会失败——这是设计�
 | `scripts/smoke-media-models.py` | 走真实 worker 入口跑每个 available 模型 |
 | `scripts/check-media-deps.py` | 静态比对 import 与 requirements |
 | `scripts/generate-model-guide.py` | 从 catalog 生成 `docs/model-guide.md` |
+
+## 运行时资产怎么发布
+
+运行时包是内容寻址资产：文件名带 id，sha256 钉在 Rust 二进制里。
+
+```bash
+# 1. 从"已验证能跑 20 个模型"的环境打包（必须是 zip，不是 7z）
+7z a -tzip -mx=3 release/runtime/runtime-cuda-<id>.zip "%USERPROFILE%\.mediaforge\runtime-envs\cuda\*"
+
+# 2. 解压后用它的解释器跑冒烟（这是"发布内容能跑"的唯一证据）
+7z x -o<临时目录>/cuda release/runtime/runtime-cuda-<id>.zip
+MEDIAFORGE_RUNTIME_PYTHON=<临时目录>/cuda/Scripts/python.exe \
+  <临时目录>/cuda/Scripts/python.exe scripts/smoke-media-models.py
+
+# 3. 算 sha256 与大小，写进 release/runtime/<id>.json 和 src-tauri/src/runtime_assets.rs
+
+# 4. 上传到魔搭（已可用）
+python scripts/publish-modelscope.py --remote-prefix runtime/ release/runtime/runtime-cuda-<id>.zip
+
+# 5. 用随包 aria2c 按真实下载路径回读，确认 sha256 与钉死值一致
+release/bin/aria2c.exe -x4 -s4 -c -d <临时目录> -o <id>.zip <两个源 URL>
+```
+
+**hf-mirror 那一侧暂时不可用**：huggingface.co 在本机不可达（443 超时），
+`hf upload` 无法执行。等能访问后补：
+
+```bash
+hf upload TLBtianhu/MediaForge-Dist release/runtime/runtime-cuda-<id>.zip \
+  runtime/runtime-cuda-<id>.zip --repo-type dataset
+```
+
+在此之前顺序是"魔搭优先、hf-mirror 备源"，aria2c 在第一源 404 时会自动换到第二个
+（2026.10.2 实测：hf-mirror 报 Resource not found 后成功从魔搭下完 3.45 GB）。
+
