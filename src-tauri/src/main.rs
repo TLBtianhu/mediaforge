@@ -253,7 +253,6 @@ fn main() {
             commands::app_cmd::cancel_runtime_install,
             commands::app_cmd::activate_runtime,
             commands::app_cmd::delete_runtime,
-            commands::app_cmd::worker_health,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Pymss Studio")

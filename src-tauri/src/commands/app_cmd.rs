@@ -165,10 +165,6 @@ pub fn confirm_managed_update_startup(window: tauri::WebviewWindow) -> AppResult
     Ok(())
 }
 
-#[tauri::command]
-pub async fn worker_health(app: AppHandle) -> AppResult<Value> {
-    run_worker_once(&app, "health")
-}
 
 
 
