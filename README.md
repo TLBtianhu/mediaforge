@@ -1,8 +1,37 @@
 # MediaForge
 
-本地优先的多模态媒体工作站：**音频处理 / 图像处理 / 视频处理 / FFmpeg 格式工厂**，共用模型库、任务队列和工作流。
+## 下载
 
-> 早期版本。当前从 [Pymss Studio](https://github.com/pymss-project/pymss-studio) fork，保留其 Tauri + Vue 3 + Python worker 架构、音频模型库、任务系统和音频编辑器；新增媒体格式工厂与图像/视频处理入口。
+| 渠道 | 链接 | 说明 |
+|---|---|---|
+| 国内（推荐，免登录） | https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist | 单连接约 1 MB/s，可用下载器加速 |
+| GitHub Releases | https://github.com/TLBtianhu/mediaforge/releases | 需要能访问 GitHub |
+
+- 安装包：`MediaForge-<版本>-windows-x64-cuda-setup.exe`（约 1.85 GB）
+- 便携版：`MediaForge-<版本>-windows-x64-portable.zip`（约 3.3 GB，解压即用，无需管理员）
+
+## 30 秒上手
+
+1. 双击安装包 → SmartScreen 点「更多信息 → 仍要运行」→ 一路下一步（**安装位置固定，不用选**）
+2. 打开应用 → 模型库 → 下载一个模型（例如 Real-ESRGAN 2×，约 64 MB）
+3. 图像处理 → 拖入图片 → 选超分和模型 → 开始转换
+
+数据固定放在 `C:\Users\<你>\.mediaforge`，**卸载不会删除模型**；升级就是重新装一遍新安装包，数据原样保留。
+
+## 想用 agent 调它？
+
+安装包自带 DeepSeek Harness 集成（`<安装目录>\integrations\dsh-mediaforge`），**安装时若检测到 Harness 会自动登记**。
+如果你是「先装应用、后装 Harness」，补跑一次即可：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\register.ps1"
+```
+
+然后重启 Harness，新对话里说「用 mediaforge 列一下模型」。自检命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\verify.ps1"
+```
 
 ## 当前进度
 

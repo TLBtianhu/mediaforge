@@ -49,12 +49,16 @@ pub fn restart_required() -> bool {
 // 2026-10-29 修：原来指向 upstream，等于"自动更新会装上游的包"。本仓库是 TLBtianhu/mediaforge。
 const UPDATE_ROOT: &str = "https://github.com/TLBtianhu/mediaforge/releases/download/updater";
 const UPDATE_GENERATION: &str = "v1";
-const DEFAULT_UPDATE_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5NzUyREY2NjAyNDVDQjAKUldTd1hDUmc5aTExcVFtUGM3ajB4R09ueU9xM3B6RG9xRDVKaUM0di9Qc1BpSGhYMXRFNUJvSWQK";
+const DEFAULT_UPDATE_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGOTFCNEFFRTRGNUJBN0EKUldSNnV2WGtyclNSZjc4Y0Z4aDVGSUNTV0xlSkgwczdhSW9jenNkQXgrQmVZOTIrVVVhWEpLYW4K";
 // Test fixtures can provide a matching signing key without changing the
 // production key embedded in release builds.
-const UPDATE_PUBLIC_KEY: &str = match option_env!("PYMSS_UPDATE_PUBLIC_KEY") {
+const UPDATE_PUBLIC_KEY: &str = match option_env!("MEDIAFORGE_UPDATE_PUBLIC_KEY") {
     Some(value) => value,
-    None => DEFAULT_UPDATE_PUBLIC_KEY,
+    // 兼容旧构建脚本：改名前的变量名仍可作为回退。
+    None => match option_env!("PYMSS_UPDATE_PUBLIC_KEY") {
+        Some(value) => value,
+        None => DEFAULT_UPDATE_PUBLIC_KEY,
+    },
 };
 
 /// 实际使用的更新公钥。
@@ -70,7 +74,7 @@ fn embedded_update_public_key() -> &'static str {
     }
 }
 // Replace the executable last so an interrupted update can still boot the old UI and recover.
-const MANAGED_PATHS: [&str; 3] = ["python", "bin", "MediaForge.exe"];
+const MANAGED_PATHS: [&str; 4] = ["python", "bin", "MediaForge.exe", "integrations"];
 const MAX_UPDATE_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_UPDATE_FILES: usize = 10_000;
 const MAX_UPDATE_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -199,7 +203,7 @@ pub fn current_distribution() -> Option<DistributionKind> {
 }
 
 fn distribution_at(root: &Path) -> Option<DistributionKind> {
-    if root.join("pymss-studio.inno-install").is_file() {
+    if root.join("mediaforge.inno-install").is_file() {
         return Some(DistributionKind::Inno);
     }
     if root.join("pymss-studio.portable").is_file() {
@@ -785,7 +789,7 @@ fn stage_update(root: &Path, version: &str, signature: &str, bytes: &[u8]) -> Ap
         return Err(AppError::Worker("A previous managed update requires recovery before another update can start".into()));
     }
     let update_mutex = acquire_update_mutex()?;
-    let elevated = root.join("pymss-studio.inno-install").is_file() || !app_root_is_writable(root);
+    let elevated = root.join("mediaforge.inno-install").is_file() || !app_root_is_writable(root);
     let archive = if elevated {
         pending_archive_path()
     } else {
@@ -1402,7 +1406,7 @@ pub(crate) fn verify_payload_signature(payload: &[u8], release_signature: &str, 
     let public_key = update_public_key()?;
     let signature = decode_release_signature(release_signature, version)?;
     public_key
-        .verify(payload, &signature, true)
+        .verify(payload, &signature, false)
         .map_err(|error| AppError::Worker(format!("Update signature verification failed: {error}")))?;
     Ok(())
 }
@@ -1981,7 +1985,7 @@ mod tests {
         fs::write(root.join("pymss-studio.portable"), "portable").unwrap();
         assert!(matches!(distribution_at(&root), Some(DistributionKind::Portable)));
 
-        fs::write(root.join("pymss-studio.inno-install"), "managed").unwrap();
+        fs::write(root.join("mediaforge.inno-install"), "managed").unwrap();
         assert!(matches!(distribution_at(&root), Some(DistributionKind::Inno)));
         let _ = fs::remove_dir_all(root);
     }

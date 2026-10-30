@@ -490,7 +490,7 @@ def _debug_catalog_status(base_data: dict[str, Any] | None = None) -> dict[str, 
 def _default_model_dir() -> Path:
     """模型根目录。解析规则只有一份，在 `worker_paths.model_root()`。
 
-    2026-10-29 之前这里复制了 pymss 自己的兜底（`PYMSS_MODEL_DIR` → 仓库 `all_models`
+    2026-10-29 之前这里复制了 pymss 自己的兜底（`MEDIAFORGE_MODEL_DIR` → 仓库 `all_models`
     → `~/.cache/pymss/models`），于是「模型放哪」在缓存/下载/导入三处各有答案。
     """
     return worker_paths.model_root()
@@ -1465,7 +1465,11 @@ def _path_size(path: Path) -> int:
         if path.is_file():
             return int(path.stat().st_size)
         if path.is_dir():
-            return sum(_path_size(child) for child in path.rglob("*") if child.is_file())
+            # 容错：单个子目录可能不可访问（权限、装入点、损坏链接），
+            # 不能因为一条坏路径就让整个模型库报错。
+            from safe_fs import path_size
+
+            return path_size(path)
     except Exception:
         return 0
     return 0
@@ -1479,7 +1483,7 @@ def _scan_root_file_sizes(root: Path) -> dict[str, tuple[Path, int]]:
     scanned: dict[str, tuple[Path, int]] = {}
     if not root.exists():
         return scanned
-    for dirpath, _, filenames in os.walk(root):
+    for dirpath, _, filenames in os.walk(root, onerror=lambda _exc: None):
         base = Path(dirpath)
         for filename in filenames:
             file_path = base / filename

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -17,6 +18,16 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+# 本项目的运行时里没有装 modelscope SDK：发布时用的是隔离安装
+# （.dev-data/tools/modelscope-sdk 或 MODELSCOPE_SDK_PATH 指向的目录），
+# 否则会 ModuleNotFoundError。
+for candidate in (
+    Path(os.environ.get("MODELSCOPE_SDK_PATH", "")).expanduser() if os.environ.get("MODELSCOPE_SDK_PATH") else None,
+    REPO_ROOT / ".dev-data" / "tools" / "modelscope-sdk",
+):
+    if candidate and candidate.is_dir() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
 
 from dev_env import MissingToken, modelscope_token  # noqa: E402
 

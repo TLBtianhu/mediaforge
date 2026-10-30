@@ -66,7 +66,7 @@ class Bridge:
         self.token = token
         self.port = port
         self.data_root = data_root
-        runtime_envs = Path(os.environ.get("PYMSS_STUDIO_RUNTIME_ENVS_DIR") or data_root / "runtime-envs")
+        runtime_envs = Path(os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR") or data_root / "runtime-envs")
         self.python_path = _active_runtime_python(runtime_envs)
         self.jobs = OperationKernel(data_root, self.python_path)
         # 每个作业已用掉几次自动重试（异步重试必须自己记，台账不存这个）
