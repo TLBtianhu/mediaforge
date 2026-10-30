@@ -949,6 +949,8 @@ export const useModelStore = defineStore('model', () => {
         next.completedFiles = payload.downloaded?.length + payload.skipped?.length || next.completedFiles
         next.totalFiles = Math.max(next.totalFiles, next.completedFiles || 1)
         if (payload.modelInfo) upsertModel(payload.modelInfo)
+        // 事件里的 modelInfo 形状可能和列表条目不完全一致；重拉一次保证权威。
+        void loadModels()
         if (payload.modelDir) modelDir.value = payload.modelDir
         downloadStates.value = { ...downloadStates.value, [modelName]: 'done' }
         // 模型已成功落盘后，卡片改由 model.downloaded 渲染“已下载”状态，
