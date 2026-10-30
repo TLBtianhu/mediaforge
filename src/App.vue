@@ -14,6 +14,7 @@ import { useAppStore } from '@/stores/app'
 import { useUpdateStore } from '@/stores/update'
 import { getResolvedThemeTokens, getThemeOverrides, themeIsDark } from '@/utils/theme'
 import { useI18n } from 'vue-i18n'
+import RuntimeAssetBanner from '@/components/RuntimeAssetBanner.vue'
 import { listen, type EventCallback, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-shell'
 import { useWorkflowStore } from '@/stores/workflow'
@@ -468,6 +469,7 @@ const themeOverrides = computed(() => {
       </n-message-provider>
     </n-notification-provider>
   </n-config-provider>
+  <RuntimeAssetBanner />
 </template>
 
 <style scoped>

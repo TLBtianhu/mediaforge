@@ -2960,5 +2960,12 @@
     "failed": "Workflow failed",
     "noInput": "Choose an input first",
     "noOutput": "Choose an output directory"
+  },
+  "runtimeAsset": {
+    "title": "Prepare the runtime to start",
+    "body": "Separation, upscaling and transcoding need a local runtime. It downloads once and later versions reuse it.",
+    "start": "Prepare",
+    "downloading": "Preparing…",
+    "failed": "Preparation failed, you can retry"
   }
 }
