@@ -434,6 +434,38 @@
       "implemented": false,
       "status": "planned",
       "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+    },
+    {
+      "id": "real-cugan-x4",
+      "name": "RealCUGAN_4x_denoise3x.pth",
+      "label": "Real-CUGAN 4× (denoise3x)",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "RealCUGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 5636403,
+      "license": "以 bilibili/Real-CUGAN 仓库 LICENSE 为准",
+      "description": "面向动漫/插画的 4× 超分，denoise3x 变体自带较强降噪。",
+      "url": "https://www.modelscope.cn/models/bilibili/cv_bilibili_image-super-resolution/resolve/master/weights_v3/up4x-latest-denoise3x.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     }
   ]
 }

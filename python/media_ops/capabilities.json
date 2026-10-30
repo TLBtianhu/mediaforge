@@ -19,7 +19,8 @@
       },
       "modelIds": [
         "media:real-esrgan-x2",
-        "media:real-esrgan-x4"
+        "media:real-esrgan-x4",
+        "media:real-cugan-x4"
       ],
       "params": {
         "target": {
