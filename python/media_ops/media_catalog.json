@@ -721,6 +721,38 @@
           "maximum": 4
         }
       }
+    },
+    {
+      "id": "esrgan-valar-x4",
+      "name": "4x_Valar_v1.pth",
+      "label": "4x Valar v1",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 67544144,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "4× 超分，锐度与纹理平衡，适合游戏截图与插画。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_Valar_v1.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     }
   ]
 }

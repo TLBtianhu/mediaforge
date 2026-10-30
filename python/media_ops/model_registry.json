@@ -10247,6 +10247,29 @@
         "tile"
       ],
       "notes": "295 MB；fp16 下会有 meshgrid 警告但输出正常"
+    },
+    {
+      "id": "media:esrgan-valar-x4",
+      "name": "4x_Valar_v1.pth",
+      "family": "media",
+      "task": "upscale",
+      "io": {
+        "in": "image",
+        "out": "image",
+        "arity": 1
+      },
+      "architecture": "ESRGAN",
+      "source": {
+        "status": "local",
+        "repo": null,
+        "file": "4x_Valar_v1.pth"
+      },
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "slots": [
+        "scale",
+        "tile"
+      ],
+      "notes": null
     }
   ]
 }

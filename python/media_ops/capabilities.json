@@ -27,7 +27,8 @@
         "media:esrgan-ultrasharp-x4",
         "media:esrgan-remacri-x4",
         "media:esrgan-superscale-sp-x4",
-        "media:esrgan-nomos8kdat-x4"
+        "media:esrgan-nomos8kdat-x4",
+        "media:esrgan-valar-x4"
       ],
       "params": {
         "target": {
