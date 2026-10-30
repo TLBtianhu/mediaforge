@@ -1,0 +1,20 @@
+# 图像/视频处理所需的额外依赖（音频不需要这些）。
+#
+# 为什么单独成文件：`python/requirements.txt` 只覆盖 worker 的音频依赖，
+# 而图像超分、去水印、视频抽帧还依赖 opencv / spandrel / ultralytics 等。
+# 这些包过去只存在于开发机的运行时里，没有声明，于是打包出来的运行时
+# 缺少它们 —— 音频分离正常，图像/视频功能必然失败（实测 environment 里
+# spandrel/ultralytics/opencv 都是 False）。
+#
+# 版本取自开发运行时 `pip freeze`（2026-10-30），与 torch 2.7.1+cu128 配套。
+
+opencv-python-headless==5.0.0.93
+spandrel==0.4.2
+ultralytics==8.4.192
+pillow==13.0.0
+torchvision==0.22.1+cu128
+einops==0.8.2
+psutil==7.2.2
+polars==2.1.0
+safetensors==0.8.0
+matplotlib==3.11.2
