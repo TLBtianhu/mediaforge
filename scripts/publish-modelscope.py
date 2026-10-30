@@ -77,7 +77,7 @@ def head_matches(remote: str, expected: int, *, attempts: int = 4, delay: float 
     return False
 
 
-def upload(paths: list[Path], *, dry_run: bool = False) -> int:
+def upload(paths: list[Path], *, dry_run: bool = False, remote_prefix: str = REMOTE_PREFIX) -> int:
     token = modelscope_token()
     api_cls = _api()
     api = api_cls()
@@ -89,7 +89,7 @@ def upload(paths: list[Path], *, dry_run: bool = False) -> int:
             print(f"[skip] {path} 不存在")
             failures += 1
             continue
-        remote = REMOTE_PREFIX + path.name
+        remote = remote_prefix + path.name
         size_mb = round(path.stat().st_size / 1024 / 1024, 1)
         print(f"[upload] {path.name} ({size_mb} MB) -> {DATASET}/{remote}")
         if dry_run:
@@ -120,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="只检查令牌与网络，不传")
     parser.add_argument("--dry-run", action="store_true", help="只打印将要上传什么")
     parser.add_argument("--verify-only", action="store_true", help="只做匿名回读，不重新上传")
+    parser.add_argument("--remote-prefix", default=REMOTE_PREFIX, help="仓库内的目标目录，默认 release/")
     args = parser.parse_args(argv)
 
     if args.check and not args.files:
@@ -134,9 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.files:
         parser.error("没有指定要上传的文件")
     if args.verify_only:
-        failures = sum(0 if head_matches(REMOTE_PREFIX + p.name, p.stat().st_size) else 1 for p in args.files)
+        failures = sum(0 if head_matches(args.remote_prefix + p.name, p.stat().st_size) else 1 for p in args.files)
         return 1 if failures else 0
-    return 1 if upload(args.files, dry_run=args.dry_run) else 0
+    return 1 if upload(args.files, dry_run=args.dry_run, remote_prefix=args.remote_prefix) else 0
 
 
 if __name__ == "__main__":
