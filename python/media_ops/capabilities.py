@@ -400,4 +400,7 @@ def mode_for_steps(steps: list[dict[str, Any]]) -> str:
         return "upscale"
     if ids == {"watermark_removal", "upscale"}:
         return "watermark_upscale"
+    # 插帧不是逐帧能力：它成对读帧，走单独的整段视频管线。
+    if ids == {"frame_interpolation"}:
+        return "interpolate"
     raise ValueError("mixed pipeline steps are not supported by the current frame adapter")
