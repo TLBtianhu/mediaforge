@@ -2,7 +2,7 @@
 //!
 //! 设计约束（来自项目决定）：
 //!   * 应用只认一个 sha256，没有"最新版本"这个概念，因此不存在版本协商；
-//!   * 资产落在数据根 `~/.mediaforge/runtime-envs/<backend>`，程序目录保持只读；
+//!   * 资产落在数据根 `~/.mediaforge/runtime-envs/<assetId>`（并列存放，切指针即回滚）；
 //!   * 下载交给随包的 aria2c（4 连接、断点续传、自带重试），Rust 只负责编排与校验；
 //!   * 解压先落临时目录、校验通过后原子改名，避免断电留下半个运行时。
 
@@ -43,12 +43,19 @@ fn envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(storage::data_root_dir(app)?.join("runtime-envs"))
 }
 
-fn backend_dir(app: &AppHandle) -> AppResult<PathBuf> {
+/// 当前二进制钉死的资产目录：`runtime-envs/<assetId>`。
+/// 并列存放意味着旧资产不删——回滚只需要把 active-runtime.json 指回去。
+fn asset_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    Ok(envs_dir(app)?.join(ASSET_ID))
+}
+
+/// 旧布局（`runtime-envs/<backend>`）只用于读取，不再写入。
+fn legacy_backend_dir(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(envs_dir(app)?.join(BACKEND))
 }
 
 fn python_path(app: &AppHandle) -> AppResult<PathBuf> {
-    Ok(backend_dir(app)?.join("Scripts").join("python.exe"))
+    Ok(asset_dir(app)?.join("Scripts").join("python.exe"))
 }
 
 /// 运行时是否已就位（只看解释器在不在，不重算 5 GB 的哈希）。
@@ -58,7 +65,7 @@ pub fn is_ready(app: &AppHandle) -> bool {
 
 /// 本地运行时是否就是当前资产（标记里的 id 与 sha256 都要对上）。
 fn marker_matches(app: &AppHandle) -> bool {
-    let Ok(dir) = backend_dir(app) else {
+    let Ok(dir) = asset_dir(app) else {
         return false;
     };
     let Ok(text) = fs::read_to_string(dir.join(ASSET_MARKER)) else {
@@ -124,7 +131,8 @@ pub fn runtime_asset_status(app: AppHandle) -> AppResult<Value> {
         "backend": BACKEND,
         "installed": ready,
         "stale": present && !ready,
-        "dir": backend_dir(&app)?.display().to_string(),
+        "dir": asset_dir(&app)?.display().to_string(),
+        "legacyDir": legacy_backend_dir(&app)?.display().to_string(),
         "python": if ready { Some(python.display().to_string()) } else { None },
     }))
 }
@@ -164,7 +172,7 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
     }
 
     emit(app, "extracting", ASSET_SIZE, "解压运行时");
-    let target = envs.join(BACKEND);
+    let target = envs.join(ASSET_ID);
     if target.exists() {
         let _ = fs::remove_dir_all(&target);
     }
@@ -173,6 +181,7 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
     let record = json!({
         "pythonPath": target.join("Scripts").join("python.exe").to_string_lossy(),
         "backend": BACKEND,
+        "assetId": ASSET_ID,
     });
     fs::write(envs.join("active-runtime.json"), record.to_string())
         .map_err(|error| error.to_string())?;

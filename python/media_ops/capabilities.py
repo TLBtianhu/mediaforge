@@ -170,6 +170,10 @@ def _layout_root(override_dir: Any = None) -> Path:
 
 
 def list_capabilities(override_dir: Any = None) -> dict[str, Any]:
+    from . import runtime_guard
+
+    runtime_descriptor = runtime_guard.describe()
+    runtime_supported = set(runtime_descriptor["capabilities"])
     """`override_dir` 是用户选的模型目录；不传就走全局默认根。"""
     catalog = _catalog()
     root = _layout_root(override_dir)
@@ -203,12 +207,20 @@ def list_capabilities(override_dir: Any = None) -> dict[str, Any]:
                 "params": item["params"],
                 # 算出来的，不是声明里抄的
                 "implemented": item["id"] in implemented,
+                # 这套运行时声明支持才算"现在能做"；声明了但依赖缺失仍会在执行时报错，
+                # 那是另一层问题（runtime_guard 只回答"这套运行时有没有这项能力"）。
+                "runtimeSupported": item["id"] in runtime_supported,
                 "models": models,
             }
         )
     # audit 一起带出去：让 MCP / UI / 日志都能看见"声明 vs 实现"的漂移，
     # 而不是只有测试知道。多一个字段是加法的，老消费者忽略即可。
-    return {"capabilities": result, "modelDir": str(model_dir()), "audit": audit_capabilities()}
+    return {
+        "capabilities": result,
+        "modelDir": str(model_dir()),
+        "audit": audit_capabilities(),
+        "runtime": runtime_descriptor,
+    }
 
 
 _PARAM_TYPES: dict[str, Any] = {

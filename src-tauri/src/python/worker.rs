@@ -217,6 +217,9 @@ fn acquire_runtime_access<'a>(
 struct ActiveRuntimeRecord {
     python_path: String,
     backend: Option<String>,
+    /// 内容寻址的资产 id（`runtime-cuda-2026.10.2`）。并列目录用这个名字，
+    /// 指针切到哪一份就运行哪一份。
+    asset_id: Option<String>,
     source: Option<String>,
     overlay_path: Option<String>,
     #[serde(default)]
@@ -534,6 +537,32 @@ mod runtime_record_tests {
     }
 
     #[test]
+    fn accepts_an_asset_directory_when_the_record_names_the_same_asset() {
+        let root = scratch("asset-dir");
+        let envs = root.join("runtime-envs");
+        let asset = envs.join("runtime-cuda-2026.10.2");
+        let python = asset.join("Scripts").join("python.exe");
+        fs::create_dir_all(python.parent().unwrap()).unwrap();
+        fs::write(&python, b"stub").unwrap();
+        let record = serde_json::json!({
+            "pythonPath": python.to_string_lossy(),
+            "backend": "cuda",
+            "assetId": "runtime-cuda-2026.10.2",
+        });
+        fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
+        assert!(select_active_record(&[envs.clone()], false).is_some());
+
+        // 指针说 A、目录却是 B → 必须拒绝
+        let record = serde_json::json!({
+            "pythonPath": python.to_string_lossy(),
+            "backend": "cuda",
+            "assetId": "runtime-cuda-2026.10.1",
+        });
+        fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
+        assert_eq!(select_active_record(&[envs], false), None);
+    }
+
+    #[test]
     fn returns_none_without_candidates() {
         assert_eq!(select_active_record(&[], true), None);
     }
@@ -645,11 +674,24 @@ fn active_path_backend_matches(file: &Path, python_path: &str) -> bool {
         return false;
     }
     let path = PathBuf::from(python_path);
-    path.parent()
+    let Some(directory) = path
+        .parent()
         .and_then(Path::parent)
         .and_then(|env| env.file_name())
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.eq_ignore_ascii_case(backend.trim()))
+    else {
+        return false;
+    };
+    if directory.eq_ignore_ascii_case(backend.trim()) {
+        return true;
+    }
+    // 并列运行时：目录名是资产 id，记录里也必须写同一个 id，避免"指针写着 A、
+    // 目录却是 B"的错配。
+    record
+        .asset_id
+        .as_deref()
+        .map(|asset| asset.trim().eq_ignore_ascii_case(directory))
+        .unwrap_or(false)
 }
 
 fn active_debug_override_path_allowed(

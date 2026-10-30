@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "_comment": [
+    "运行时清单：这套运行时能做什么、跑的是什么解释器与 torch。",
+    "App 与 worker 在启动/接单时校验，缺能力要明确拒绝，而不是等到调用时才报模块缺失。",
+    "assetId 与 src-tauri/src/runtime_assets.rs 里的 ASSET_ID 必须一致（由测试保证）。"
+  ],
+  "fallbackAssetId": "runtime-cuda-2026.10.2",
+  "runtimes": [
+    {
+      "assetId": "runtime-cuda-2026.10.2",
+      "backend": "cuda",
+      "python": "3.11",
+      "torch": "2.7.1",
+      "capabilities": [
+        "upscale",
+        "watermark_removal",
+        "denoise",
+        "matting",
+        "depth",
+        "object_detection",
+        "frame_interpolation"
+      ],
+      "notes": "当前唯一发布版本；视频/图像与音频共用同一套解释器，按任务起独立进程。"
+    }
+  ]
+}

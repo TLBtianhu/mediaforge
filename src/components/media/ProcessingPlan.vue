@@ -23,6 +23,8 @@ type Capability = {
   roles: Record<string, RoleSpec>
   params: Record<string, ParamSpec>
   implemented: boolean
+  /** 当前运行时是否声明支持；老 worker 不返回该字段，缺省视为支持 */
+  runtimeSupported?: boolean
   models: CapabilityModel[]
 }
 
@@ -44,7 +46,10 @@ const loading = ref(false)
 // 查询失败时把原因留下：静默清空会让界面只剩"没有可用模型"，无从排查
 const loadError = ref('')
 
-const available = computed(() => capabilities.value.filter(item => item.implemented && item.modalities.includes(props.modality)))
+// runtimeSupported 缺省（老 worker）视为支持，避免握手期把选项全清空
+const available = computed(() => capabilities.value.filter(item => item.implemented
+  && item.runtimeSupported !== false
+  && item.modalities.includes(props.modality)))
 const current = computed(() => capabilities.value.find(item => item.id === props.modelValue?.capability))
 const displayRoles = ['inpainter', 'upscaler', 'face_restorer', 'interpolator', 'primary']
 const displayRole = computed(() => {

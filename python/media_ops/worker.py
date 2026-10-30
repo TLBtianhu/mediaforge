@@ -35,9 +35,49 @@ def _progress(request_id: str | None, operation: str, fraction: float, current: 
     )
 
 
+# 模式 → 需要的能力。放在 worker 入口，是因为这里能同时看到 steps 与 mode 两种调用形态。
+_MODE_CAPABILITIES = {
+    "upscale": ["upscale"],
+    "watermark": ["watermark_removal"],
+    "watermark_upscale": ["upscale", "watermark_removal"],
+    "denoise": ["denoise"],
+    "detect": ["object_detection"],
+    "depth": ["depth"],
+    "matting": ["matting"],
+    "interpolate": ["frame_interpolation"],
+}
+
+
+def _requested_capabilities(payload: dict[str, Any]) -> set[str]:
+    """这次任务需要运行时具备哪些能力（steps 优先，其次 mode）。"""
+    requested: set[str] = set()
+    for step in payload.get("steps") or []:
+        if isinstance(step, dict):
+            capability = str(step.get("capability") or "").strip()
+            if capability:
+                requested.add(capability)
+    mode = str(payload.get("mode") or "").strip().lower()
+    requested.update(_MODE_CAPABILITIES.get(mode, []))
+    return requested
+
+
 def cmd_media_tool(payload: dict[str, Any]) -> int:
     operation = str(payload.get("operation") or "").strip().lower()
     request_id = _request_id(payload)
+
+    from . import runtime_guard
+
+    requested = _requested_capabilities(payload)
+    missing = runtime_guard.missing_capabilities(requested)
+    if missing:
+        described = runtime_guard.describe()
+        return emit_error(
+            "RUNTIME_CAPABILITY_MISSING",
+            f"当前运行时（{described['assetId']}，来源 {described['source']}）不支持：{', '.join(missing)}。"
+            "请安装包含该能力的运行时，或换用已支持的能力。",
+            request_id=request_id,
+            extra={"runtime": described, "missing": missing, "requested": sorted(requested)},
+        )
     try:
         if operation == "media_image":
             from .image_worker import cmd_media_image
