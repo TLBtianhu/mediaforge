@@ -1778,48 +1778,6 @@ onMounted(async () => {
                     {{ card.installing ? t('settings.runtimeInstalling') : t('settings.runtimeRepair') }}
                   </n-button>
                   <n-button
-                    v-if="app.runtimeManagementSupported && runtimeCoreVersionCheckReady
-                      && card.state === 'active'
-                      && !card.coreUpdateAvailable
-                      && !card.manifestNewer
-                      && card.env?.source !== 'bundled'
-                      && card.env?.coreUpdateSupported !== false"
-                    size="tiny"
-                    secondary
-                    :loading="runtimeCoreUpdating && app.runtimeCoreUpdateMode === 'repair'"
-                    :disabled="runtimeBusy"
-                    @click="repairRuntimeDependencies(card)"
-                  >
-                    <template #icon><n-icon :component="RefreshOutline" /></template>
-                    {{ t('settings.runtimeDependencyRepair') }}
-                  </n-button>
-                  <n-button
-                    v-if="runtimeCoreVersionCheckReady && card.coreUpdateAvailable && card.state === 'active'"
-                    size="tiny"
-                    secondary
-                    type="warning"
-                    :loading="runtimeCoreUpdating && app.runtimeCoreUpdateMode === 'update'"
-                    :disabled="runtimeBusy"
-                    @click="updateRuntimeCore(card)"
-                  >
-                    <template #icon><n-icon :component="CloudDownloadOutline" /></template>
-                    {{ t('settings.runtimeCoreUpdate') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeCoreUpdateSupported && card.state === 'active' && runtimeCoreSyncAvailable(card.env, app.runtimeInfo?.manifestVersion)"
-                    size="tiny" secondary type="warning" :disabled="runtimeBusy"
-                    @click="runRuntimeCoreOperation(card, 'sync')"
-                  >
-                    {{ t('settings.runtimeCoreSync') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeCoreUpdateSupported && card.state === 'active' && card.env?.coreUpdateSupported !== false && app.runtimeInfo?.rollbackAvailable"
-                    size="tiny" secondary :disabled="runtimeBusy"
-                    @click="runRuntimeCoreOperation(card, 'rollback')"
-                  >
-                    {{ t('settings.runtimeCoreRollback') }}
-                  </n-button>
-                  <n-button
                     v-if="card.env?.logPath"
                     size="tiny"
                     tertiary
