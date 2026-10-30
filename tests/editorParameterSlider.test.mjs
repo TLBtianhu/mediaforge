@@ -52,7 +52,14 @@ const parameters = [
   { name: 'track-volume', reset: 1, min: 0, max: 2, get: s => s.session.tracks[0].volume, set: (s, v) => s.setTrackVolume('track', v) },
   { name: 'track-pan', reset: 0, min: -1, max: 1, get: s => s.session.tracks[0].pan, set: (s, v) => s.setTrackPan('track', v) },
 ]
-const flush = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick() }
+// naive-ui 的滑块在尺寸测量/焦点处理上会排到动画帧里；只等 microtask 与 setImmediate
+// 时，机器一忙就会读到上一帧的值（实测约 1/3 概率）。固定等一帧再收尾，测试才稳定。
+const flush = async () => {
+  await nextTick()
+  await new Promise(resolve => requestAnimationFrame(() => resolve()))
+  await new Promise(resolve => setImmediate(resolve))
+  await nextTick()
+}
 const resetLabel = spec => spec.reset === 1 ? '100%' : spec.min < 0 ? 'Center' : '0%'
 const updatedValues = env => env.emitted.filter(([kind]) => kind === 'update').map(([, , value]) => value)
 
