@@ -25,12 +25,13 @@ pub const ASSET_SHA256: &str = "7a1040eb6ed5510e1ede30ef90314a6a5993f94eee409c1e
 pub const ASSET_SIZE: u64 = 3616417066;
 /// 同一份资产的两个源，按实测速度排序。
 ///
-/// HF 官方域名在国内不可达（实测 443 超时），所以这里写的是社区镜像 hf-mirror：
-/// 实测单连接 5.5 MB/s，而魔搭单连接约 1.2 MB/s、四连接聚合约 3 MB/s。
+/// 顺序按当前可达性排：魔搭已发布，hf-mirror 需要向 HF 数据集上传后才有。
+/// huggingface.co 在国内不可达（实测 443 超时），备源写的是社区镜像 hf-mirror；
+/// 实测镜像单连接 5.5 MB/s，魔搭单连接约 1.2 MB/s、四连接聚合约 3 MB/s。
 /// aria2c 支持"同一文件多个 URI"，前一个失败会自动换下一个，因此备用源是零成本冗余。
 pub const ASSET_URLS: [&str; 2] = [
-    "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.10.2.zip",
     "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-2026.10.2.zip",
+    "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.10.2.zip",
 ];
 const BACKEND: &str = "cuda";
 const PROGRESS_EVENT: &str = "mediaforge://runtime-asset";
