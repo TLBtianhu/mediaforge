@@ -201,6 +201,26 @@ def interpolate_frames(model_dir: str | Path, first: np.ndarray, second: np.ndar
     return (array * 255.0).round().astype("uint8")
 
 
+def _install_torchvision_shim() -> None:
+    """给 basicsr 1.4.2 补回 torchvision 0.22 删掉的 functional_tensor。
+
+    basicsr（以及依赖它的 gfpgan）在导入期就会 `from torchvision.transforms.
+    functional_tensor import rgb_to_grayscale`，不补就会 ModuleNotFoundError。
+    这个垫片只补那一个函数，不改 torchvision 本身。
+    """
+    import sys
+    import types
+
+    name = "torchvision.transforms.functional_tensor"
+    if name in sys.modules:
+        return
+    import torchvision.transforms.functional as functional
+
+    shim = types.ModuleType(name)
+    shim.rgb_to_grayscale = functional.rgb_to_grayscale  # type: ignore[attr-defined]
+    sys.modules[name] = shim
+
+
 def remove_background(model_dir: str | Path, image: np.ndarray) -> np.ndarray:
     """RMBG-1.4 抠图，返回 RGBA。
 
@@ -211,6 +231,8 @@ def remove_background(model_dir: str | Path, image: np.ndarray) -> np.ndarray:
     """
     import torch
     from PIL import Image as PILImage
+
+    _install_torchvision_shim()
     from transformers import AutoModelForImageSegmentation
 
     device = pick_device()
