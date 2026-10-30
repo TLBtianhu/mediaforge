@@ -126,7 +126,11 @@ async function cancel(job: AgentJob) {
 
 onMounted(() => {
   void load()
-  timer = setInterval(() => { void load() }, 3000)
+  timer = setInterval(() => {
+    // 页面不可见时不轮询；无活跃任务时放宽到 10 秒，避免每条命令都新起一个 Python 进程。
+    if (typeof document !== 'undefined' && document.hidden) return
+    void load()
+  }, 10000)
 })
 
 onBeforeUnmount(() => {
