@@ -40,6 +40,28 @@
 真实下载验证（HTDemucs4）：`download_started ×1 / download_progress ×64 /
 download_done ×1`，且旧的 `audio_tool_*` 同时照发——两条通道并行期间前端可随时切换。
 
+## 2.6 对账基线（2026-10-30 实测）
+
+`python scripts/compare-model-apis.py`：
+
+```
+A(model_hub)     334 条
+B(list_models)   326 条
+只存在于 B 的模型  0          ← 模型集合已对齐
+缺必需字段的条目  326 / 326    ← 字段尚未合并
+缺少的字段        supported modelPath configPath sizeBytes slots slotTask modelType
+```
+
+结论：统一不是"合流两个数据源"，而是**把 B 的解析结果并进 A 的条目**。
+B 的判定逻辑（`worker_models.model_path_for` / `config_path_for` / slots 解析 /
+supported 判定）已经存在，直接复用，不要重写。
+
+验收命令：
+
+```powershell
+python scripts/compare-model-apis.py --strict   # 退出码 0 才算完成
+```
+
 ## 3. 改动清单（按依赖顺序）
 
 ### 3.1 后端：让 A 套发出统一事件

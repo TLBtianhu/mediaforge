@@ -53,7 +53,7 @@ try {
 }
 
 if (-not (Test-Path "$zip.sig")) { throw '签名失败：没有生成 .sig 文件' }
-$b64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes("$zip.sig"))
+$b64 = (Get-Content "$zip.sig" -Raw).Trim()  # .sig 本身就是 base64
 $out = "$zip.signature.b64"
 [System.IO.File]::WriteAllText($out, $b64, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host ''

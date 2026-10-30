@@ -155,9 +155,9 @@ if ($signingPassword -and (Test-Path $keyPath)) {
     try { Invoke-Native 'signer' { & $signer signer sign -f $keyPath -p $signingPassword $updateZip } }
     finally { Pop-Location }
     if (Test-Path "$updateZip.sig") {
-        $b64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes("$updateZip.sig"))
+        $b64 = (Get-Content "$updateZip.sig" -Raw).Trim()  # .sig 本身就是 base64，清单直接用
         [System.IO.File]::WriteAllText("$updateZip.signature.b64", $b64, (New-Object System.Text.UTF8Encoding($false)))
-        Write-Host "  已签名，清单用的 base64 写入 $updateZip.signature.b64"
+        Write-Host "  已签名；清单 signature 字段用 $updateZip.sig 的内容"
     }
 } else {
     Write-Host "  跳过签名：设置 TAURI_SIGNING_PRIVATE_KEY_PASSWORD 后重跑即可（或单独跑 scripts\sign-update.ps1）"
