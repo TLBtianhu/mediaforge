@@ -681,6 +681,38 @@
           "maximum": 4
         }
       }
+    },
+    {
+      "id": "esrgan-nomos8kdat-x4",
+      "name": "4xNomos8kDAT.pth",
+      "label": "4x Nomos8kDAT",
+      "modality": "image",
+      "modalities": [
+        "image"
+      ],
+      "task": "super_resolution",
+      "architecture": "ESRGAN",
+      "capabilities": [
+        "upscale"
+      ],
+      "roles": [
+        "upscaler"
+      ],
+      "size": 309317507,
+      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "description": "训练于 8000 张素材的 4× 超分，体积大（295 MB）但细节更稳。",
+      "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4xNomos8kDAT.pth",
+      "implemented": true,
+      "status": "available",
+      "video_mode": "frame",
+      "params": {
+        "scale": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     }
   ]
 }
