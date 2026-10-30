@@ -33,7 +33,8 @@
       },
       "sha256": "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb",
       "status": "planned",
-      "blockedReason": "目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。视频管线现在会退到已安装的超分模型，所以缺它只影响 2× 选项，不再阻塞整条视频超分。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。"
+      "blockedReason": "目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。视频管线现在会退到已安装的超分模型，所以缺它只影响 2× 选项，不再阻塞整条视频超分。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。",
+      "licenseSpdx": "BSD-3-Clause"
     },
     {
       "id": "real-esrgan-x4",
@@ -66,7 +67,8 @@
         }
       },
       "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
-      "status": "available"
+      "status": "available",
+      "licenseSpdx": "BSD-3-Clause"
     },
     {
       "id": "lama",
@@ -99,7 +101,8 @@
         }
       },
       "sha256": "344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9",
-      "status": "available"
+      "status": "available",
+      "licenseSpdx": "Apache-2.0"
     },
     {
       "id": "watermark-yolo11x",
@@ -124,7 +127,8 @@
         "detector"
       ],
       "sha256": "6ac71b6ab8db27ec7928b5176e60a359c65e1579a5c1d58cf2f98df30cf3085e",
-      "status": "available"
+      "status": "available",
+      "licenseSpdx": "AGPL-3.0"
     },
     {
       "id": "rife-v46",
@@ -154,7 +158,8 @@
           "type": "number",
           "default": 0.5
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "propainter",
@@ -177,7 +182,8 @@
         "primary"
       ],
       "status": "planned",
-      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载",
+      "licenseSpdx": null
     },
     {
       "id": "basicvsrpp",
@@ -200,7 +206,8 @@
         "upscaler"
       ],
       "status": "planned",
-      "blockedReason": "缺少权重地址与加载代码，尚不可下载"
+      "blockedReason": "缺少权重地址与加载代码，尚不可下载",
+      "licenseSpdx": null
     },
     {
       "id": "gfpgan-v14",
@@ -223,7 +230,8 @@
         "face_restorer"
       ],
       "status": "planned",
-      "blockedReason": "依赖已装通（basicsr/facexlib/gfpgan + torchvision functional_tensor 垫片），GFPGANv1.pth（587 MB）也下好了。但参数扫描表明该权重与包内两种架构都不匹配：GFPGANv1Clean 在 (channel_multiplier, different_w, input_is_latent, sft_half) 全组合下最好也只有 166 个键不匹配（缺 conv_body_first.weight，说明权重是 Sequential 结构）；GFPGANv1 则在 cm=1/2 与 sft_half True/False 下都报 final_linear 形状不符。结论：这个 v1 权重与当前 gfpgan 1.3.8 的架构定义对不上，需要换官方 GFPGANv1.4.pth（配 GFPGANv1Clean）。"
+      "blockedReason": "依赖已装通（basicsr/facexlib/gfpgan + torchvision functional_tensor 垫片），GFPGANv1.pth（587 MB）也下好了。但参数扫描表明该权重与包内两种架构都不匹配：GFPGANv1Clean 在 (channel_multiplier, different_w, input_is_latent, sft_half) 全组合下最好也只有 166 个键不匹配（缺 conv_body_first.weight，说明权重是 Sequential 结构）；GFPGANv1 则在 cm=1/2 与 sft_half True/False 下都报 final_linear 形状不符。结论：这个 v1 权重与当前 gfpgan 1.3.8 的架构定义对不上，需要换官方 GFPGANv1.4.pth（配 GFPGANv1Clean）。",
+      "licenseSpdx": null
     },
     {
       "id": "hat-l",
@@ -237,11 +245,12 @@
       "capabilities": [],
       "roles": [],
       "size": 0,
-      "license": "",
+      "license": "见上游仓库（未标注）",
       "description": "混合注意力超分，质量高、显存占用大",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
     },
     {
       "id": "dat-2",
@@ -255,11 +264,12 @@
       "capabilities": [],
       "roles": [],
       "size": 0,
-      "license": "",
+      "license": "见上游仓库（未标注）",
       "description": "双聚合 Transformer 超分",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
     },
     {
       "id": "codeformer",
@@ -273,11 +283,12 @@
       "capabilities": [],
       "roles": [],
       "size": 0,
-      "license": "",
+      "license": "见上游仓库（未标注）",
       "description": "带保真度权重的老照片人脸修复",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "codeformer.pth（359 MB）在 hf-mirror 上可下，但 CodeFormer 的架构代码依赖 basicsr，且需要人脸检测与对齐；本次已装通 basicsr/facexlib，先解决 GFPGAN 的架构匹配再复用它。"
+      "blockedReason": "codeformer.pth（359 MB）在 hf-mirror 上可下，但 CodeFormer 的架构代码依赖 basicsr，且需要人脸检测与对齐；本次已装通 basicsr/facexlib，先解决 GFPGAN 的架构匹配再复用它。",
+      "licenseSpdx": null
     },
     {
       "id": "birefnet",
@@ -291,11 +302,12 @@
       "capabilities": [],
       "roles": [],
       "size": 0,
-      "license": "",
+      "license": "见上游仓库（未标注）",
       "description": "高分辨率抠图",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "权重与代码可下载，依赖已装通（timm/kornia/kornia-rs + torchvision 垫片），transformers 远程代码能加载 BiRefNet 并在 CUDA 上 fp16 前向。但三种预处理都出不来可用掩膜：ImageNet 归一化 → 原始输出 3.2~14.8，sigmoid 后前景 100%；0-1 输入 → 前景 0%；(x-0.5)/0.5 → 前景 26.6%，但看图是**一团模糊光斑**，边缘完全不对。对照 handler.py：官方用 ImageNet 归一化 + 取 preds[0].squeeze()，与实测不符，说明这个 checkpoint 的输出版本/配置（mul_scl_ipt、decoder 结构）与仓库默认不一致。下一步：改用仓库自带的 inference 脚本或其 config.json 里的完整配置，而不是手拼预处理。"
+      "blockedReason": "权重与代码可下载，依赖已装通（timm/kornia/kornia-rs + torchvision 垫片），transformers 远程代码能加载 BiRefNet 并在 CUDA 上 fp16 前向。但三种预处理都出不来可用掩膜：ImageNet 归一化 → 原始输出 3.2~14.8，sigmoid 后前景 100%；0-1 输入 → 前景 0%；(x-0.5)/0.5 → 前景 26.6%，但看图是**一团模糊光斑**，边缘完全不对。对照 handler.py：官方用 ImageNet 归一化 + 取 preds[0].squeeze()，与实测不符，说明这个 checkpoint 的输出版本/配置（mul_scl_ipt、decoder 结构）与仓库默认不一致。下一步：改用仓库自带的 inference 脚本或其 config.json 里的完整配置，而不是手拼预处理。",
+      "licenseSpdx": null
     },
     {
       "id": "ddcolor",
@@ -309,11 +321,12 @@
       "capabilities": [],
       "roles": [],
       "size": 0,
-      "license": "",
+      "license": "见上游仓库（未标注）",
       "description": "黑白照片上色",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
     },
     {
       "id": "sam2",
@@ -328,11 +341,12 @@
       "capabilities": [],
       "roles": [],
       "size": 0,
-      "license": "",
+      "license": "见上游仓库（未标注）",
       "description": "提示式分割，体积大",
       "implemented": false,
       "status": "planned",
-      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证"
+      "blockedReason": "能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证",
+      "licenseSpdx": null
     },
     {
       "id": "real-cugan-x4",
@@ -364,7 +378,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "scunet-color-real",
@@ -389,7 +404,8 @@
       "implemented": true,
       "status": "available",
       "video_mode": "frame",
-      "params": {}
+      "params": {},
+      "licenseSpdx": "Apache-2.0"
     },
     {
       "id": "swinir-m-x2",
@@ -421,7 +437,8 @@
           "minimum": 1,
           "maximum": 2
         }
-      }
+      },
+      "licenseSpdx": "Apache-2.0"
     },
     {
       "id": "real-esrgan-anime-x4",
@@ -454,7 +471,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "BSD-3-Clause"
     },
     {
       "id": "yolo11n",
@@ -485,7 +503,8 @@
           "type": "number",
           "default": 0.25
         }
-      }
+      },
+      "licenseSpdx": "AGPL-3.0"
     },
     {
       "id": "depth-anything-v2-small",
@@ -510,7 +529,8 @@
       "implemented": true,
       "status": "available",
       "video_mode": "frame",
-      "params": {}
+      "params": {},
+      "licenseSpdx": "Apache-2.0"
     },
     {
       "id": "rmbg-1.4",
@@ -535,7 +555,8 @@
       "implemented": true,
       "status": "available",
       "video_mode": "frame",
-      "params": {}
+      "params": {},
+      "licenseSpdx": "BRIA-1.4-NC"
     },
     {
       "id": "real-cugan-x2",
@@ -567,7 +588,8 @@
           "minimum": 1,
           "maximum": 2
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-ultrasharp-x4",
@@ -586,7 +608,7 @@
         "upscaler"
       ],
       "size": 66961958,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "社区常用的通用 4× 超分，锐度与噪点平衡较好。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x-UltraSharp.pth",
       "implemented": true,
@@ -599,7 +621,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-remacri-x4",
@@ -618,7 +641,7 @@
         "upscaler"
       ],
       "size": 67025055,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "写实向 4× 超分，纹理保留好，适合照片。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_foolhardy_Remacri.pth",
       "implemented": true,
@@ -631,7 +654,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-1x-denoise-realplksr",
@@ -650,13 +674,14 @@
         "denoiser"
       ],
       "size": 29559554,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "1× 去噪（不改变尺寸），适合轻噪点与压缩伪影。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/1xDeNoise_realplksr_otf.pth",
       "implemented": true,
       "status": "available",
       "video_mode": "frame",
-      "params": {}
+      "params": {},
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-superscale-sp-x4",
@@ -675,7 +700,7 @@
         "upscaler"
       ],
       "size": 66958607,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "4× 超分，风格偏柔和自然，适合人像与风景。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-Superscale-SP_178000_G.pth",
       "implemented": true,
@@ -688,7 +713,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-nomos8kdat-x4",
@@ -707,7 +733,7 @@
         "upscaler"
       ],
       "size": 309317507,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "训练于 8000 张素材的 4× 超分，体积大（295 MB）但细节更稳。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4xNomos8kDAT.pth",
       "implemented": true,
@@ -720,7 +746,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-valar-x4",
@@ -739,7 +766,7 @@
         "upscaler"
       ],
       "size": 67544144,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "4× 超分，锐度与纹理平衡，适合游戏截图与插画。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_Valar_v1.pth",
       "implemented": true,
@@ -752,7 +779,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-comix-x4",
@@ -771,7 +799,7 @@
         "upscaler"
       ],
       "size": 66958607,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "4× 超分，面向漫画/线稿，边缘更硬。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_Fatality_Comix_260000_G.pth",
       "implemented": true,
@@ -784,7 +812,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     },
     {
       "id": "esrgan-yandereneoxl-x4",
@@ -803,7 +832,7 @@
         "upscaler"
       ],
       "size": 66961958,
-      "license": "以上游模型卡为准（uwg/upscaler 汇总）",
+      "license": "MIT（uwg/upscaler 汇总仓库标注）",
       "description": "4× 超分，二次元/插画向，线条干净、色彩偏鲜。",
       "url": "https://hf-mirror.com/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-YandereNeoXL_200k.pth",
       "implemented": true,
@@ -816,7 +845,8 @@
           "minimum": 1,
           "maximum": 4
         }
-      }
+      },
+      "licenseSpdx": "MIT"
     }
   ]
 }

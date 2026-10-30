@@ -190,3 +190,17 @@ class SharedHelperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CatalogueHonestyTests(unittest.TestCase):
+    def test_every_available_model_names_its_licence(self) -> None:
+        import json
+
+        catalog = json.loads(
+            (Path(__file__).resolve().parents[2] / "python" / "media_ops" / "media_catalog.json").read_text(encoding="utf-8")
+        )
+        missing = [
+            item["id"]
+            for item in catalog["models"]
+            if item.get("status") == "available" and not item.get("licenseSpdx")
+        ]
+        self.assertEqual(missing, [], "可用模型必须写清 SPDX 许可，否则用户无法判断能否商用")

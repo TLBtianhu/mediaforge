@@ -48,7 +48,9 @@ for task in ORDER + [t for t in groups if t not in ORDER]:
     for m in sorted(items, key=lambda x: x.get("label", "")):
         label = str(m.get("label") or m["id"])
         desc = str(m.get("description") or "").replace("|", "/")
-        lines.append(f"| `{m['id']}`<br>{label} | {desc} | {mb(m.get('size') or 0)} | {m.get('license') or '—'} |")
+        spdx = m.get("licenseSpdx")
+        license_text = f"`{spdx}`" if spdx else "未标注"
+        lines.append(f"| `{m['id']}`<br>{label} | {desc} | {mb(m.get('size') or 0)} | {license_text} |")
 
 if planned:
     lines.append("\n## 还没接的模型，以及卡在哪\n")
