@@ -2,7 +2,7 @@
 
 > 这份文档由 `python/media_ops/media_catalog.json` 生成，`available` 表示权重已下载且通过真实素材验证；`planned` 表示还没接入，原因写在最后一节。改 catalog 后请重新生成，不要手改这里。
 
-当前可用模型 **20** 个，计划中 **10** 个。
+当前可用模型 **21** 个，计划中 **9** 个。
 
 
 ## 超分辨率（放大）
@@ -18,6 +18,7 @@
 | `esrgan-ultrasharp-x4`<br>4x-UltraSharp | 社区常用的通用 4× 超分，锐度与噪点平衡较好。 | 63.9 MB | `MIT` |
 | `real-cugan-x2`<br>Real-CUGAN 2× (denoise3x) | 面向动漫/插画的 2× 超分，denoise3x 变体自带较强降噪。 | 4.9 MB | `MIT` |
 | `real-cugan-x4`<br>Real-CUGAN 4× (denoise3x) | 面向动漫/插画的 4× 超分，denoise3x 变体自带较强降噪。 | 5.4 MB | `MIT` |
+| `real-esrgan-x2`<br>Real-ESRGAN 2× | 2× photo super-resolution, used by image and video restore. | 64.0 MB | `BSD-3-Clause` |
 | `real-esrgan-x4`<br>Real-ESRGAN 4× | 4× photo super-resolution, used for 2K/4K targets. | 63.9 MB | `BSD-3-Clause` |
 | `real-esrgan-anime-x4`<br>Real-ESRGAN x4plus (anime 6B) | 面向动漫/插画的 4× 超分，6B 变体更轻，线条更锐。 | 17.1 MB | `BSD-3-Clause` |
 | `swinir-m-x2`<br>SwinIR-M 2× (real-world GAN) | Transformer 超分（real-world 2× GAN 权重），细节强但 fp16 下会出 NaN，已自动降级 fp32。 | 63.9 MB | `Apache-2.0` |
@@ -75,7 +76,6 @@
 - **GFPGAN v1.4**（`gfpgan-v14`）：依赖已装通（basicsr/facexlib/gfpgan + torchvision functional_tensor 垫片），GFPGANv1.pth（587 MB）也下好了。但参数扫描表明该权重与包内两种架构都不匹配：GFPGANv1Clean 在 (channel_multiplier, different_w, input_is_latent, sft_half) 全组合下最好也只有 166 个键不匹配（缺 conv_body_first.weight，说明权重是 Sequential 结构）；GFPGANv1 则在 cm=1/2 与 sft_half True/False 下都报 final_linear 形状不符。结论：这个 v1 权重与当前 gfpgan 1.3.8 的架构定义对不上，需要换官方 GFPGANv1.4.pth（配 GFPGANv1Clean）。
 - **HAT-L**（`hat-l`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
 - **ProPainter**（`propainter`）：缺少权重地址与加载代码，尚不可下载
-- **Real-ESRGAN 2×**（`real-esrgan-x2`）：目录里没有 RealESRGAN_x2plus.pth：上游 GitHub 的 v0.2.1 需要代理，而当前代理不可用，魔搭上也找不到对应仓库。视频管线现在会退到已安装的超分模型，所以缺它只影响 2× 选项，不再阻塞整条视频超分。已有 real-cugan-x2 与 swinir-m-x2 可作为 2× 替代。
 - **SAM 2**（`sam2`）：能力清单里的候选，尚未接入：需要权重地址、加载代码与一次真实出图验证
 
 ## 怎么选
