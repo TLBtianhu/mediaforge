@@ -39,6 +39,7 @@ import {
 import { useModelList } from './separate/useModelList'
 import { makeInferenceDefaults } from './separate/inferenceDefaults'
 import { makePlayback } from './separate/playback'
+import { makeStemSelection } from './separate/stemSelection'
 import { useOutputNaming } from './separate/useOutputNaming'
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
 import { resolveJobStatus } from '@/features/tasks/lifecycle'
@@ -423,41 +424,15 @@ const ensembleReady = computed(() => ensembleEnabled.value
     const options = ensembleStemOptionsByModel.value[name] || []
     return Boolean(selectedStem) && options.some(option => option.value.toLowerCase() === selectedStem.toLowerCase())
   }))
-const outputStemSelectionCleared = ref(false)
+const {
+  outputStemSelectionCleared, checkedOutputStems, selectedOutputStemCount,
+  hasOutputStemSelection, selectAllOutputStems, clearOutputStems,
+} = makeStemSelection({ selectedStems, persistedOutputStemSelectionCleared, availableStemNames, computed, ref })
 const selectedStemSummary = computed(() => {
   if (outputStemSelectionCleared.value) return t('separate.noStemsSelected')
   if (!selectedStems.value.length) return t('separate.allStems')
   return selectedStems.value.join(', ')
 })
-const checkedOutputStems = computed<string[]>({
-  get() {
-    if (outputStemSelectionCleared.value) return []
-    if (!selectedStems.value.length) return [...availableStemNames.value]
-    return selectedStems.value
-  },
-  set(value) {
-    const allowed = new Set(availableStemNames.value)
-    const next = value.filter(stem => allowed.has(stem))
-    const cleared = next.length === 0
-    outputStemSelectionCleared.value = cleared
-    persistedOutputStemSelectionCleared.value = cleared
-    selectedStems.value = next.length === availableStemNames.value.length ? [] : next
-  },
-})
-const selectedOutputStemCount = computed(() => checkedOutputStems.value.length)
-const hasOutputStemSelection = computed(() => (
-  !availableStemNames.value.length || selectedOutputStemCount.value > 0
-))
-function selectAllOutputStems() {
-  outputStemSelectionCleared.value = false
-  persistedOutputStemSelectionCleared.value = false
-  selectedStems.value = []
-}
-function clearOutputStems() {
-  outputStemSelectionCleared.value = true
-  persistedOutputStemSelectionCleared.value = true
-  selectedStems.value = []
-}
 const selectedStemDetail = computed(() => {
   if (selectedStems.value.length > 6) {
     return t('separate.selectedStemCount', {

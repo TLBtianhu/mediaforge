@@ -51,22 +51,7 @@ assert.equal(logLevelFunctions.length, 2)
 const logLevelCode = ts.transpileModule(logLevelFunctions.map(statement => statement.getText(logSource).replace(/^export /, '')).join('\n'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText
-const stemSelectionNames = new Set([
-  'outputStemSelectionCleared',
-  'checkedOutputStems',
-  'selectedOutputStemCount',
-  'hasOutputStemSelection',
-  'selectAllOutputStems',
-  'clearOutputStems',
-])
-const stemSelectionStatements = script.statements.filter(statement => (
-  ts.isFunctionDeclaration(statement) ? stemSelectionNames.has(statement.name?.text)
-    : ts.isVariableStatement(statement) && statement.declarationList.declarations.some(item => stemSelectionNames.has(item.name.getText(script)))
-))
-assert.equal(stemSelectionStatements.length, stemSelectionNames.size)
-const stemSelectionCode = ts.transpileModule(stemSelectionStatements.map(statement => statement.getText(script)).join('\n'), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022 },
-}).outputText
+const stemSelectionCode = ts.transpileModule(readFileSync(new URL('../src/views/separate/stemSelection.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
 const outputDirectoryNames = new Set(['outputDirectoryInput', 'outputDirectoryError', 'outputPreview', 'validateOutputDirectory', 'WINDOWS_RESERVED_FILENAMES', 'canStart', 'start'])
 const outputDirectoryStatements = script.statements.filter(statement => (
   ts.isFunctionDeclaration(statement) ? outputDirectoryNames.has(statement.name?.text)
@@ -306,7 +291,7 @@ test('large output stem lists expose compact bulk selection actions', () => {
   assert.ok(template.includes('@click="clearOutputStems"'))
   assert.ok(template.includes("t('separate.selectAllStems')"))
   assert.ok(template.includes("t('separate.clearStemSelection')"))
-  assert.ok(scriptSource.includes('outputStemSelectionCleared.value = true'))
+  assert.ok(readFileSync(new URL('../src/views/separate/stemSelection.ts', import.meta.url), 'utf8').includes('outputStemSelectionCleared.value = true'))
   assert.ok(scriptSource.includes('&& hasOutputStemSelection.value'))
 })
 
@@ -325,7 +310,7 @@ test('output stem bulk actions distinguish all stems from an empty selection', (
     selectedStems: ref([]),
     persistedOutputStemSelectionCleared: ref(false),
   }
-  const result = vm.runInNewContext(`${stemSelectionCode}\n({ checkedOutputStems, selectedOutputStemCount, hasOutputStemSelection, selectAllOutputStems, clearOutputStems })`, context)
+  const result = vm.runInNewContext(`${stemSelectionCode}\nmakeStemSelection`, context)(context)
 
   assert.deepEqual(Array.from(result.checkedOutputStems.value), context.availableStemNames.value)
   assert.equal(result.hasOutputStemSelection.value, true)
