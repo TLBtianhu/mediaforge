@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MCP_SCHEMA_VERSION = 1
 
 
@@ -61,8 +61,8 @@ def load_protocol() -> dict[str, Any]:
             "1.0.0 之前不做兼容，请更新应用或重新生成 manifest",
         )
     domains = data.get("domains")
-    if not isinstance(domains, dict) or "media" not in domains:
-        raise ProtocolError("PROTOCOL_INVALID", "protocol.json 缺少 domains.media")
+    if not isinstance(domains, dict) or not domains:
+        raise ProtocolError("PROTOCOL_INVALID", "protocol.json 缺少 domains")
     return data
 
 
@@ -77,27 +77,43 @@ def command(domain: str, name: str) -> dict[str, Any]:
     return entry
 
 
+def entry_for(domain: str, name: str) -> dict[str, Any]:
+    """逻辑入口（domain + 名字）→ 协议条目。"""
+    return command(domain, name)
+
+
 def handler_for(domain: str, name: str) -> str:
     return str(command(domain, name)["handler"])
 
 
-def canonical_event(legacy_name: str) -> str | None:
-    """历史事件名 → 规范事件名。P2 之后代码直接发规范名，这个映射会缩小。"""
+def command_entries() -> dict[str, dict[str, Any]]:
+    """全局命令表：命令 id → 条目。dispatch 唯一的数据来源。"""
     data = load_protocol()
-    for domain in (data.get("domains") or {}).values():
-        for canonical, legacy_names in (domain.get("events") or {}).items():
-            if legacy_name in legacy_names:
-                return canonical
-    return None
+    table: dict[str, dict[str, Any]] = {}
+    for domain_id, domain in (data.get("domains") or {}).items():
+        for name, entry in (domain.get("commands") or {}).items():
+            if not isinstance(entry, dict):
+                raise ProtocolError("PROTOCOL_INVALID", f"{domain_id}.{name} 不是对象")
+            command_id = str(entry.get("command") or name)
+            handler = str(entry.get("handler") or "")
+            if ":" not in handler:
+                raise ProtocolError(
+                    "PROTOCOL_INVALID",
+                    f"{domain_id}.{name} 的 handler 必须是 module:function，收到 {handler!r}",
+                )
+            if command_id in table:
+                raise ProtocolError("PROTOCOL_INVALID", f"命令重复：{command_id}")
+            table[command_id] = entry
+    return table
+
+
+def canonical_event(legacy_name: str) -> str | None:
+    """历史事件名 → 规范事件名（emit 在边界处使用）。"""
+    return (load_protocol().get("emitAliases") or {}).get(legacy_name)
 
 
 def declared_legacy_events() -> set[str]:
-    data = load_protocol()
-    names: set[str] = set()
-    for domain in (data.get("domains") or {}).values():
-        for legacy_names in (domain.get("events") or {}).values():
-            names.update(legacy_names)
-    return names
+    return set((load_protocol().get("emitAliases") or {}).keys())
 
 
 def canonical_events() -> list[str]:

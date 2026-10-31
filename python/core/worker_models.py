@@ -885,7 +885,7 @@ def model_to_dict(entry: Any, model_dir: str | None = None, include_local_state:
     }
 
 
-def cmd_health() -> int:
+def cmd_health(payload: dict | None = None) -> int:
     emit("health", {"ok": True, "workerVersion": WORKER_VERSION})
     return 0
 
@@ -916,7 +916,7 @@ def _python_matches_manifest(expected: Any, version_info: Any) -> bool:
     return tuple(int(part) for part in version_info[:2]) == wanted
 
 
-def cmd_env_info() -> int:
+def cmd_env_info(payload: dict | None = None) -> int:
     manifest = _runtime_manifest()
     expected_python = str(manifest.get("python") or "")
     payload: dict[str, Any] = {

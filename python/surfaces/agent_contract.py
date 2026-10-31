@@ -80,8 +80,6 @@ def _result_event(name: str, command: str, operation: str | None) -> str | None:
         return "task.result"
     return None
 
-_WORKER = Path(__file__).resolve().parents[1] / "worker.py"
-
 
 def _schema(properties: dict[str, Any] | None = None, required: list[str] | None = None) -> dict[str, Any]:
     schema: dict[str, Any] = {
@@ -437,10 +435,6 @@ INTERNAL_COMMANDS: dict[str, str] = {
     "media_tool": (
         "由 media.* 工具覆盖：P6 起工具直接派发到这个入口，不再经过 audio_tools。"
     ),
-    "protocol_call": (
-        "契约分发入口，内部使用：domain+command 由 manifest/protocol.json 解析后转调现有 handler；"
-        "对外工具将由 manifest 生成（P6），不直接暴露这个命令。"
-    ),
     "model_info": "由 model.inspect 覆盖。",
     "model_interface": "由 model.interface 覆盖。",
     "delete_model": "由 model.delete 覆盖。",
@@ -475,9 +469,10 @@ INTERNAL_COMMANDS: dict[str, str] = {
 
 
 def worker_commands() -> list[str]:
-    """从 `worker.py` 源码里数出全部命令名（覆盖率必须来自源码，不能靠人维护）。"""
-    text = _WORKER.read_text(encoding="utf-8")
-    return sorted(set(re.findall(r'command == "([a-z_]+)"', text)))
+    """全部命令名来自 manifest/protocol.json，而不是 worker 源码。"""
+    from shared.protocol_contract import command_entries
+
+    return sorted(command_entries())
 
 
 def _ensure_mcp_compatible() -> int:

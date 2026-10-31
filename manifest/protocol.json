@@ -1,84 +1,392 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "mcpSchemaVersion": 1,
   "_comment": [
     "唯一契约：命令表、事件表、以及历史命名到规范事件的映射。",
-    "manifest/ 下的四个文件都由这里约定的 schemaVersion 约束；",
-    "程序启动时校验，不匹配就明确拒绝，不做隐式兼容（1.0.0 之前）。",
-    "P7 起 emit 在边界处只发出规范事件名；下面 events 里的历史名只是",
-    "代码里仍在使用的书写形式，不会再出现在管道上。"
+    "schemaVersion 2：handler 从“命令名字符串”改为“module:function”，",
+    "dispatch 按这张表构建，worker 里不再有 if 链。",
+    "proxy 决定执行前如何配置网络：configured=读用户设置，payload=用本次参数，none=不配置。"
   ],
   "domains": {
+    "system": {
+      "label": "健康检查、环境、契约与诊断",
+      "commands": {
+        "health": {
+          "handler": "core.worker_models:cmd_health",
+          "command": "health",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "env_info": {
+          "handler": "core.worker_models:cmd_env_info",
+          "command": "env_info",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "contract": {
+          "handler": "surfaces.agent_contract:cmd_agent_contract",
+          "command": "agent_contract",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "failure_stats": {
+          "handler": "core.commands:cmd_failure_stats",
+          "command": "failure_stats",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "test_connection": {
+          "handler": "core.worker_connection:cmd_test_connection",
+          "command": "test_connection",
+          "proxy": "payload",
+          "kind": "query",
+          "summary": ""
+        }
+      }
+    },
     "media": {
       "label": "图像 / 视频媒体处理",
       "commands": {
         "capabilities": {
-          "handler": "media_capabilities",
+          "handler": "core.commands:cmd_media_capabilities",
+          "command": "media_capabilities",
+          "proxy": "configured",
           "kind": "query",
-          "summary": "能力清单：角色、模型、参数 schema，UI 与 MCP 共用"
+          "summary": ""
         },
         "precheck": {
-          "handler": "media_precheck",
+          "handler": "core.commands:cmd_media_precheck",
+          "command": "media_precheck",
+          "proxy": "configured",
           "kind": "query",
-          "summary": "任务前置检查：输入可用性、目标尺寸、是否检测到水印"
+          "summary": ""
         },
         "library": {
-          "handler": "media_library",
+          "handler": "core.library_worker:cmd_media_library",
+          "command": "media_library",
+          "proxy": "configured",
           "kind": "query",
-          "summary": "素材索引：列出 / 导入 / 移除 / 标签 / 统计"
+          "summary": ""
         },
         "run": {
-          "handler": "media_tool",
+          "handler": "media_ops.worker:cmd_media_tool",
+          "command": "media_tool",
+          "proxy": "configured",
           "kind": "task",
-          "operations": [
-            "image",
-            "video",
-            "workflow"
-          ],
-          "summary": "执行一次媒体任务；单步走 image/video，多步走 workflow"
+          "summary": ""
         },
-        "models.list": {
-          "handler": "model_hub",
+        "evaluate": {
+          "handler": "core.media_eval:cmd_evaluate_media",
+          "command": "evaluate_media",
+          "proxy": "configured",
           "kind": "query",
-          "summary": "统一模型目录（音频 + 图像/视频），带状态与许可"
-        },
-        "models.info": {
-          "handler": "model_info",
-          "kind": "query",
-          "summary": "单个模型的详情与可下载性"
-        },
-        "models.download": {
-          "handler": "model_download",
-          "kind": "task",
-          "summary": "按 catalog 的 url/size 下载一个模型"
+          "summary": ""
         }
-      },
-      "events": {
-        "task.started": [
-          "media_task_started"
-        ],
-        "task.progress": [
-          "audio_tool_progress"
-        ],
-        "task.result": [
-          "audio_tool_result"
-        ],
-        "task.failed": [
-          "error"
-        ],
-        "asset.progress": [
-          "media_library_progress"
-        ],
-        "asset.done": [
-          "media_library_result"
-        ],
-        "asset.failed": [
-          "media_library_error"
-        ]
+      }
+    },
+    "audio": {
+      "label": "音频工具与编辑器导出",
+      "commands": {
+        "tools": {
+          "handler": "core.commands:cmd_audio_tools_entry",
+          "command": "audio_tools",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "metadata": {
+          "handler": "core.worker_audio:cmd_audio_metadata",
+          "command": "audio_metadata",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "waveform": {
+          "handler": "core.worker_audio:cmd_waveform_peaks",
+          "command": "waveform_peaks",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "export_mix": {
+          "handler": "core.worker_audio:cmd_export_editor_mix",
+          "command": "export_editor_mix",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        }
+      }
+    },
+    "model": {
+      "label": "模型目录、下载与自定义模型",
+      "commands": {
+        "list": {
+          "handler": "core.worker_models:cmd_list_models",
+          "command": "list_models",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "info": {
+          "handler": "core.worker_models:cmd_model_info",
+          "command": "model_info",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "interface": {
+          "handler": "core.worker_models:cmd_model_interface",
+          "command": "model_interface",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "delete": {
+          "handler": "core.worker_models:cmd_delete_model",
+          "command": "delete_model",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "delete_tool": {
+          "handler": "core.worker_models:cmd_delete_tool_model",
+          "command": "delete_tool_model",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "hub": {
+          "handler": "core.model_hub_worker:cmd_model_hub",
+          "command": "model_hub",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "download": {
+          "handler": "core.model_hub_worker:cmd_model_download",
+          "command": "model_download",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "storage": {
+          "handler": "core.worker_models:cmd_model_storage_summary",
+          "command": "model_storage_summary",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "cleanup": {
+          "handler": "core.worker_models:cmd_cleanup_model_residual_files",
+          "command": "cleanup_model_residual_files",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "custom.import": {
+          "handler": "core.worker_custom_models:cmd_import_custom_model",
+          "command": "import_custom_model",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "custom.inspect": {
+          "handler": "core.worker_custom_models:cmd_inspect_custom_model",
+          "command": "inspect_custom_model",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "custom.unregister": {
+          "handler": "core.worker_custom_models:cmd_unregister_custom_model",
+          "command": "unregister_custom_model",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "custom.relink": {
+          "handler": "core.worker_custom_models:cmd_relink_custom_model",
+          "command": "relink_custom_model",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "custom.remap": {
+          "handler": "core.worker_custom_models:cmd_remap_custom_model_paths",
+          "command": "remap_custom_model_paths",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "debug.catalog_info": {
+          "handler": "core.worker_models:cmd_debug_catalog_info",
+          "command": "debug_catalog_info",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "debug.catalog_save": {
+          "handler": "core.worker_models:cmd_debug_catalog_save",
+          "command": "debug_catalog_save",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "debug.catalog_reset": {
+          "handler": "core.worker_models:cmd_debug_catalog_reset",
+          "command": "debug_catalog_reset",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "debug.model_config": {
+          "handler": "core.worker_models:cmd_debug_model_config",
+          "command": "debug_model_config",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        }
+      }
+    },
+    "runtime": {
+      "label": "Python 运行时与可选组件",
+      "commands": {
+        "info": {
+          "handler": "core.worker_bootstrap:cmd_runtime_info",
+          "command": "runtime_info",
+          "proxy": "none",
+          "kind": "query",
+          "summary": ""
+        },
+        "install": {
+          "handler": "core.worker_bootstrap:cmd_install_runtime",
+          "command": "install_runtime",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "core_versions": {
+          "handler": "core.worker_bootstrap:cmd_runtime_core_versions",
+          "command": "runtime_core_versions",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "activate": {
+          "handler": "core.worker_bootstrap:cmd_activate_runtime",
+          "command": "activate_runtime",
+          "proxy": "none",
+          "kind": "task",
+          "summary": ""
+        },
+        "sizes": {
+          "handler": "core.worker_bootstrap:cmd_runtime_env_sizes",
+          "command": "runtime_env_sizes",
+          "proxy": "none",
+          "kind": "query",
+          "summary": ""
+        },
+        "delete": {
+          "handler": "core.worker_bootstrap:cmd_delete_runtime",
+          "command": "delete_runtime",
+          "proxy": "none",
+          "kind": "task",
+          "summary": ""
+        },
+        "optional_status": {
+          "handler": "core.worker_optional_packages:cmd_optional_package_status",
+          "command": "optional_package_status",
+          "proxy": "none",
+          "kind": "query",
+          "summary": ""
+        },
+        "optional_manage": {
+          "handler": "core.worker_optional_packages:cmd_manage_optional_package",
+          "command": "manage_optional_package",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        }
+      }
+    },
+    "plugin": {
+      "label": "插件市场与管理",
+      "commands": {
+        "marketplace": {
+          "handler": "core.worker_plugins:cmd_plugin_marketplace",
+          "command": "plugin_marketplace",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "manage": {
+          "handler": "core.worker_plugins:cmd_manage_plugin",
+          "command": "manage_plugin",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        }
+      }
+    },
+    "graph": {
+      "label": "节点图与 operation",
+      "commands": {
+        "nodes": {
+          "handler": "core.worker_nodes:cmd_list_nodes",
+          "command": "list_nodes",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "operations": {
+          "handler": "core.worker_operations:cmd_list_operations",
+          "command": "list_operations",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "operation": {
+          "handler": "core.worker_operations:cmd_describe_operation",
+          "command": "describe_operation",
+          "proxy": "configured",
+          "kind": "query",
+          "summary": ""
+        },
+        "run_operation": {
+          "handler": "core.worker_operations:cmd_run_operation",
+          "command": "run_operation",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        }
+      }
+    },
+    "workflow": {
+      "label": "推理与工作流执行",
+      "commands": {
+        "infer": {
+          "handler": "core.worker_infer:cmd_infer",
+          "command": "infer",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        },
+        "run": {
+          "handler": "core.worker_workflows:cmd_infer_workflow",
+          "command": "infer_workflow",
+          "proxy": "configured",
+          "kind": "task",
+          "summary": ""
+        }
       }
     }
   },
   "events": {
-    "_comment": "规范事件名 → 历史事件的映射。P2 起代码发规范名，历史名只做过渡转发，P7 删除。",
+    "_comment": "规范事件名 → 历史事件的映射。emit() 在边界处把历史名翻译成规范名。",
     "canonical": [
       "task.started",
       "task.progress",
@@ -94,5 +402,10 @@
       "app.state"
     ]
   },
-  "mcpSchemaVersion": 1
+  "emitAliases": {
+    "audio_tool_progress": "task.progress",
+    "audio_tool_result": "task.result",
+    "media_image_result": "task.result",
+    "media_video_result": "task.result"
+  }
 }

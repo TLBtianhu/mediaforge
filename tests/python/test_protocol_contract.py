@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -37,13 +38,26 @@ class ProtocolManifestTests(unittest.TestCase):
             with self.subTest(event=legacy):
                 self.assertIn(protocol_contract.canonical_event(legacy), canonical)
 
-    def test_handlers_named_in_the_manifest_exist_in_the_worker(self) -> None:
-        worker = (ROOT / "python" / "worker.py").read_text(encoding="utf-8")
-        data = protocol_contract.load_protocol()
-        for domain in data["domains"].values():
-            for name, entry in domain["commands"].items():
-                with self.subTest(command=name):
-                    self.assertIn(f'"{entry["handler"]}"', worker)
+    def test_handlers_resolve_to_existing_module_functions(self) -> None:
+        """handler 是 module:function；静态确认模块与函数都在，不 import（避免副作用）。"""
+        from shared.protocol_contract import command_entries
+
+        for command_id, entry in command_entries().items():
+            with self.subTest(command=command_id):
+                module_name, function_name = entry["handler"].split(":", 1)
+                path = ROOT / "python" / Path(*module_name.split(".")).with_suffix(".py")
+                self.assertTrue(path.is_file(), f"{module_name} 不存在")
+                text = path.read_text(encoding="utf-8")
+                self.assertRegex(text, rf"(?m)^def {re.escape(function_name)}\(", f"{function_name} 未定义")
+
+    def test_every_command_has_a_unique_handler_entry(self) -> None:
+        from shared.protocol_contract import command_entries
+
+        entries = command_entries()
+        self.assertGreaterEqual(len(entries), 40)
+        for command_id, entry in entries.items():
+            with self.subTest(command=command_id):
+                self.assertIn(entry.get("proxy"), {"configured", "payload", "none"})
 
 
 class CatalogInvariantTests(unittest.TestCase):

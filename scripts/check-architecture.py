@@ -76,11 +76,7 @@ def load_manifest() -> dict:
 
 
 def declared_events(manifest: dict) -> set[str]:
-    names: set[str] = set()
-    for domain in (manifest.get("domains") or {}).values():
-        for legacy in (domain.get("events") or {}).values():
-            names.update(legacy)
-    return names
+    return set((manifest.get("emitAliases") or {}).keys())
 
 
 #: python/ 根目录只允许两个进程入口 + 数据文件；其余必须进包。
@@ -157,15 +153,22 @@ def check_event_coverage(manifest: dict) -> list[str]:
 
 
 def check_handlers_exist(manifest: dict) -> list[str]:
-    worker = (PY / "worker.py").read_text(encoding="utf-8")
+    """handler 是 module:function：静态确认模块文件与函数定义都存在（不 import，避免副作用）。"""
     problems: list[str] = []
     for domain_id, domain in (manifest.get("domains") or {}).items():
         for name, entry in (domain.get("commands") or {}).items():
             handler = str(entry.get("handler") or "")
-            if not handler:
-                problems.append(f"protocol: {domain_id}.{name} 没有 handler")
-            elif f'"{handler}"' not in worker:
-                problems.append(f"protocol: {domain_id}.{name} 的 handler {handler} 在 worker.py 里找不到")
+            if ":" not in handler:
+                problems.append(f"protocol: {domain_id}.{name} 的 handler 不是 module:function")
+                continue
+            module_name, function_name = handler.split(":", 1)
+            path = PY.joinpath(*module_name.split(".")).with_suffix(".py")
+            if not path.is_file():
+                problems.append(f"protocol: {domain_id}.{name} 的模块不存在：{module_name}")
+                continue
+            text = path.read_text(encoding="utf-8")
+            if not re.search(rf"^def {re.escape(function_name)}\(", text, re.MULTILINE):
+                problems.append(f"protocol: {domain_id}.{name} 的函数不存在：{handler}")
     return problems
 
 

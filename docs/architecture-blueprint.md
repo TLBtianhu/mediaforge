@@ -118,7 +118,7 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 ### P7 1.0 准备
 
 - 删除所有兼容转发层
-- 协议 schemaVersion 冻结为 1
+- 协议 schemaVersion 升到 2：handler 改为 `module:function`，dispatch 由协议查表生成
 - 文档与发布清单对齐
 
 ## 3. 不变量（用脚本守住）
@@ -147,11 +147,12 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 | P4 运行时 | 完成 | `manifest/runtime.json` 带能力/sha/urls，并列目录 + `active-runtime.json` |
 | P5 更新 | 完成 | 签名 `versions.json`、`versions_check`、`versions_accept_runtime` |
 | P6 工具面 | 完成 | 工具由能力生成，`mcpSchemaVersion` 校验，模型清单随 catalog 变 |
-| P7 收尾 | 本轮 | 规范事件唯一化、schemaVersion 冻结为 1 |
+| P7 收尾 | 完成 | 规范事件唯一化 |
 
 冻结项：
 
-- `protocol.json` / `runtime.json` 的 `schemaVersion` 固定为 1；不兼容变更走主版本号。
+- `protocol.json` schemaVersion = 2（handler 为 module:function、协议查表 dispatch）；
+  `runtime.json` schemaVersion = 1；不兼容变更走主版本号。
 - 管道上只有 `task.*` / 资产事件；`audio_tool_*` 仅作为代码里的书写别名，由 `emit()` 转成规范名。
 - 三条版本轴：app（整包安装）、runtime（并列目录 + 指针）、catalog（整份覆盖）。
 
@@ -159,4 +160,19 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 
 - `update_manager.rs`（1872 行旧 latest.json 更新路径）：`endpoints` 为空，实际不运行；下线需要单独决定。
 - 音频引擎仍是外部 pymss 包，通过 `audio_tools` 适配器接入。
+
+## 6. 物理分层现状（0.0.23 之后）
+
+```
+python/
+  worker.py            worker 入口（只解析参数 + 日志上下文）
+  agent_bridge.py      MCP 入口
+  shared/              跨层原语：协议信封、路径、恢复、安全文件、清单、代理
+  core/                状态与编排：模型、运行时、下载、插件、作业、音频、库
+  surfaces/            适配：agent_contract、embedded_loop、dispatch（协议查表）
+  media_ops/           引擎：算子、加载器、管线
+```
+
+检查器守住七条：引擎方向、shared 方向、core 方向、根目录白名单、
+事件覆盖、handler 存在性、catalog 关联。worker 里不再有命令 if 链。
 
