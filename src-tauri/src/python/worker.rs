@@ -925,6 +925,11 @@ fn build_worker_command(
             "PYMSS_STUDIO_DEFAULT_OUTPUT_DIR",
             default_output_dir(app)?.to_string_lossy().to_string(),
         );
+    // runtime.json 的解析只发生在 Rust 侧：把解析结果传给 worker，
+    // Python 不再自己推导 active pointer。
+    if let Ok(descriptor) = crate::runtime_assets::desired_runtime(app) {
+        cmd.env("MEDIAFORGE_RUNTIME_ASSET", descriptor.asset_id);
+    }
     if let Some(overlay) = active_overlay {
         cmd.env("PYTHONPATH", overlay.to_string_lossy().to_string());
     }

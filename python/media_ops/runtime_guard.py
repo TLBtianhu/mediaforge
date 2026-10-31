@@ -10,10 +10,9 @@
 
 判定顺序（越具体的越优先）：
 
-    1. 环境变量 MEDIAFORGE_RUNTIME_ASSET（测试与调试用）
-    2. 数据根 active-runtime.json 的 assetId（安装器写的指针）
-    3. 当前解释器目录里的 .asset-id 标记（直接跑 worker 时）
-    4. 清单里的 fallbackAssetId（开发环境没有指针时）
+    1. 环境变量 MEDIAFORGE_RUNTIME_ASSET（Rust 解析指针后传入）
+    2. 当前解释器目录里的 .asset-id 标记（直接跑 worker / 开发态）
+    3. 清单里的 fallbackAssetId（两者都没有时）
 
 没有指针时返回 fallback，并在 describe() 里标 source=fallback，便于排查。
 """
@@ -73,16 +72,8 @@ def active_asset_id() -> str | None:
     if override:
         return override
 
-    pointer = data_root() / "active-runtime.json"
-    if pointer.is_file():
-        try:
-            record = json.loads(pointer.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            record = {}
-        asset = str(record.get("assetId") or "").strip()
-        if asset:
-            return asset
-
+    # pointer 的解析只发生在 Rust 侧，并通过 MEDIAFORGE_RUNTIME_ASSET 传下来。
+    # 这里不再读 active-runtime.json，避免第二套推导规则。
     marker = Path(sys.prefix) / ".asset-id"
     if marker.is_file():
         try:

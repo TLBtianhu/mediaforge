@@ -2806,5 +2806,18 @@
     "newRuntimeTitle": "有新的运行时",
     "newRuntimeBody": "远端发布了 {asset}，本地仍是旧版本。切换后旧运行时保留，可随时回滚。",
     "switchRuntime": "切换运行时"
+  },
+  "updates": {
+    "title": "版本与更新",
+    "check": "检查更新",
+    "checking": "检查中…",
+    "hint": "从签名的版本清单检查应用与运行时是否需要更新；替换永远是整包进行。",
+    "app": "应用",
+    "runtime": "运行时",
+    "upToDate": "已是最新",
+    "newApp": "有新版本 {version}",
+    "runtimeLatest": "远端是 {asset}",
+    "switchRuntime": "切换运行时",
+    "failed": "无法获取版本信息：{error}"
   }
 }

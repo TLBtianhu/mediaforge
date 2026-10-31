@@ -20,12 +20,13 @@ def load_script():
 
 
 class VersionsManifestTests(unittest.TestCase):
-    def test_document_carries_the_three_axes(self) -> None:
+    def test_document_carries_the_two_live_axes(self) -> None:
         doc = load_script().build()
         self.assertEqual(doc["schemaVersion"], 1)
         self.assertIn("version", doc["app"])
         self.assertIn("assetId", doc["runtime"])
-        self.assertIn("schemaVersion", doc["catalog"])
+        # catalog 轴已删除：catalog 随应用发布，没有独立更新通道
+        self.assertNotIn("catalog", doc)
 
     def test_runtime_descriptor_matches_the_manifest(self) -> None:
         doc = load_script().build()

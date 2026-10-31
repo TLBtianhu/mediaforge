@@ -65,6 +65,7 @@ import {
   CompassOutline,
   OptionsOutline,
 } from '@vicons/ionicons5'
+import VersionUpdateCard from '@/components/settings/VersionUpdateCard.vue'
 
 const { t, locale: currentLocale } = useI18n()
 const message = useMessage()
@@ -1096,6 +1097,7 @@ onMounted(async () => {
                 </button>
               </div>
             </article>
+            <VersionUpdateCard />
           </div>
         </section>
 

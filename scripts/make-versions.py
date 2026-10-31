@@ -46,7 +46,6 @@ def build() -> dict:
         "schemaVersion": 1,
         "app": {"version": app_version},
         "runtime": load_runtime(),
-        "catalog": {"schemaVersion": 1},
     }
 
 

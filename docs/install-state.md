@@ -8,7 +8,7 @@
 | 内容 | 用户态（安装版） | 开发态（仓库） |
 |---|---|---|
 | 程序本体 | `%LOCALAPPDATA%\Programs\MediaForge`（per-user，不需要管理员） | `C:\MediaForge`（exe 在 `src-tauri\target\debug`） |
-| 契约清单 | `<安装目录>\manifest\`（protocol / runtime / catalog） | `<repo>\manifest\` |
+| 契约清单 | `<安装目录>\manifest\`（protocol / runtime） | `<repo>\manifest\` |
 | 用户数据根 | `%USERPROFILE%\.mediaforge` | `<repo>\.dev-data` |
 | 运行时环境 | `<数据根>\runtime-envs\<assetId>\` + `active-runtime.json` 指针 | `<repo>\.dev-data\runtime-envs\<assetId>\` |
 | 模型 | `<数据根>\models` | `<repo>\.dev-data\models` |

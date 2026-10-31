@@ -1,4 +1,4 @@
-//! 三条版本轴（app / runtime / catalog）的检测与"接受运行时"。
+//! 两条版本轴（app / runtime）的检测与"接受运行时"。
 //!
 //! 这个模块只做四件事：
 //!   1. 拿到一份 **签名过的** `versions.json`（本地缓存优先，否则从发布源拉）；
@@ -39,7 +39,6 @@ pub struct VersionsDoc {
     pub schema_version: u32,
     pub app: AppAxis,
     pub runtime: RuntimeDescriptor,
-    pub catalog: CatalogAxis,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,14 +47,8 @@ pub struct AppAxis {
     pub version: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CatalogAxis {
-    pub schema_version: u32,
-}
-
 /// 比较结论。`*_available` 只说明"远端更新"，是否执行由用户决定。
-fn compare(doc: &VersionsDoc, current_runtime: &str, local_catalog: u32) -> Value {
+fn compare(doc: &VersionsDoc, current_runtime: &str) -> Value {
     let local_app = env!("CARGO_PKG_VERSION");
     let app_remote = doc.app.version.trim();
     let app_available = match (
@@ -66,16 +59,14 @@ fn compare(doc: &VersionsDoc, current_runtime: &str, local_catalog: u32) -> Valu
         _ => app_remote != local_app,
     };
     json!({
-        "local": { "app": local_app, "runtime": current_runtime, "catalog": local_catalog },
+        "local": { "app": local_app, "runtime": current_runtime },
         "remote": {
             "app": app_remote,
             "runtime": doc.runtime.asset_id,
-            "catalog": doc.catalog.schema_version,
         },
         "available": {
             "app": app_available,
             "runtime": doc.runtime.asset_id != current_runtime,
-            "catalog": doc.catalog.schema_version > local_catalog,
         },
         "schemaVersion": doc.schema_version,
     })
@@ -203,7 +194,7 @@ pub async fn versions_check(app: AppHandle) -> AppResult<Value> {
     let parsed = parse_and_verify(&doc, &signature)?;
     let current_runtime = runtime_assets::desired_runtime(&app)?
         .asset_id;
-    let mut result = compare(&parsed, &current_runtime, 1);
+    let mut result = compare(&parsed, &current_runtime);
     result["source"] = json!(source);
     Ok(result)
 }
@@ -229,7 +220,7 @@ pub fn versions_accept_runtime(app: AppHandle) -> AppResult<Value> {
 mod tests {
     use super::*;
 
-    fn doc(runtime: &str, app: &str, catalog: u32) -> VersionsDoc {
+    fn doc(runtime: &str, app: &str) -> VersionsDoc {
         VersionsDoc {
             schema_version: 1,
             app: AppAxis { version: app.into() },
@@ -240,25 +231,22 @@ mod tests {
                 size: 1,
                 urls: vec!["https://example.invalid/runtime.zip".into()],
             },
-            catalog: CatalogAxis { schema_version: catalog },
         }
     }
 
     #[test]
     fn newer_app_and_different_runtime_are_reported() {
-        let result = compare(&doc("runtime-cuda-2026.11.1", "9.9.9", 2), "runtime-cuda-2026.10.2", 1);
+        let result = compare(&doc("runtime-cuda-2026.11.1", "9.9.9"), "runtime-cuda-2026.10.2");
         assert_eq!(result["available"]["app"], true);
         assert_eq!(result["available"]["runtime"], true);
-        assert_eq!(result["available"]["catalog"], true);
     }
 
     #[test]
     fn same_versions_report_nothing_to_do() {
         let local_app = env!("CARGO_PKG_VERSION");
-        let result = compare(&doc("runtime-cuda-2026.10.2", local_app, 1), "runtime-cuda-2026.10.2", 1);
+        let result = compare(&doc("runtime-cuda-2026.10.2", local_app), "runtime-cuda-2026.10.2");
         assert_eq!(result["available"]["app"], false);
         assert_eq!(result["available"]["runtime"], false);
-        assert_eq!(result["available"]["catalog"], false);
     }
 
     #[test]

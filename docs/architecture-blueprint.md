@@ -48,15 +48,16 @@ runtime.state / catalog.state / app.state
 命令统一为 `domain + operation`，由 `protocol.json` 声明；不再有 48 个顶层命令名。
 前端、测试、MCP 三边共用同一张表，不各写一套。
 
-### 1.5 三条独立版本轴
+### 1.5 两条真实版本轴（catalog 随应用发布）
 
 | 轴 | 标识 | 更新方式 |
 |---|---|---|
 | App | 语义版本 `x.y.z` | 整包安装 |
 | Runtime | `runtime-<backend>-<assetId>`，内容寻址 | 整包下载到**并列目录**，切指针回滚 |
-| Catalog | `catalog.<schemaVersion>` | 整份覆盖 |
+| ~~Catalog~~ | 已删除：catalog 随应用发布，没有独立更新通道 | — |
 
 `versions.json`（签名）只做"比较 + 提示"，永远整包替换，不打补丁、不迁移。
+catalog 轴在 0.0.24 被删除：它只有声明没有实现，留着就是假的三条轴。
 运行时并列存放意味着回滚只是改一个指针，不需要"兼容旧运行时"。
 
 ### 1.6 音频是外部引擎
@@ -153,6 +154,7 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 
 - `protocol.json` schemaVersion = 2（handler 为 module:function、协议查表 dispatch）；
   `runtime.json` schemaVersion = 1；不兼容变更走主版本号。
+- 版本轴只有两条：app 与 runtime；catalog 随应用走，不再声明独立轴。
 - 管道上只有 `task.*` / 资产事件；`audio_tool_*` 仅作为代码里的书写别名，由 `emit()` 转成规范名。
 - 三条版本轴：app（整包安装）、runtime（并列目录 + 指针）、catalog（整份覆盖）。
 

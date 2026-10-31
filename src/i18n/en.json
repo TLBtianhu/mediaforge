@@ -2806,5 +2806,18 @@
     "newRuntimeTitle": "New runtime available",
     "newRuntimeBody": "{asset} is published remotely while this install still uses the old one. The old runtime stays on disk, so a rollback is just a pointer change.",
     "switchRuntime": "Switch runtime"
+  },
+  "updates": {
+    "title": "Version and updates",
+    "check": "Check for updates",
+    "checking": "Checking…",
+    "hint": "Checks a signed version manifest for app and runtime updates; replacement is always whole-package.",
+    "app": "Application",
+    "runtime": "Runtime",
+    "upToDate": "Up to date",
+    "newApp": "Version {version} is available",
+    "runtimeLatest": "Remote is {asset}",
+    "switchRuntime": "Switch runtime",
+    "failed": "Could not read version information: {error}"
   }
 }
