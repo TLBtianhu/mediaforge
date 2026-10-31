@@ -60,7 +60,7 @@ class DispatchSmokeTests(unittest.TestCase):
 
     def _run(self, command: str, payload: dict | None = None) -> list[dict]:
         import worker
-        from worker_protocol import set_event_sink
+        from shared.worker_protocol import set_event_sink
 
         events: list[dict] = []
         set_event_sink(lambda kind, data, request_id, task_id: events.append({"type": kind, "payload": data}))

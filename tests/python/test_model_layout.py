@@ -21,7 +21,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 import model_hub  # noqa: E402
-import worker_paths  # noqa: E402
+from shared import worker_paths  # noqa: E402
 from media_ops import capabilities  # noqa: E402
 
 

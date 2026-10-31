@@ -12,7 +12,7 @@ from typing import Any, Iterator
 from uuid import uuid4
 from types import SimpleNamespace
 
-import worker_paths
+from shared import worker_paths
 
 from worker_models import (
     _derive_overlap_size_from_num_overlap,
@@ -22,9 +22,9 @@ from worker_models import (
     is_user_model_entry,
     model_path_for,
 )
-from worker_protocol import ProtocolLogHandler, _as_bool, _as_float, _as_int, current_log_task_id, emit, emit_error, task_logging
+from shared.worker_protocol import ProtocolLogHandler, _as_bool, _as_float, _as_int, current_log_task_id, emit, emit_error, task_logging
 from worker_inference_constraints import InferenceParameterError, validate_chunk_size
-from worker_paths import normalize_output_dir as _normalize_output_dir
+from shared.worker_paths import normalize_output_dir as _normalize_output_dir
 from separation import PymssBackend
 
 

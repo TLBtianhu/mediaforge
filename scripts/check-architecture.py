@@ -42,9 +42,13 @@ FORBIDDEN_IMPORTS = {
     "agent_contract",
     "embedded_loop",
     "media_eval",
-    "protocol_contract",
     "app_core",
+    "core",
+    "surfaces",
 }
+
+# 引擎允许依赖的共享原语（shared/ 不依赖任何层）
+SHARED_IMPORTS = {"shared"}
 
 
 def python_files(directory: Path) -> list[Path]:
@@ -78,6 +82,25 @@ def declared_events(manifest: dict) -> set[str]:
         for legacy in (domain.get("events") or {}).values():
             names.update(legacy)
     return names
+
+
+def check_shared_direction() -> list[str]:
+    """shared/ 是跨层原语：只能依赖标准库与自身，不能反向依赖任何层。"""
+    problems: list[str] = []
+    for path in python_files(PY / "shared"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            module = None
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    module = alias.name.split(".")[0]
+                    if module in {"media_ops", "app_core", "core", "surfaces"}:
+                        problems.append(f"{path.relative_to(ROOT)}:{node.lineno} shared 层 import 了 {alias.name}")
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                module = node.module.split(".")[0]
+                if module in {"media_ops", "app_core", "core", "surfaces"}:
+                    problems.append(f"{path.relative_to(ROOT)}:{node.lineno} shared 层 import 了 {node.module}")
+    return problems
 
 
 def check_event_coverage(manifest: dict) -> list[str]:
@@ -134,6 +157,7 @@ def main() -> int:
     manifest = load_manifest()
     results = {
         "引擎依赖方向": check_import_direction(),
+        "shared 依赖方向": check_shared_direction(),
         "事件覆盖": check_event_coverage(manifest),
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),

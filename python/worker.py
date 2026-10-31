@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from worker_protocol import debug_log, emit, emit_error, load_payload, protocol_logging
-from worker_proxy import ProxyConfigError, configure_process_proxy, load_proxy_config, parse_proxy_config
+from shared.worker_protocol import debug_log, emit, emit_error, load_payload, protocol_logging
+from shared.worker_proxy import ProxyConfigError, configure_process_proxy, load_proxy_config, parse_proxy_config
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -18,7 +18,7 @@ def run_command(command: str, payload: dict) -> int:
     # 契约入口：manifest/protocol.json 声明 domain.command → 现有 handler。
     # 旧的命令名继续可用（P1 是适配期），新代码走这一条，便于 P2/P3 收敛。
     if command == "protocol_call":
-        from protocol_contract import ProtocolError, handler_for
+        from shared.protocol_contract import ProtocolError, handler_for
 
         domain = str(payload.get("domain") or "").strip()
         name = str(payload.get("command") or "").strip()

@@ -16,7 +16,7 @@ else:
     import _bootstrap as _worker_test_bootstrap  # noqa: F401
 
 import worker_infer
-import worker_paths
+from shared import worker_paths
 import worker_workflows
 
 

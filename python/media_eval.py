@@ -26,7 +26,7 @@ def evaluate(inputs: list[str], reference: str | None = None) -> dict[str, Any]:
 
 
 def cmd_evaluate_media(payload: dict[str, Any]) -> int:
-    from worker_protocol import emit, emit_error
+    from shared.worker_protocol import emit, emit_error
 
     inputs = [str(value) for value in payload.get("inputs") or [] if str(value).strip()]
     if not inputs:

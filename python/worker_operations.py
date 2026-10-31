@@ -13,8 +13,8 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from worker_protocol import emit, emit_error
-from worker_paths import normalize_output_dir
+from shared.worker_protocol import emit, emit_error
+from shared.worker_paths import normalize_output_dir
 
 
 def _runtime():

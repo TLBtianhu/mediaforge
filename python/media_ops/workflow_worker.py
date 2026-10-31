@@ -15,9 +15,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from worker_protocol import emit, emit_error
+from shared.worker_protocol import emit, emit_error
 
-import worker_paths
+from shared import worker_paths
 from . import capabilities, evaluation, failures, image_ops, video_ops, video_step
 
 

@@ -28,7 +28,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 import model_hub  # noqa: E402
-import worker_paths  # noqa: E402
+from shared import worker_paths  # noqa: E402
 from media_ops import capabilities  # noqa: E402
 
 # worker_models / worker_custom_models 会拉进 yaml 这类运行时依赖；裸解释器下跳过，

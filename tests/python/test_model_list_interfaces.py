@@ -15,7 +15,7 @@ if str(PYTHON_DIR) not in sys.path:
 
 import worker_models  # noqa: E402
 from app_core import interface as model_interface  # noqa: E402
-from worker_protocol import set_event_sink  # noqa: E402
+from shared.worker_protocol import set_event_sink  # noqa: E402
 
 FAKE_INTERFACE = {
     "modelId": "audio:Demo.ckpt",

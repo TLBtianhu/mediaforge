@@ -114,7 +114,7 @@ class MediaFilesTests(unittest.TestCase):
         import json
         from pathlib import Path as _Path
 
-        import worker_paths
+        from shared import worker_paths
         from model_hub import _media_files
 
         catalog = json.loads(

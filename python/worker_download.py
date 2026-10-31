@@ -21,8 +21,8 @@ from worker_models import (
     model_path_for,
     model_to_dict,
 )
-from worker_protocol import emit, emit_error
-from worker_proxy import effective_proxy_url
+from shared.worker_protocol import emit, emit_error
+from shared.worker_proxy import effective_proxy_url
 
 
 _UNFETCHED_FILE_INDEX = object()

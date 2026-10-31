@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from worker_protocol import emit
+from shared.worker_protocol import emit
 from .common import AudioToolError, SUPPORTED_AUDIO_SUFFIXES, _available_path, _render_output, _require_directory, _run_ffmpeg, _subprocess_detail
 
 

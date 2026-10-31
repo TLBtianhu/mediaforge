@@ -107,7 +107,7 @@ def _supported_backend(backend: str, manifest: dict[str, Any] | None = None) -> 
 
 
 def _emit(event_type: str, payload: dict[str, Any], task_id: str | None = None) -> None:
-    from worker_protocol import emit
+    from shared.worker_protocol import emit
     emit(event_type, payload, task_id=task_id)
 
 
@@ -120,7 +120,7 @@ def _serialized_runtime_command(command: Callable[..., int], *, query: bool = Fa
             with runtime_lock(RUNTIME_ENVS_DIR / ".runtime-management.lock", allow_read_only=query) as writable:
                 return command(payload, repair=writable) if query else command(payload)
         except RuntimeLockBusy:
-            from worker_protocol import emit_error
+            from shared.worker_protocol import emit_error
             return emit_error(
                 "RUNTIME_BUSY",
                 "Another runtime operation is in progress. Wait for it to finish and retry.",
@@ -130,7 +130,7 @@ def _serialized_runtime_command(command: Callable[..., int], *, query: bool = Fa
         except OSError as exc:
             if exc.errno not in {errno.EACCES, errno.EPERM, errno.EROFS}:
                 raise
-            from worker_protocol import emit_error
+            from shared.worker_protocol import emit_error
             return emit_error(
                 "RUNTIME_PERMISSION_DENIED",
                 "The runtime directory does not allow this operation.",
@@ -1713,12 +1713,12 @@ def cmd_activate_runtime(payload: dict[str, Any]) -> int:
     backend = str(payload.get("backend") or "").strip().lower()
     supported = _supported_backend(backend)
     if not supported:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_BACKEND_UNSUPPORTED", f"Unsupported runtime backend: {backend or 'missing'}")
     backend, _spec = supported
     target = _target_runtime_from_payload(payload, backend)
     if not target:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_NOT_INSTALLED", f"Backend {backend} is not installed")
     state, env_dir, env_state_path, python_path = target
     manifest = _manifest()
@@ -1765,10 +1765,10 @@ def cmd_activate_runtime(payload: dict[str, Any]) -> int:
                 else _probe_python_runtime(python_path, _backend_extra_names(manifest, backend))
             )
         except Exception as exc:
-            from worker_protocol import emit_error
+            from shared.worker_protocol import emit_error
             return emit_error("RUNTIME_ACTIVATION_FAILED", f"Bundled runtime {backend} failed validation: {exc}", recoverable=True)
         if not _runtime_probe_is_ready(backend, probed, manifest):
-            from worker_protocol import emit_error
+            from shared.worker_protocol import emit_error
             return emit_error(
                 "RUNTIME_ACTIVATION_FAILED",
                 f"Bundled runtime {backend} failed validation: torchBackend={probed.get('torchBackend')}, "
@@ -1793,14 +1793,14 @@ def cmd_activate_runtime(payload: dict[str, Any]) -> int:
             else _probe_python_runtime(python_path, _backend_extra_names(manifest, backend))
         )
     except Exception as exc:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error(
             "RUNTIME_ACTIVATION_FAILED",
             f"Runtime {backend} failed validation: {exc}",
             recoverable=True,
         )
     if not _runtime_probe_is_ready(backend, probed, manifest):
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error(
             "RUNTIME_ACTIVATION_FAILED",
             f"Runtime {backend} failed validation: torchBackend={probed.get('torchBackend')}, "
@@ -1852,21 +1852,21 @@ def cmd_delete_runtime(payload: dict[str, Any]) -> int:
     backend = str(payload.get("backend") or "").strip().lower()
     supported = _supported_backend(backend)
     if not supported:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_BACKEND_UNSUPPORTED", f"Unsupported runtime backend: {backend or 'missing'}")
     backend, _spec = supported
     target = _target_runtime_from_payload(payload, backend)
     if not target:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_NOT_INSTALLED", f"Backend {backend} is not installed")
     _state, env_dir, _env_state_path_value, python_path = target
     if _is_bundled_runtime_env(env_dir) or _is_bundled_bootstrap_python(python_path):
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_BUNDLED_READ_ONLY", f"Bundled runtime {backend} cannot be deleted.")
     active = _read_runtime_state()
     active_python = _runtime_command_path(Path(str(active.get("pythonPath")))) if active and active.get("pythonPath") else None
     if active and active_python and _same_path(active_python, python_path):
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_DELETE_ACTIVE", f"Cannot delete the currently active runtime ({backend}). Switch to another environment first.")
     import shutil
     try:
@@ -1885,7 +1885,7 @@ def cmd_delete_runtime(payload: dict[str, Any]) -> int:
         _emit("runtime_deleted", {"backend": backend})
         return 0
     except Exception as exc:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error(
             "RUNTIME_PERMISSION_DENIED" if isinstance(exc, PermissionError) else "RUNTIME_DELETE_FAILED",
             str(exc),
@@ -2050,11 +2050,11 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
     _recover_runtime_transactions()
     supported = _supported_backend(backend, manifest)
     if not supported:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_BACKEND_UNSUPPORTED", f"Unsupported runtime backend: {backend}", task_id=task_id)
     backend, spec = supported
     if sys.platform not in spec.get("platforms", []):
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_PLATFORM_UNSUPPORTED", f"Backend {backend} is not supported on {sys.platform}", task_id=task_id)
     index_url = None
     mirror, index_url = _resolve_pypi_mirror(mirror, locale)
@@ -2227,7 +2227,7 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
         _emit("runtime_install_finished", {"backend": backend, "state": active, "logPath": str(install_log_path)}, task_id)
         return 0
     except Exception as exc:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         if reinstall_backup and reinstall_backup.exists():
             import shutil
             if env_dir.exists():
@@ -2257,17 +2257,17 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
     _recover_runtime_transactions()
     supported = _supported_backend(backend)
     if not supported:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_BACKEND_UNSUPPORTED", f"Unsupported runtime backend: {backend or 'missing'}", task_id=task_id)
     backend, _spec = supported
 
     target = _target_runtime_from_payload(payload, backend)
     if not target:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_NOT_INSTALLED", f"Backend {backend} is not installed", task_id=task_id)
     state, env_dir, env_state_path, python_path = target
     if not state:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error(
             "RUNTIME_NOT_INSTALLED",
             f"Backend {backend} has no completed installation state",
@@ -2275,14 +2275,14 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
             recoverable=True,
         )
     if not python_path.is_file():
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_NOT_INSTALLED", f"Active runtime Python not found: {python_path}", task_id=task_id)
     # Overlay activation changes the process import path, so only the active runtime may be
     # migrated. The base environment itself remains immutable, including bundled runtimes.
     active = _read_runtime_state()
     active_python = _runtime_command_path(Path(str(active.get("pythonPath")))) if active and active.get("pythonPath") else None
     if not active_python or not _same_path(active_python, python_path):
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_CORE_UPDATE_INACTIVE", "Core update is only available for the currently active runtime. Please switch to this environment first.", task_id=task_id, recoverable=True)
     if active.get("overlayPath"):
         state = {**state, **active}
@@ -2295,14 +2295,14 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
         if mode not in {"update", "sync", "repair", "rollback"}:
             raise ValueError("Unsupported runtime core operation")
     except (OSError, ValueError, KeyError) as exc:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_UPDATE_PLAN_INVALID", str(exc), task_id=task_id, recoverable=True)
     repair_dependencies = mode in {"sync", "repair"}
     manifest_status = _runtime_manifest_status(state.get("manifestVersion"), manifest.get("manifestVersion"))
     if manifest_status not in {"current", "older"} and not (
         repair_dependencies and manifest_status == "unknown"
     ):
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error(
             "RUNTIME_MANIFEST_INCOMPATIBLE",
             "The runtime manifest is newer than this application or has an unknown version. "
@@ -2318,7 +2318,7 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
     }
     identity = _core_update_identity(active, package_versions, manifest)
     if plan and plan.get("identity") != identity:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_UPDATE_PLAN_STALE", "The active runtime changed. Prepare and confirm a new update plan.", task_id=task_id, recoverable=True)
 
     def target_core_version(name: str, direct_key: str) -> str:
@@ -2361,7 +2361,7 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
             }
         target_pymss_version, target_pymss_core_version = targets["pymss"], targets["pymss-core"]
     except Exception as exc:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_CORE_UPDATE_FAILED", f"Failed to resolve runtime core versions: {exc}", task_id=task_id, recoverable=True)
     overlay_backend_root = _runtime_overlay_root() / backend
     overlay_backend_root.mkdir(parents=True, exist_ok=True)
@@ -2398,7 +2398,7 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
         base_probe = {}
     torch_version = str(base_probe.get("torchVersion") or (state or {}).get("torchVersion") or "").strip()
     if not torch_version:
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_CORE_UPDATE_FAILED", "Unable to determine the installed Torch version; refusing to update the runtime core.", task_id=task_id, recoverable=True)
     # Older bundled state omitted Torch's version. Preserve the live base facts
     # in both generations so a healthy previous core remains eligible for rollback.
@@ -2653,7 +2653,7 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
     except Exception as exc:
         if not overlay_committed and promoted_generation and promoted_generation.is_dir() and not (RUNTIME_ENVS_DIR / ".overlay-activation.json").exists():
             shutil.rmtree(promoted_generation, ignore_errors=True)
-        from worker_protocol import emit_error
+        from shared.worker_protocol import emit_error
         append_log("error", str(exc))
         return emit_error(
             "RUNTIME_CORE_UPDATE_FAILED",

@@ -577,7 +577,7 @@ def emit_error(
         payload.update(extra)
     # 能认出来的失败附带可执行建议：agent 拿到"下一步动哪个开关"才能自己收敛
     try:
-        from recovery import classify
+        from shared.recovery import classify
 
         hint = classify(message, detail)
         if hint:

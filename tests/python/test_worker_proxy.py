@@ -11,7 +11,7 @@ else:
     import _bootstrap as _worker_test_bootstrap
 
 from worker_connection import _test_url_for_source
-from worker_proxy import ProxyConfigError, configure_process_proxy, effective_proxy_url, parse_proxy_config, redacted_proxy
+from shared.worker_proxy import ProxyConfigError, configure_process_proxy, effective_proxy_url, parse_proxy_config, redacted_proxy
 
 
 class ProxyConfigTests(unittest.TestCase):
@@ -145,7 +145,7 @@ class BypassRoutingTests(unittest.TestCase):
         self.addCleanup(self._restore)
 
     def _restore(self):
-        from worker_proxy import _connect_target
+        from shared.worker_proxy import _connect_target
         _connect_target.host = None
         for key, value in self._env.items():
             if value is None:
@@ -154,7 +154,7 @@ class BypassRoutingTests(unittest.TestCase):
                 os.environ[key] = value
 
     def test_bypass_matching_follows_no_proxy_semantics(self):
-        from worker_proxy import _host_is_bypassed
+        from shared.worker_proxy import _host_is_bypassed
 
         os.environ["no_proxy"] = "localhost,.example.com,modelscope.cn"
 
@@ -168,7 +168,7 @@ class BypassRoutingTests(unittest.TestCase):
     def test_create_connection_carries_the_hostname_to_the_socket(self):
         # create_connection resolves the name to an address before building a socket, so without
         # this the socket only ever sees an IP and no bypass entry could match.
-        from worker_proxy import _bypass_aware_create_connection, _connect_target
+        from shared.worker_proxy import _bypass_aware_create_connection, _connect_target
 
         seen = []
 
@@ -188,7 +188,7 @@ class BypassRoutingTests(unittest.TestCase):
             import socks
         except ImportError:
             self.skipTest("PySocks is not installed for this interpreter")
-        from worker_proxy import _bypass_aware_socket_class, _connect_target
+        from shared.worker_proxy import _bypass_aware_socket_class, _connect_target
 
         os.environ["no_proxy"] = "internal.test"
         socket_class = _bypass_aware_socket_class(socks)
@@ -207,7 +207,7 @@ class BypassRoutingTests(unittest.TestCase):
             import socks
         except ImportError:
             self.skipTest("PySocks is not installed for this interpreter")
-        from worker_proxy import _bypass_aware_socket_class, _connect_target
+        from shared.worker_proxy import _bypass_aware_socket_class, _connect_target
 
         os.environ["no_proxy"] = "internal.test"
         socket_class = _bypass_aware_socket_class(socks)

@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 
-import protocol_contract  # noqa: E402
+from shared import protocol_contract  # noqa: E402
 
 
 class ProtocolManifestTests(unittest.TestCase):

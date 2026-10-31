@@ -18,7 +18,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-from worker_protocol import load_payload  # noqa: E402
+from shared.worker_protocol import load_payload  # noqa: E402
 
 
 class PayloadEncodingTests(unittest.TestCase):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from worker_protocol import emit, isolate_protocol_stdout
+from shared.worker_protocol import emit, isolate_protocol_stdout
 from .common import _require_directory, _require_file
 
 

@@ -29,8 +29,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from worker_protocol import emit, emit_error, task_logging
-from worker_paths import normalize_output_dir as _normalize_output_dir
+from shared.worker_protocol import emit, emit_error, task_logging
+from shared.worker_paths import normalize_output_dir as _normalize_output_dir
 
 
 def _normalize_output_layout(value: Any) -> str:
@@ -1107,7 +1107,7 @@ def _finalize_ensemble_output(saved: Any, *, payload: dict[str, Any], input_path
                               stem: str, output_dir: Path, temporary_dir: Path,
                               started_at: datetime) -> dict[str, Any]:
     from worker_infer import _claim_output_path, _normalize_output_naming, _replace_output_tokens
-    from worker_protocol import _as_int
+    from shared.worker_protocol import _as_int
 
     paths = [Path(path) for path in saved if path is not None and str(path).strip()]
     if len(paths) != 1:

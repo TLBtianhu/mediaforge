@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from audio_tools.common import _require_directory, _require_file, _srt_time
-from worker_protocol import emit
+from shared.worker_protocol import emit
 
 
 def _unwrap(value: Any) -> Any:

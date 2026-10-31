@@ -21,7 +21,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 import agent_contract  # noqa: E402
-import worker_protocol  # noqa: E402
+from shared import worker_protocol  # noqa: E402
 
 
 class DispatchTests(unittest.TestCase):

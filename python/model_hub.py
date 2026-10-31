@@ -16,7 +16,7 @@ from download_watchdog import ProgressWatchdog, stall_seconds
 import urllib.parse
 import urllib.request
 
-import worker_paths
+from shared import worker_paths
 from pathlib import Path
 from typing import Any, Callable
 

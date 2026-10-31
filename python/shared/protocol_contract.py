@@ -28,8 +28,10 @@ class ProtocolError(ValueError):
 
 def _candidates() -> list[Path]:
     here = Path(__file__).resolve()
+    # python/shared/protocol_contract.py → parents[2] 是仓库/安装根
     return [
-        here.parents[1] / "manifest" / "protocol.json",   # 仓库/安装根/manifest
+        here.parents[2] / "manifest" / "protocol.json",
+        here.parents[1] / "manifest" / "protocol.json",
         here.parent / "manifest" / "protocol.json",
     ]
 

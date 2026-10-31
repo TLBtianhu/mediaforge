@@ -13,7 +13,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from worker_protocol import emit, emit_error
+from shared.worker_protocol import emit, emit_error
 
 
 class _EditorExportCancelled(Exception):

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from recovery import classify
+from shared.recovery import classify
 
 
 def describe(path: Any, error: BaseException | str) -> dict[str, Any]:

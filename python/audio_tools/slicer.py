@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from worker_protocol import emit
+from shared.worker_protocol import emit
 from .common import _available_path, _ffmpeg_path, _render_output, _require_directory, _require_file, _run_ffmpeg
 from .slicer_core import Slicer
 

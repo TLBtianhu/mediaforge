@@ -24,7 +24,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import worker_paths
+from shared import worker_paths
 
 CATALOG_PATH = Path(__file__).with_name("media_catalog.json")
 CAPABILITIES_PATH = Path(__file__).with_name("capabilities.json")

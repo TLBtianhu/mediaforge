@@ -5,7 +5,7 @@ from typing import Any
 
 from audio_tools.common import AudioToolError
 from audio_tools.registry import get_audio_tool_handler
-from worker_protocol import bind_request_id, emit, emit_error
+from shared.worker_protocol import bind_request_id, emit, emit_error
 
 _USE_OPERATIONS = True
 

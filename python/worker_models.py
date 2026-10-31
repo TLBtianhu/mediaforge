@@ -19,9 +19,9 @@ except ImportError:  # bootstrap Python may not have PyYAML; model listing does 
     yaml = None
 
 from worker_inference_constraints import chunk_size_constraint
-from worker_protocol import WORKER_VERSION, _as_bool, _as_float, _as_int, emit, emit_error, import_available
+from shared.worker_protocol import WORKER_VERSION, _as_bool, _as_float, _as_int, emit, emit_error, import_available
 
-import worker_paths
+from shared import worker_paths
 
 
 def package_version(distribution: str) -> str | None:
@@ -1467,7 +1467,7 @@ def _path_size(path: Path) -> int:
         if path.is_dir():
             # 容错：单个子目录可能不可访问（权限、装入点、损坏链接），
             # 不能因为一条坏路径就让整个模型库报错。
-            from safe_fs import path_size
+            from shared.safe_fs import path_size
 
             return path_size(path)
     except Exception:

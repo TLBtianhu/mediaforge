@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from worker_protocol import emit, emit_error, isolate_protocol_stdout
+from shared.worker_protocol import emit, emit_error, isolate_protocol_stdout
 from worker_runtime_lock import RuntimeLockBusy, runtime_lock
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}\Z")
@@ -160,7 +160,7 @@ def _probe(root: Path, dependency_paths: list[Path] | None = None) -> list[dict[
 import json, sys
 from pathlib import Path
 import worker_plugins as p
-from worker_protocol import isolate_protocol_stdout
+from shared.worker_protocol import isolate_protocol_stdout
 with isolate_protocol_stdout():
     p.activate_plugin_dependencies(Path(sys.argv[1]))
     sys.path.extend(json.loads(sys.argv[2]))

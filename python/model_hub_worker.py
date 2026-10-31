@@ -4,7 +4,7 @@ from __future__ import annotations
 import traceback
 from typing import Any
 
-from worker_protocol import emit, emit_error
+from shared.worker_protocol import emit, emit_error
 
 import model_hub
 

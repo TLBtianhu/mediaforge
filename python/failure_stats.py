@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from recovery import classify
+from shared.recovery import classify
 
 _ABSOLUTE_PATH = re.compile(r"[A-Za-z]:\\[^\s'\"]+|/(?:[\w.\-]+/)+[\w.\-]+")
 _NUMBER = re.compile(r"\b\d+(?:\.\d+)?\b")

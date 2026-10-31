@@ -4,7 +4,7 @@ import json
 import subprocess
 from typing import Any
 
-from worker_protocol import emit
+from shared.worker_protocol import emit
 from .common import _require_file, ffprobe_path, run_process
 
 

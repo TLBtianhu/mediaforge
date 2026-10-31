@@ -142,7 +142,7 @@ def _tool(
 
 def _recovery_actions() -> dict[str, str]:
     try:
-        from recovery import ACTIONS
+        from shared.recovery import ACTIONS
 
         return dict(ACTIONS)
     except Exception:  # noqa: BLE001
@@ -482,7 +482,7 @@ def worker_commands() -> list[str]:
 
 def _ensure_mcp_compatible() -> int:
     """工具面协议版本校验：唯一的判定点，build_contract 与 find_tool 都走这里。"""
-    from protocol_contract import ProtocolError, mcp_schema_version
+    from shared.protocol_contract import ProtocolError, mcp_schema_version
 
     try:
         return mcp_schema_version()
@@ -536,7 +536,7 @@ def audit_contract(tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
 
 def cmd_agent_contract(payload: dict[str, Any]) -> int:
     """worker 命令：把整份契约交给调用方（含覆盖率审计）。"""
-    from worker_protocol import emit, emit_error
+    from shared.worker_protocol import emit, emit_error
 
     try:
         emit("agent_contract", build_contract())
@@ -718,7 +718,7 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
         }
     events: list[dict[str, Any]] = []
     import worker
-    import worker_protocol
+    from shared import worker_protocol
 
     def sink(event_type: str, data: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
         events.append({"type": event_type, "payload": data})

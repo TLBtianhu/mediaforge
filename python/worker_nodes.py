@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from worker_protocol import emit, emit_error
+from shared.worker_protocol import emit, emit_error
 
 
 def cmd_list_nodes(payload: dict[str, Any]) -> int:

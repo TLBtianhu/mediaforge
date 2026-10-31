@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from worker_protocol import emit
+from shared.worker_protocol import emit
 
 # tools whose dedicated implementation is fully replaced by a kit operation
 _TOOL_TO_OPERATION = {

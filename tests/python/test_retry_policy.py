@@ -18,7 +18,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 import retry_policy  # noqa: E402
-import worker_protocol  # noqa: E402
+from shared import worker_protocol  # noqa: E402
 
 OOM_HINT = {
     "code": "out_of_memory",

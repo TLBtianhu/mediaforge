@@ -14,7 +14,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import recovery  # noqa: E402
+from shared import recovery  # noqa: E402
 from app_core import interface as model_interface  # noqa: E402
 
 
@@ -80,7 +80,7 @@ class ActionVocabularyTests(unittest.TestCase):
 
 class EmitErrorTests(unittest.TestCase):
     def test_error_event_carries_recovery(self) -> None:
-        from worker_protocol import emit_error, set_event_sink
+        from shared.worker_protocol import emit_error, set_event_sink
 
         events: list[dict] = []
         set_event_sink(lambda event_type, data, request_id, task_id: events.append({"type": event_type, "payload": data}))
@@ -94,7 +94,7 @@ class EmitErrorTests(unittest.TestCase):
         self.assertEqual(payload["recovery"]["code"], "out_of_memory")
 
     def test_plain_error_has_no_recovery_field(self) -> None:
-        from worker_protocol import emit_error, set_event_sink
+        from shared.worker_protocol import emit_error, set_event_sink
 
         events: list[dict] = []
         set_event_sink(lambda event_type, data, request_id, task_id: events.append({"type": event_type, "payload": data}))

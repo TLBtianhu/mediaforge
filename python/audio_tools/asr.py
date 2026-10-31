@@ -8,7 +8,7 @@ from contextlib import redirect_stderr
 from pathlib import Path
 from typing import Any, TextIO
 
-from worker_protocol import emit, isolate_protocol_stdout
+from shared.worker_protocol import emit, isolate_protocol_stdout
 from .asr_cache import is_complete_asr_model_cache, unresolved_incomplete_files
 from .common import AudioToolError, _available_path, _require_directory, _require_file, _srt_time
 

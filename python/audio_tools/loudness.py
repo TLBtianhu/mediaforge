@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from worker_protocol import emit
+from shared.worker_protocol import emit
 from .common import _available_path, _ffmpeg_path, _require_directory, _require_file, _run_ffmpeg, _subprocess_detail, ffprobe_path, run_process
 
 

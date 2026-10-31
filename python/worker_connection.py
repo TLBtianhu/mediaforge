@@ -4,8 +4,8 @@ import json
 import time
 from typing import Any
 
-from worker_protocol import emit
-from worker_proxy import (
+from shared.worker_protocol import emit
+from shared.worker_proxy import (
     ProxyConfigError,
     configure_process_proxy,
     parse_proxy_config,

@@ -26,7 +26,7 @@ from worker_download import (
     files_for_studio_model,
     prepare_pymss_download,
 )
-from worker_proxy import effective_proxy_url, parse_proxy_config
+from shared.worker_proxy import effective_proxy_url, parse_proxy_config
 
 
 class EffectiveProxyUrlTest(unittest.TestCase):
@@ -49,17 +49,17 @@ class EffectiveProxyUrlTest(unittest.TestCase):
 
     def test_system_mode_mirrors_urllib_discovery(self):
         proxy = parse_proxy_config({"mode": "system", "url": "", "bypass": ""})
-        with mock.patch("worker_proxy.urllib.request.getproxies", return_value={"https": "http://127.0.0.1:7890"}):
+        with mock.patch("shared.worker_proxy.urllib.request.getproxies", return_value={"https": "http://127.0.0.1:7890"}):
             self.assertEqual(effective_proxy_url(proxy), "http://127.0.0.1:7890")
 
     def test_system_mode_without_discovered_proxy_is_direct(self):
         proxy = parse_proxy_config({"mode": "system", "url": "", "bypass": ""})
-        with mock.patch("worker_proxy.urllib.request.getproxies", return_value={}):
+        with mock.patch("shared.worker_proxy.urllib.request.getproxies", return_value={}):
             self.assertEqual(effective_proxy_url(proxy), "")
 
     def test_system_mode_rejects_schemes_pymss_cannot_use(self):
         proxy = parse_proxy_config({"mode": "system", "url": "", "bypass": ""})
-        with mock.patch("worker_proxy.urllib.request.getproxies", return_value={"http": "ftp://127.0.0.1:21"}):
+        with mock.patch("shared.worker_proxy.urllib.request.getproxies", return_value={"http": "ftp://127.0.0.1:21"}):
             self.assertEqual(effective_proxy_url(proxy), "")
 
 

@@ -19,7 +19,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_protocol
+from shared import worker_protocol
 
 
 class WorkerProtocolTests(unittest.TestCase):

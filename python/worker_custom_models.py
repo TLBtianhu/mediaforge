@@ -25,8 +25,8 @@ from typing import Any
 
 import yaml
 
-import worker_paths
-from worker_protocol import emit, emit_error
+from shared import worker_paths
+from shared.worker_protocol import emit, emit_error
 
 # Weights are loaded with ``torch.load`` (see pymss_core/checkpoint.py), so only formats it reads
 # are offered. Notably absent: .safetensors — pymss has no safetensors path at all, and accepting
