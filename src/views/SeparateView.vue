@@ -32,6 +32,7 @@ import {
   InformationCircleOutline,
 } from '@vicons/ionicons5'
 import {
+  WINDOWS_RESERVED_FILENAMES,
   compareModelNames, formatDateToken, formatLegacyTimeToken, formatPlaybackTime, formatProgressTime,
   formatTimeToken, getFileName, normalizeFilenameFragment, padNumber, safeFilenamePart,
   stripFileExtension, truncateUtf8,
@@ -41,6 +42,7 @@ import { makeInferenceDefaults } from './separate/inferenceDefaults'
 import { makePlayback } from './separate/playback'
 import { makeStemSelection } from './separate/stemSelection'
 import { makeQueue } from './separate/queue'
+import { makeOutputDirectory } from './separate/outputDirectory'
 import { useOutputNaming } from './separate/useOutputNaming'
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
 import { resolveJobStatus } from '@/features/tasks/lifecycle'
@@ -170,12 +172,6 @@ const inputDragPointerId = ref<number | null>(null)
 const draggedStemIndex = ref<number | null>(null)
 const stemDragPointerId = ref<number | null>(null)
 const STEM_ORDER_ROW_HEIGHT = 43
-// 测试会在 VM 里单独执行 validateOutputDirectory，所以这个常量保留组件内定义。
-const WINDOWS_RESERVED_FILENAMES = new Set([
-  'CON', 'PRN', 'AUX', 'NUL',
-  ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
-  ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
-])
 const PREVIEW_AUDIO_CACHE_LIMIT = 8
 const {
   getOutputPlayback, setOutputPlayback, touchPreviewAudio, releasePreviewAudio,
@@ -549,31 +545,6 @@ const startStatusText = computed(() => {
   return t('separate.outputDirectorySummary')
 })
 
-const outputDirectoryInput = computed({
-  get: () => temporaryOutputDir.value || normalizedOutputDir.value,
-  set: (value: string | null) => { temporaryOutputDir.value = value || '' },
-})
-const outputDirectoryPlatform = computed(() => {
-  const reported = String(app.envInfo?.platform || '').trim().toLowerCase()
-  if (reported === 'win32' || reported === 'windows') return 'windows' as const
-  if (reported === 'darwin' || reported === 'macos' || reported === 'mac') return 'macos' as const
-  if (reported === 'linux') return 'linux' as const
-  const browserPlatform = String(typeof navigator !== 'undefined' ? navigator.platform : '').toLowerCase()
-  if (browserPlatform.includes('win')) return 'windows' as const
-  if (browserPlatform.includes('mac')) return 'macos' as const
-  return 'linux' as const
-})
-const outputDirectoryError = computed(() => validateOutputDirectory(normalizedOutputDir.value, outputDirectoryPlatform.value))
-const outputPreview = computed(() => {
-  const windows = outputDirectoryPlatform.value === 'windows'
-  const base = normalizedOutputDir.value.replace(windows ? /[\\/]$/ : /[/]$/, '')
-  const separator = windows && base.includes('\\') ? '\\' : '/'
-  const previewName = outputNamingPreviewFiles.value[0] || t('separate.outputFilePreview')
-  if (effectiveOutputLayout.value === 'flat') {
-    return `${base}${separator}${previewName}`
-  }
-  return `${base}${separator}${t('separate.resultFolderPreview')}${separator}${previewName}`
-})
 const effectiveFormat = computed(() => String(settings.defaultFormat || 'wav').trim().toLowerCase() || 'wav')
 
 const {
@@ -584,13 +555,6 @@ const {
 })
 const formatLabel = computed(() => effectiveFormat.value.toUpperCase())
 const outputSummaryPath = computed(() => outputPreview.value)
-const canStart = computed(() => (
-  !submittingJob.value
-  && !outputDirectoryError.value
-  && (ensembleEnabled.value
-    ? ensembleReady.value
-    : (modelDownloaded.value && inputFiles.value.length > 0 && hasOutputStemSelection.value))
-))
 const finishedSessionJobCount = computed(() => recentFailedJobs.value.length + completedSessionJobs.value.length + cancelledSessionJobs.value.length)
 const hasQueueEntries = computed(() => queueJobs.value.length > 0 || noResultSeparationJobs.value.length > 0)
 const focusedBatchTasks = computed<SeparationTask[]>(() => currentJob.value?.tasks || [])
@@ -781,35 +745,6 @@ function stopAllPreviewAudio() {
   outputPlayback.value = {}
 }
 
-function validateOutputDirectory(value: string, platform: 'windows' | 'macos' | 'linux') {
-  const path = String(value || '').trim()
-  if (!path) return ''
-  if (/[\u0000-\u001f]/u.test(path)) {
-    return t('separate.outputDirectoryInvalidCharacters')
-  }
-
-  if (platform !== 'windows') {
-    if (path.includes('\0')) return t('separate.outputDirectoryInvalidCharacters')
-    return path.startsWith('/') ? '' : t('separate.outputDirectoryAbsoluteRequired')
-  }
-
-  if (/[<>"|?*]/u.test(path)) return t('separate.outputDirectoryInvalidCharacters')
-  const normalized = path.replace(/\//g, '\\')
-  if (/^[A-Za-z]:[^\\]/u.test(normalized)) return t('separate.outputDirectoryIncomplete')
-  const withoutRoot = normalized
-    .replace(/^[A-Za-z]:\\/u, '')
-    .replace(/^\\\\[^\\]+\\[^\\]+\\?/u, '')
-    .replace(/^\\+/u, '')
-  const segments = withoutRoot.split(/\\+/u).filter(Boolean)
-  if (segments.some(segment => segment.includes(':'))) return t('separate.outputDirectoryInvalidCharacters')
-  if (segments.some(segment => /[ .]$/u.test(segment))) return t('separate.outputDirectoryTrailingCharacter')
-  if (segments.some(segment => WINDOWS_RESERVED_FILENAMES.has(segment.split('.', 1)[0].toUpperCase()))) {
-    return t('separate.outputDirectoryReservedName')
-  }
-  if (/^[A-Za-z]:$/u.test(path) || /^\\\\[^\\]+$/u.test(path)) return t('separate.outputDirectoryIncomplete')
-  const isAbsolute = /^[A-Za-z]:\\/u.test(normalized) || /^\\\\[^\\]+\\[^\\]+(?:\\|$)/u.test(normalized)
-  return isAbsolute ? '' : t('separate.outputDirectoryAbsoluteRequired')
-}
 
 
 
@@ -1416,55 +1351,16 @@ function buildEnsembleWorkflow(): WorkflowEntry {
   }
 }
 
-async function start() {
-  if (submittingJob.value) return
-  if (outputDirectoryError.value) {
-    message.warning(outputDirectoryError.value)
-    return
-  }
-  if (ensembleEnabled.value && !ensembleReady.value) {
-    message.warning(t('separate.ensembleNotReady'))
-    return
-  }
-  if (!inputFiles.value.length) {
-    message.warning(t('separate.startHintNoInput'))
-    return
-  }
-  if (!ensembleEnabled.value && !modelDownloaded.value) {
-    message.warning(t('separate.startHintModelMissing'))
-    return
-  }
-  if (!ensembleEnabled.value && currentChunkIssue.value) {
-    message.warning(t('inference.invalidChunkSize', currentChunkIssue.value))
-    return
-  }
-  if (!ensembleEnabled.value && !hasOutputStemSelection.value) {
-    message.warning(t('separate.startHintNoOutputStems'))
-    return
-  }
-  submittingJob.value = true
-  try {
-    const result = ensembleEnabled.value
-      ? await task.startWorkflowInference(buildEnsembleWorkflow(), { outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
-      : await task.startSeparation({ outputDir: normalizedOutputDir.value, outputLayout: effectiveOutputLayout.value, outputNaming: outputNamingConfig.value })
-    focusedSeparationJobId.value = result?.jobId || newestRunningJob.value?.id || focusedSeparationJobId.value
-    composingNewJob.value = false
-    if (ensembleEnabled.value && result) {
-      ensembleModels.value.forEach((name) => model.recordModelUse(name))
-    }
-    if (settings.clearInputAfterSubmit) task.clearInputFiles()
-    if (result && result.failed > 0) {
-      message.warning(t('separate.batchPartial', { succeeded: result.succeeded, failed: result.failed }))
-    } else {
-      message.success(t('separate.batchStarted', { count: result?.succeeded ?? 1 }))
-    }
-  } catch (err) {
-    message.error(err instanceof Error ? err.message : t('toast.taskFailed'))
-  } finally {
-    submittingJob.value = false
-  }
-}
 
+const {
+  outputDirectoryInput, outputDirectoryPlatform, outputDirectoryError, outputPreview,
+  validateOutputDirectory, canStart, start,
+} = makeOutputDirectory({
+  temporaryOutputDir, normalizedOutputDir, app, settings, outputNamingPreviewFiles, effectiveOutputLayout, t,
+  submittingJob, ensembleEnabled, ensembleReady, modelDownloaded, inputFiles, hasOutputStemSelection,
+  currentChunkIssue, task, focusedSeparationJobId, newestRunningJob, composingNewJob, ensembleModels, model,
+  buildEnsembleWorkflow, outputNamingConfig, WINDOWS_RESERVED_FILENAMES,
+})
 function beginNextSeparation() {
   stopAllPreviewAudio()
   showLogModal.value = false

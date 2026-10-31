@@ -53,23 +53,59 @@ const logLevelCode = ts.transpileModule(logLevelFunctions.map(statement => state
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText
 const stemSelectionCode = ts.transpileModule(readFileSync(new URL('../src/views/separate/stemSelection.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
-const outputDirectoryNames = new Set(['outputDirectoryInput', 'outputDirectoryError', 'outputPreview', 'validateOutputDirectory', 'WINDOWS_RESERVED_FILENAMES', 'canStart', 'start'])
-const outputDirectoryStatements = script.statements.filter(statement => (
-  ts.isFunctionDeclaration(statement) ? outputDirectoryNames.has(statement.name?.text)
-    : ts.isVariableStatement(statement) && statement.declarationList.declarations.some(item => outputDirectoryNames.has(item.name.getText(script)))
-))
-assert.equal(outputDirectoryStatements.length, outputDirectoryNames.size)
-const outputDirectoryCode = ts.transpileModule(outputDirectoryStatements.map(statement => statement.getText(script)).join('\n'), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022 },
-}).outputText
+const outputDirectorySource = readFileSync(new URL('../src/views/separate/outputDirectory.ts', import.meta.url), 'utf8')
+const outputDirectoryCode = ts.transpileModule(
+  outputDirectorySource,
+  { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+).outputText.replace(/^export /gm, '')
+const { makeOutputDirectory } = vm.runInNewContext(`${outputDirectoryCode}\n({ makeOutputDirectory })`, {})
+const WINDOWS_RESERVED_FILENAMES = new Set([
+  'CON', 'PRN', 'AUX', 'NUL',
+  ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
+  ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
+])
+
+// 输出目录工厂的依赖表：默认值给全，单项用例只覆盖自己在意的字段。
+function outputDirectoryFor(overrides = {}) {
+  return makeOutputDirectory({
+    computed,
+    t: key => key,
+    app: { envInfo: { platform: 'win32' } },
+    temporaryOutputDir: ref(''),
+    normalizedOutputDir: ref('D:/DefaultOutput'),
+    outputNamingPreviewFiles: ref([]),
+    effectiveOutputLayout: ref('folders'),
+    submittingJob: ref(false),
+    ensembleEnabled: ref(false),
+    ensembleReady: ref(false),
+    modelDownloaded: ref(true),
+    inputFiles: ref([]),
+    hasOutputStemSelection: ref(true),
+    currentChunkIssue: ref(null),
+    focusedSeparationJobId: ref(null),
+    newestRunningJob: ref(null),
+    composingNewJob: ref(true),
+    ensembleModels: ref([]),
+    settings: { outputDir: 'D:/DefaultOutput', clearInputAfterSubmit: false },
+    message: { warning() {}, success() {}, error() {} },
+    task: {
+      startSeparation: async () => ({ succeeded: 1, failed: 0 }),
+      startWorkflowInference: async () => ({ succeeded: 1, failed: 0 }),
+      clearInputFiles() {},
+    },
+    model: { recordModelUse() {} },
+    buildEnsembleWorkflow: () => ({}),
+    outputNamingConfig: { value: {} },
+    WINDOWS_RESERVED_FILENAMES,
+    ...overrides,
+  })
+}
 
 test('output directory input prefills Settings, preserves typed spaces, and restores the default when cleared', () => {
   const temporaryOutputDir = ref('')
   const settings = { outputDir: 'D:/DefaultOutput' }
   const normalizedOutputDir = computed(() => temporaryOutputDir.value.trim() || settings.outputDir)
-  const { outputDirectoryInput } = vm.runInNewContext(`${outputDirectoryCode}\n({ outputDirectoryInput })`, {
-    computed, temporaryOutputDir, normalizedOutputDir, outputDirectoryPlatform: ref('windows'), t: key => key,
-  })
+  const { outputDirectoryInput } = outputDirectoryFor({ temporaryOutputDir, settings, normalizedOutputDir })
   assert.equal(outputDirectoryInput.value, 'D:/DefaultOutput')
   assert.equal(temporaryOutputDir.value, '')
   outputDirectoryInput.value = 'E:/Audio Mix '
@@ -83,20 +119,15 @@ test('output directory input prefills Settings, preserves typed spaces, and rest
 })
 
 test('output directory validation checks the effective default when no custom path is entered', () => {
-  const context = {
-    computed, temporaryOutputDir: ref(''), normalizedOutputDir: ref('C:/CON'),
-    outputDirectoryPlatform: ref('windows'), t: key => key,
-  }
-  const { outputDirectoryError } = vm.runInNewContext(`${outputDirectoryCode}\n({ outputDirectoryError })`, context)
+  const normalizedOutputDir = ref('C:/CON')
+  const { outputDirectoryError } = outputDirectoryFor({ normalizedOutputDir })
   assert.equal(outputDirectoryError.value, 'separate.outputDirectoryReservedName')
-  context.normalizedOutputDir.value = 'D:/DefaultOutput'
+  normalizedOutputDir.value = 'D:/DefaultOutput'
   assert.equal(outputDirectoryError.value, '')
 })
 
 test('Windows output directories require a drive root or a complete UNC root', () => {
-  const { validateOutputDirectory } = vm.runInNewContext(`${outputDirectoryCode}\n({ validateOutputDirectory })`, {
-    computed, t: key => key,
-  })
+  const { validateOutputDirectory } = outputDirectoryFor()
   const separator = String.fromCharCode(92)
   const accepted = [
     'D:/Audio/Outputs', 'D:/', 'D:/Audio Mix/结果',
@@ -115,9 +146,7 @@ test('Windows output directories require a drive root or a complete UNC root', (
 })
 
 test('macOS and Linux output directories require a filesystem root', () => {
-  const { validateOutputDirectory } = vm.runInNewContext(`${outputDirectoryCode}\n({ validateOutputDirectory })`, {
-    computed, t: key => key,
-  })
+  const { validateOutputDirectory } = outputDirectoryFor()
   for (const platform of ['macos', 'linux']) {
     for (const path of ['/', '/home/user/Audio Mix', '/Volumes/Audio/结果']) {
       assert.equal(validateOutputDirectory(path, platform), '', `${platform}: ${path}`)
@@ -130,34 +159,35 @@ test('macOS and Linux output directories require a filesystem root', () => {
 
 test('a relative output directory disables submission and blocks the start action', async () => {
   const warnings = []
-  const context = {
-    computed, temporaryOutputDir: ref('111'), normalizedOutputDir: ref('111'),
-    outputDirectoryPlatform: ref('windows'), t: key => key,
-    submittingJob: ref(false), workflowStructureInvalid: ref(false), runMode: ref('model'),
-    ensembleEnabled: ref(false), modelDownloaded: ref(true), inputFiles: ref(['D:/Audio/song.wav']),
-    hasOutputStemSelection: ref(true), message: { warning: value => warnings.push(value) },
-  }
-  const { canStart, start } = vm.runInNewContext(`${outputDirectoryCode}\n({ canStart, start })`, context)
+  const normalizedOutputDir = ref('111')
+  const { canStart, start } = outputDirectoryFor({
+    normalizedOutputDir,
+    temporaryOutputDir: ref('111'),
+    inputFiles: ref(['D:/Audio/song.wav']),
+    message: { warning: value => warnings.push(value), success() {}, error() {} },
+  })
   assert.equal(canStart.value, false)
   await start()
   assert.deepEqual(warnings, ['separate.outputDirectoryAbsoluteRequired'])
-  context.normalizedOutputDir.value = 'D:/Outputs'
+  normalizedOutputDir.value = 'D:/Outputs'
   assert.equal(canStart.value, true)
 })
 
 test('output previews preserve literal POSIX backslashes and Windows separators', () => {
   const separator = String.fromCharCode(92)
-  const context = {
-    computed, normalizedOutputDir: ref(`/tmp/results${separator}`), outputDirectoryPlatform: ref('linux'),
-    effectiveOutputLayout: ref('folders'), outputNamingPreviewFiles: ref(['vocals.wav']),
+  const app = { envInfo: { platform: 'linux' } }
+  const normalizedOutputDir = ref(`/tmp/results${separator}`)
+  const effectiveOutputLayout = ref('folders')
+  const outputNamingPreviewFiles = ref(['vocals.wav'])
+  const { outputPreview } = outputDirectoryFor({
+    app, normalizedOutputDir, effectiveOutputLayout, outputNamingPreviewFiles,
     t: key => key === 'separate.resultFolderPreview' ? 'song' : key,
-  }
-  const { outputPreview } = vm.runInNewContext(`${outputDirectoryCode}\n({ outputPreview })`, context)
+  })
   assert.equal(outputPreview.value, `/tmp/results${separator}/song/vocals.wav`)
-  context.effectiveOutputLayout.value = 'flat'
+  effectiveOutputLayout.value = 'flat'
   assert.equal(outputPreview.value, `/tmp/results${separator}/vocals.wav`)
-  context.outputDirectoryPlatform.value = 'windows'
-  context.normalizedOutputDir.value = `E:${separator}Results${separator}`
+  app.envInfo.platform = 'win32'
+  normalizedOutputDir.value = `E:${separator}Results${separator}`
   assert.equal(outputPreview.value, `E:${separator}Results${separator}vocals.wav`)
 })
 
@@ -283,7 +313,7 @@ test('large output stem lists expose compact bulk selection actions', () => {
   assert.ok(template.includes("t('separate.selectAllStems')"))
   assert.ok(template.includes("t('separate.clearStemSelection')"))
   assert.ok(readFileSync(new URL('../src/views/separate/stemSelection.ts', import.meta.url), 'utf8').includes('outputStemSelectionCleared.value = true'))
-  assert.ok(scriptSource.includes('&& hasOutputStemSelection.value'))
+  assert.ok(outputDirectorySource.includes('&& deps.hasOutputStemSelection.value'))
 })
 
 test('output stem selection is restored from the model cache', () => {
