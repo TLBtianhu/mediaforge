@@ -27,8 +27,8 @@ WORKER = ROOT / "worker.py"
 VERSION = "0.1.0"
 
 sys.path.insert(0, str(ROOT))
-import agent_contract  # noqa: E402
-import media_eval  # noqa: E402
+from surfaces import agent_contract  # noqa: E402
+from core import media_eval  # noqa: E402
 from core import model_hub  # noqa: E402
 from shared import worker_paths  # noqa: E402
 from media_ops import capabilities  # noqa: E402
@@ -58,7 +58,7 @@ def _active_runtime_python(runtime_envs: Path) -> str | None:
     return str(candidate) if candidate.is_file() else None
 
 
-from operation_kernel import Job, OperationKernel
+from core.operation_kernel import Job, OperationKernel
 
 
 class Bridge:
@@ -694,7 +694,7 @@ class Bridge:
                 return {"ok": False, "error": "unknown job"}
             snapshot = job.snapshot()
             # 失败时把恢复建议一并透出：调用方不必去翻 failed[] 才能知道下一步
-            from retry_policy import recovery_from_result
+            from core.retry_policy import recovery_from_result
 
             hint = recovery_from_result(snapshot.get("result"))
             return {"ok": snapshot.get("status") == "completed", **snapshot, **({"recovery": hint} if hint else {})}
@@ -718,7 +718,7 @@ class Bridge:
         snapshot = job.snapshot()
         if snapshot.get("status") != "failed":
             return {"ok": False, "error": "job did not fail", "status": snapshot.get("status")}
-        from retry_policy import plan_retry
+        from core.retry_policy import plan_retry
 
         used = self._retry_counts.get(job_id, 0)
         plan = plan_retry(snapshot.get("payload") or {}, snapshot.get("result"), attempts_used=used)

@@ -18,7 +18,7 @@ try:
 except ImportError:  # bootstrap Python may not have PyYAML; model listing does not need it
     yaml = None
 
-from worker_inference_constraints import chunk_size_constraint
+from core.worker_inference_constraints import chunk_size_constraint
 from shared.worker_protocol import WORKER_VERSION, _as_bool, _as_float, _as_int, emit, emit_error, import_available
 
 from shared import worker_paths

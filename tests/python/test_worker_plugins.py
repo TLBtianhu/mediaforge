@@ -16,8 +16,8 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_operations
-import worker_plugins as plugins
+from core import worker_operations
+from core import worker_plugins as plugins
 
 
 class PluginMarketplaceTests(unittest.TestCase):
@@ -270,7 +270,7 @@ def setup(plugin):
         live.mkdir(parents=True)
         live.joinpath("marker").write_text("active writer")
         script = "from pathlib import Path; import sys; from core.worker_runtime_lock import runtime_lock\nwith runtime_lock(Path(sys.argv[1])):\n print('locked', flush=True)\n sys.stdin.read(1)"
-        environment = dict(os.environ, PYTHONPATH=str(Path(plugins.__file__).parent))
+        environment = dict(os.environ, PYTHONPATH=str(Path(plugins.__file__).resolve().parents[1]))
         child = subprocess.Popen([sys.executable, "-u", "-c", script, str(self.root / ".lock")],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  text=True, env=environment)

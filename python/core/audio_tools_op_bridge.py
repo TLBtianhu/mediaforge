@@ -27,7 +27,7 @@ def _resolved_inputs(entries: dict[str, Any]) -> dict[str, Any]:
     descriptors reach the plugin as plain dicts and fail with
     'requires an audio file input'.
     """
-    from worker_operations import _resolve_input
+    from core.worker_operations import _resolve_input
 
     return {name: _resolve_input(value) for name, value in entries.items()}
 

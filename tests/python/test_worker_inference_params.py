@@ -15,7 +15,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_infer
+from core import worker_infer
 from core import worker_models
 
 
@@ -58,7 +58,7 @@ class InferenceParameterCompatibilityTests(unittest.TestCase):
         self.assertEqual(defaults["num_overlap"], 2)
 
     def test_mdx_chunk_validation_rejects_custom_size_before_constructing_a_model(self) -> None:
-        from worker_inference_constraints import InferenceParameterError
+        from core.worker_inference_constraints import InferenceParameterError
 
         self.config["audio"] = {"hop_length": 1024, "n_fft": 8192, "chunk_size": 261120}
         self.config["model"] = {"num_scales": 5, "scale": [2, 2]}

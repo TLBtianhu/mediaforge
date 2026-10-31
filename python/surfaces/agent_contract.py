@@ -80,7 +80,7 @@ def _result_event(name: str, command: str, operation: str | None) -> str | None:
         return "task.result"
     return None
 
-_WORKER = Path(__file__).with_name("worker.py")
+_WORKER = Path(__file__).resolve().parents[1] / "worker.py"
 
 
 def _schema(properties: dict[str, Any] | None = None, required: list[str] | None = None) -> dict[str, Any]:
@@ -652,7 +652,7 @@ def dispatch(
         raise ValueError(
             f"{tool_name} is long-running; submit it through the job ledger instead of dispatch()"
         )
-    from retry_policy import RetryBudget, adjust_arguments, applicable_actions, budget_from_env, recovery_from_result, retry_blocked_reason
+    from core.retry_policy import RetryBudget, adjust_arguments, applicable_actions, budget_from_env, recovery_from_result, retry_blocked_reason
 
     payload = dict(arguments or {})
     if tool["operation"]:

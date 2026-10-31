@@ -26,7 +26,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-from operation_kernel import OperationKernel  # noqa: E402
+from core.operation_kernel import OperationKernel  # noqa: E402
 
 DAY = 86400.0
 
@@ -88,7 +88,7 @@ class JobRetentionTests(unittest.TestCase):
         # 单独验证清理规则本身不碰运行中的作业。
         kernel._index["alive"]["status"] = "running"
         kernel._index["waiting"]["status"] = "queued"
-        with mock.patch("operation_kernel._retention_limits", return_value=(30.0, 0)):
+        with mock.patch("core.operation_kernel._retention_limits", return_value=(30.0, 0)):
             kernel._prune_history()
         self.assertTrue((self.jobs / "alive.json").is_file())
         self.assertTrue((self.jobs / "waiting.json").is_file())

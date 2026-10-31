@@ -15,7 +15,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import agent_contract  # noqa: E402
+from surfaces import agent_contract  # noqa: E402
 
 REQUIRED_FIELDS = {
     "name",
@@ -91,7 +91,7 @@ class ResultContractTests(unittest.TestCase):
         self.assertEqual(tools["media.image.upscale"]["resultEvent"], "task.result")
 
     def test_declared_result_event_matches_what_dispatch_returns(self) -> None:
-        import agent_contract as contract
+        from surfaces import agent_contract as contract
 
         for name in ("system.health", "system.contract", "model.list"):
             tool = contract.find_tool(name)

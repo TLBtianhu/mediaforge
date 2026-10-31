@@ -13,7 +13,7 @@ try:
 except ImportError:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_infer
+from core import worker_infer
 
 
 class InferenceLifecycleTests(unittest.TestCase):

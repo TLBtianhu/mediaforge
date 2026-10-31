@@ -20,7 +20,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import agent_contract  # noqa: E402
+from surfaces import agent_contract  # noqa: E402
 from shared import worker_protocol  # noqa: E402
 
 

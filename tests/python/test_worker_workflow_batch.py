@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from . import _bootstrap  # noqa: F401
-import worker_infer
-import worker_workflows
+from core import worker_infer
+from core import worker_workflows
 
 
 class WorkflowBatchLifecycleTests(unittest.TestCase):

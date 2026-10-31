@@ -15,7 +15,7 @@ from shared.worker_protocol import emit, emit_error
 
 def cmd_list_nodes(payload: dict[str, Any]) -> int:
     try:
-        from worker_plugins import _manifest_contributions, _root, operation_runtime
+        from core.worker_plugins import _manifest_contributions, _root, operation_runtime
 
         # Ensure plugin node types are registered in the shared graph registry.
         try:

@@ -11,8 +11,8 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import worker_infer
-import worker_workflows
+from core import worker_infer
+from core import worker_workflows
 
 
 class WorkflowDeviceTests(unittest.TestCase):

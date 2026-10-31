@@ -7,7 +7,7 @@ import unittest
 import weakref
 from unittest import mock
 
-import worker_rocm
+from core import worker_rocm
 
 
 class RocmCompatibilityTests(unittest.TestCase):
@@ -31,7 +31,7 @@ class RocmCompatibilityTests(unittest.TestCase):
         self.logger = mock.Mock()
 
     def test_auto_mode_can_construct_a_non_amp_model_without_instance_norm_support(self):
-        import worker_infer
+        from core import worker_infer
 
         constructed = []
 
@@ -256,7 +256,7 @@ class RocmCompatibilityTests(unittest.TestCase):
 
 class NormalizationProbeTests(unittest.TestCase):
     def test_adapter_recovers_before_the_upstream_process_folder_swallows_errors(self):
-        import worker_infer
+        from core import worker_infer
 
         calls = []
 
@@ -289,7 +289,7 @@ class NormalizationProbeTests(unittest.TestCase):
         self.assertIn("miopenStatusUnknownError", str(configure.call_args.kwargs["failure"]))
 
     def test_separator_checks_the_selected_rocm_gpu_before_constructing_the_model(self):
-        import worker_infer
+        from core import worker_infer
 
         logger = mock.Mock()
         configured = []

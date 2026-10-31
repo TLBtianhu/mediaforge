@@ -84,6 +84,44 @@ def declared_events(manifest: dict) -> set[str]:
     return names
 
 
+#: python/ 根目录只允许两个进程入口 + 数据文件；其余必须进包。
+ROOT_ALLOWED = {"__init__.py", "worker.py", "agent_bridge.py"}
+ROOT_DATA_SUFFIXES = {".json"}
+
+
+def check_root_allowlist() -> list[str]:
+    problems: list[str] = []
+    for path in sorted(PY.glob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix in ROOT_DATA_SUFFIXES:
+            continue
+        if path.suffix == ".py" and path.name in ROOT_ALLOWED:
+            continue
+        if path.suffix == ".py":
+            problems.append(f"python/{path.name} 不应留在根目录：入口进 surfaces/，服务进 core/")
+    return problems
+
+
+def check_core_direction() -> list[str]:
+    """core 可以依赖 engine/shared，但不能依赖 surfaces（那是上层）。"""
+    problems: list[str] = []
+    for path in python_files(PY / "core"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            module = None
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    module = alias.name.split(".")[0]
+                    if module == "surfaces":
+                        problems.append(f"{path.relative_to(ROOT)}:{node.lineno} core 层 import 了 surfaces")
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                module = node.module.split(".")[0]
+                if module == "surfaces":
+                    problems.append(f"{path.relative_to(ROOT)}:{node.lineno} core 层 import 了 {node.module}")
+    return problems
+
+
 def check_shared_direction() -> list[str]:
     """shared/ 是跨层原语：只能依赖标准库与自身，不能反向依赖任何层。"""
     problems: list[str] = []
@@ -158,6 +196,8 @@ def main() -> int:
     results = {
         "引擎依赖方向": check_import_direction(),
         "shared 依赖方向": check_shared_direction(),
+        "core 依赖方向": check_core_direction(),
+        "根目录白名单": check_root_allowlist(),
         "事件覆盖": check_event_coverage(manifest),
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),

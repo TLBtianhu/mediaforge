@@ -9,7 +9,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 
-import agent_contract  # noqa: E402
+from surfaces import agent_contract  # noqa: E402
 from shared import protocol_contract  # noqa: E402
 from media_ops import capabilities  # noqa: E402
 

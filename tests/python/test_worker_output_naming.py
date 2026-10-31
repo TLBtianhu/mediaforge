@@ -14,8 +14,8 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_infer
-from worker_infer import (
+from core import worker_infer
+from core.worker_infer import (
     _claim_output_path,
     _studio_separator_type,
 )

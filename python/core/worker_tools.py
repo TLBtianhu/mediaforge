@@ -18,7 +18,7 @@ def cmd_audio_tools(payload: dict[str, Any]) -> int:
             # pymss Operation path: kit builtins for convert/inspect/sdr/
             # slicer/merge, plugin operations for midi/asr (with a legacy
             # fallback inside the adapter when the plugin is not installed).
-            from audio_tools_ops import run_audio_tool_via_operations
+            from core.audio_tools_ops import run_audio_tool_via_operations
 
             # Bind the request id so progress events emitted by legacy handlers
             # (plugin-tool fallback) inherit it, mirroring the direct path below.

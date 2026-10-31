@@ -18,7 +18,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-from worker_audio import _DiskMixBuffer, _read_audio, _resample_audio, cmd_export_editor_mix
+from core.worker_audio import _DiskMixBuffer, _read_audio, _resample_audio, cmd_export_editor_mix
 
 
 class EditorEffectTests(unittest.TestCase):
@@ -142,7 +142,7 @@ class EditorEffectTests(unittest.TestCase):
             payload["project"]["tracks"][0]["effects"] = {
                 "reverb": 1, "delay": 1, "delayTime": 0.1, "clarity": 1, "compressor": 1,
             }
-            with mock.patch("worker_audio.emit"):
+            with mock.patch("core.worker_audio.emit"):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             rendered, sample_rate = sf.read(str(root / "output" / "effects_mix.wav"))
 
@@ -158,7 +158,7 @@ class EditorEffectTests(unittest.TestCase):
             sf.write(source, np.ones(200, dtype=np.float32) * 0.1, 1000)
             payload = self._export_payload(root, source, name="repeat")
             events: list[dict] = []
-            with mock.patch("worker_audio.emit", side_effect=lambda kind, value, **_kwargs: events.append(value) if kind == "editor_mix_exported" else None):
+            with mock.patch("core.worker_audio.emit", side_effect=lambda kind, value, **_kwargs: events.append(value) if kind == "editor_mix_exported" else None):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
                 first = root / "output" / "repeat_mix.wav"
                 first_bytes = first.read_bytes()
@@ -199,8 +199,8 @@ class EditorEffectTests(unittest.TestCase):
                     "muted": False,
                 }],
             })
-            with mock.patch("worker_audio.emit"), \
-                 mock.patch("worker_audio.emit_error", return_value=1) as emit_error:
+            with mock.patch("core.worker_audio.emit"), \
+                 mock.patch("core.worker_audio.emit_error", return_value=1) as emit_error:
                 self.assertEqual(cmd_export_editor_mix(payload), 1)
 
             self.assertEqual(emit_error.call_args.args[0], "EDITOR_EXPORT_SOURCE_MISSING")
@@ -242,7 +242,7 @@ class EditorEffectTests(unittest.TestCase):
                 }],
             })
             events: list[dict] = []
-            with mock.patch("worker_audio.emit", side_effect=lambda kind, value, **_kwargs: events.append(value) if kind == "editor_mix_exported" else None):
+            with mock.patch("core.worker_audio.emit", side_effect=lambda kind, value, **_kwargs: events.append(value) if kind == "editor_mix_exported" else None):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
 
             _rendered, sample_rate = sf.read(root / "output" / "rates_mix.wav")
@@ -252,7 +252,7 @@ class EditorEffectTests(unittest.TestCase):
             payload["fileName"] = "rates_44100.flac"
             payload["format"] = "flac"
             payload["audioParams"] = {"sampleRate": 44100, "flacBitDepth": "PCM_24"}
-            with mock.patch("worker_audio.emit"):
+            with mock.patch("core.worker_audio.emit"):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             _rendered, sample_rate = sf.read(root / "output" / "rates_44100.flac")
             self.assertEqual(sample_rate, 44100)
@@ -267,13 +267,13 @@ class EditorEffectTests(unittest.TestCase):
             payload = self._export_payload(root, source, name='native')
             payload['project']['assets'][0].update(sampleRate=48000, channels=2)
             payload['audioParams'] = {'wavBitDepth': 'FLOAT', 'peakProtection': False}
-            with mock.patch('worker_audio.emit'):
+            with mock.patch('core.worker_audio.emit'):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             actual, rate = sf.read(root / 'output/native_mix.wav', dtype='float32', always_2d=True)
             self.assertEqual(rate, 48000)
             np.testing.assert_array_equal(actual, samples)
             payload['project']['sourceSampleRate'] = 44100
-            with mock.patch('worker_audio.emit'):
+            with mock.patch('core.worker_audio.emit'):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             self.assertEqual(sf.info(root / 'output/native_mix_2.wav').samplerate, 44100)
 
@@ -287,14 +287,14 @@ class EditorEffectTests(unittest.TestCase):
             payload["project"]["tracks"][0]["clips"][0]["duration"] = 0.1
             payload["audioParams"] = {"wavBitDepth": "FLOAT", "peakProtection": True}
             protected_events: list[dict] = []
-            with mock.patch("worker_audio.emit", side_effect=lambda kind, value, **_kwargs: protected_events.append(value) if kind == "editor_mix_exported" else None):
+            with mock.patch("core.worker_audio.emit", side_effect=lambda kind, value, **_kwargs: protected_events.append(value) if kind == "editor_mix_exported" else None):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             protected, _sample_rate = sf.read(root / "output" / "peak_mix.wav")
 
             payload["fileName"] = "peak_raw.wav"
             payload["audioParams"]["peakProtection"] = False
             raw_events: list[dict] = []
-            with mock.patch("worker_audio.emit", side_effect=lambda kind, value, **_kwargs: raw_events.append(value) if kind == "editor_mix_exported" else None):
+            with mock.patch("core.worker_audio.emit", side_effect=lambda kind, value, **_kwargs: raw_events.append(value) if kind == "editor_mix_exported" else None):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             raw, _sample_rate = sf.read(root / "output" / "peak_raw.wav")
 
@@ -306,7 +306,7 @@ class EditorEffectTests(unittest.TestCase):
 
             payload['fileName'] = 'peak_default.wav'
             payload['audioParams'].pop('peakProtection')
-            with mock.patch('worker_audio.emit'):
+            with mock.patch('core.worker_audio.emit'):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             unchanged, _ = sf.read(root / 'output/peak_default.wav')
             np.testing.assert_array_equal(unchanged, raw)
@@ -314,12 +314,12 @@ class EditorEffectTests(unittest.TestCase):
             payload["fileName"] = "peak_pcm.wav"
             payload["audioParams"] = {"wavBitDepth": "PCM_24", "peakProtection": False}
             pcm_events: list[dict] = []
-            with mock.patch('worker_audio.emit'), mock.patch('worker_audio.emit_error', return_value=1) as error:
+            with mock.patch('core.worker_audio.emit'), mock.patch('core.worker_audio.emit_error', return_value=1) as error:
                 self.assertEqual(cmd_export_editor_mix(payload), 1)
             self.assertEqual(error.call_args.args[0], 'EDITOR_EXPORT_PEAK_EXCEEDED')
             self.assertFalse((root / 'output/peak_pcm.wav').exists())
             payload['audioParams']['peakProtection'] = True
-            with mock.patch("worker_audio.emit", side_effect=lambda kind, value, **_kwargs: pcm_events.append(value) if kind == "editor_mix_exported" else None):
+            with mock.patch("core.worker_audio.emit", side_effect=lambda kind, value, **_kwargs: pcm_events.append(value) if kind == "editor_mix_exported" else None):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             pcm, _sample_rate = sf.read(root / "output" / "peak_pcm.wav")
             self.assertLessEqual(float(np.max(np.abs(pcm))), 0.981)
@@ -340,21 +340,21 @@ class EditorEffectTests(unittest.TestCase):
             project['assets'].append({'id': 'original', 'path': str(root / 'missing-original.wav'), 'duration': .2, 'sampleRate': 1000, 'channels': 1})
             project['tracks'].append({'id': 'bg', 'sourceId': 'bg', 'volume': 1, 'pan': 0, 'muted': False, 'solo': False})
             project['tracks'].append({'id': 'original', 'sourceId': 'original', 'volume': 1, 'muted': True, 'solo': False})
-            with mock.patch('worker_audio.emit'):
+            with mock.patch('core.worker_audio.emit'):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             rendered, _ = sf.read(root / 'output/audible_mix.wav', dtype='float32', always_2d=True)
             np.testing.assert_allclose(rendered, np.tile([.375, .5], (200, 1)), atol=1e-7)
 
             project['tracks'][0]['solo'] = True
             payload['fileName'] = 'solo.wav'
-            with mock.patch('worker_audio.emit'):
+            with mock.patch('core.worker_audio.emit'):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             rendered, _ = sf.read(root / 'output/solo.wav', dtype='float32', always_2d=True)
             np.testing.assert_allclose(rendered, np.tile([.25, .4], (200, 1)), atol=1e-7)
 
             project['tracks'][0]['solo'] = False
             project['tracks'][2]['solo'] = True
-            with mock.patch('worker_audio.emit'), mock.patch('worker_audio.emit_error', return_value=1):
+            with mock.patch('core.worker_audio.emit'), mock.patch('core.worker_audio.emit_error', return_value=1):
                 self.assertEqual(cmd_export_editor_mix(payload), 1)
 
     def test_inaudible_multichannel_tracks_do_not_change_export_channels_or_rate(self) -> None:
@@ -378,7 +378,7 @@ class EditorEffectTests(unittest.TestCase):
                         "muted": False, "solo": False, **state,
                     }]
                     payload["fileName"] = f"excluded_{index}"
-                    with mock.patch("worker_audio.emit"):
+                    with mock.patch("core.worker_audio.emit"):
                         self.assertEqual(cmd_export_editor_mix(payload), 0)
                     actual, rate = sf.read(root / "output" / f"excluded_{index}.wav", dtype="float32", always_2d=True)
                     self.assertEqual(rate, 1000)
@@ -412,7 +412,7 @@ class EditorEffectTests(unittest.TestCase):
                     payload["audioParams"] = {"wavBitDepth": "FLOAT"}
                     payload["fileName"] = f"surround_{pan}"
                     events = []
-                    with mock.patch("worker_audio.emit", side_effect=lambda kind, value, **_: events.append(value) if kind == "editor_mix_exported" else None):
+                    with mock.patch("core.worker_audio.emit", side_effect=lambda kind, value, **_: events.append(value) if kind == "editor_mix_exported" else None):
                         self.assertEqual(cmd_export_editor_mix(payload), 0)
                     actual, rate = sf.read(root / "output" / f"surround_{pan}.wav", dtype="float32", always_2d=True)
                     self.assertEqual(rate, 48000)
@@ -436,10 +436,10 @@ class EditorEffectTests(unittest.TestCase):
                     payload["project"]["assets"][0].update(sampleRate=48000, channels=6)
                     payload["project"]["tracks"][0]["effects"] = {}
                     result = subprocess.CompletedProcess([], status, data, b"decoder failed")
-                    with mock.patch("worker_audio.shutil.which", return_value=executable), \
-                            mock.patch("worker_audio.subprocess.run", return_value=result), \
-                            mock.patch("worker_audio.emit"), \
-                            mock.patch("worker_audio.emit_error", return_value=1) as error:
+                    with mock.patch("core.worker_audio.shutil.which", return_value=executable), \
+                            mock.patch("core.worker_audio.subprocess.run", return_value=result), \
+                            mock.patch("core.worker_audio.emit"), \
+                            mock.patch("core.worker_audio.emit_error", return_value=1) as error:
                         self.assertEqual(cmd_export_editor_mix(payload), 1)
                     self.assertIn(message, error.call_args.args[1])
                     self.assertEqual(list((root / "output").iterdir()), [])
@@ -451,7 +451,7 @@ class EditorEffectTests(unittest.TestCase):
             sf.write(source, np.ones(100, dtype=np.float32), 1000, subtype="FLOAT")
             payload = self._export_payload(root, source, name="fade")
             payload["project"]["tracks"][0]["clips"][0].update(duration=0.1, fadeIn=0.1)
-            with mock.patch("worker_audio.emit"):
+            with mock.patch("core.worker_audio.emit"):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             rendered, _sample_rate = sf.read(root / "output" / "fade_mix.wav")
 
@@ -484,7 +484,7 @@ class EditorEffectTests(unittest.TestCase):
                     "muted": False,
                 },
             ]
-            with mock.patch("worker_audio.emit"):
+            with mock.patch("core.worker_audio.emit"):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             rendered, _sample_rate = sf.read(root / "output" / "timeline_mix.wav")
 
@@ -502,7 +502,7 @@ class EditorEffectTests(unittest.TestCase):
             payload["project"]["masterPan"] = 0.5
             payload["project"]["tracks"][0]["clips"][0]["duration"] = 0.1
             events: list[dict] = []
-            with mock.patch("worker_audio.emit", side_effect=lambda kind, value, **_kwargs: events.append(value) if kind == "editor_mix_exported" else None):
+            with mock.patch("core.worker_audio.emit", side_effect=lambda kind, value, **_kwargs: events.append(value) if kind == "editor_mix_exported" else None):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
             rendered, _sample_rate = sf.read(root / "output" / "master-pan_mix.wav", always_2d=True)
 
@@ -517,7 +517,7 @@ class EditorEffectTests(unittest.TestCase):
             payload = self._export_payload(root, source)
             payload["fileName"] = "CON.wav"
             payload["project"]["tracks"][0]["clips"][0]["duration"] = 0.1
-            with mock.patch("worker_audio.emit"):
+            with mock.patch("core.worker_audio.emit"):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
 
             self.assertTrue((root / "output" / "_CON.wav").is_file())
@@ -532,7 +532,7 @@ class EditorEffectTests(unittest.TestCase):
             payload["project"]["tracks"][0]["clips"][0]["duration"] = 0.1
             events: list[tuple[str, dict, str | None]] = []
             with mock.patch(
-                "worker_audio.emit",
+                "core.worker_audio.emit",
                 side_effect=lambda kind, value, task_id=None: events.append((kind, value, task_id)),
             ):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
@@ -550,9 +550,9 @@ class EditorEffectTests(unittest.TestCase):
             sf.write(source, np.ones(100, dtype=np.float32) * 0.1, 1000)
             payload = self._export_payload(root, source, name="write-failure")
             payload["project"]["tracks"][0]["clips"][0]["duration"] = 0.1
-            with mock.patch("worker_audio.emit"), \
+            with mock.patch("core.worker_audio.emit"), \
                  mock.patch("soundfile.SoundFile.write", side_effect=RuntimeError("write failed")), \
-                 mock.patch("worker_audio.emit_error", return_value=1):
+                 mock.patch("core.worker_audio.emit_error", return_value=1):
                 self.assertEqual(cmd_export_editor_mix(payload), 1)
 
             output_dir = root / "output"
@@ -575,7 +575,7 @@ class EditorEffectTests(unittest.TestCase):
                 cancel_path.write_text("cancel", encoding="utf-8")
 
             with mock.patch("soundfile.SoundFile.write", side_effect=cancel_during_write), \
-                 mock.patch("worker_audio.emit", side_effect=lambda kind, _value, **_kwargs: events.append(kind)):
+                 mock.patch("core.worker_audio.emit", side_effect=lambda kind, _value, **_kwargs: events.append(kind)):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
 
             self.assertIn("task_cancelled", events)

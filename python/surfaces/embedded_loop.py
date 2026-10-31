@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-import agent_contract
-import media_eval
+from surfaces import agent_contract
+from core import media_eval
 
 MAX_STEPS = 6
 

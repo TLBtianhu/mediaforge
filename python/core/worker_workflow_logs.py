@@ -4,7 +4,7 @@ import threading
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-from worker_infer import separation_logging
+from core.worker_infer import separation_logging
 from shared.worker_protocol import current_log_task_id, task_logging
 
 

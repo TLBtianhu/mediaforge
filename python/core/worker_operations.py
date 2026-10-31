@@ -18,7 +18,7 @@ from shared.worker_paths import normalize_output_dir
 
 
 def _runtime():
-    from worker_plugins import operation_runtime
+    from core.worker_plugins import operation_runtime
 
     return operation_runtime()
 
@@ -27,7 +27,7 @@ def cmd_list_operations(payload: dict[str, Any]) -> int:
     try:
         runtime = _runtime()
         ops = runtime.list_operations()
-        from worker_plugins import plugin_reports
+        from core.worker_plugins import plugin_reports
         report = plugin_reports(runtime)
         emit(
             "operations_list",
@@ -150,7 +150,7 @@ def cmd_run_operation(payload: dict[str, Any]) -> int:
             }, request_id=request_id)
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        from worker_plugins import validate_operation
+        from core.worker_plugins import validate_operation
         validate_operation(runtime, operation_id)
         result = runtime.run(
             operation_id,

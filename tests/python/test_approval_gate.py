@@ -42,7 +42,7 @@ class ApprovalGateTests(unittest.TestCase):
         self.assertIn("confirmExplicit", result["error"])
 
     def test_confirmation_flag_reaches_the_executor_and_is_not_passed_to_the_worker(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
 
         captured: dict = {}
 
@@ -59,7 +59,7 @@ class ApprovalGateTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["model"], "media:lama")
 
     def test_confirmation_does_not_leak_into_arguments_validation(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
 
         problems = agent_contract.validate_arguments("model.delete", {"model": "media:lama"})
         self.assertEqual(problems, [])

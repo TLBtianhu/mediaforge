@@ -17,7 +17,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_plugins as plugins
+from core import worker_plugins as plugins
 
 
 class ContributionTests(unittest.TestCase):

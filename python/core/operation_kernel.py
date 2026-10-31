@@ -38,7 +38,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "worker.py"
 
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "interrupted"})

@@ -22,7 +22,7 @@ try:
 except Exception:  # pragma: no cover - 取决于解释器里装了什么
     PIL_AVAILABLE = False
 
-import media_eval  # noqa: E402
+from core import media_eval  # noqa: E402
 
 
 def _write_pattern(path: Path, size: tuple[int, int] = (64, 48)) -> Path:

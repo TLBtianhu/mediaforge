@@ -159,7 +159,7 @@ def _probe(root: Path, dependency_paths: list[Path] | None = None) -> list[dict[
     code = f"""
 import json, sys
 from pathlib import Path
-import worker_plugins as p
+from core import worker_plugins as p
 from shared.worker_protocol import isolate_protocol_stdout
 with isolate_protocol_stdout():
     p.activate_plugin_dependencies(Path(sys.argv[1]))
@@ -175,7 +175,7 @@ print({_PROBE_MARKER!r} + json.dumps(reports))
 """
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [
-        str(Path(__file__).parent), env.get("PYTHONPATH", ""),
+        str(Path(__file__).resolve().parents[1]), env.get("PYTHONPATH", ""),
     ]))
     result = subprocess.run(
         [sys.executable, "-c", code, str(root), json.dumps(list(map(str, dependency_paths or [])))], capture_output=True, text=True,

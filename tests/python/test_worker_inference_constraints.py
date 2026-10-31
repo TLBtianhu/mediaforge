@@ -8,9 +8,9 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap  # noqa: F401
 
-from worker_inference_constraints import InferenceParameterError, chunk_size_constraint, validate_chunk_size
-import worker_infer
-import worker_workflows
+from core.worker_inference_constraints import InferenceParameterError, chunk_size_constraint, validate_chunk_size
+from core import worker_infer
+from core import worker_workflows
 
 
 class MdxChunkConstraintTests(unittest.TestCase):

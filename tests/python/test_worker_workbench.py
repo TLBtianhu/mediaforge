@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from . import _bootstrap  # noqa: F401
-import worker_workflows
+from core import worker_workflows
 
 
 class WorkbenchNativeTests(unittest.TestCase):

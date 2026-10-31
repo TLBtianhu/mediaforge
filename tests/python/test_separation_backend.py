@@ -23,7 +23,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-from separation import PymssBackend, SeparationBackend  # noqa: E402
+from core.separation import PymssBackend, SeparationBackend  # noqa: E402
 
 
 class FakeSeparator:
@@ -149,7 +149,7 @@ class SubstitutabilityTests(unittest.TestCase):
 class SeamTests(unittest.TestCase):
     def test_separation_module_does_not_import_pymss_or_torch(self) -> None:
         """`separation.py` 必须与 pymss/torch 解耦，靠注入工厂。"""
-        tree = ast.parse((PYTHON_DIR / "separation.py").read_text(encoding="utf-8"))
+        tree = ast.parse((PYTHON_DIR / "core" / "separation.py").read_text(encoding="utf-8"))
         imported: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -165,7 +165,7 @@ class SeamTests(unittest.TestCase):
         注意范围：`StudioMSSeparator` 子类仍然 `override process_folder`（那是改造上游行为，
         不是业务调用），所以这里只检查**命令处理器**这两个函数体的源码。
         """
-        tree = ast.parse((PYTHON_DIR / "worker_infer.py").read_text(encoding="utf-8"))
+        tree = ast.parse((PYTHON_DIR / "core" / "worker_infer.py").read_text(encoding="utf-8"))
         handlers = {
             node.name: ast.unparse(node)
             for node in tree.body
@@ -178,7 +178,7 @@ class SeamTests(unittest.TestCase):
         self.assertIn("backend.separate(", handlers["cmd_infer_batch"])
         self.assertIn("backend.separate(", handlers["cmd_infer"])
 
-        separation = (PYTHON_DIR / "separation.py").read_text(encoding="utf-8")
+        separation = (PYTHON_DIR / "core" / "separation.py").read_text(encoding="utf-8")
         self.assertIn("process_folder", separation)
         self.assertIn("studio_outputs", separation)
 

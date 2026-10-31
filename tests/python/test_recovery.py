@@ -123,7 +123,7 @@ class MediaFailureShapeTests(unittest.TestCase):
 
 class ContractTests(unittest.TestCase):
     def test_contract_lists_the_recovery_actions(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
 
         contract = agent_contract.build_contract()
         self.assertEqual(set(contract["recoveryActions"]), set(recovery.ACTIONS))

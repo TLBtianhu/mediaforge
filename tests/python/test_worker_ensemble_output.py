@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
-import worker_workflows
+from core import worker_workflows
 
 
 class EnsembleOutputTests(unittest.TestCase):

@@ -22,7 +22,7 @@ from audio_tools import midi as tool_midi
 from audio_tools import sdr as tool_sdr
 from game.infer import MidiInferenceResult
 from game.midi import Note, build_midi_file
-import worker_tools
+from core import worker_tools
 
 
 class WorkerToolsTests(unittest.TestCase):

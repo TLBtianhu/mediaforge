@@ -16,7 +16,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 try:  # worker_infer 依赖 torch/pymss，环境不全时跳过而不是假装通过
-    import worker_infer
+    from core import worker_infer
 
     IMPORT_ERROR = ""
 except Exception as exc:  # noqa: BLE001

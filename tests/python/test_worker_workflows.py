@@ -13,8 +13,8 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_workflows
-from worker_workflows import (
+from core import worker_workflows
+from core.worker_workflows import (
     _apply_simple_ensembles,
     _apply_simple_output_names,
     _prepare_legacy_global_input,

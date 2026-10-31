@@ -23,9 +23,9 @@ from core.worker_models import (
     model_path_for,
 )
 from shared.worker_protocol import ProtocolLogHandler, _as_bool, _as_float, _as_int, current_log_task_id, emit, emit_error, task_logging
-from worker_inference_constraints import InferenceParameterError, validate_chunk_size
+from core.worker_inference_constraints import InferenceParameterError, validate_chunk_size
 from shared.worker_paths import normalize_output_dir as _normalize_output_dir
-from separation import PymssBackend
+from core.separation import PymssBackend
 
 
 class ModelNotFoundError(RuntimeError):
@@ -221,7 +221,7 @@ def _studio_separator_type() -> type[Any]:
             return updated
 
         def __init__(self, *args: Any, output_naming: Any = None, output_model: str = "", **kwargs: Any) -> None:
-            from worker_rocm import configure_rocm_runtime
+            from core.worker_rocm import configure_rocm_runtime
             configure_rocm_runtime(kwargs.get("device", "auto"), kwargs.get("device_ids"), kwargs.get("logger"))
             super().__init__(*args, **kwargs)
             self._studio_naming = _normalize_output_naming(output_naming)
@@ -248,7 +248,7 @@ def _studio_separator_type() -> type[Any]:
             }
 
         def separate(self, *args: Any, **kwargs: Any) -> Any:
-            from worker_rocm import run_rocm_inference
+            from core.worker_rocm import run_rocm_inference
             separate = super().separate
             return run_rocm_inference(
                 lambda: separate(*args, **kwargs), getattr(self, "device", "auto"),

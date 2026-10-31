@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from worker_audio import _publish_export_path
+from core.worker_audio import _publish_export_path
 
 SUPPORTED_AUDIO_SUFFIXES = {
     ".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus",

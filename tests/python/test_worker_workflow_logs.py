@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 from . import _bootstrap as _worker_test_bootstrap  # noqa: F401
-import worker_infer
-from worker_workflow_logs import workflow_logging
+from core import worker_infer
+from core.worker_workflow_logs import workflow_logging
 
 
 class WorkflowNodeLogTests(unittest.TestCase):

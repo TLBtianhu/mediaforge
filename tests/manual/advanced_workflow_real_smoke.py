@@ -77,7 +77,7 @@ def main() -> int:
 
     project_root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(project_root / "python"))
-    from worker_workflows import _run_pymss
+    from core.worker_workflows import _run_pymss
 
     input_path = Path(args.input).resolve()
     output_dir = Path(args.output).resolve()

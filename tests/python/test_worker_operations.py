@@ -20,7 +20,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_operations
+from core import worker_operations
 
 def _loudnorm_fixture(root: Path) -> Path:
     """Self-contained audio operation for worker I/O and parameter transport."""

@@ -48,7 +48,7 @@ def _apple_silicon_plugin_status(runtime: RuntimeContext | None = None) -> dict[
         return None
     runtime = runtime or _runtime_context()
     try:
-        from worker_plugins import _inventory, _root
+        from core.worker_plugins import _inventory, _root
 
         # verify=False: status probes must never import plugin code or spawn a
         # verification subprocess (same contract as the sidecar metadata path).
@@ -506,7 +506,7 @@ def _manage_funasr_via_plugin(
     runtime: RuntimeContext,
 ) -> int:
     """Install/uninstall the asr plugin as the Apple Silicon funasr component."""
-    from worker_plugins import cmd_manage_plugin
+    from core.worker_plugins import cmd_manage_plugin
 
     mirror = str(payload.get("mirror") or "auto")
     locale = str(payload.get("locale") or "")

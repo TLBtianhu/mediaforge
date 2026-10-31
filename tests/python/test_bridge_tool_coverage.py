@@ -102,7 +102,7 @@ class BridgeContractSurfaceTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
 
     def test_every_contract_tool_without_an_alias_is_exposed(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
 
         expected = {
             tool["name"]

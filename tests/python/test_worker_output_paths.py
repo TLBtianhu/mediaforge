@@ -15,9 +15,9 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap  # noqa: F401
 
-import worker_infer
+from core import worker_infer
 from shared import worker_paths
-import worker_workflows
+from core import worker_workflows
 
 
 class WorkerOutputPathTests(unittest.TestCase):

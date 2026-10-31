@@ -182,7 +182,7 @@ def _apply_runtime_device(dag: Any, payload: dict[str, Any], *, simple: bool) ->
             targets.append((widgets, custom))
     if not targets:
         return
-    from worker_infer import _resolve_separator_device
+    from core.worker_infer import _resolve_separator_device
 
     _, ids, _ = _resolve_separator_device(requested, payload.get("deviceIds"))
     for widgets, custom in targets:
@@ -1106,7 +1106,7 @@ def _ensemble_output_stem(definition: Any) -> str | None:
 def _finalize_ensemble_output(saved: Any, *, payload: dict[str, Any], input_path: str,
                               stem: str, output_dir: Path, temporary_dir: Path,
                               started_at: datetime) -> dict[str, Any]:
-    from worker_infer import _claim_output_path, _normalize_output_naming, _replace_output_tokens
+    from core.worker_infer import _claim_output_path, _normalize_output_naming, _replace_output_tokens
     from shared.worker_protocol import _as_int
 
     paths = [Path(path) for path in saved if path is not None and str(path).strip()]
@@ -1139,7 +1139,7 @@ def _finalize_ensemble_output(saved: Any, *, payload: dict[str, Any], input_path
 
 
 def _workflow_separator_factory(**kwargs: Any) -> Any:
-    from worker_infer import _studio_separator_type
+    from core.worker_infer import _studio_separator_type
 
     separator_type = _studio_separator_type()
     model_path = kwargs.pop("model_path", None)
@@ -1171,7 +1171,7 @@ def _run_pymss(payload: dict[str, Any], task_id: str, input_path: str | None,
     # registered (graph node registry and plugin nodes share one pool). Readers
     # only take the shared lock for recovery; writers stay unblocked.
     try:
-        from worker_plugins import operation_runtime
+        from core.worker_plugins import operation_runtime
 
         operation_runtime()
     except Exception as exc:  # noqa: BLE001 — missing plugins never block built-in graphs
@@ -1273,7 +1273,7 @@ def _run_pymss(payload: dict[str, Any], task_id: str, input_path: str | None,
                 prefix=".pymss-ensemble-", dir=task_output_dir,
             )))
         node_results: dict[int, Any] = {}
-        from worker_workflow_logs import workflow_logging
+        from core.worker_workflow_logs import workflow_logging
 
         log_scope = cleanup.enter_context(workflow_logging(
             task_id, batch=isinstance(payload.get("tasks"), list) and bool(payload["tasks"]),

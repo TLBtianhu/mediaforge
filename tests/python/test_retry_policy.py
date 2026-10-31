@@ -17,7 +17,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import retry_policy  # noqa: E402
+from core import retry_policy  # noqa: E402
 from shared import worker_protocol  # noqa: E402
 
 OOM_HINT = {
@@ -104,7 +104,7 @@ class BlockedReasonTests(unittest.TestCase):
 
 class DispatchRetryTests(unittest.TestCase):
     def test_dispatch_corrects_an_oom_and_succeeds(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
         import worker
 
         calls: list[dict] = []
@@ -127,7 +127,7 @@ class DispatchRetryTests(unittest.TestCase):
         self.assertEqual(calls[1]["steps"][0]["params"]["tile"], 256)
 
     def test_budget_zero_prevents_retry_and_explains(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
         import worker
 
         calls: list[dict] = []
@@ -146,7 +146,7 @@ class DispatchRetryTests(unittest.TestCase):
         self.assertEqual(outcome["retryBlocked"], "retry budget exhausted")
 
     def test_partial_success_is_not_retried(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
         import worker
 
         calls: list[dict] = []

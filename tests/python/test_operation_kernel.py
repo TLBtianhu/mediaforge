@@ -18,7 +18,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-from operation_kernel import Job, OperationKernel  # noqa: E402
+from core.operation_kernel import Job, OperationKernel  # noqa: E402
 
 
 def read_json(path: Path) -> dict:

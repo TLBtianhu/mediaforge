@@ -16,9 +16,9 @@ from unittest.mock import patch
 
 from . import _bootstrap  # noqa: F401
 import worker
-import worker_infer
-import worker_workflows
-from worker_workflow_logs import workflow_logging
+from core import worker_infer
+from core import worker_workflows
+from core.worker_workflow_logs import workflow_logging
 
 
 class BatchLogAttributionTests(unittest.TestCase):

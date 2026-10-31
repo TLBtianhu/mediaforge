@@ -43,11 +43,11 @@ def run_command(command: str, payload: dict) -> int:
         return cmd_runtime_core_versions(payload)
     if command == "plugin_marketplace":
         configure_process_proxy(load_proxy_config())
-        from worker_plugins import cmd_plugin_marketplace
+        from core.worker_plugins import cmd_plugin_marketplace
         return cmd_plugin_marketplace(payload)
     if command == "manage_plugin":
         configure_process_proxy(load_proxy_config())
-        from worker_plugins import cmd_manage_plugin
+        from core.worker_plugins import cmd_manage_plugin
         return cmd_manage_plugin(payload)
     if command == "optional_package_status":
         from core.worker_optional_packages import cmd_optional_package_status
@@ -100,15 +100,15 @@ def run_command(command: str, payload: dict) -> int:
         )
         return 0
     if command == "failure_stats":
-        from failure_stats import collect
+        from core.failure_stats import collect
 
         emit("failure_stats", collect())
         return 0
     if command == "agent_contract":
-        from agent_contract import cmd_agent_contract
+        from surfaces.agent_contract import cmd_agent_contract
         return cmd_agent_contract(payload)
     if command == "evaluate_media":
-        from media_eval import cmd_evaluate_media
+        from core.media_eval import cmd_evaluate_media
         return cmd_evaluate_media(payload)
     if command == "model_interface":
         from core.worker_models import cmd_model_interface
@@ -162,19 +162,19 @@ def run_command(command: str, payload: dict) -> int:
         from core.worker_connection import cmd_test_connection
         return cmd_test_connection(payload)
     if command == "audio_metadata":
-        from worker_audio import cmd_audio_metadata
+        from core.worker_audio import cmd_audio_metadata
         return cmd_audio_metadata(payload)
     if command == "waveform_peaks":
-        from worker_audio import cmd_waveform_peaks
+        from core.worker_audio import cmd_waveform_peaks
         return cmd_waveform_peaks(payload)
     if command == "export_editor_mix":
-        from worker_audio import cmd_export_editor_mix
+        from core.worker_audio import cmd_export_editor_mix
         return cmd_export_editor_mix(payload)
     if command == "audio_tools":
         if str(payload.get("operation") or "").strip().lower() == "asr":
             from core.worker_optional_packages import activate_optional_packages
             activate_optional_packages()
-        from worker_tools import cmd_audio_tools
+        from core.worker_tools import cmd_audio_tools
         return cmd_audio_tools(payload)
     if command == "media_library":
         from app_core.library_worker import cmd_media_library
@@ -190,22 +190,22 @@ def run_command(command: str, payload: dict) -> int:
         from core.model_hub_worker import cmd_model_download
         return cmd_model_download(payload)
     if command == "infer":
-        from worker_infer import cmd_infer
+        from core.worker_infer import cmd_infer
         return cmd_infer(payload)
     if command == "list_operations":
-        from worker_operations import cmd_list_operations
+        from core.worker_operations import cmd_list_operations
         return cmd_list_operations(payload)
     if command == "describe_operation":
-        from worker_operations import cmd_describe_operation
+        from core.worker_operations import cmd_describe_operation
         return cmd_describe_operation(payload)
     if command == "run_operation":
-        from worker_operations import cmd_run_operation
+        from core.worker_operations import cmd_run_operation
         return cmd_run_operation(payload)
     if command == "list_nodes":
-        from worker_nodes import cmd_list_nodes
+        from core.worker_nodes import cmd_list_nodes
         return cmd_list_nodes(payload)
     if command == "infer_workflow":
-        from worker_workflows import cmd_infer_workflow
+        from core.worker_workflows import cmd_infer_workflow
         return cmd_infer_workflow(payload)
     return emit_error("UNKNOWN_COMMAND", f"Unknown command: {command}")
 

@@ -15,7 +15,7 @@ from unittest import mock
 
 from . import _bootstrap
 from audio_tools import common, convert, merge, slicer
-import worker_audio
+from core import worker_audio
 
 
 class AudioOutputSafetyTests(unittest.TestCase):

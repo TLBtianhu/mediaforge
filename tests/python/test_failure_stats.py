@@ -15,7 +15,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import failure_stats  # noqa: E402
+from core import failure_stats  # noqa: E402
 
 
 def write_job(root: Path, job_id: str, *, status: str, command: str, error: str | None = None) -> None:
@@ -114,7 +114,7 @@ class RecommendationTests(unittest.TestCase):
 
 class ContractTests(unittest.TestCase):
     def test_tool_is_registered_and_covered(self) -> None:
-        import agent_contract
+        from surfaces import agent_contract
 
         contract = agent_contract.build_contract()
         names = {tool["name"] for tool in contract["tools"]}

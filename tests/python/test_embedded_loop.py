@@ -25,7 +25,7 @@ try:
 except Exception:  # pragma: no cover
     PIL_AVAILABLE = False
 
-import embedded_loop  # noqa: E402
+from surfaces import embedded_loop  # noqa: E402
 
 
 def write_pattern(path: Path, size: tuple[int, int] = (64, 48)) -> Path:

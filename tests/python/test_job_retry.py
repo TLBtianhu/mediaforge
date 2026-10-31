@@ -14,7 +14,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import retry_policy  # noqa: E402
+from core import retry_policy  # noqa: E402
 
 OOM_HINT = {
     "code": "out_of_memory",

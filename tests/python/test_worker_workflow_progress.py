@@ -13,7 +13,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap  # noqa: F401
 
-import worker_workflows
+from core import worker_workflows
 
 
 class WorkflowInvocationTests(unittest.TestCase):
@@ -29,8 +29,8 @@ class WorkflowInvocationTests(unittest.TestCase):
             )
             with patch.object(worker_workflows, "_workflow_graph", return_value=graph), \
                  patch.object(worker_workflows, "_write_workflow_file", return_value=(definition, "comfy")), \
-                 patch("worker_plugins.operation_runtime"), \
-                 patch("worker_workflow_logs.workflow_logging", return_value=nullcontext(types.SimpleNamespace(logger=None))):
+                 patch("core.worker_plugins.operation_runtime"), \
+                 patch("core.worker_workflow_logs.workflow_logging", return_value=nullcontext(types.SimpleNamespace(logger=None))):
                 return worker_workflows._run_pymss(
                     {"workflow": {"nodes": []}}, "invocation", None, None,
                     str(root / "out"), "flat", separator_cache=object(),
