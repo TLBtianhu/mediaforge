@@ -129,9 +129,21 @@ class OfflineCoreUpdateTests(unittest.TestCase):
             bundle = root / "Installed.app"
             resources = bundle / "Contents/Resources/python"
             resources.mkdir()
-            for source in Path(worker.__file__).parent.glob("*.py"):
-                shutil.copy2(source, resources / source.name)
+            # 代码现在按包分层（core/ surfaces/ shared/），只复制顶层 *.py 会得到一个
+            # 缺包的假安装；这里复制整棵 python 树（跳过运行时环境与缓存）。
+            python_root = Path(worker.__file__).resolve().parents[1]  # core/worker_bootstrap.py → python/
+            for source in python_root.rglob("*"):
+                if source.is_dir() or "__pycache__" in source.parts:
+                    continue
+                relative = source.relative_to(python_root)
+                if relative.parts[0] == "runtime-envs":
+                    continue
+                destination = resources / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
             (resources / "runtime-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            # 契约清单与 python/ 同级：假安装也必须带上，否则 worker 读不到 protocol.json
+            shutil.copytree(Path(__file__).resolve().parents[2] / "manifest", resources.parent / "manifest")
             user_files = [root / directory / "retained.bin" for directory in ("models", "settings", "outputs")]
             for path in user_files:
                 path.parent.mkdir()
@@ -152,7 +164,8 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                 })
                 status = subprocess.run([
                     str(python), str(resources / "worker.py"), "optional_package_status", "--payload", '{"package":"funasr"}',
-                ], env=environment, capture_output=True, text=True, timeout=30, check=True)
+                ], env=environment, capture_output=True, text=True, timeout=30, check=False)
+                self.assertEqual(status.returncode, 0, status.stderr + status.stdout)
                 result = next(json.loads(line)["payload"] for line in status.stdout.splitlines()
                               if json.loads(line).get("type") == "optional_package_status")
                 self.assertTrue(result["installed"])
@@ -162,7 +175,8 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                     "import json; from core.worker_optional_packages import activate_optional_packages; "
                     "activate_optional_packages(); import pymss, funasr, torchaudio, torch; "
                     "print(json.dumps({m.__name__: m.__file__ for m in (pymss, funasr, torchaudio, torch)}))",
-                ], env=environment, capture_output=True, text=True, timeout=30, check=True)
+                ], env=environment, capture_output=True, text=True, timeout=30, check=False)
+                self.assertEqual(loaded.returncode, 0, loaded.stderr + loaded.stdout)
                 paths = json.loads(loaded.stdout)
                 self.assertTrue(Path(paths["pymss"]).resolve().is_relative_to(Path(expected_core).resolve()))
                 self.assertTrue(Path(paths["torch"]).resolve().is_relative_to(base.resolve()))
