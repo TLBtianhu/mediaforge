@@ -105,7 +105,7 @@ if (Test-Path "$stage\python-runtime\runtime-envs") {
     Remove-Item "$stage\python-runtime\runtime-envs" -Recurse -Force
     Write-Host "  staging 已剔除 python-runtime\runtime-envs"
 }
-if (-not (Test-Path "$stage\python\safe_fs.py")) { throw "staging 缺少 python\safe_fs.py" }
+if (-not (Test-Path "$stage\python\shared\safe_fs.py")) { throw "staging 缺少 python\shared\safe_fs.py" }
 if (-not (Test-Path "$stage\integrations\dsh-mediaforge\cordis.patch.yml")) { throw "staging 缺少 DSH 集成包" }
 if (-not (Test-Path "$root\release\bin")) { throw "缺少 release\bin（ffmpeg/aria2c）" }
 # VC++ 运行库：per-user 安装没有管理员权限，不能依赖 vc_redist；
