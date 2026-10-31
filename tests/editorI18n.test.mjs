@@ -6,7 +6,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createServer } from 'vite'
 
 const sourceRoot = fileURLToPath(new URL('../src', import.meta.url))
-const rustCommandSource = fileURLToPath(new URL('../src-tauri/src/commands/app_cmd.rs', import.meta.url))
+const rustCommandSource = fileURLToPath(new URL('../src-tauri/src/commands/app/editor.rs', import.meta.url))
 
 Object.defineProperty(globalThis, 'document', {
   configurable: true,
