@@ -188,7 +188,7 @@ python/
 | 文件 | 起点 | 现在 | 拆出的模块 |
 |---|---|---|---|
 | `commands/app_cmd.rs` | 3467 | 已删除 | `commands/app/` 下 13 个按域模块 |
-| `commands/plugin_host.rs` | 2955 | 1300（余下几乎全是测试） | process / session / state / live / request / scan_engine / scan / render |
+| `commands/plugin_host.rs` | 2955 | 134（模块根） | process / session / state / live / request / scan_engine / scan / render，测试移到 `plugin_host/tests.rs`（1165） |
 | `views/SeparateView.vue` | 4824 | 2682 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList}.ts` |
 | `views/DebugView.vue` | 3457 | 1718 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint}.ts` |
 | `python/core/worker_bootstrap.py` | 2430 | 232（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（484/496/468/1020），跨符号调用走门面 |
