@@ -24,7 +24,7 @@ def cmd_audio_tools(payload: dict[str, Any]) -> int:
             # (plugin-tool fallback) inherit it, mirroring the direct path below.
             with bind_request_id(request_id):
                 result = run_audio_tool_via_operations(payload)
-            emit("audio_tool_result", result, request_id=request_id)
+            emit("task.result", result, request_id=request_id)
             return 0
         except ImportError:
             pass  # adapter module unavailable → legacy handlers below
@@ -51,7 +51,7 @@ def cmd_audio_tools(payload: dict[str, Any]) -> int:
     try:
         with bind_request_id(request_id):
             result = handler(payload)
-        emit("audio_tool_result", result, request_id=request_id)
+        emit("task.result", result, request_id=request_id)
         return 0
     except AudioToolError as error:
         return emit_error(

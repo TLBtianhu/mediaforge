@@ -262,7 +262,7 @@ print(ffmpeg._find_tool('ffmpeg'))
         }
         Write-Utf8NoBom -Path $payloadPath -Text ($payload | ConvertTo-Json -Depth 8)
         $job = Invoke-Captured -Exe $interpreter -Arguments @($workerPath, 'audio_tools', '--payload', $payloadPath) -WorkingDirectory $workerDir
-        $resultEvent = Get-LastJsonEvent -Lines $job.Output -Type 'audio_tool_result'
+        $resultEvent = Get-LastJsonEvent -Lines $job.Output -Type 'task.result'
         $errorEvent = Get-LastJsonEvent -Lines $job.Output -Type 'error'
         if ($resultEvent) {
             $produced = @($resultEvent.payload.outputs)

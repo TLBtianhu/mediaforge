@@ -94,7 +94,7 @@ def _slice_audio(payload: dict[str, Any]) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="pymss-slicer-") as temp_value:
         temp_dir = Path(temp_value)
         for index, input_path in enumerate(inputs, start=1):
-            emit("audio_tool_progress", {
+            emit("task.progress", {
                 "operation": "slicer", "phase": "analyzing_silence",
                 "completed": index - 1, "total": len(inputs), "current": input_path.name,
             })
@@ -119,7 +119,7 @@ def _slice_audio(payload: dict[str, Any]) -> dict[str, Any]:
     written = 0
     for input_path, intervals in analyzed:
         for index, (start, end) in enumerate(intervals, start=1):
-            emit("audio_tool_progress", {
+            emit("task.progress", {
                 "operation": "slicer", "phase": "writing_segments",
                 "completed": written, "total": total_segments, "current": input_path.name,
             })
@@ -129,7 +129,7 @@ def _slice_audio(payload: dict[str, Any]) -> dict[str, Any]:
             written += 1
             output_paths.append(str(output_path))
             segments.append({"sourcePath": str(input_path), "outputPath": str(output_path), "start": start, "end": end, "duration": end - start})
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "slicer", "phase": "writing_segments",
         "completed": written, "total": total_segments, "current": "",
     })

@@ -252,7 +252,7 @@ def _loudness_audio(payload: dict[str, Any]) -> dict[str, Any]:
     failures: list[dict[str, str]] = []
     measurements: list[dict[str, Any]] = []
     for index, input_path in enumerate(inputs, start=1):
-        emit("audio_tool_progress", {
+        emit("task.progress", {
             "operation": "loudness", "phase": "normalizing", "completed": index - 1,
             "total": len(inputs), "current": input_path.name,
         })
@@ -301,7 +301,7 @@ def _loudness_audio(payload: dict[str, Any]) -> dict[str, Any]:
                 filters = [_gain_filter(target - measured)]
                 if limited:
                     filters += _limiter_filters(max_true_peak, lookahead, release, audio_format["sampleRate"])
-                emit("audio_tool_progress", {
+                emit("task.progress", {
                     "operation": "loudness", "phase": "writing_output", "completed": index - 1,
                     "total": len(inputs), "current": output_path.name,
                 })

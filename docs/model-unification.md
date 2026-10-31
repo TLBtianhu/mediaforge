@@ -10,7 +10,7 @@
 | 列表命令 | `model_hub` → `python/model_hub.py` | `list_models` → `worker_models.cmd_list_models` |
 | 数据来源 | `audio_catalog.json`（326）+ `media_catalog.json`（8） | pymss registry（656 索引）+ 音频目录 |
 | 下载命令 | `start_model_hub_download` → `model_hub_worker.cmd_model_download` | `start_model_download` → `worker_download.cmd_download_model` |
-| 事件通道 | `audio_tool_progress` / `audio_tool_result` | `download_progress` / `download_done` |
+| 事件通道 | `task.progress` / `task.result`（旧 `audio_tool_*` 已删除） | `task.progress` / `task.result` |
 | 前端列表 | `ModelHubView` 自己的局部状态 | 共享 `stores/model.ts` |
 | 完整性校验 | 有 sha256 + 大小 | 只比大小 |
 | 卡死保护 | 有下载看门狗 | 无 |

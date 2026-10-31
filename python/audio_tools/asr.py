@@ -217,7 +217,7 @@ class _ModelLoadOutput:
             marker = (str(progress["current"]), int(progress["completed"]))
             if marker != self._last_progress:
                 self._last_progress = marker
-                emit("audio_tool_progress", progress)
+                emit("task.progress", progress)
         if not handled:
             self._fallback.write(value)
         return len(value)
@@ -531,7 +531,7 @@ def _transcribe_audio(payload: dict[str, Any]) -> dict[str, Any]:
     if existing_recovery:
         raise _model_cache_error(existing_recovery)
 
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "asr", "phase": "loading_asr_model", "completed": 0,
         "total": 0, "current": Path(model_path).name,
     })
@@ -575,12 +575,12 @@ def _transcribe_audio(payload: dict[str, Any]) -> dict[str, Any]:
     if recovery:
         raise _model_cache_error(recovery)
 
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "asr", "phase": "loading_asr_model", "completed": 1,
         "total": 1, "current": Path(model_path).name, "detail": "",
     })
 
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "asr", "phase": "recognizing_speech", "completed": 0,
         "total": 1, "current": input_path.name,
     })
@@ -601,7 +601,7 @@ def _transcribe_audio(payload: dict[str, Any]) -> dict[str, Any]:
     detected_language = _detected_language(results)
     warnings: list[str] = []
 
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "asr", "phase": "writing_transcript", "completed": 0,
         "total": len(output_formats), "current": input_path.name,
     })
@@ -627,7 +627,7 @@ def _transcribe_audio(payload: dict[str, Any]) -> dict[str, Any]:
             _write_srt(output_path, sentences)
         output_paths.append(str(output_path))
         completed += 1
-        emit("audio_tool_progress", {
+        emit("task.progress", {
             "operation": "asr", "phase": "writing_transcript", "completed": completed,
             "total": len(output_formats), "current": output_path.name,
         })

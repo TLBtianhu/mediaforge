@@ -45,7 +45,7 @@ def ok_outcome(outputs: list[str], *, attempts: list | None = None) -> dict:
         "ok": True,
         "events": [],
         "result": {
-            "type": "audio_tool_result",
+            "type": "task.result",
             "payload": {"outputs": [{"path": path} for path in outputs], "completed": len(outputs)},
         },
         **({"recoveryAttempts": attempts} if attempts else {}),
@@ -287,7 +287,7 @@ class ConvergenceTests(unittest.TestCase):
             "code": 0,
             "events": [],
             "result": {
-                "type": "audio_tool_result",
+                "type": "task.result",
                 "payload": {
                     "outputs": [],
                     "completed": 0,

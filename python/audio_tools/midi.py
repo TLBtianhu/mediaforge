@@ -19,7 +19,7 @@ def _vocal_to_midi(payload: dict[str, Any]) -> dict[str, Any]:
     if not math.isfinite(bpm) or bpm < 30 or bpm > 300:
         raise ValueError("BPM must be between 30 and 300")
 
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "midi",
         "phase": "preparing",
         "completed": 0,
@@ -28,7 +28,7 @@ def _vocal_to_midi(payload: dict[str, Any]) -> dict[str, Any]:
     })
 
     def report_progress(phase: str, completed: int, total: int) -> None:
-        emit("audio_tool_progress", {
+        emit("task.progress", {
             "operation": "midi",
             "phase": phase,
             "completed": completed,

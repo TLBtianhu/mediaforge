@@ -19,7 +19,7 @@ def _number(value: Any, *, integer: bool = False) -> int | float | None:
 
 def _inspect_audio(payload: dict[str, Any]) -> dict[str, Any]:
     input_path = _require_file(payload.get("inputPath"), "Input audio")
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "inspect", "phase": "probing", "completed": 0,
         "total": 1, "current": input_path.name,
     })
@@ -62,7 +62,7 @@ def _inspect_audio(payload: dict[str, Any]) -> dict[str, Any]:
     if not audio_streams:
         raise ValueError("The selected file does not contain an audio stream")
 
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "inspect", "phase": "probing", "completed": 1,
         "total": 1, "current": input_path.name,
     })

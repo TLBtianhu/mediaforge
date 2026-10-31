@@ -107,13 +107,6 @@ def command_entries() -> dict[str, dict[str, Any]]:
     return table
 
 
-def canonical_event(legacy_name: str) -> str | None:
-    """历史事件名 → 规范事件名（emit 在边界处使用）。"""
-    return (load_protocol().get("emitAliases") or {}).get(legacy_name)
-
-
-def declared_legacy_events() -> set[str]:
-    return set((load_protocol().get("emitAliases") or {}).keys())
 
 
 def canonical_events() -> list[str]:

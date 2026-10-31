@@ -53,7 +53,7 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
             )
             # 兼容：旧的前端仍监听 audio_tool_*，统一完成后删掉这一段。
             emit(
-                "audio_tool_progress",
+                "task.progress",
                 {
                     "operation": "model_download",
                     "phase": "downloading",
@@ -83,9 +83,9 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
             },
             request_id=request_id,
         )
-        # 兼容：旧界面用 audio_tool_result 收尾。
+        # 结果用规范事件 task.result 收尾。
         emit(
-            "audio_tool_result",
+            "task.result",
             {
                 "operation": "model_download",
                 "outputs": [{"path": file["path"], "size": file["size"], "skipped": file["skipped"]} for file in result["files"]],

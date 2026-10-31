@@ -3,9 +3,9 @@
 Replaces the per-tool dedicated implementations (audio_tools/*.py) with the
 matching pymss Operations while keeping the exact worker event contract:
 
-* ``audio_tool_progress`` — phase/completed/total/current payloads the tools UI
+* ``task.progress`` — phase/completed/total/current payloads the tools UI
   already renders (phases are translated from operation progress messages)
-* ``audio_tool_result``   — the tool-shaped result dicts the result panes render
+* ``task.result``   — the tool-shaped result dicts the result panes render
 
 Tool → Operation mapping:
 
@@ -68,7 +68,7 @@ def _file_input(path: str) -> dict[str, Any]:
 
 
 def _emit_progress(operation: str, phase: str, completed: int, total: int, current: str) -> None:
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": operation, "phase": phase,
         "completed": completed, "total": total, "current": current,
     })

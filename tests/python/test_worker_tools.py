@@ -50,9 +50,9 @@ class WorkerToolsTests(unittest.TestCase):
         self.assertEqual(event["payload"]["operation"], "asr")
         self.assertEqual(event["payload"]["recovery"]["modelIds"], ["model-id"])
 
-    def test_audio_tool_progress_events_inherit_request_id(self) -> None:
+    def test_task_progress_events_inherit_request_id(self) -> None:
         def handler(_: object) -> dict[str, str]:
-            worker_tools.emit("audio_tool_progress", {"phase": "working"})
+            worker_tools.emit("task.progress", {"phase": "working"})
             return {"operation": "loudness"}
 
         output = io.StringIO()
@@ -61,7 +61,7 @@ class WorkerToolsTests(unittest.TestCase):
             redirect_stdout(output),
         ):
             code = worker_tools.cmd_audio_tools({"operation": "loudness", "requestId": "loudness-request-1"})
-            worker_tools.emit("audio_tool_progress", {"phase": "after"})
+            worker_tools.emit("task.progress", {"phase": "after"})
 
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertEqual(code, 0)
@@ -260,7 +260,7 @@ class WorkerToolsTests(unittest.TestCase):
         self.assertNotIn("language", result)
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("third-party diagnostic", stderr.getvalue())
-        worker_emit.assert_any_call("audio_tool_progress", {
+        worker_emit.assert_any_call("task.progress", {
             "operation": "midi",
             "phase": "transcribing",
             "completed": 1,

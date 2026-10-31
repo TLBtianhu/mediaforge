@@ -2,7 +2,7 @@
 
 These commands are intentionally routed through the existing ``audio_tools``
 Tauri task bridge, so the desktop shell can launch them without a new Rust
-command. Events use the same ``audio_tool_progress`` / ``audio_tool_result``
+command. Events use the same ``task.progress`` / ``task.result``
 protocol as PyMSS audio tools.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ def _request_id(payload: dict[str, Any]) -> str | None:
 
 def _progress(request_id: str | None, operation: str, fraction: float, current: str, completed: int, total: int) -> None:
     emit(
-        "audio_tool_progress",
+        "task.progress",
         {
             "operation": operation,
             "phase": "converting",
@@ -100,7 +100,7 @@ def cmd_media_tool(payload: dict[str, Any]) -> int:
                 return emit_error("MEDIA_INVALID", "No input files", request_id=request_id)
             probes = [ffmpeg.probe(path) for path in inputs]
             emit(
-                "audio_tool_result",
+                "task.result",
                 {"operation": operation, "probes": probes, "probe": probes[0]},
                 request_id=request_id,
             )
@@ -125,7 +125,7 @@ def cmd_media_tool(payload: dict[str, Any]) -> int:
                 inputs, output_dir, fmt, crf=crf, preset=preset, progress=report
             )
             emit(
-                "audio_tool_result",
+                "task.result",
                 {"operation": operation, **result, "warnings": []},
                 request_id=request_id,
             )

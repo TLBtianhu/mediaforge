@@ -99,7 +99,7 @@ def _convert_audio(payload: dict[str, Any]) -> dict[str, Any]:
     output_paths: list[str] = []
     failures: list[dict[str, str]] = []
     for index, input_path in enumerate(inputs, start=1):
-        emit("audio_tool_progress", {
+        emit("task.progress", {
             "operation": "convert",
             "phase": "converting",
             "completed": index - 1,

@@ -60,7 +60,7 @@ def _calculate_sdr_arrays(reference: Any, estimated: Any) -> tuple[list[float], 
 def _calculate_sdr(payload: dict[str, Any]) -> dict[str, Any]:
     reference_path = _require_file(payload.get("referencePath"), "Reference audio")
     estimated_path = _require_file(payload.get("estimatedPath"), "Estimated audio")
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "sdr",
         "phase": "loading_reference",
         "completed": 0,
@@ -68,7 +68,7 @@ def _calculate_sdr(payload: dict[str, Any]) -> dict[str, Any]:
         "current": reference_path.name,
     })
     reference = _stereo_audio(reference_path)
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "sdr",
         "phase": "loading_estimated",
         "completed": 1,
@@ -76,7 +76,7 @@ def _calculate_sdr(payload: dict[str, Any]) -> dict[str, Any]:
         "current": estimated_path.name,
     })
     estimated = _stereo_audio(estimated_path)
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": "sdr",
         "phase": "calculating",
         "completed": 0,

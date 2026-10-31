@@ -31,12 +31,12 @@ class ProtocolManifestTests(unittest.TestCase):
             protocol_contract.handler_for("media", "does-not-exist")
         self.assertEqual(context.exception.code, "PROTOCOL_UNKNOWN_COMMAND")
 
-    def test_legacy_events_map_into_the_canonical_vocabulary(self) -> None:
+    def test_events_have_one_vocabulary(self) -> None:
+        data = protocol_contract.load_protocol()
+        self.assertNotIn("emitAliases", data)
         canonical = set(protocol_contract.canonical_events())
         self.assertIn("task.progress", canonical)
-        for legacy in protocol_contract.declared_legacy_events():
-            with self.subTest(event=legacy):
-                self.assertIn(protocol_contract.canonical_event(legacy), canonical)
+        self.assertIn("task.result", canonical)
 
     def test_handlers_resolve_to_existing_module_functions(self) -> None:
         """handler 是 module:function；静态确认模块与函数都在，不 import（避免副作用）。"""

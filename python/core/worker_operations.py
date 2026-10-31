@@ -3,7 +3,7 @@
 ``list_operations`` / ``describe_operation`` are quick one-shot queries.
 ``run_operation`` executes one operation with file-referenced inputs and
 emits ``operation_result`` as its terminal event (Rust treats it like
-``audio_tool_result``: terminal for the task, progress events optional).
+``task.result``: terminal for the task, progress events optional).
 """
 
 from __future__ import annotations

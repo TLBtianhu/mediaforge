@@ -33,7 +33,7 @@ class WorkerProtocolTests(unittest.TestCase):
         ):
             with worker_protocol.isolate_protocol_stdout():
                 print("third-party diagnostic")
-                worker_protocol.emit("audio_tool_progress", {"phase": "loading_model"})
+                worker_protocol.emit("task.progress", {"phase": "loading_model"})
 
         self.assertEqual(incidental_stdout.getvalue(), "third-party diagnostic\n")
         event = json.loads(protocol_stdout.getvalue())

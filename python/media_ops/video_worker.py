@@ -89,13 +89,13 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                             model_dir, source, output_dir,
                             factor=int(payload.get("factor") or 2),
                             crf=int(payload.get("crf") or 18),
-                            progress=lambda f, m: emit("audio_tool_progress", {"fraction": f, "message": m}, request_id=request_id),
+                            progress=lambda f, m: emit("task.progress", {"fraction": f, "message": m}, request_id=request_id),
                         )
                     )
                 except Exception as exc:  # noqa: BLE001
                     failed.append(failures.describe(source, exc))
             emit(
-                "audio_tool_result",
+                "task.result",
                 {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
                  "total": len(inputs), "completed": len(outputs), "warnings": []},
                 request_id=request_id,
@@ -114,7 +114,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         for index, source in enumerate(inputs):
             def report(fraction: float, message: str, _index=index) -> None:
                 emit(
-                    "audio_tool_progress",
+                    "task.progress",
                     {
                         "operation": operation,
                         "phase": "processing",
@@ -151,7 +151,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
 
         evaluation.attach(outputs)
         emit(
-            "audio_tool_result",
+            "task.result",
             {
                 "operation": operation,
                 "outputs": outputs,

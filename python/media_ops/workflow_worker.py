@@ -33,7 +33,7 @@ def _suffix(steps: list[dict[str, Any]]) -> str:
 
 def _progress(request_id: str | None, fraction: float, current: str, completed: int, total: int) -> None:
     emit(
-        "audio_tool_progress",
+        "task.progress",
         {
             "operation": "media_workflow",
             "phase": "processing",
@@ -230,7 +230,7 @@ def cmd_media_workflow(payload: dict[str, Any]) -> int:
 
         evaluation.attach(outputs)
         emit(
-            "audio_tool_result",
+            "task.result",
             {
                 "operation": "media_workflow",
                 "modality": modality,

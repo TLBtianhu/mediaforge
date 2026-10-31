@@ -76,7 +76,7 @@ def load_manifest() -> dict:
 
 
 def declared_events(manifest: dict) -> set[str]:
-    return set((manifest.get("emitAliases") or {}).keys())
+    return set((manifest.get("events") or {}).get("canonical") or [])
 
 
 #: python/ 根目录只允许两个进程入口 + 数据文件；其余必须进包。
@@ -147,7 +147,7 @@ def check_event_coverage(manifest: dict) -> list[str]:
             if name not in declared:
                 line = text[: match.start()].count("\n") + 1
                 problems.append(
-                    f"{path.relative_to(ROOT)}:{line} 发出未声明的事件 {name}（先写进 protocol.json）"
+                    f"{path.relative_to(ROOT)}:{line} 发出不是规范名的事件 {name}（只能发 events.canonical 里的名字）"
                 )
     return problems
 

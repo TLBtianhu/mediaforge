@@ -155,7 +155,7 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 - `protocol.json` schemaVersion = 2（handler 为 module:function、协议查表 dispatch）；
   `runtime.json` schemaVersion = 1；不兼容变更走主版本号。
 - 版本轴只有两条：app 与 runtime；catalog 随应用走，不再声明独立轴。
-- 管道上只有 `task.*` / 资产事件；`audio_tool_*` 仅作为代码里的书写别名，由 `emit()` 转成规范名。
+- 管道上只有 `task.*` / 资产事件；旧 `audio_tool_*` 别名已从代码、协议和测试里删除，`emit()` 不再做名字翻译。
 
 仍然保留、明确不在本轮处理的：
 

@@ -114,7 +114,7 @@ class DispatchRetryTests(unittest.TestCase):
             if len(calls) == 1:
                 worker_protocol.emit_error("INFER_FAILED", OOM_MESSAGE)
                 return 1
-            worker_protocol.emit("audio_tool_result", {"operation": "media_image", "completed": 1, "outputs": [{"path": "out/a.png"}]})
+            worker_protocol.emit("task.result", {"operation": "media_image", "completed": 1, "outputs": [{"path": "out/a.png"}]})
             return 0
 
         with mock.patch.object(worker, "run_command", side_effect=fake_run):
@@ -154,7 +154,7 @@ class DispatchRetryTests(unittest.TestCase):
         def fake_run(command: str, payload: dict) -> int:
             calls.append(dict(payload))
             worker_protocol.emit(
-                "audio_tool_result",
+                "task.result",
                 {
                     "operation": "media_image",
                     "completed": 1,

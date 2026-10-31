@@ -114,7 +114,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 except Exception as exc:  # noqa: BLE001
                     failed.append(failures.describe(source, exc))
             emit(
-                "audio_tool_result",
+                "task.result",
                 {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
                  "total": len(inputs), "completed": len(outputs), "warnings": []},
                 request_id=request_id,
@@ -135,7 +135,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 except Exception as exc:  # noqa: BLE001
                     failed.append(failures.describe(source, exc))
             emit(
-                "audio_tool_result",
+                "task.result",
                 {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
                  "total": len(inputs), "completed": len(outputs), "warnings": []},
                 request_id=request_id,
@@ -156,7 +156,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
                 except Exception as exc:  # noqa: BLE001
                     failed.append(failures.describe(source, exc))
             emit(
-                "audio_tool_result",
+                "task.result",
                 {"operation": operation, "outputs": outputs, "failed": failed, "skipped": [],
                  "total": len(inputs), "completed": len(outputs), "warnings": []},
                 request_id=request_id,
@@ -177,7 +177,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             image_ops.write_image(target_path, middle)
             emit(
-                "audio_tool_result",
+                "task.result",
                 {"operation": operation, "outputs": [{"path": str(target_path), "size": target_path.stat().st_size}],
                  "failed": [], "skipped": [], "total": 1, "completed": 1, "warnings": []},
                 request_id=request_id,
@@ -191,7 +191,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
         for index, source in enumerate(inputs):
             def report(fraction: float, message: str, _index=index) -> None:
                 emit(
-                    "audio_tool_progress",
+                    "task.progress",
                     {
                         "operation": operation,
                         "phase": "processing",
@@ -215,7 +215,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
 
         evaluation.attach(outputs)
         emit(
-            "audio_tool_result",
+            "task.result",
             {
                 "operation": operation,
                 "outputs": outputs,

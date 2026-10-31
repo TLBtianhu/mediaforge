@@ -33,7 +33,7 @@ def _resolved_inputs(entries: dict[str, Any]) -> dict[str, Any]:
 
 
 def _progress(tool: str, phase: str, completed: int, total: int, current: str) -> None:
-    emit("audio_tool_progress", {
+    emit("task.progress", {
         "operation": tool, "phase": phase,
         "completed": completed, "total": total, "current": current,
     })

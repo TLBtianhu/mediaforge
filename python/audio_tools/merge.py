@@ -111,7 +111,7 @@ def _merge_audio(payload: dict[str, Any]) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="pymss-merge-") as temp_value:
         temp_dir = Path(temp_value)
         for index, input_path in enumerate(inputs, start=1):
-            emit("audio_tool_progress", {
+            emit("task.progress", {
                 "operation": "merge",
                 "phase": "normalizing",
                 "completed": index - 1,
@@ -136,7 +136,7 @@ def _merge_audio(payload: dict[str, Any]) -> dict[str, Any]:
             "".join(f"file '{_ffmpeg_concat_path(path)}'\n" for path in normalized),
             encoding="utf-8",
         )
-        emit("audio_tool_progress", {
+        emit("task.progress", {
             "operation": "merge",
             "phase": "merging",
             "completed": 0,
@@ -148,7 +148,7 @@ def _merge_audio(payload: dict[str, Any]) -> dict[str, Any]:
                 "-f", "concat", "-safe", "0", "-i", str(concat_file),
                 "-c:a", "copy", "-y", str(temporary),
             ]))
-            emit("audio_tool_progress", {
+            emit("task.progress", {
                 "operation": "merge",
                 "phase": "merging",
                 "completed": 1,

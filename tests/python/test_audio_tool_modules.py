@@ -723,7 +723,7 @@ class AudioToolModuleTests(unittest.TestCase):
             output.write("model cache warning\n")
 
         self.assertEqual(worker_emit.call_count, 2)
-        worker_emit.assert_any_call("audio_tool_progress", {
+        worker_emit.assert_any_call("task.progress", {
             "operation": "asr",
             "phase": "loading_asr_model",
             "completed": 20,

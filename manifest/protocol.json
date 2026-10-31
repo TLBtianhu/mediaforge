@@ -401,11 +401,5 @@
       "catalog.state",
       "app.state"
     ]
-  },
-  "emitAliases": {
-    "audio_tool_progress": "task.progress",
-    "audio_tool_result": "task.result",
-    "media_image_result": "task.result",
-    "media_video_result": "task.result"
   }
 }
