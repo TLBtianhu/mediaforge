@@ -142,7 +142,7 @@ pymss 以外部包形式存在，通过 `core` 里的 audio 适配器接入同�
 - Authenticode（锦上添花，不是门槛）
 - 把音频引擎重写成自己的（保持外部，用适配器隔离）
 
-## 5. 实现状态（2026-10-31，0.0.23）
+## 5. 实现状态（2026-11-01，0.0.23）
 
 | 阶段 | 状态 | 落地物 |
 |---|---|---|
@@ -228,3 +228,23 @@ powershell -File scripts/smoke-portable.ps1  -Zip       release/MediaForge-<ver>
 
 `cargo test` 里与本机环境相关的失败（Windows junction、torch DLL、bash 脚本）在 CI 对应平台上验证；
 本地验收以"失败集合与基线一致"为准。
+
+## 9. 四步路线完成情况
+
+| 路线 | 状态 | 证据 |
+|---|---|---|
+| (1) 物理归位 | 完成 | `python/` 根目录只剩 `worker.py`、`agent_bridge.py` 与数据文件；实现分布在 `shared/`、`core/`、`surfaces/`、`media_ops/`；检查器守着根目录白名单与三条依赖方向 |
+| (2) 协议扩域 | 完成 | `protocol.json` 覆盖 system/media/audio/model/runtime/plugin/graph/workflow 共 48 条命令，handler 为 `module:function`；`surfaces/dispatch.py` 按协议查表，worker 的 if 链已删除；旧事件别名全部删除，引擎只发 `task.progress` / `task.result` |
+| (3) 版本轴 | 完成 | 只保留 app 与 runtime 两轴；catalog 轴从 `versions.json`、Rust 文档与文档中删除；设置页有检查/切换卡；`runtime.json` 只由 Rust 解析并经 `MEDIAFORGE_RUNTIME_ASSET` 传给 worker，Python 不再读 `active-runtime.json` |
+| (4) 巨文件与 CI | 完成 | `app_cmd.rs` 删除；`worker_bootstrap` 232 行门面 + 四层实现；`plugin_host` 134 行模块根 + 9 子模块 + 独立测试；两个 Vue 文件分别 4824→2682、3457→1718；CI 只在 PR/手动触发；安装版与便携版冒烟接进发布流水线 |
+
+明确保留的残留工作：
+
+- `SeparateView` 与 `DebugView` 剩下的脚本逻辑被四个源码扫描测试按名字取用
+  （`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`），
+  继续外移需要先改测试的取用方式，已记录为独立的后续任务。
+- `plugin_host` 的 97/98 本地失败来自 Windows junction 的 `0xC0000142` 环境问题，
+  CI 对应平台通过；`worker_bootstrap` 的 40 个组合错误在单文件基线上同样复现（torch DLL）。
+
+验证口径：本地按 §8 清单跑，CI 的 `validate` 与 `Runtime safety` 覆盖全量测试；
+Windows 本地环境特有的 junction / torch DLL / bash 用例不计入回归。
