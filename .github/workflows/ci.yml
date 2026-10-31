@@ -2,9 +2,7 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
-  # 允许手动跑一次完整 CI：fork 转公开后首次验证、或排查只在 CI 上出现的问题时用
+  # 不再监听 push：每次提交都跑会制造大量通知；需要验证时手动 dispatch。
   workflow_dispatch:
 
 concurrency:
