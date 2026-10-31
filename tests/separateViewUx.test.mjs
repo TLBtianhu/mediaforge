@@ -37,7 +37,8 @@ const selected = script.statements.filter(statement => (
   ts.isFunctionDeclaration(statement) ? names.has(statement.name?.text)
     : ts.isVariableStatement(statement) && statement.declarationList.declarations.some(item => names.has(item.name.getText(script)))
 ))
-assert.equal(selected.length, names.size)
+// 推理默认值四函数已移入 separate/inferenceDefaults.ts 工厂，SFC 只保留其余 9 个声明
+assert.equal(selected.length, names.size - 4)
 const code = ts.transpileModule(selected.map(statement => statement.getText(script)).join('\n'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText
@@ -414,10 +415,11 @@ test('advanced inference settings expose model-scoped save and reset actions', a
     message: { success: value => calls.push(['success', value]) },
     t: key => key,
   }
-  const result = vm.runInNewContext(
-    `${code}\n({ collectCurrentModelInferenceDefaults, saveCurrentModelInferenceDefaults, resetCurrentModelInferenceDefaults })`,
-    context,
-  )
+  // 这四个函数现在由 separate/inferenceDefaults.ts 的工厂提供；工厂接收同一套桩依赖。
+  const factorySource = readFileSync(new URL('../src/views/separate/inferenceDefaults.ts', import.meta.url), 'utf8')
+  const factoryCode = ts.transpileModule(factorySource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
+  const makeDefaults = vm.runInNewContext(`${code}\n${factoryCode}\nmakeInferenceDefaults`, context)
+  const result = makeDefaults(context)
 
   assert.deepEqual(
     { ...result.collectCurrentModelInferenceDefaults() },
