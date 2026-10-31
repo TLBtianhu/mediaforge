@@ -18,12 +18,6 @@ else:
 from core import worker_bootstrap
 
 
-
-from core.bootstrap import base as bootstrap_base
-from core.bootstrap import commands as bootstrap_commands
-from core.bootstrap import operations as bootstrap_operations
-from core.bootstrap import primitives as bootstrap_primitives
-
 class RuntimeProbeReuseTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -36,29 +30,29 @@ class RuntimeProbeReuseTests(unittest.TestCase):
             self.paths[backend] = python
             state = {
                 **probe_result(backend), "backend": backend,
-                "manifestVersion": "test-1", "stateVersion": bootstrap_base.ENV_STATE_VERSION,
+                "manifestVersion": "test-1", "stateVersion": worker_bootstrap.ENV_STATE_VERSION,
                 "installedAt": "2026-09-01", "customField": {"preserved": True},
             }
             self.cache_path(backend).write_text(json.dumps(state), encoding="utf-8")
         self.active = {"backend": "cuda", "pythonPath": str(self.paths["cuda"])}
         self.enterContext(mock.patch.object(sys, "platform", "win32"))
-        self.enterContext(mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.envs))
-        self.enterContext(mock.patch.object(bootstrap_base, "BUNDLED_RUNTIME_ENVS_DIR", None))
-        self.enterContext(mock.patch.object(bootstrap_base, "ACTIVE_RUNTIME_FILE", self.envs / "active-runtime.json"))
-        self.enterContext(mock.patch.object(bootstrap_base, "_manifest", return_value=MANIFEST))
-        self.enterContext(mock.patch.object(bootstrap_base, "_module_available", return_value=True))
-        self.enterContext(mock.patch.object(bootstrap_primitives, "_detect_gpu_vendors", return_value=[]))
-        self.state = self.enterContext(mock.patch.object(bootstrap_operations, "_read_runtime_state", return_value=self.active))
-        self.probe = self.enterContext(mock.patch.object(bootstrap_operations, "_probe_python_runtime", return_value=probe_result("cuda")))
-        self.metadata = self.enterContext(mock.patch.object(bootstrap_operations, "_probe_python_package_versions", return_value={"pymss": "9.0.0", "pymss-core": "9.0.1"}))
-        self.write = self.enterContext(mock.patch.object(bootstrap_primitives, "_atomic_write_json"))
+        self.enterContext(mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.envs))
+        self.enterContext(mock.patch.object(worker_bootstrap, "BUNDLED_RUNTIME_ENVS_DIR", None))
+        self.enterContext(mock.patch.object(worker_bootstrap, "ACTIVE_RUNTIME_FILE", self.envs / "active-runtime.json"))
+        self.enterContext(mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST))
+        self.enterContext(mock.patch.object(worker_bootstrap, "_module_available", return_value=True))
+        self.enterContext(mock.patch.object(worker_bootstrap, "_detect_gpu_vendors", return_value=[]))
+        self.state = self.enterContext(mock.patch.object(worker_bootstrap, "_read_runtime_state", return_value=self.active))
+        self.probe = self.enterContext(mock.patch.object(worker_bootstrap, "_probe_python_runtime", return_value=probe_result("cuda")))
+        self.metadata = self.enterContext(mock.patch.object(worker_bootstrap, "_probe_python_package_versions", return_value={"pymss": "9.0.0", "pymss-core": "9.0.1"}))
+        self.write = self.enterContext(mock.patch.object(worker_bootstrap, "_atomic_write_json"))
 
     def cache_path(self, backend):
         return self.envs / backend / "pymss-runtime-state.json"
 
     def refresh(self, payload=None):
         before = {path: path.read_bytes() for path in self.root.rglob("*.json")}
-        result = bootstrap_commands._runtime_info_payload(payload or {}, repair=False)
+        result = worker_bootstrap._runtime_info_payload(payload or {}, repair=False)
         self.assertEqual({path: path.read_bytes() for path in self.root.rglob("*.json")}, before)
         self.write.assert_not_called()
         return result
@@ -111,9 +105,9 @@ class RuntimeProbeReuseTests(unittest.TestCase):
         self.cache_path("cuda").unlink()
         self.probe.return_value = probe_result("cuda", mlx=True)
         original = copy.deepcopy(self.probe.return_value)
-        with mock.patch.object(bootstrap_primitives, "_repair_runtime_venv_config", return_value=False), \
-                mock.patch.object(bootstrap_primitives, "_make_posix_venv_relocatable", return_value=False):
-            bootstrap_commands._runtime_info_payload({"backend": "mlx"}, repair=True)
+        with mock.patch.object(worker_bootstrap, "_repair_runtime_venv_config", return_value=False), \
+                mock.patch.object(worker_bootstrap, "_make_posix_venv_relocatable", return_value=False):
+            worker_bootstrap._runtime_info_payload({"backend": "mlx"}, repair=True)
         self.probe.assert_called_once_with(self.paths["cuda"], ["mlx"])
         self.write.assert_called_once()
         path, state = self.write.call_args.args
@@ -141,10 +135,10 @@ class RuntimeProbeReuseTests(unittest.TestCase):
                             raise OSError("configuration update failed")
                         return True
 
-                    with mock.patch.object(bootstrap_primitives, "_repair_runtime_venv_config", return_value=False), \
-                            mock.patch.object(bootstrap_primitives, "_make_posix_venv_relocatable", return_value=False), \
-                            mock.patch.object(bootstrap_primitives, repair_helper, side_effect=repair):
-                        bootstrap_operations._installed_envs(MANIFEST, active_python=self.paths["cuda"], active_probe=before_repair)
+                    with mock.patch.object(worker_bootstrap, "_repair_runtime_venv_config", return_value=False), \
+                            mock.patch.object(worker_bootstrap, "_make_posix_venv_relocatable", return_value=False), \
+                            mock.patch.object(worker_bootstrap, repair_helper, side_effect=repair):
+                        worker_bootstrap._installed_envs(MANIFEST, active_python=self.paths["cuda"], active_probe=before_repair)
                     self.probe.assert_called_once_with(self.paths["cuda"], [])
                     self.assertEqual(self.metadata.call_count, 2)
                     self.write.assert_called_once()
@@ -153,12 +147,12 @@ class RuntimeProbeReuseTests(unittest.TestCase):
     def test_venv_config_repair_reports_only_actual_changes(self):
         cfg = self.envs / "cuda" / "pyvenv.cfg"
         cfg.write_text("home = previous-location\n", encoding="utf-8")
-        with mock.patch.object(bootstrap_base, "_bootstrap_python_path", return_value=Path(sys.executable)):
-            self.assertIs(bootstrap_primitives._repair_runtime_venv_config(cfg.parent), True)
+        with mock.patch.object(worker_bootstrap, "_bootstrap_python_path", return_value=Path(sys.executable)):
+            self.assertIs(worker_bootstrap._repair_runtime_venv_config(cfg.parent), True)
             content = cfg.read_bytes()
-            self.assertIs(bootstrap_primitives._repair_runtime_venv_config(cfg.parent), False)
+            self.assertIs(worker_bootstrap._repair_runtime_venv_config(cfg.parent), False)
             self.assertEqual(cfg.read_bytes(), content)
-            self.assertIs(bootstrap_primitives._repair_runtime_venv_config(self.root / "absent"), False)
+            self.assertIs(worker_bootstrap._repair_runtime_venv_config(self.root / "absent"), False)
 
     def test_posix_link_repair_reports_replacements_but_not_matching_links(self):
         env = mock.MagicMock()
@@ -178,15 +172,15 @@ class RuntimeProbeReuseTests(unittest.TestCase):
 
         bin_dir.__truediv__.side_effect = child
         with mock.patch.object(worker_bootstrap.os, "name", "posix"), \
-                mock.patch.object(bootstrap_base, "_bootstrap_python_path", return_value=bootstrap), \
+                mock.patch.object(worker_bootstrap, "_bootstrap_python_path", return_value=bootstrap), \
                 mock.patch.object(worker_bootstrap.os.path, "relpath", return_value="../bootstrap/python"), \
                 mock.patch.object(worker_bootstrap.os, "replace") as replace:
-            self.assertIs(bootstrap_primitives._make_posix_venv_relocatable(env), True)
+            self.assertIs(worker_bootstrap._make_posix_venv_relocatable(env), True)
             self.assertEqual(replace.call_count, 3)
             replace.reset_mock()
             for path in paths.values():
                 path.is_symlink.return_value = True
-            self.assertIs(bootstrap_primitives._make_posix_venv_relocatable(env), False)
+            self.assertIs(worker_bootstrap._make_posix_venv_relocatable(env), False)
             replace.assert_not_called()
 
     @unittest.skipIf(os.name == "nt", "POSIX executable symlink fixture")
@@ -200,10 +194,10 @@ class RuntimeProbeReuseTests(unittest.TestCase):
         bootstrap = self.root / "bootstrap" / "bin" / "python3"
         bootstrap.parent.mkdir(parents=True)
         bootstrap.write_bytes(b"interpreter")
-        with mock.patch.object(bootstrap_base, "_bootstrap_python_path", return_value=bootstrap):
-            self.assertTrue(bootstrap_primitives._make_posix_venv_relocatable(environment))
+        with mock.patch.object(worker_bootstrap, "_bootstrap_python_path", return_value=bootstrap):
+            self.assertTrue(worker_bootstrap._make_posix_venv_relocatable(environment))
             self.assertEqual((environment / "bin" / "python").resolve(strict=True), bootstrap.resolve())
-            self.assertFalse(bootstrap_primitives._make_posix_venv_relocatable(environment))
+            self.assertFalse(worker_bootstrap._make_posix_venv_relocatable(environment))
 
     def test_version_reuse_requires_matching_paths_and_both_core_keys(self):
         self.probe.return_value["packageVersions"].pop("pymss-core")
@@ -225,8 +219,8 @@ class RuntimeProbeReuseTests(unittest.TestCase):
     def test_bundled_active_environment_reuses_core_versions(self):
         bundled = self.root / "bundled-envs"
         bundled.mkdir()
-        with mock.patch.object(bootstrap_base, "BUNDLED_RUNTIME_ENVS_DIR", self.envs), \
-                mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", bundled):
+        with mock.patch.object(worker_bootstrap, "BUNDLED_RUNTIME_ENVS_DIR", self.envs), \
+                mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", bundled):
             result = self.refresh()
         self.assertEqual(self.probe.call_count, 1)
         self.metadata.assert_called_once_with(self.paths["cpu"], ["pymss", "pymss-core"])
@@ -244,9 +238,9 @@ class RuntimeProbeReuseTests(unittest.TestCase):
                 self.state.return_value = {"backend": backend, "pythonPath": sys.executable}
                 self.probe.reset_mock()
                 self.probe.side_effect = [probe_result("cuda")] if backend == "cuda" else [probe_result("cpu"), probe_result("cpu", mlx=True)]
-                with mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.root / "empty"), \
-                        mock.patch.object(bootstrap_base, "BUNDLED_RUNTIME_ENVS_DIR", bundled), \
-                        mock.patch.object(bootstrap_base, "_bundled_bootstrap_python", return_value=Path(sys.executable)):
+                with mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.root / "empty"), \
+                        mock.patch.object(worker_bootstrap, "BUNDLED_RUNTIME_ENVS_DIR", bundled), \
+                        mock.patch.object(worker_bootstrap, "_bundled_bootstrap_python", return_value=Path(sys.executable)):
                     result = self.refresh({"backend": "cpu"})
                 expected = [mock.call(Path(sys.executable), [])]
                 if extras:

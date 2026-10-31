@@ -256,42 +256,42 @@
       "label": "Python 运行时与可选组件",
       "commands": {
         "info": {
-          "handler": "core.bootstrap.commands:cmd_runtime_info",
+          "handler": "core.worker_bootstrap:cmd_runtime_info",
           "command": "runtime_info",
           "proxy": "none",
           "kind": "query",
           "summary": ""
         },
         "install": {
-          "handler": "core.bootstrap.commands:cmd_install_runtime",
+          "handler": "core.worker_bootstrap:cmd_install_runtime",
           "command": "install_runtime",
           "proxy": "configured",
           "kind": "task",
           "summary": ""
         },
         "core_versions": {
-          "handler": "core.bootstrap.primitives:cmd_runtime_core_versions",
+          "handler": "core.worker_bootstrap:cmd_runtime_core_versions",
           "command": "runtime_core_versions",
           "proxy": "configured",
           "kind": "query",
           "summary": ""
         },
         "activate": {
-          "handler": "core.bootstrap.commands:cmd_activate_runtime",
+          "handler": "core.worker_bootstrap:cmd_activate_runtime",
           "command": "activate_runtime",
           "proxy": "none",
           "kind": "task",
           "summary": ""
         },
         "sizes": {
-          "handler": "core.bootstrap.commands:cmd_runtime_env_sizes",
+          "handler": "core.worker_bootstrap:cmd_runtime_env_sizes",
           "command": "runtime_env_sizes",
           "proxy": "none",
           "kind": "query",
           "summary": ""
         },
         "delete": {
-          "handler": "core.bootstrap.commands:cmd_delete_runtime",
+          "handler": "core.worker_bootstrap:cmd_delete_runtime",
           "command": "delete_runtime",
           "proxy": "none",
           "kind": "task",

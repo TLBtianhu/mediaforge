@@ -22,12 +22,6 @@ COMMON = {
 }
 
 
-
-from core.bootstrap import base as bootstrap_base
-from core.bootstrap import commands as bootstrap_commands
-from core.bootstrap import operations as bootstrap_operations
-from core.bootstrap import primitives as bootstrap_primitives
-
 def manifest(version: str = "2026.09.3") -> dict:
     return {
         "schemaVersion": 1,
@@ -74,17 +68,17 @@ class RuntimeCoreVersionTests(unittest.TestCase):
     def test_version_queries_use_pypi_even_when_release_versions_are_pinned(self):
         pinned = manifest()
         pinned["common"].update({"pymss": "pymss[proxy]==2.1.4", "pymss-core": "pymss-core==0.1.6"})
-        with mock.patch.object(bootstrap_base, "_manifest", return_value=pinned), \
-             mock.patch.object(bootstrap_base, "_latest_pypi_version", side_effect=["2.2.0", "0.2.0"]) as latest, \
-             mock.patch.object(bootstrap_base, "_emit") as emit:
-            self.assertEqual(bootstrap_primitives.cmd_runtime_core_versions({}), 0)
+        with mock.patch.object(worker_bootstrap, "_manifest", return_value=pinned), \
+             mock.patch.object(worker_bootstrap, "_latest_pypi_version", side_effect=["2.2.0", "0.2.0"]) as latest, \
+             mock.patch.object(worker_bootstrap, "_emit") as emit:
+            self.assertEqual(worker_bootstrap.cmd_runtime_core_versions({}), 0)
         self.assertEqual(latest.call_args_list, [mock.call("pymss", "stable"), mock.call("pymss-core", "stable")])
         self.assertEqual(emit.call_args.args[1]["packages"]["pymss"]["latestVersion"], "2.2.0")
 
     def test_unavailable_index_is_not_reported_as_the_bundled_latest(self):
-        with mock.patch.object(bootstrap_base, "_latest_pypi_version", side_effect=OSError("unavailable")), \
-             mock.patch.object(bootstrap_base, "_emit") as emit:
-            bootstrap_primitives.cmd_runtime_core_versions({})
+        with mock.patch.object(worker_bootstrap, "_latest_pypi_version", side_effect=OSError("unavailable")), \
+             mock.patch.object(worker_bootstrap, "_emit") as emit:
+            worker_bootstrap.cmd_runtime_core_versions({})
         self.assertIsNone(emit.call_args.args[1]["packages"]["pymss"]["latestVersion"])
         self.assertIn("error", emit.call_args.args[1]["packages"]["pymss"])
 
@@ -92,13 +86,13 @@ class RuntimeCoreVersionTests(unittest.TestCase):
         pinned = manifest()
         pinned["common"].update({"pymss": "pymss[proxy]==2.1.4", "pymss-core": "pymss-core==0.1.6"})
         current = probe("cpu", pymss="3.0.0", core="1.0.0")
-        self.assertEqual(bootstrap_primitives._runtime_health("cpu", current, pinned), "ready")
-        self.assertFalse(bootstrap_primitives._manifest_versions_are_satisfied(probe("cpu", pymss="2.1.3"), pinned, "cpu")[0])
-        self.assertFalse(bootstrap_primitives._manifest_versions_are_satisfied({**current, "torchVersion": "2.8.0"}, pinned, "cpu")[0])
+        self.assertEqual(worker_bootstrap._runtime_health("cpu", current, pinned), "ready")
+        self.assertFalse(worker_bootstrap._manifest_versions_are_satisfied(probe("cpu", pymss="2.1.3"), pinned, "cpu")[0])
+        self.assertFalse(worker_bootstrap._manifest_versions_are_satisfied({**current, "torchVersion": "2.8.0"}, pinned, "cpu")[0])
 
     def test_resolved_dependencies_extend_overlay_but_cannot_replace_accelerator_packages(self):
         requirements = ["pymss[proxy]==2.2.0", "pymss-core==0.2.0"]
-        resolved = bootstrap_primitives._resolved_overlay_requirements(requirements, {"version": "1", "install": [
+        resolved = worker_bootstrap._resolved_overlay_requirements(requirements, {"version": "1", "install": [
             {"metadata": {"name": "pymss", "version": "2.2.0"}},
             {"metadata": {"name": "new-audio-dependency", "version": "1.0"}},
         ]})
@@ -106,9 +100,9 @@ class RuntimeCoreVersionTests(unittest.TestCase):
         self.assertIn("new-audio-dependency==1.0", resolved)
         for name in ("torch", "torchvision", "torchaudio", "triton", "mlx", "mlx-metal", "nvidia-cublas-cu12", "rocm-sdk-core"):
             with self.subTest(name=name), self.assertRaisesRegex(RuntimeError, "base accelerator"):
-                bootstrap_primitives._resolved_overlay_requirements(requirements, {"version": "1", "install": [{"metadata": {"name": name, "version": "9.0"}}]})
+                worker_bootstrap._resolved_overlay_requirements(requirements, {"version": "1", "install": [{"metadata": {"name": name, "version": "9.0"}}]})
         with self.assertRaisesRegex(RuntimeError, "unsupported installation report"):
-            bootstrap_primitives._resolved_overlay_requirements(requirements, {"version": "2", "install": []})
+            worker_bootstrap._resolved_overlay_requirements(requirements, {"version": "2", "install": []})
 
 
 class RuntimeOverlayUpdateTests(unittest.TestCase):
@@ -130,7 +124,7 @@ class RuntimeOverlayUpdateTests(unittest.TestCase):
         state = {
             "backend": backend,
             "manifestVersion": manifest_version,
-            "stateVersion": bootstrap_base.ENV_STATE_VERSION,
+            "stateVersion": worker_bootstrap.ENV_STATE_VERSION,
             "pythonVersion": "3.12.0",
             "torchVersion": probe(backend)["torchVersion"],
             "torchBackend": probe(backend)["torchBackend"],
@@ -214,16 +208,16 @@ class RuntimeOverlayUpdateTests(unittest.TestCase):
                 poll=mock.Mock(return_value=command_status),
             )
 
-        with mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.envs), \
-             mock.patch.object(bootstrap_base, "ACTIVE_RUNTIME_FILE", self.active), \
-             mock.patch.object(bootstrap_base, "BUNDLED_RUNTIME_ENVS_DIR", bundled_root if bundled else None), \
-             mock.patch.object(bootstrap_base, "_manifest", return_value=manifest_value or manifest()), \
-             mock.patch.object(bootstrap_base, "_latest_pypi_version", side_effect=lambda name, channel="stable": (latest_versions or {"pymss": "2.1.4", "pymss-core": "0.1.6"})[name]) as latest, \
-             mock.patch.object(bootstrap_operations, "_probe_python_package_versions", side_effect=live_versions), \
-             mock.patch.object(bootstrap_operations, "_probe_python_runtime", side_effect=lambda *_args, **_kwargs: probe_calls.pop(0) if probe_calls else (base if rollback_after else final)), \
-             mock.patch.object(bootstrap_operations, "_verify_runtime_audio", side_effect=audio_error) as audio_probe, \
-             mock.patch.object(bootstrap_operations, "_runtime_pip_works", return_value=True), \
-             mock.patch.object(bootstrap_base.subprocess, "Popen", side_effect=popen), \
+        with mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.envs), \
+             mock.patch.object(worker_bootstrap, "ACTIVE_RUNTIME_FILE", self.active), \
+             mock.patch.object(worker_bootstrap, "BUNDLED_RUNTIME_ENVS_DIR", bundled_root if bundled else None), \
+             mock.patch.object(worker_bootstrap, "_manifest", return_value=manifest_value or manifest()), \
+             mock.patch.object(worker_bootstrap, "_latest_pypi_version", side_effect=lambda name, channel="stable": (latest_versions or {"pymss": "2.1.4", "pymss-core": "0.1.6"})[name]) as latest, \
+             mock.patch.object(worker_bootstrap, "_probe_python_package_versions", side_effect=live_versions), \
+             mock.patch.object(worker_bootstrap, "_probe_python_runtime", side_effect=lambda *_args, **_kwargs: probe_calls.pop(0) if probe_calls else (base if rollback_after else final)), \
+             mock.patch.object(worker_bootstrap, "_verify_runtime_audio", side_effect=audio_error) as audio_probe, \
+             mock.patch.object(worker_bootstrap, "_runtime_pip_works", return_value=True), \
+             mock.patch.object(worker_bootstrap.subprocess, "Popen", side_effect=popen), \
              mock.patch.object(sys, "platform", platform), \
              contextlib.redirect_stdout(io.StringIO()) as output:
             payload = {
@@ -235,21 +229,21 @@ class RuntimeOverlayUpdateTests(unittest.TestCase):
                 "mode": mode,
                 "channel": channel,
             }
-            result = bootstrap_commands.cmd_update_runtime_core({**payload, "prepareOnly": True})
+            result = worker_bootstrap.cmd_update_runtime_core({**payload, "prepareOnly": True})
             if result == 0 and not prepare_only:
                 plan = next(json.loads(line)["payload"] for line in output.getvalue().splitlines() if json.loads(line)["type"] == "runtime_core_update_plan")
                 if after_plan:
                     after_plan(plan, self.active)
-                result = bootstrap_commands.cmd_update_runtime_core({**payload, "planId": plan["id"]})
+                result = worker_bootstrap.cmd_update_runtime_core({**payload, "planId": plan["id"]})
                 if result == 0 and rollback_after:
                     probe_calls.extend([base, base, base])
                     restore = {**payload, "mode": "rollback", "prepareOnly": True}
-                    result = bootstrap_commands.cmd_update_runtime_core(restore)
+                    result = worker_bootstrap.cmd_update_runtime_core(restore)
                     self.assertEqual(result, 0)
                     plans = [json.loads(line)["payload"] for line in output.getvalue().splitlines() if json.loads(line)["type"] == "runtime_core_update_plan"]
-                    result = bootstrap_commands.cmd_update_runtime_core({**payload, "mode": "rollback", "planId": plans[-1]["id"]})
-                    with mock.patch.object(bootstrap_primitives, "_detect_gpu_vendors", return_value=[]):
-                        self.assertTrue(bootstrap_commands._runtime_info_payload({})["rollbackAvailable"])
+                    result = worker_bootstrap.cmd_update_runtime_core({**payload, "mode": "rollback", "planId": plans[-1]["id"]})
+                    with mock.patch.object(worker_bootstrap, "_detect_gpu_vendors", return_value=[]):
+                        self.assertTrue(worker_bootstrap._runtime_info_payload({})["rollbackAvailable"])
             self.assertLessEqual(latest.call_count, 2)
             if result == 0 and not prepare_only:
                 self.assertEqual(audio_probe.call_count, 2 if rollback_after else 1)

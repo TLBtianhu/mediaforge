@@ -18,12 +18,6 @@ from core import worker_bootstrap
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 
 
-
-from core.bootstrap import base as bootstrap_base
-from core.bootstrap import commands as bootstrap_commands
-from core.bootstrap import operations as bootstrap_operations
-from core.bootstrap import primitives as bootstrap_primitives
-
 class RuntimeLockTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -132,28 +126,28 @@ except RuntimeLockBusy:
                 state_file.write_text(json.dumps({"backend": "cpu", "stateVersion": 1, "torchBackend": "cuda"}))
             before = snapshot()
             with self.subTest(stale_state=stale_state), self._deny_lock_writes(), \
-                 mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.root), \
-                 mock.patch.object(bootstrap_base, "ACTIVE_RUNTIME_FILE", active_file), \
-                 mock.patch.object(bootstrap_base, "BUNDLED_RUNTIME_ENVS_DIR", None), \
-                 mock.patch.object(bootstrap_base, "_manifest", return_value=MANIFEST), \
-                 mock.patch.object(bootstrap_base, "_module_available", return_value=False), \
-                 mock.patch.object(bootstrap_primitives, "_detect_gpu_vendors", return_value=[]), \
-                 mock.patch.object(bootstrap_operations, "_probe_python_runtime", return_value=probe_result()), \
-                 mock.patch.object(bootstrap_operations, "_probe_python_package_versions", return_value={}), \
-                 mock.patch.object(bootstrap_primitives, "_manifest_versions_are_satisfied", return_value=(True, [])), \
-                 mock.patch.object(bootstrap_commands, "_recover_runtime_transactions") as recover, \
-                 mock.patch.object(bootstrap_primitives, "_repair_runtime_venv_config") as repair_config, \
-                 mock.patch.object(bootstrap_primitives, "_make_posix_venv_relocatable") as repair_links, \
-                 mock.patch.object(bootstrap_primitives, "_atomic_write_json") as write_json, \
+                 mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.root), \
+                 mock.patch.object(worker_bootstrap, "ACTIVE_RUNTIME_FILE", active_file), \
+                 mock.patch.object(worker_bootstrap, "BUNDLED_RUNTIME_ENVS_DIR", None), \
+                 mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST), \
+                 mock.patch.object(worker_bootstrap, "_module_available", return_value=False), \
+                 mock.patch.object(worker_bootstrap, "_detect_gpu_vendors", return_value=[]), \
+                 mock.patch.object(worker_bootstrap, "_probe_python_runtime", return_value=probe_result()), \
+                 mock.patch.object(worker_bootstrap, "_probe_python_package_versions", return_value={}), \
+                 mock.patch.object(worker_bootstrap, "_manifest_versions_are_satisfied", return_value=(True, [])), \
+                 mock.patch.object(worker_bootstrap, "_recover_runtime_transactions") as recover, \
+                 mock.patch.object(worker_bootstrap, "_repair_runtime_venv_config") as repair_config, \
+                 mock.patch.object(worker_bootstrap, "_make_posix_venv_relocatable") as repair_links, \
+                 mock.patch.object(worker_bootstrap, "_atomic_write_json") as write_json, \
                  mock.patch.object(sys, "platform", "win32"):
                 with contextlib.redirect_stdout(io.StringIO()) as output:
-                    self.assertEqual(bootstrap_commands.cmd_runtime_info({}), 0)
+                    self.assertEqual(worker_bootstrap.cmd_runtime_info({}), 0)
                 info = json.loads(output.getvalue())["payload"]
                 self.assertTrue(info["ready"])
                 self.assertEqual(info["installedEnvironments"][0]["torchBackend"], "cpu")
                 self.assertFalse(info["installedEnvironments"][0]["coreUpdateSupported"])
                 with contextlib.redirect_stdout(io.StringIO()) as output:
-                    self.assertEqual(bootstrap_commands.cmd_runtime_env_sizes({}), 0)
+                    self.assertEqual(worker_bootstrap.cmd_runtime_env_sizes({}), 0)
                 sizes = json.loads(output.getvalue())["payload"]
                 self.assertGreater(sizes["sizes"]["cpu"], 0)
                 self.assertEqual(sizes["incompleteBackends"], [])
@@ -163,15 +157,15 @@ except RuntimeLockBusy:
 
     def test_read_only_root_rejects_writers_before_mutation(self):
         commands = (
-            bootstrap_commands.cmd_install_runtime,
-            bootstrap_commands.cmd_update_runtime_core,
-            bootstrap_commands.cmd_activate_runtime,
-            bootstrap_commands.cmd_delete_runtime,
+            worker_bootstrap.cmd_install_runtime,
+            worker_bootstrap.cmd_update_runtime_core,
+            worker_bootstrap.cmd_activate_runtime,
+            worker_bootstrap.cmd_delete_runtime,
         )
         with self._deny_lock_writes(), \
-             mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.root), \
-             mock.patch.object(bootstrap_commands, "_recover_runtime_transactions") as recover, \
-             mock.patch.object(bootstrap_operations, "_target_runtime_from_payload") as target:
+             mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.root), \
+             mock.patch.object(worker_bootstrap, "_recover_runtime_transactions") as recover, \
+             mock.patch.object(worker_bootstrap, "_target_runtime_from_payload") as target:
             for command in commands:
                 with self.subTest(command=command.__name__), contextlib.redirect_stdout(io.StringIO()) as output:
                     self.assertNotEqual(command({"backend": "cpu", "taskId": "runtime_permission_check"}), 0)
@@ -243,20 +237,20 @@ with runtime_lock(path):
             directory.mkdir()
             (directory / "marker").write_text("preserved")
         commands = (
-            bootstrap_commands.cmd_runtime_info,
-            bootstrap_commands.cmd_runtime_env_sizes,
-            bootstrap_commands.cmd_install_runtime,
-            bootstrap_commands.cmd_update_runtime_core,
-            bootstrap_commands.cmd_activate_runtime,
-            bootstrap_commands.cmd_delete_runtime,
+            worker_bootstrap.cmd_runtime_info,
+            worker_bootstrap.cmd_runtime_env_sizes,
+            worker_bootstrap.cmd_install_runtime,
+            worker_bootstrap.cmd_update_runtime_core,
+            worker_bootstrap.cmd_activate_runtime,
+            worker_bootstrap.cmd_delete_runtime,
         )
         with runtime_lock(self.lock_file), \
-             mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.root), \
-             mock.patch.object(bootstrap_base, "runtime_lock", partial(runtime_lock, timeout=0)), \
-             mock.patch.object(bootstrap_commands, "_recover_runtime_transactions") as recover, \
-             mock.patch.object(bootstrap_operations, "_target_runtime_from_payload") as target, \
-             mock.patch.object(bootstrap_commands, "_runtime_info_payload") as info, \
-             mock.patch.object(bootstrap_primitives, "_env_size_targets") as sizes:
+             mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.root), \
+             mock.patch.object(worker_bootstrap, "runtime_lock", partial(runtime_lock, timeout=0)), \
+             mock.patch.object(worker_bootstrap, "_recover_runtime_transactions") as recover, \
+             mock.patch.object(worker_bootstrap, "_target_runtime_from_payload") as target, \
+             mock.patch.object(worker_bootstrap, "_runtime_info_payload") as info, \
+             mock.patch.object(worker_bootstrap, "_env_size_targets") as sizes:
             for command in commands:
                 with self.subTest(command=command.__name__), contextlib.redirect_stdout(io.StringIO()) as output:
                     result = command({"backend": "cpu", "taskId": "runtime_lock_check"})
@@ -272,10 +266,10 @@ with runtime_lock(path):
     def test_query_recovers_orphan_staging_after_owner_exits(self):
         staging = self.root / ".cpu.core-updating"
         staging.mkdir()
-        with mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.root), \
-             mock.patch.object(bootstrap_commands, "_runtime_info_payload", return_value={}), \
+        with mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.root), \
+             mock.patch.object(worker_bootstrap, "_runtime_info_payload", return_value={}), \
              contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(bootstrap_commands.cmd_runtime_info({}), 0)
+            self.assertEqual(worker_bootstrap.cmd_runtime_info({}), 0)
         self.assertFalse(staging.exists())
 
     def test_command_holds_lock_through_query_and_releases_after_exception(self):
@@ -285,9 +279,9 @@ with runtime_lock(path):
                     pass
             raise ValueError("probe interrupted")
 
-        with mock.patch.object(bootstrap_base, "RUNTIME_ENVS_DIR", self.root), \
-             mock.patch.object(bootstrap_commands, "_runtime_info_payload", side_effect=query):
+        with mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.root), \
+             mock.patch.object(worker_bootstrap, "_runtime_info_payload", side_effect=query):
             with self.assertRaisesRegex(ValueError, "probe interrupted"):
-                bootstrap_commands.cmd_runtime_info({})
+                worker_bootstrap.cmd_runtime_info({})
         with runtime_lock(self.lock_file, timeout=0):
             pass

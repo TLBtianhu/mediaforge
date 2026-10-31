@@ -19,11 +19,6 @@ from core import worker_bootstrap
 from core import runtime_audio_probe
 
 
-
-from core.bootstrap import base as bootstrap_base
-from core.bootstrap import operations as bootstrap_operations
-from core.bootstrap import primitives as bootstrap_primitives
-
 class RuntimeAudioProbeTests(unittest.TestCase):
     def test_core_api_checks_reject_a_breaking_graph_interface_before_activation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -43,8 +38,8 @@ class RuntimeAudioProbeTests(unittest.TestCase):
                     runtime_audio_probe.verify_core_api()
 
     def test_core_update_verification_requests_the_desktop_api_contract_check(self) -> None:
-        with mock.patch.object(bootstrap_base.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
-            bootstrap_operations._verify_runtime_audio(Path(sys.executable), Path("staging"), core_api=True)
+        with mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            worker_bootstrap._verify_runtime_audio(Path(sys.executable), Path("staging"), core_api=True)
         self.assertIn("--check-core", run.call_args.args[0])
 
     def test_audio_decode_and_resampling_keep_both_channels(self) -> None:
@@ -84,8 +79,8 @@ verify_audio_runtime()
         self.assertIn("No module named 'audioread'", result.stderr)
 
     def test_current_manifest_updates_a_runtime_missing_audioread_without_reinstalling_librosa(self) -> None:
-        manifest = bootstrap_base._manifest()
-        requirements = bootstrap_primitives._overlay_requirements(
+        manifest = worker_bootstrap._manifest()
+        requirements = worker_bootstrap._overlay_requirements(
             manifest, "cuda", {"librosa": "0.10.2.post1"}, "2.1.8", "0.1.11",
         )
         self.assertIn(manifest["common"]["audioread"], requirements)
@@ -96,10 +91,10 @@ verify_audio_runtime()
         )
 
     def test_probe_uses_selected_interpreter_and_staging_overlay(self) -> None:
-        with mock.patch.object(bootstrap_base.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
-            bootstrap_operations._verify_runtime_audio(Path(sys.executable), Path("staging"))
+        with mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            worker_bootstrap._verify_runtime_audio(Path(sys.executable), Path("staging"))
         command = run.call_args.args[0]
-        self.assertEqual(command[0], str(bootstrap_primitives._runtime_command_path(Path(sys.executable))))
+        self.assertEqual(command[0], str(worker_bootstrap._runtime_command_path(Path(sys.executable))))
         self.assertEqual(Path(command[1]).name, "runtime_audio_probe.py")
         environment = run.call_args.kwargs["env"]
         self.assertEqual(environment["PYTHONPATH"], "staging")
@@ -109,9 +104,9 @@ verify_audio_runtime()
 
     def test_probe_failure_preserves_the_missing_dependency_reason(self) -> None:
         result = mock.Mock(returncode=1, stderr="Traceback...\nModuleNotFoundError: No module named 'audioread'\n")
-        with mock.patch.object(bootstrap_base.subprocess, "run", return_value=result):
+        with mock.patch.object(worker_bootstrap.subprocess, "run", return_value=result):
             with self.assertRaisesRegex(RuntimeError, "No module named 'audioread'"):
-                bootstrap_operations._verify_runtime_audio(Path(sys.executable))
+                worker_bootstrap._verify_runtime_audio(Path(sys.executable))
 
 
 if __name__ == "__main__":
