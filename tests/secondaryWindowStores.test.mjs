@@ -19,7 +19,6 @@ const vite = await createServer({
 after(() => vite.close())
 const { useModelStore } = await vite.ssrLoadModule('/src/stores/model.ts')
 const { useSettingsStore } = await vite.ssrLoadModule('/src/stores/settings.ts')
-const { useUpdateStore } = await vite.ssrLoadModule('/src/stores/update.ts')
 const { useAppStore } = await vite.ssrLoadModule('/src/stores/app.ts')
 const { useBeginnerGuideStore } = await vite.ssrLoadModule('/src/stores/beginnerGuide.ts')
 const stores = []
@@ -71,19 +70,12 @@ function environment(initial = {}) {
             return { models: [], categories: [], categoriesCn: [], modelDir: args.payload.modelDir }
           }
           if (command === 'get_model_storage_summary') return { models: [], modelDir: args.payload.modelDir }
-          if (command === 'get_managed_update_state') return { restartRequired: false }
           if (command === 'unregister_custom_model') return { name: args.payload.name, deletedFiles: false, fileDeletionSupported: false, filesDeleted: [], errors: [] }
           if (command === 'confirm_model_dir_migration_switch') {
             if (++confirmCalls > 1) throw new Error('migration task not found')
             return { accepted: true }
           }
           if (command === 'plugin:event|listen' || command === 'plugin:event|unlisten') return ++callbackId
-          if (command === 'check_managed_update') {
-            return {
-              currentVersion: '0.0.12', version: '0.0.13', prerelease: false, distribution: 'portable',
-              autoUpdateSupported: true, requiresManualInstall: false,
-            }
-          }
           if ([
             'plugin:webview|set_webview_zoom', 'update_proxy_settings',
             'cancel_model_dir_migration', 'remap_custom_model_paths',
@@ -365,39 +357,6 @@ test('only the main window confirms model migration and remaps registrations', a
   assert.equal(env.calls.filter(call => call.command === 'remap_custom_model_paths').length, 1)
 })
 
-test('secondary-window update checks stay idle and preserve newer main-window preferences', async () => {
-  const env = environment()
-  const main = env.instance('main')
-  const mainUpdates = useUpdateStore(main.pinia)
-  useAppStore(main.pinia).buildInfoUpdateSupported = true
-  stores.push(mainUpdates)
-  await mainUpdates.initialize()
-  const child = env.instance('workflow-simple-editor-a')
-  const childUpdates = useUpdateStore(child.pinia)
-  useAppStore(child.pinia).buildInfoUpdateSupported = true
-  stores.push(childUpdates)
-  await childUpdates.initialize()
-  const childCheck = childUpdates.checkForUpdates()
-  main.activate()
-  await mainUpdates.checkForUpdates()
-  await mainUpdates.deferUntilNextLaunch()
-  const baseline = clone(env.state['update-state'])
-  assert.equal(baseline.deferredVersion, '0.0.13')
-  child.activate()
-  assert.equal(await childCheck, null)
-  assert.equal(await childUpdates.checkForUpdates(true), null)
-  await waitForSave()
-  assert.equal(childUpdates.currentVersion, '')
-  assert.equal(childUpdates.latestVersion, '')
-  assert.equal(childUpdates.status, 'idle')
-  assert.equal(env.calls.some(call => call.label === 'workflow-simple-editor-a' && (
-    call.command === 'check_managed_update'
-    || call.command === 'plugin:event|listen'
-    || (call.command === 'load_app_store' && call.args.name === 'update-state')
-  )), false)
-  assert.deepEqual(env.state['update-state'], baseline)
-  assert.ok(env.writes.every(write => write.label === 'main'))
-})
 
 for (const kind of ['model', 'settings']) {
   test(`${kind} debounced writes report a failure once and recover after successful persistence`, async () => {

@@ -184,8 +184,7 @@ export const useAppStore = defineStore('app', () => {
   const runtimeIncompleteBackends = ref<string[]>([])
   const buildInfoVersion = ref('')
   const buildInfoVariant = ref('')
-  const buildInfoUpdateSupported = ref(false)
-
+  
   const diagnostics = computed<DiagnosticItem[]>(() => {
     const env = envInfo.value
     if (!env) return []
@@ -913,8 +912,7 @@ export const useAppStore = defineStore('app', () => {
     runtimeIncompleteBackends,
     buildInfoVersion,
     buildInfoVariant,
-    buildInfoUpdateSupported,
-    loadRuntimeEnvSizes,
+      loadRuntimeEnvSizes,
     checkRuntimeInfo,
     loadRuntimeCoreVersions,
     ensureRuntimeInfo,

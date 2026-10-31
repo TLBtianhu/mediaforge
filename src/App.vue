@@ -11,12 +11,10 @@ import AppBrandMark from '@/components/AppBrandMark.vue'
 import ViewportRecoveryOverlay from '@/components/ViewportRecoveryOverlay.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useAppStore } from '@/stores/app'
-import { useUpdateStore } from '@/stores/update'
 import { getResolvedThemeTokens, getThemeOverrides, themeIsDark } from '@/utils/theme'
 import { useI18n } from 'vue-i18n'
 import RuntimeAssetBanner from '@/components/RuntimeAssetBanner.vue'
 import { listen, type EventCallback, type UnlistenFn } from '@tauri-apps/api/event'
-import { open } from '@tauri-apps/plugin-shell'
 import { useWorkflowStore } from '@/stores/workflow'
 import { useToastStore } from '@/stores/toast'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -31,20 +29,12 @@ const app = useAppStore()
 watch([() => settings.initialized, () => app.envInfo], ([initialized, env]) => {
   if (initialized && env?.torchAvailable) settings.reconcileRuntimeDevice(env)
 }, { immediate: true })
-const updates = useUpdateStore()
 const workflow = useWorkflowStore()
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const bootReady = ref(false)
 const backgroundWarmupsStarted = ref(false)
-const deferredPromptShown = ref(false)
-const deferredUpdateModalVisible = ref(false)
-const deferredUpdateInstalling = ref(false)
-const deferredUpdateError = ref('')
-const manualUpdatePromptShown = ref(false)
-const manualUpdateModalVisible = ref(false)
-const manualUpdateError = ref('')
 const runtimeCorePromptVisible = ref(false)
 const runtimeCorePromptShown = ref(false)
 const workflowEventUnlisteners: UnlistenFn[] = []
@@ -60,10 +50,6 @@ const resolvedTheme = computed(() => {
   void isDark.value
   return getResolvedThemeTokens(settings.themeMode, settings.themeAccent)
 })
-const deferredUpdatePrompt = computed(() => updates.updateIsPrerelease
-  ? t('settings.updatePrereleaseDeferredPrompt', { version: updates.latestVersion })
-  : t('settings.updateDeferredPrompt', { version: updates.latestVersion }))
-const manualUpdatePrompt = computed(() => updates.updateMessage || t('settings.updateManualInstallPrompt', { version: updates.latestVersion }))
 const activeRuntime = computed(() => activeRuntimeEnvironment(app.runtimeInfo))
 const runtimeVersionUpdateAvailable = computed(() => hasRuntimeCoreUpdate(
   activeRuntime.value,
@@ -90,35 +76,6 @@ const runtimeCorePromptContent = computed(() => t(
     coreLatest: app.runtimeCoreVersions?.packages?.['pymss-core']?.latestVersion || t('settings.runtimeCoreVersionUnknown'),
   },
 ))
-
-function formatBytes(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes < 0) return '—'
-  if (bytes < 1024) return `${Math.round(bytes)} B`
-  const units = ['KB', 'MB', 'GB']
-  let value = bytes / 1024
-  let unit = units[0]
-  for (let index = 1; index < units.length && value >= 1024; index += 1) {
-    value /= 1024
-    unit = units[index]
-  }
-  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${unit}`
-}
-
-function formatDuration(seconds: number | null) {
-  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return '—'
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainder = seconds % 60
-  return `${minutes}m ${remainder}s`
-}
-
-const downloadBytesLabel = computed(() => {
-  const downloaded = formatBytes(updates.downloadDownloadedBytes)
-  const total = updates.downloadTotalBytes > 0 ? formatBytes(updates.downloadTotalBytes) : '—'
-  return `${downloaded} / ${total}`
-})
-const downloadSpeedLabel = computed(() => formatBytes(updates.downloadSpeedBytesPerSecond) + '/s')
-const downloadEtaLabel = computed(() => formatDuration(updates.downloadEtaSeconds))
 
 const routeWarmupLoaders = [
   () => import('@/views/SeparateView.vue'),
@@ -160,34 +117,6 @@ async function reconnectWorkerEvents() {
   })
 }
 
-function showDeferredUpdatePrompt() {
-  if (deferredPromptShown.value) return
-  if (!updates.shouldShowDeferred || !updates.latestVersion) return
-  if (updates.requiresManualInstall) return
-  deferredPromptShown.value = true
-  deferredUpdateError.value = ''
-  deferredUpdateModalVisible.value = true
-}
-
-function showManualUpdatePrompt() {
-  if (manualUpdatePromptShown.value || !bootReady.value) return
-  if (!updates.requiresManualInstall || !updates.latestVersion) return
-  manualUpdatePromptShown.value = true
-  manualUpdateError.value = ''
-  manualUpdateModalVisible.value = true
-}
-
-async function openManualUpdate() {
-  const url = updates.manualInstallUrl || 'https://github.com/pymss-project/pymss-studio/releases/latest'
-  manualUpdateError.value = ''
-  try {
-    await open(url)
-    manualUpdateModalVisible.value = false
-  } catch (error) {
-    manualUpdateError.value = error instanceof Error ? error.message : String(error)
-  }
-}
-
 function showRuntimeCorePrompt() {
   if (!app.runtimeCoreUpdateSupported || runtimeCorePromptBlocked.value || !runtimeCoreUpdateAvailable.value || isStandaloneRoute.value) {
     runtimeCorePromptVisible.value = false
@@ -201,35 +130,6 @@ function showRuntimeCorePrompt() {
 function openRuntimeSettings() {
   runtimeCorePromptVisible.value = false
   void router.push({ path: '/settings', query: { section: 'runtime' } })
-}
-
-async function installDeferredUpdate() {
-  if (deferredUpdateInstalling.value) return
-  if (updates.installationBlockedReason) {
-    deferredUpdateError.value = updates.installationBlockedReason
-    return
-  }
-  deferredUpdateInstalling.value = true
-  deferredUpdateError.value = ''
-  deferredUpdateModalVisible.value = false
-  try {
-    await updates.downloadAndInstall()
-  } catch (error) {
-    deferredUpdateError.value = error instanceof Error ? error.message : String(error)
-    if (!updates.isInstallOverlayVisible) deferredUpdateModalVisible.value = true
-  } finally {
-    deferredUpdateInstalling.value = false
-  }
-}
-
-async function keepDeferredUpdateForNextLaunch() {
-  deferredUpdateError.value = ''
-  try {
-    await updates.deferUntilNextLaunch()
-    deferredUpdateModalVisible.value = false
-  } catch (error) {
-    deferredUpdateError.value = error instanceof Error ? error.message : String(error)
-  }
 }
 
 async function listenForMainWorkflowEvent<T>(event: string, handler: EventCallback<T>) {
@@ -302,14 +202,6 @@ watch([bootReady], () => {
   startBackgroundWarmups()
 }, { immediate: true })
 
-watch([bootReady, () => updates.shouldShowDeferred, () => updates.latestVersion], () => {
-  if (bootReady.value) showDeferredUpdatePrompt()
-}, { immediate: true })
-
-watch([bootReady, () => updates.requiresManualInstall, () => updates.latestVersion], () => {
-  showManualUpdatePrompt()
-}, { immediate: true })
-
 watch([bootReady, isStandaloneRoute, runtimeCoreUpdateAvailable, runtimeCorePromptBlocked], () => {
   showRuntimeCorePrompt()
 }, { immediate: true })
@@ -368,103 +260,6 @@ const themeOverrides = computed(() => {
           </transition>
           <ViewportRecoveryOverlay :enabled="bootReady && !isStandaloneRoute" />
         </div>
-        <n-modal v-model:show="deferredUpdateModalVisible" preset="dialog" type="warning" :mask-closable="false" :closable="false">
-          <template #header>
-            {{ t('settings.updateDeferred') }}
-          </template>
-          <div>{{ deferredUpdatePrompt }}</div>
-          <n-alert v-if="updates.installationBlockedReason" type="info" :bordered="false" style="margin-top: 12px">
-            {{ updates.installationBlockedReason }}
-          </n-alert>
-          <n-alert v-if="deferredUpdateError && deferredUpdateError !== updates.installationBlockedReason" type="error" :bordered="false" style="margin-top: 12px">
-            {{ deferredUpdateError }}
-          </n-alert>
-          <template #action>
-            <n-button secondary :disabled="deferredUpdateInstalling" @click="keepDeferredUpdateForNextLaunch">
-              {{ t('settings.updateRemindLater') }}
-            </n-button>
-            <n-button type="primary" :loading="deferredUpdateInstalling" :disabled="Boolean(updates.installationBlockedReason)" @click="installDeferredUpdate">
-              {{ t('settings.installUpdate') }}
-            </n-button>
-          </template>
-        </n-modal>
-        <n-modal v-model:show="manualUpdateModalVisible" preset="dialog" type="warning" :mask-closable="false" :closable="false">
-          <template #header>
-            {{ t('settings.updateManualInstallTitle') }}
-          </template>
-          <div>{{ manualUpdatePrompt }}</div>
-          <n-alert v-if="manualUpdateError" type="error" :bordered="false" style="margin-top: 12px">
-            {{ manualUpdateError }}
-          </n-alert>
-          <template #action>
-            <n-button secondary @click="manualUpdateModalVisible = false">
-              {{ t('common.close') }}
-            </n-button>
-            <n-button type="primary" @click="openManualUpdate">
-              {{ t('settings.updateOpenGitHub') }}
-            </n-button>
-          </template>
-        </n-modal>
-        <n-modal
-          :show="updates.isInstallOverlayVisible"
-          preset="card"
-          :mask-closable="false"
-          :closable="false"
-          class="update-install-modal"
-          :bordered="false"
-        >
-          <div class="update-install-panel">
-            <div class="update-install-panel__head">
-              <strong>
-                {{ updates.status === 'restart-required' ? t('settings.updateRestartRequiredTitle') : updates.status === 'failed' ? t('settings.updateInstallFailed') : updates.status === 'installing' ? t('settings.updateInstalling') : t('settings.updateDownloading') }}
-              </strong>
-              <span>{{ updates.status === 'restart-required' ? t('settings.updateRestartRequiredHint') : updates.status === 'failed' ? t('settings.updateInstallFailedHint') : t('settings.updateInstallOverlayHint') }}</span>
-            </div>
-            <n-progress
-              v-if="updates.status !== 'failed' && updates.status !== 'restart-required'"
-              type="line"
-              :percentage="updates.downloadProgressPercent"
-              :processing="updates.status === 'downloading'"
-              :show-indicator="updates.downloadTotalBytes > 0"
-              status="success"
-            />
-            <div v-if="updates.status === 'downloading'" class="update-install-panel__stats">
-              <span>{{ t('settings.updateDownloadProgress', { percent: updates.downloadProgressPercent }) }}</span>
-              <span>{{ downloadBytesLabel }}</span>
-              <span>{{ t('settings.updateDownloadSpeed', { speed: downloadSpeedLabel }) }}</span>
-              <span>{{ t('settings.updateDownloadEta', { eta: downloadEtaLabel }) }}</span>
-            </div>
-            <p v-else-if="updates.status === 'installing'" class="update-install-panel__meta">
-              {{ t('settings.updateInstallRestarting') }}
-            </p>
-            <n-alert v-if="(updates.status === 'failed' || updates.status === 'restart-required') && updates.error" type="error" :bordered="false">
-              {{ updates.error }}
-            </n-alert>
-            <n-alert v-if="updates.status === 'failed' && manualUpdateError" type="error" :bordered="false">
-              {{ manualUpdateError }}
-            </n-alert>
-            <section v-if="updates.downloadLogs.length" class="update-install-panel__logs" aria-live="polite">
-              <div class="update-install-panel__logs-head">
-                <strong>{{ t('settings.updateDownloadLogs') }}</strong>
-                <span>{{ t('settings.updateDownloadLogHint') }}</span>
-              </div>
-              <div class="update-install-panel__log-list console-scrollbar">
-                <div v-for="(entry, index) in updates.downloadLogs" :key="`${entry.at}-${index}`" class="update-install-panel__log-line">
-                  <time>{{ entry.at }}</time>
-                  <span>{{ entry.message }}</span>
-                </div>
-              </div>
-            </section>
-            <div v-if="updates.status === 'failed'" class="update-install-panel__actions">
-              <n-button secondary @click="updates.dismissInstallError()">{{ t('common.close') }}</n-button>
-              <n-button type="primary" @click="openManualUpdate">{{ t('settings.updateOpenGitHub') }}</n-button>
-            </div>
-            <div v-else-if="updates.status === 'restart-required'" class="update-install-panel__actions">
-              <n-button secondary @click="updates.closeForUpdate()">{{ t('settings.updateCloseApplication') }}</n-button>
-              <n-button type="primary" @click="updates.retryUpdateExit()">{{ t('settings.updateRetryExit') }}</n-button>
-            </div>
-          </div>
-        </n-modal>
         </n-dialog-provider>
       </n-message-provider>
     </n-notification-provider>
@@ -547,13 +342,6 @@ const themeOverrides = computed(() => {
   box-sizing: border-box;
 }
 
-.update-install-panel {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-  max-height: min(640px, calc(100vh - 96px));
-  overflow-y: auto;
-}
 
 .update-install-panel__head {
   display: grid;

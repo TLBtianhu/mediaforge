@@ -26,27 +26,7 @@ function componentComputed(file, name, scope) {
   return vm.runInNewContext(`${code}\n${name}`, { computed: fn => fn(), ...scope })
 }
 
-test('deferred update preflight keeps busy feedback visible', async () => {
-  const scope = {
-    deferredUpdateInstalling: { value: false }, deferredUpdateError: { value: '' }, deferredUpdateModalVisible: { value: true },
-    updates: { installationBlockedReason: 'busy', downloadAndInstall() { assert.fail('busy update must not start') } },
-  }
-  await componentFunction('../src/App.vue', 'installDeferredUpdate', scope)()
-  assert.equal(scope.deferredUpdateModalVisible.value, true)
-  assert.equal(scope.deferredUpdateError.value, 'busy')
-})
 
-test('deferred early errors reopen the prompt when no install overlay owns the error', async () => {
-  for (const overlay of [false, true]) {
-    const scope = {
-      deferredUpdateInstalling: { value: false }, deferredUpdateError: { value: '' }, deferredUpdateModalVisible: { value: true },
-      updates: { installationBlockedReason: '', isInstallOverlayVisible: overlay, downloadAndInstall: async () => { throw new Error('update unavailable') } },
-    }
-    await componentFunction('../src/App.vue', 'installDeferredUpdate', scope)()
-    assert.equal(scope.deferredUpdateModalVisible.value, !overlay)
-    assert.match(scope.deferredUpdateError.value, /update unavailable/)
-  }
-})
 
 test('the ASR page only offers removal for removable components', () => {
   for (const [status, expected] of [

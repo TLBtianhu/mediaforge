@@ -15,7 +15,6 @@ import appLogo from '@/assets/app-logo-symbol-canvas.png'
 import { SYSTEM_LOCALE, setLocale, type LocaleSetting } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useAppStore, type InstalledRuntime, type RuntimeBackend, type RuntimeCoreMode } from '@/stores/app'
-import { useUpdateStore } from '@/stores/update'
 import {
   detectRuntimePlatform,
   recommendedRuntimeBackend,
@@ -76,7 +75,6 @@ const settings = useSettingsStore()
 const beginnerGuide = useBeginnerGuideStore()
 const showParameterHelp = ref(false)
 const app = useAppStore()
-const updates = useUpdateStore()
 const modelStore = useModelStore()
 const task = useTaskStore()
 type SettingsSection = 'about' | 'appearance' | 'runtime' | 'paths' | 'defaults'
@@ -92,7 +90,6 @@ type BuildInfo = {
   buildTime: string
   target: string
   variant: string
-  updateSupported?: boolean
   official: boolean
 }
 const activeSection = ref<SettingsSection>('appearance')
@@ -109,8 +106,6 @@ function selectSettingsSection(section: SettingsSection) {
   if (typeof route.query.section === 'string') void router.replace({ query: { ...route.query, section } })
 }
 const buildInfo = ref<BuildInfo | null>(null)
-const updateChecking = ref(false)
-const updateInstalling = ref(false)
 const appVersion = computed(() => buildInfo.value?.version || packageMeta.version || '0.0.0')
 const repoUrl = 'https://github.com/TLBtianhu/mediaforge'
 const officialRepository = 'pymss-project/pymss-studio'
@@ -142,8 +137,6 @@ const {
   proxyMode,
   proxyUrl,
   proxyBypass,
-  updateChannel,
-  updateSource,
 } = storeToRefs(settings)
 const { downloadTasks } = storeToRefs(modelStore)
 const { activeWorkerTasks } = storeToRefs(task)
@@ -741,59 +734,11 @@ const aboutVersionItems = computed(() => [
   { label: t('settings.pymssCoreVersion'), value: pymssCoreVersion.value, meta: t('settings.coreRuntime') },
   { label: t('settings.workerVersion'), value: workerVersion.value, meta: t('settings.pythonWorker') },
 ])
-const updateStatusLabel = computed(() => {
-  if (updates.restartRequired) return t('settings.updateRestartRequiredTitle')
-  if (!updateSupported.value) return t('settings.updateUnsupported')
-  if (updates.requiresManualInstall) return t('settings.updateManualInstallTitle')
-  if (updates.status === 'failed' && updates.installFailed) return t('settings.updateInstallFailed')
-  if (updates.shouldShowDeferred) return t('settings.updateDeferred')
-  if (updates.status === 'checking') return t('settings.updateChecking')
-  if (updates.status === 'downloading') return t('settings.updateDownloading')
-  if (updates.status === 'installing') return t('settings.updateInstalling')
-  if (updates.status === 'available') return t('settings.updateAvailable')
-  if (updates.status === 'failed') return t('settings.updateCheckFailed')
-  return t('settings.updateIdle')
-})
-const updateBadgeTone = computed(() => {
-  if (updates.restartRequired) return 'warning'
-  if (!updateSupported.value) return 'default'
-  if (updates.status === 'failed') return 'error'
-  if (updates.shouldShowDeferred) return 'warning'
-  if (updates.status === 'available') return 'success'
-  if (updates.status === 'checking' || updates.status === 'downloading' || updates.status === 'installing') return 'warning'
-  return 'default'
-})
-const updateSupported = computed(() => {
-  return buildInfo.value?.updateSupported === true || app.buildInfoUpdateSupported
-})
-const updateOverviewEmphasized = computed(() => {
-  return updates.requiresManualInstall
-    || updates.shouldShowDeferred
-    || updates.status === 'available'
-    || updates.status === 'failed'
-})
-const updateLastCheckedLabel = computed(() => {
-  return formatDateTime(updates.lastCheckedAt) || t('settings.updateNeverChecked')
-})
 const runtimeSummaryItems = computed(() => [
   { label: t('settings.runtimeCurrentLabel'), value: runtimeCurrentLabel.value, meta: t('settings.runtimeCurrentMeta') },
   { label: 'Torch', value: app.runtimeInfo?.torchVersion || app.envInfo?.torchVersion || t('common.unknown'), meta: t('settings.runtimeTorchMeta') },
   { label: 'pymss', value: app.runtimeInfo?.pymssVersion || app.envInfo?.pymssVersion || t('common.unknown'), meta: t('settings.runtimePymssMeta') },
 ])
-const updateReleaseDateLabel = computed(() => {
-  return formatDateTime(updates.releaseDate)
-})
-const updateChannelOptions = computed(() => [
-  { label: t('settings.updateChannelStable'), value: 'stable' },
-  { label: t('settings.updateChannelPrerelease'), value: 'prerelease' },
-])
-const updateSourceOptions = computed(() => [
-  { label: t('settings.updateSourceAuto'), value: 'auto' },
-  { label: 'GitHub', value: 'github' },
-  { label: t('settings.updateSourceModelscope'), value: 'modelscope' },
-])
-const updateSelectedSourceLabel = computed(() => updates.selectedSource === 'github' ? 'GitHub'
-  : updates.selectedSource === 'modelscope' ? t('settings.updateSourceModelscope') : t('settings.updateSourceCustom'))
 const aboutLinks = computed(() => [
   { label: t('settings.desktopRepository'), url: repoUrl, icon: LogoGithub },
   { label: t('settings.coreRepository'), url: coreRepoUrl, icon: LinkOutline },
@@ -806,84 +751,8 @@ async function loadBuildInfo() {
     buildInfo.value = await invoke<BuildInfo>('get_build_info')
     app.buildInfoVersion = buildInfo.value?.version || ''
     app.buildInfoVariant = buildInfo.value?.variant || ''
-    app.buildInfoUpdateSupported = buildInfo.value?.updateSupported === true
   } catch {
     buildInfo.value = null
-  }
-}
-
-async function checkForUpdates(manual = false) {
-  if (updateChecking.value) return
-  updateChecking.value = true
-  try {
-    await updates.checkForUpdates(manual)
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    updateChecking.value = false
-  }
-}
-
-async function changeUpdateChannel(value: 'stable' | 'prerelease') {
-  if (value === updateChannel.value) return
-  if (value === 'prerelease') {
-    const confirmed = await confirmRuntimeAction(
-      t('settings.updateChannelPrereleaseTitle'),
-      t('settings.updateChannelPrereleaseContent'),
-      t('settings.updateChannelPrereleaseConfirm'),
-    )
-    if (!confirmed) return
-  }
-  updateChannel.value = value
-  updates.dismiss()
-  if (updateSupported.value) await checkForUpdates(true)
-}
-
-async function changeUpdateSource(value: 'auto' | 'github' | 'modelscope') {
-  if (value === updateSource.value || updates.isBusy) return
-  updateSource.value = value
-  updates.dismiss()
-  if (updateSupported.value) await checkForUpdates(true)
-}
-
-async function installUpdate() {
-  if (updateInstalling.value || !updates.hasUpdate) return
-  if (updates.shouldShowDeferred && updates.latestVersion) {
-    const confirmed = await confirmRuntimeAction(
-      t('settings.updateInstallTitle'),
-      updates.updateIsPrerelease
-        ? t('settings.updateInstallPrereleaseDeferredContent', { version: updates.latestVersion })
-        : t('settings.updateInstallDeferredContent', { version: updates.latestVersion }),
-      t('settings.updateInstallConfirm'),
-    )
-    if (!confirmed) return
-    try {
-      updateInstalling.value = true
-      const exiting = await updates.downloadAndInstall()
-      if (exiting) message.success(t('settings.updateDeferredSaved'))
-      return
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error))
-      return
-    } finally {
-      updateInstalling.value = false
-    }
-  }
-  const confirmed = await confirmRuntimeAction(
-    t('settings.updateInstallTitle'),
-    updates.updateIsPrerelease
-      ? t('settings.updateInstallPrereleaseContent', { version: updates.latestVersion || appVersion.value })
-      : t('settings.updateInstallContent', { version: updates.latestVersion || appVersion.value }),
-    t('settings.updateInstallConfirm'),
-  )
-  if (!confirmed) return
-  updateInstalling.value = true
-  try {
-    await updates.downloadAndInstall()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    updateInstalling.value = false
   }
 }
 
@@ -1105,9 +974,6 @@ async function resolveModelDirConflict(action: 'overwrite' | 'skip' | 'abort') {
 
 onMounted(async () => {
   await loadBuildInfo()
-  if (updateSupported.value) {
-    void checkForUpdates(false)
-  }
 })
 
 </script>
@@ -1165,161 +1031,6 @@ onMounted(async () => {
             <div class="about-build-fingerprint">
               <span>{{ t('settings.buildFingerprint') }}</span>
               <code>{{ buildFingerprint }}</code>
-            </div>
-          </article>
-
-          <article class="about-info-card about-info-card--update">
-            <div class="section-title section-title--plain">
-              <span class="section-title__icon">
-                <n-icon :component="RefreshOutline" size="18" />
-              </span>
-              <span>{{ t('settings.update') }}</span>
-            </div>
-            <div class="update-panel">
-              <div
-                class="update-panel__overview"
-                :class="{ 'update-panel__overview--emphasis': updateOverviewEmphasized }"
-              >
-                <div class="update-panel__headline">
-                  <span class="update-panel__status-dot" :class="`update-panel__status-dot--${updateBadgeTone}`" aria-hidden="true" />
-                  <div>
-                    <strong>{{ updateStatusLabel }}</strong>
-                    <p>{{ !updateSupported ? t('settings.updateUnsupportedHint') : updates.requiresManualInstall ? (updates.updateMessage || t('settings.updateManualInstallPrompt', { version: updates.latestVersion })) : t('settings.updateStatusHint') }}</p>
-                  </div>
-                </div>
-                <div v-if="updates.updateIsPrerelease" class="update-panel__tags">
-                  <n-tag type="warning" size="small">{{ t('settings.updatePrereleaseBadge') }}</n-tag>
-                </div>
-              </div>
-
-              <div v-if="!updateSupported" class="update-panel__compact-row">
-                <div class="update-panel__version-inline">
-                  <span>{{ t('settings.updateCurrentVersionLabel') }}</span>
-                  <strong>{{ appVersion }}</strong>
-                </div>
-                <n-button type="primary" secondary @click="openExternalUrl(repoUrl + '/releases/latest')">
-                  <template #icon>
-                    <n-icon :component="OpenOutline" />
-                  </template>
-                  {{ t('settings.updateOpenGitHub') }}
-                </n-button>
-              </div>
-
-              <template v-else>
-                <div v-if="updates.latestVersion" class="update-panel__version-flow">
-                  <div class="update-panel__version-card update-panel__version-card--current">
-                    <span>{{ t('settings.updateCurrentVersionLabel') }}</span>
-                    <strong>{{ appVersion }}</strong>
-                  </div>
-                  <span class="update-panel__version-arrow" aria-hidden="true">→</span>
-                  <div class="update-panel__version-card update-panel__version-card--target">
-                    <span>{{ t('settings.updateAvailable') }}</span>
-                    <strong>{{ updates.latestVersion }}</strong>
-                  </div>
-                </div>
-                <div v-else class="update-panel__compact-row">
-                  <div class="update-panel__version-inline">
-                    <span>{{ t('settings.updateCurrentVersionLabel') }}</span>
-                    <strong>{{ appVersion }}</strong>
-                  </div>
-                  <span class="update-panel__last-checked">{{ t('settings.updateLastChecked', { time: updateLastCheckedLabel }) }}</span>
-                </div>
-
-                <div v-if="updates.latestVersion" class="update-panel__meta">
-                  <span>{{ t('settings.updateLastChecked', { time: updateLastCheckedLabel }) }}</span>
-                  <span v-if="updateReleaseDateLabel">{{ t('settings.updateReleaseDate', { time: updateReleaseDateLabel }) }}</span>
-                  <span v-if="updates.selectedSource">{{ t('settings.updateSelectedSource', { source: updateSelectedSourceLabel }) }}</span>
-                </div>
-
-                <div class="update-panel__controls">
-                  <div class="update-panel__preferences">
-                    <div class="update-panel__channel">
-                      <n-tooltip :show-arrow="false" style="max-width: 300px">
-                        <template #trigger>
-                          <span class="update-panel__field-label" tabindex="0">
-                            {{ t('settings.updateChannelLabel') }}
-                            <n-icon :component="InformationCircleOutline" size="13" />
-                          </span>
-                        </template>
-                        {{ updateChannel === 'prerelease' ? t('settings.updateChannelPrereleaseHint') : t('settings.updateChannelStableHint') }}
-                      </n-tooltip>
-                      <n-select
-                        :value="updateChannel"
-                        :options="updateChannelOptions"
-                        :disabled="updates.isBusy"
-                        size="small"
-                        @update:value="changeUpdateChannel"
-                      />
-                    </div>
-                    <div class="update-panel__channel">
-                      <n-tooltip :show-arrow="false" style="max-width: 300px">
-                        <template #trigger>
-                          <span class="update-panel__field-label" tabindex="0">
-                            {{ t('settings.updateSourceLabel') }}
-                            <n-icon :component="InformationCircleOutline" size="13" />
-                          </span>
-                        </template>
-                        {{ t('settings.updateSourceAutoHint') }}
-                      </n-tooltip>
-                      <n-select
-                        :value="updateSource"
-                        :options="updateSourceOptions"
-                        :disabled="updates.isBusy"
-                        size="small"
-                        @update:value="changeUpdateSource"
-                      />
-                    </div>
-                  </div>
-                  <div class="update-panel__actions">
-                    <n-button
-                      v-if="updates.status === 'checking'"
-                      type="primary"
-                      loading
-                      disabled
-                    >
-                      <template #icon><n-icon :component="RefreshOutline" /></template>
-                      {{ t('settings.checkForUpdates') }}
-                    </n-button>
-                    <n-button
-                      v-else-if="updates.requiresManualInstall"
-                      type="warning"
-                      @click="openExternalUrl(updates.manualInstallUrl || repoUrl + '/releases/latest')"
-                    >
-                      <template #icon><n-icon :component="OpenOutline" /></template>
-                      {{ t('settings.updateOpenRelease') }}
-                    </n-button>
-                    <n-button
-                      v-else-if="updates.hasUpdate"
-                      type="primary"
-                      :loading="updateInstalling || updates.isInstallingUpdate"
-                      :disabled="updates.isBusy || Boolean(updates.installationBlockedReason)"
-                      :title="updates.installationBlockedReason"
-                      @click="installUpdate"
-                    >
-                      <template #icon><n-icon :component="CloudDownloadOutline" /></template>
-                      {{ t('settings.installUpdate') }}
-                    </n-button>
-                    <n-button
-                      v-else
-                      type="primary"
-                      :loading="updateChecking"
-                      :disabled="updates.isBusy"
-                      @click="checkForUpdates(true)"
-                    >
-                      <template #icon><n-icon :component="RefreshOutline" /></template>
-                      {{ t('settings.checkForUpdates') }}
-                    </n-button>
-                  </div>
-                </div>
-                <details v-if="updates.latestVersion && updates.releaseNotes" class="update-panel__release-notes">
-                  <summary>
-                    <n-icon class="update-panel__notes-chevron" :component="ChevronForwardOutline" size="13" />
-                    <span>{{ t('settings.updateReleaseNotesLabel') }}</span>
-                    <span class="update-panel__notes-preview">{{ updates.releaseNotes.replace(/\s+/g, ' ') }}</span>
-                  </summary>
-                  <p class="update-panel__notes">{{ updates.releaseNotes }}</p>
-                </details>
-              </template>
             </div>
           </article>
 
@@ -2509,10 +2220,6 @@ onMounted(async () => {
   text-align: right;
 }
 
-.about-info-card--update {
-  display: grid;
-  gap: 12px;
-}
 
 .update-panel {
   display: grid;

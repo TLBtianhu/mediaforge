@@ -24,11 +24,6 @@ const code = ts.transpileModule(bootstrapSource, {
 
 async function bootstrap(capabilities) {
   const calls = []
-  const updates = {
-    initialize: async () => calls.push('initialize-updates'),
-    checkForUpdates: async () => calls.push('check-updates'),
-    hasPendingDeferredVersion: () => false,
-  }
   const application = {
     config: {}, use() {}, mount() { calls.push('mount') }, onUnmount() {},
   }
@@ -39,7 +34,7 @@ async function bootstrap(capabilities) {
     createApp: () => application, App: {}, router: {}, i18n: {},
     window: { addEventListener() {} }, document: { querySelector: () => ({ hasChildNodes: () => false }) },
     useSettingsStore: () => ({ initialize: async () => {} }),
-    useAppStore: () => appState, useUpdateStore: () => updates,
+    useAppStore: () => appState,
     isTauriRuntime: () => false, isMainTaskOwner: () => true,
     pluginHostCapabilities: async () => capabilities,
     initializeWorkbenchBridge: async () => {}, connectWorkerEvents: async () => {},
@@ -55,20 +50,4 @@ async function bootstrap(capabilities) {
   vm.runInContext(code, context)
   await vm.runInContext('bootstrap()', context)
   return calls
-}
-
-for (const capabilities of [{ enabled: false }, { enabled: false, labBuild: false }, { enabled: true, labBuild: false }]) {
-  test(`ordinary startup initializes updates with host enabled=${capabilities.enabled}`, async () => {
-    const calls = await bootstrap(capabilities)
-    assert.equal(calls[0], 'mount')
-    assert.equal(calls.filter(call => call === 'initialize-updates').length, 1)
-    assert.equal(calls.filter(call => call === 'check-updates').length, 1)
-  })
-}
-
-for (const enabled of [false, true]) {
-  test(`lab identity skips updater initialization with host enabled=${enabled}`, async () => {
-    const calls = await bootstrap({ enabled, labBuild: true })
-    assert.deepEqual(calls, ['mount'])
-  })
 }

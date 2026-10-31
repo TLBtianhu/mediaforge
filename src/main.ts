@@ -1,4 +1,3 @@
-import { pluginHostCapabilities } from '@/utils/pluginHost'
 import { createLogger } from '@/utils/logger'
 import { createApp, nextTick } from 'vue'
 import { createPinia } from 'pinia'
@@ -13,7 +12,6 @@ import { isTauriRuntime } from './utils/appStore'
 import { listenForEditorExportPreferences } from './utils/editorExportPreferences'
 import { useSettingsStore } from '@/stores/settings'
 import { useAppStore, type RuntimeBackend } from '@/stores/app'
-import { useUpdateStore } from '@/stores/update'
 import { activeRuntimeEnvironment, runtimeCoreSyncAvailable, runtimeToActivate } from '@/utils/runtime'
 import './styles/global.scss'
 import './features/media-ui/media-ui.css'
@@ -45,7 +43,6 @@ async function bootstrap() {
 
   const settings = useSettingsStore(pinia)
   const appState = useAppStore(pinia)
-  const updates = useUpdateStore(pinia)
   await settings.initialize().catch((error) => {
     studioLog.warn('Failed to initialize settings', error)
   })
@@ -57,10 +54,6 @@ async function bootstrap() {
       studioLog.warn('Failed to connect editor export preferences', error)
     }
   }
-  const pluginHost = await pluginHostCapabilities()
-  if (pluginHost.labBuild !== true) await updates.initialize().catch((error) => {
-    studioLog.warn('Failed to initialize update store', error)
-  })
   const tasks = await import('@/stores/task').then((mod) => mod.useTaskStore(pinia))
   if (isMainTaskOwner()) await tasks.initialize().catch((error) => {
     studioLog.warn('Failed to initialize tasks', error)
@@ -82,21 +75,11 @@ async function bootstrap() {
   initTheme(settings.themeMode, settings.themeAccent)
   try {
     const { invoke } = await import('@tauri-apps/api/core')
-    const buildInfo = await invoke<{ version?: string; variant?: string; updateSupported?: boolean }>('get_build_info')
+    const buildInfo = await invoke<{ version?: string; variant?: string }>('get_build_info')
     appState.buildInfoVersion = buildInfo.version || ''
     appState.buildInfoVariant = buildInfo.variant || ''
-    appState.buildInfoUpdateSupported = buildInfo.updateSupported === true
   } catch (error: unknown) {
     studioLog.warn('Failed to load build info version', error)
-  }
-  if (!updates.restartRequired && appState.buildInfoVersion && updates.hasPendingDeferredVersion(appState.buildInfoVersion)) {
-    updates.status = 'ready'
-  }
-  if (isTauriRuntime() && isMainTaskOwner()) {
-    await router.isReady()
-    await nextTick()
-    const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('confirm_managed_update_startup')
   }
   appState.checkRuntimeInfo().then(async (runtime) => {
     // If the active pointer was lost (for example after an overwrite that preserved the
@@ -130,9 +113,6 @@ async function bootstrap() {
     return undefined
   }).catch((error) => {
     studioLog.warn('Failed to load runtime info', error)
-  })
-  if (pluginHost.labBuild !== true) void updates.checkForUpdates().catch((error) => {
-    studioLog.warn('Failed to check for updates', error)
   })
 }
 

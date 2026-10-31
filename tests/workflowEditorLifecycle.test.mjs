@@ -57,7 +57,6 @@ const vite = await createServer({
       `
       if (path.endsWith('/src/stores/settings.ts')) return 'export const useSettingsStore = () => ({ shouldShowStartupOnboarding: false })'
       if (path.endsWith('/src/stores/app.ts')) return 'export const useAppStore = () => ({ runtimeInfo: null, runtimeCoreVersions: null })'
-      if (path.endsWith('/src/stores/update.ts')) return 'export const useUpdateStore = () => ({ shouldShowDeferred: false })'
       if (path.endsWith('/src/utils/theme.ts')) return `
         import { ref } from 'vue'
         export const themeIsDark = ref(false)
