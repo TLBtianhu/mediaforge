@@ -2768,6 +2768,7 @@ pub async fn move_paths_to_trash(paths: Vec<String>, empty_dirs: Option<Vec<Stri
 
 #[cfg(test)]
 mod tests {
+    use crate::commands::app::debug::validate_debug_runtime_override;
     use super::*;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
