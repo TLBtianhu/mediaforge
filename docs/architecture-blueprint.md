@@ -160,8 +160,9 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 仍然保留、明确不在本轮处理的：
 
 - 音频引擎仍是外部 pymss 包，通过 `audio_tools` 适配器接入。
-  - `worker_bootstrap.py`（2430 行）仍是单文件；它的测试大量直接 patch 内部符号，
-    拆分必须先补公共 API，再拆实现。
+  - `worker_bootstrap.py` 现在是 232 行门面，实现整体在 `core/bootstrap_parts.py`；
+    所有跨符号引用都改写为 `worker_bootstrap.<name>`，因此测试对门面打补丁仍然有效，
+    下一步可以把 parts 按依赖层机械拆分而不用改测试。
 
 ## 6. 物理分层现状（0.0.23 之后）
 
@@ -186,7 +187,7 @@ python/
 | `commands/plugin_host.rs` | 2955 | 1300（余下几乎全是测试） | process / session / state / live / request / scan_engine / scan / render |
 | `views/SeparateView.vue` | 4824 | 2682 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList}.ts` |
 | `views/DebugView.vue` | 3457 | 1718 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint}.ts` |
-| `python/core/worker_bootstrap.py` | 2430 | 2430（未动，等 API 优先） | — |
+| `python/core/worker_bootstrap.py` | 2430 | 232（门面）+ `bootstrap_parts.py` 2395 | 实现已移入门面背后；下一步把 parts 按层再拆 |
 
 拆分边界由测试契约决定：`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`
 都会按名字从 SFC/源码里取声明并执行，被取用的声明必须留在顶层；其余逻辑才可外移。
