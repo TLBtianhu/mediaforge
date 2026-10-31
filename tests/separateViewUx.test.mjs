@@ -42,6 +42,7 @@ assert.equal(selected.length, names.size - 11)
 const code = ts.transpileModule(selected.map(statement => statement.getText(script)).join('\n'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText
+const queueModuleSource = readFileSync(new URL('../src/views/separate/queue.ts', import.meta.url), 'utf8')
 const playbackCode = ts.transpileModule(readFileSync(new URL('../src/views/separate/playback.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
 const logSource = ts.createSourceFile('taskLog.ts', readFileSync(new URL('../src/utils/taskLog.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true)
 const logLevelFunctions = logSource.statements.filter(statement => (
@@ -201,12 +202,12 @@ test('model library keeps cached cards visible while refreshing them in the back
 test('running batches can move to the background while a new batch is composed', () => {
   assert.ok(scriptSource.includes('const composingNewJob = ref(false)'))
   assert.ok(scriptSource.includes('const showQueueModal = ref(false)'))
-  assert.ok(scriptSource.includes('composingNewJob.value ? null : (focusedJob.value || newestRunningJob.value)'))
+  assert.ok(queueModuleSource.includes('composingNewJob.value ? null : (focusedJob.value || newestRunningJob.value)'))
   assert.ok(scriptSource.includes('function beginNextSeparation()'))
-  assert.ok(scriptSource.includes('function focusQueueJob(target: SeparationJob)'))
-  assert.ok(scriptSource.includes('const recentFailedJobs = computed(() => separationSessionJobs.value'))
+  assert.ok(queueModuleSource.includes('function focusQueueJob(target: SeparationJob)'))
+  assert.ok(queueModuleSource.includes('const recentFailedJobs'))
   assert.ok(scriptSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
-  assert.ok(scriptSource.includes('task.clearFinishedSessionJobs(separationSessionJobs.value.map(job => job.id))'))
+  assert.ok(queueModuleSource.includes('clearFinishedSessionJobs(separationSessionJobs.value.map'))
   assert.ok(template.includes("t('separate.addNextBatch')"))
   assert.ok(template.includes('v-if="hasQueueEntries"'))
   assert.ok(template.includes('v-model:show="showQueueModal"'))
@@ -216,15 +217,6 @@ test('running batches can move to the background while a new batch is composed',
 })
 
 test('separation task views and queue actions exclude editor workflows while retaining quick Ensemble', async () => {
-  const selectedNames = new Set([
-    'isSeparationJob', 'isNoResultSeparationJob', 'separationJobs', 'separationSessionJobs', 'noResultSeparationJobs', 'newestRunningJob',
-    'backgroundRunningJobs', 'backgroundQueuedJobs', 'completedSessionJobs', 'recentFailedJobs', 'cancelledSessionJobs',
-    'queueJobs', 'focusedJob', 'currentJob', 'focusQueueJob', 'dismissQueueJob', 'clearFinishedQueueJobs', 'cancelQueueJob',
-  ])
-  const statements = script.statements.filter(statement => ts.isFunctionDeclaration(statement)
-    ? selectedNames.has(statement.name?.text)
-    : ts.isVariableStatement(statement) && statement.declarationList.declarations.some(item => selectedNames.has(item.name.getText(script))))
-  assert.equal(statements.length, selectedNames.size)
   const job = (id, status, config) => ({ id, status, createdAt: 1, updatedAt: 1,
     primary: { runConfig: config }, tasks: [{ id, status, runConfig: config, files: [], outputs: status === 'done' ? [{ path: 'out.wav' }] : [] }] })
   const model = job('model', 'separating', { runMode: 'model' })
@@ -243,12 +235,11 @@ test('separation task views and queue actions exclude editor workflows while ret
   const focusedSeparationJobId = ref('editor')
   const composingNewJob = ref(false)
   const queueScope = ref('session')
-  const logic = ts.transpileModule(statements.map(statement => statement.getText(script)).join('\n'), {
-    compilerOptions: { target: ts.ScriptTarget.ES2022 },
-  }).outputText
-  const result = vm.runInNewContext(`${logic}\n({ currentJob, queueJobs, focusQueueJob, dismissQueueJob, clearFinishedQueueJobs, cancelQueueJob })`, {
+  const queueModuleSource = readFileSync(new URL('../src/views/separate/queue.ts', import.meta.url), 'utf8')
+const logic = ts.transpileModule(readFileSync(new URL('../src/views/separate/queue.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
+  const result = vm.runInNewContext(`${logic}\nmakeQueue`, {
     computed, task, focusedSeparationJobId, composingNewJob, queueScope, showQueueModal: ref(true), cancellingQueueJobId: ref(null),
-  })
+  })({ computed, task, focusedSeparationJobId, composingNewJob, queueScope, showQueueModal: ref(true), cancellingQueueJobId: ref(null) })
   assert.equal(result.currentJob.value.id, 'model')
   assert.deepEqual(Array.from(result.queueJobs.value, item => item.id), ['model', 'ensemble'])
   queueScope.value = 'no-results'

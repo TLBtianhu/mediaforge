@@ -40,6 +40,7 @@ import { useModelList } from './separate/useModelList'
 import { makeInferenceDefaults } from './separate/inferenceDefaults'
 import { makePlayback } from './separate/playback'
 import { makeStemSelection } from './separate/stemSelection'
+import { makeQueue } from './separate/queue'
 import { useOutputNaming } from './separate/useOutputNaming'
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
 import { resolveJobStatus } from '@/features/tasks/lifecycle'
@@ -154,6 +155,12 @@ const composingNewJob = ref(false)
 const submittingJob = ref(false)
 const cancellingTaskId = ref<string | null>(null)
 const cancellingQueueJobId = ref<string | null>(null)
+const {
+  isSeparationJob, isNoResultSeparationJob, separationJobs, separationSessionJobs,
+  noResultSeparationJobs, newestRunningJob, backgroundRunningJobs, backgroundQueuedJobs,
+  completedSessionJobs, recentFailedJobs, cancelledSessionJobs, queueJobs, focusedJob, currentJob,
+  focusQueueJob, dismissQueueJob, clearFinishedQueueJobs, cancelQueueJob,
+} = makeQueue({ task, focusedSeparationJobId, composingNewJob, showQueueModal, queueScope, cancellingQueueJobId, computed })
 const audioElements = new Map<string, HTMLAudioElement>()
 const audioAccessOrder: string[] = []
 const playingOutputPath = ref('')
@@ -584,84 +591,17 @@ const canStart = computed(() => (
     ? ensembleReady.value
     : (modelDownloaded.value && inputFiles.value.length > 0 && hasOutputStemSelection.value))
 ))
-function isSeparationJob(job: SeparationJob) {
-  return !job.primary.runConfig?.workbench
-}
-function isNoResultSeparationJob(job: SeparationJob) {
-  return isSeparationJob(job) && job.tasks.every(item => ['done', 'failed', 'cancelled'].includes(item.status))
-    && !job.tasks.some(item => item.status === 'done' && !item.resultHidden && (item.outputs.length || item.files.length))
-}
-const separationJobs = computed(() => task.allJobs.filter(isSeparationJob))
-const separationSessionJobs = computed(() => task.sessionJobs.filter(isSeparationJob))
-
-function journalAudioJob(job: SeparationJob) {
-  const statusMap: Record<string, 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'> = {
-    queued: 'queued',
-    running: 'running',
-    done: 'completed',
-    failed: 'failed',
-    cancelled: 'cancelled',
-  }
-  void journalJob({
-    jobId: job.id,
-    command: 'separation',
-    source: 'manual',
-    status: statusMap[job.status] || 'running',
-    fraction: Math.max(0, Math.min(1, Number(job.progress || 0) / 100)),
-    message: `${job.model} · ${job.inputCount} ${t('separate.queueFileUnit')}`,
-    createdAt: job.createdAt / 1000,
-    finishedAt: job.finishedAt ? job.finishedAt / 1000 : null,
-    payload: { operation: 'separation', model: job.model, inputs: job.tasks.map(item => item.input) },
-    result: { outputs: job.tasks.flatMap(item => item.outputs) },
-    cancelTaskId: job.primary?.id,
-  })
-}
-
-watch(separationSessionJobs, jobs => {
-  for (const job of jobs) journalAudioJob(job)
-}, { deep: true, immediate: true })
-const noResultSeparationJobs = computed(() => separationJobs.value.filter(isNoResultSeparationJob)
-  .sort((left, right) => right.updatedAt - left.updatedAt))
-const newestRunningJob = computed(() => {
-  return [...separationJobs.value]
-    .filter(job => job.tasks.some(item => !['done', 'failed', 'cancelled'].includes(item.status)))
-    .sort((a, b) => b.createdAt - a.createdAt)[0] || null
-})
-const backgroundRunningJobs = computed(() => separationSessionJobs.value
-  .filter(job => !['queued', 'done', 'failed', 'cancelled'].includes(job.status))
-  .sort((left, right) => right.updatedAt - left.updatedAt))
-const backgroundQueuedJobs = computed(() => separationSessionJobs.value
-  .filter(job => job.status === 'queued')
-  .sort((left, right) => left.createdAt - right.createdAt))
-const completedSessionJobs = computed(() => separationSessionJobs.value
-  .filter(job => job.status === 'done')
-  .sort((left, right) => right.updatedAt - left.updatedAt))
-const recentFailedJobs = computed(() => separationSessionJobs.value
-  .filter(job => job.status === 'failed')
-  .sort((left, right) => right.updatedAt - left.updatedAt))
-const cancelledSessionJobs = computed(() => separationSessionJobs.value
-  .filter(job => job.status === 'cancelled')
-  .sort((left, right) => right.updatedAt - left.updatedAt))
-const queueJobs = computed(() => queueScope.value === 'no-results' ? noResultSeparationJobs.value : [
-  ...backgroundRunningJobs.value,
-  ...backgroundQueuedJobs.value,
-  ...recentFailedJobs.value,
-  ...completedSessionJobs.value,
-  ...cancelledSessionJobs.value,
-])
 const finishedSessionJobCount = computed(() => recentFailedJobs.value.length + completedSessionJobs.value.length + cancelledSessionJobs.value.length)
 const hasQueueEntries = computed(() => queueJobs.value.length > 0 || noResultSeparationJobs.value.length > 0)
-const focusedJob = computed(() => separationJobs.value.find(job => job.id === focusedSeparationJobId.value) || null)
-const currentJob = computed(() => composingNewJob.value ? null : (focusedJob.value || newestRunningJob.value))
-const focusedBatchTasks = computed(() => currentJob.value?.tasks || [])
-const activeFocusedBatchTask = computed(() => {
+const focusedBatchTasks = computed<SeparationTask[]>(() => currentJob.value?.tasks || [])
+const activeFocusedBatchTask = computed<SeparationTask | null>(() => {
   return [...focusedBatchTasks.value]
-    .filter(item => !['done', 'failed', 'cancelled'].includes(item.status))
-    .sort((a, b) => {
+    .filter((item: SeparationTask) => !['done', 'failed', 'cancelled'].includes(item.status))
+    .sort((a: SeparationTask, b: SeparationTask) => {
       const aQueued = a.status === 'queued' ? 1 : 0
       const bQueued = b.status === 'queued' ? 1 : 0
       if (aQueued !== bQueued) return aQueued - bQueued
-      return a.createdAt - b.createdAt
+      return Number(a.createdAt) - Number(b.createdAt)
     })[0] || null
 })
 const currentTask = computed(() => {
@@ -1532,27 +1472,9 @@ function beginNextSeparation() {
   composingNewJob.value = true
 }
 
-function focusQueueJob(target: SeparationJob) {
-  if (!isSeparationJob(target)) return false
-  composingNewJob.value = false
-  focusedSeparationJobId.value = target.id
-  showQueueModal.value = false
-  return true
-}
-
 function viewQueueJobLogs(target: SeparationJob) {
   if (!focusQueueJob(target)) return
   void nextTick(() => { showLogModal.value = true })
-}
-
-function dismissQueueJob(target: SeparationJob) {
-  if (!isSeparationJob(target)) return
-  task.removeSessionJob(target.id)
-  if (focusedSeparationJobId.value === target.id) focusedSeparationJobId.value = null
-}
-
-function clearFinishedQueueJobs() {
-  task.clearFinishedSessionJobs(separationSessionJobs.value.map(job => job.id))
 }
 
 function removeSeparationRunRecords(jobs: SeparationJob[]) {
@@ -1580,28 +1502,6 @@ function queueJobInputSummary(job: SeparationJob) {
   return job.inputCount > 1
     ? t('separate.queueBatchInputs', { count: job.inputCount, name: first })
     : first
-}
-
-async function cancelQueueJob(job: SeparationJob) {
-  if (!isSeparationJob(job) || cancellingQueueJobId.value) return false
-  const targets = job.tasks.filter(item => !['done', 'failed', 'cancelled'].includes(item.status))
-  if (!targets.length) return false
-  cancellingQueueJobId.value = job.id
-  try {
-    let cancelled = 0
-    for (const item of targets) {
-      // Keep cancellation serialized because the Rust worker manager accepts
-      // one cancellation transition at a time.
-      // eslint-disable-next-line no-await-in-loop
-      if (await task.cancelTask(item.id)) cancelled += 1
-    }
-    // A batch shares one Worker process. Cancelling its primary task can stop
-    // the whole Worker, so later child cancellations may legitimately return
-    // false even though the batch cancellation succeeded.
-    return cancelled > 0 || targets.every(item => ['done', 'failed', 'cancelled'].includes(item.status))
-  } finally {
-    cancellingQueueJobId.value = null
-  }
 }
 
 function requestCancelQueueJob(job: SeparationJob) {
