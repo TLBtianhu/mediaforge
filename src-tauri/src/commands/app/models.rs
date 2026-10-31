@@ -8,7 +8,7 @@ use crate::state::AppState;
 use serde_json::Value;
 use tauri::{AppHandle, State};
 
-use super::super::app_cmd::chrono_like_timestamp;
+use super::common::chrono_like_timestamp;
 
 #[tauri::command]
 pub async fn get_model_info(app: AppHandle, payload: Value) -> AppResult<Value> {

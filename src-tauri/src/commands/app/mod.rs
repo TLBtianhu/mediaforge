@@ -1,3 +1,4 @@
+pub mod common;
 pub mod debug;
 pub mod dialogs;
 pub mod editor;

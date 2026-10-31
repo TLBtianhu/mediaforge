@@ -2,7 +2,7 @@
 //!
 //! 从 app_cmd.rs 拆出；这些命令只做参数透传或设置插件视图根目录。
 
-use crate::commands::app_cmd::chrono_like_timestamp;
+use crate::commands::app::common::chrono_like_timestamp;
 use crate::error::{AppError, AppResult};
 use crate::python::worker::{run_worker_with_payload, spawn_worker_background};
 use crate::state::AppState;

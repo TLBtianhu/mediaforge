@@ -13,7 +13,7 @@ use crate::commands::tempo_key;
 use crate::python::worker::kill_process_tree;
 use crate::workflow_editors::{RegistrySnapshot, WorkflowEditors};
 
-use crate::commands::app_cmd::chrono_like_timestamp;
+use crate::commands::app::common::chrono_like_timestamp;
 
 #[tauri::command]
 pub async fn start_separation(
@@ -61,17 +61,6 @@ pub async fn start_workflow_inference(
 #[tauri::command]
 pub fn get_workflow_editors(editors: State<'_, WorkflowEditors>) -> RegistrySnapshot {
     editors.registry().snapshot()
-}
-
-pub(crate) fn value_type(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "bool",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
 }
 
 

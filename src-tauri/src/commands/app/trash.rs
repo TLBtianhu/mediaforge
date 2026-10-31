@@ -9,7 +9,7 @@ use std::path::Path;
 use std::process::Command;
 use tauri::AppHandle;
 
-use crate::commands::app_cmd::normalize_path_key;
+use crate::commands::app::editor::normalize_path_key;
 
 #[derive(Serialize)]
 pub struct TrashResult {

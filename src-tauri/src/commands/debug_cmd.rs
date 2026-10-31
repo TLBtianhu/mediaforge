@@ -1,7 +1,7 @@
 //! 诊断/调试用的 Tauri 命令。
 //!
 //! 这些命令只在排查问题时被调用（日志、目录指针、运行时覆盖、目录快照），
-//! 与业务主链路无关，因此单独成文件，避免继续堆在 app_cmd.rs 里。
+//! 与业务主链路无关，因此单独成文件，不混进 app/ 下的命令模块。
 
 use super::app::debug::{
     collect_debug_runtime_files, create_debug_runtime_backup, debug_runtime_backup_path,
