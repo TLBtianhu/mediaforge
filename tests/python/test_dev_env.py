@@ -52,8 +52,11 @@ class DevEnvTests(unittest.TestCase):
         with mock.patch.object(dev_env, "DEV_ENV", self.path):
             self.path.write_text("MODELSCOPE_API_TOKEN=PASTE_TOKEN_HERE\n", encoding="utf-8")
             with mock.patch.object(dev_env, "LEGACY_TOKEN_FILE", self.path.parent / "missing.txt"):
-                with self.assertRaises(dev_env.MissingToken) as ctx:
-                    dev_env.modelscope_token({})
+                # 真实机器上 HKCU\Environment 可能存着令牌；这条用例只测"占位符不算数"，
+                # 所以把注册表来源也钉成空，否则会随机通过/失败。
+                with mock.patch.object(dev_env, "_registry_env", return_value=""):
+                    with self.assertRaises(dev_env.MissingToken) as ctx:
+                        dev_env.modelscope_token({})
         self.assertIn("dev.env", str(ctx.exception))
 
     def test_dev_data_is_gitignored(self) -> None:
