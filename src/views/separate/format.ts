@@ -53,3 +53,30 @@ export function formatProgressTime(seconds: number) {
 export function compareModelNames(a: string, b: string, locale: string) {
   return a.localeCompare(b, locale === 'zh-CN' ? 'zh-CN' : 'en')
 }
+
+export const WINDOWS_RESERVED_FILENAMES = new Set([
+  'CON',
+  'PRN',
+  'AUX',
+  'NUL',
+  ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
+  ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
+])
+
+export const MAX_FILENAME_PART_BYTES = 200
+
+export function getFileName(path: string) {
+  return path.split(/[/\\]/).filter(Boolean).pop() || path
+}
+
+export function stripFileExtension(path: string) {
+  return getFileName(path).replace(/\.[^/.\\]+$/, '')
+}
+
+export function safeFilenamePart(value: string) {
+  let text = normalizeFilenameFragment(value).replace(/^[ ._]+|[ ._]+$/g, '')
+  text = truncateUtf8(text, MAX_FILENAME_PART_BYTES) || 'output'
+  const reservedKey = text.split('.', 1)[0].toUpperCase()
+  if (WINDOWS_RESERVED_FILENAMES.has(reservedKey) || text === '.' || text === '..') text = `${text}_`
+  return text
+}

@@ -33,8 +33,10 @@ import {
 } from '@vicons/ionicons5'
 import {
   compareModelNames, formatDateToken, formatLegacyTimeToken, formatPlaybackTime, formatProgressTime,
-  formatTimeToken, normalizeFilenameFragment, padNumber, truncateUtf8,
+  formatTimeToken, getFileName, normalizeFilenameFragment, padNumber, safeFilenamePart,
+  stripFileExtension, truncateUtf8,
 } from './separate/format'
+import { useOutputNaming } from './separate/useOutputNaming'
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
 import { resolveJobStatus } from '@/features/tasks/lifecycle'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
@@ -159,17 +161,13 @@ const draggedInputIndex = ref<number | null>(null)
 const inputDragPointerId = ref<number | null>(null)
 const draggedStemIndex = ref<number | null>(null)
 const stemDragPointerId = ref<number | null>(null)
-const namingTemplateInputRef = ref<any>(null)
 const STEM_ORDER_ROW_HEIGHT = 43
+// 测试会在 VM 里单独执行 validateOutputDirectory，所以这个常量保留组件内定义。
 const WINDOWS_RESERVED_FILENAMES = new Set([
-  'CON',
-  'PRN',
-  'AUX',
-  'NUL',
+  'CON', 'PRN', 'AUX', 'NUL',
   ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
   ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
 ])
-const MAX_FILENAME_PART_BYTES = 200
 const PREVIEW_AUDIO_CACHE_LIMIT = 8
 let unlistenDragDrop: UnlistenFn | null = null
 
@@ -546,16 +544,6 @@ const selectedStemDetail = computed(() => {
   return selectedStemSummary.value
 })
 
-const namingTokens = computed(() => [
-  { value: '%index%', label: t('separate.namingTokenIndex') },
-  { value: '%input_number%', label: t('separate.namingTokenInputNumber') },
-  { value: '%filename%', label: t('separate.namingTokenFilename') },
-  { value: '%stem%', label: t('separate.namingTokenStem') },
-  { value: '%model%', label: t('separate.namingTokenModel') },
-  { value: '%yyyyMMdd%', label: t('separate.namingTokenDate') },
-  { value: '%hhmmss%', label: t('separate.namingTokenTime') },
-  { value: '%ddmmss%', label: t('separate.namingTokenLegacyTime') },
-])
 
 function normalizeStemOrder(order: string[], stems: string[]) {
   const byKey = new Map(stems.map(stem => [stem.toLowerCase(), stem]))
@@ -704,18 +692,14 @@ const outputPreview = computed(() => {
   return `${base}${separator}${t('separate.resultFolderPreview')}${separator}${previewName}`
 })
 const effectiveFormat = computed(() => String(settings.defaultFormat || 'wav').trim().toLowerCase() || 'wav')
+
+const {
+  namingTemplateInputRef, namingTokens, outputNamingPreviewFiles, outputNamingPreviewParts, insertNamingToken,
+} = useOutputNaming({
+  t, inputFiles, ensembleEnabled, selectedModelName, orderedOutputStems, outputNamingTemplate,
+  outputNamingConfig, effectiveFormat,
+})
 const formatLabel = computed(() => effectiveFormat.value.toUpperCase())
-const outputNamingPreviewFiles = computed(() => {
-  const stems = orderedOutputStems.value.length ? orderedOutputStems.value : ['vocals']
-  return stems.slice(0, 8).map((stem, index) => formatOutputNamingPreviewFile(stem, index))
-})
-const outputNamingPreviewParts = computed(() => {
-  const stems = orderedOutputStems.value.length ? orderedOutputStems.value : ['vocals']
-  return stems.slice(0, 8).map((stem, index) => ({
-    key: `${stem}-${index}`,
-    parts: formatOutputNamingPreviewParts(stem, index),
-  }))
-})
 const outputSummaryPath = computed(() => outputPreview.value)
 const canStart = computed(() => (
   !submittingJob.value
@@ -1069,10 +1053,6 @@ function stopAllPreviewAudio() {
   outputPlayback.value = {}
 }
 
-function getFileName(path: string) {
-  return path.split(/[/\\]/).filter(Boolean).pop() || path
-}
-
 function validateOutputDirectory(value: string, platform: 'windows' | 'macos' | 'linux') {
   const path = String(value || '').trim()
   if (!path) return ''
@@ -1103,67 +1083,8 @@ function validateOutputDirectory(value: string, platform: 'windows' | 'macos' | 
   return isAbsolute ? '' : t('separate.outputDirectoryAbsoluteRequired')
 }
 
-function stripFileExtension(path: string) {
-  return getFileName(path).replace(/\.[^/.\\]+$/, '')
-}
 
 
-function safeFilenamePart(value: string) {
-  let text = normalizeFilenameFragment(value).replace(/^[ ._]+|[ ._]+$/g, '')
-  text = truncateUtf8(text, MAX_FILENAME_PART_BYTES) || 'output'
-  const reservedKey = text.split('.', 1)[0].toUpperCase()
-  if (WINDOWS_RESERVED_FILENAMES.has(reservedKey) || text === '.' || text === '..') text = `${text}_`
-  return text
-}
-
-function formatOutputNamingPreviewFile(stem: string, stemIndex: number) {
-  return formatOutputNamingPreviewParts(stem, stemIndex).map(part => part.text).join('')
-}
-
-function formatOutputNamingPreviewParts(stem: string, stemIndex: number) {
-  const inputPath = inputFiles.value[0] || t('separate.resultFolderPreview')
-  const modelName = ensembleEnabled.value ? 'Ensemble' : selectedModelName.value || t('separate.model')
-  const now = new Date()
-  const values: Record<string, string> = {
-    '%index%': padNumber(stemIndex + 1),
-    '%input_number%': '01',
-    '%filename%': stripFileExtension(inputPath),
-    '%stem%': stem,
-    '%model%': modelName,
-    '%yyyyMMdd%': formatDateToken(now),
-    '%hhmmss%': formatTimeToken(now),
-    '%ddmmss%': formatLegacyTimeToken(now),
-  }
-  const template = outputNamingConfig.value.enabled ? outputNamingConfig.value.template : '%filename%_%stem%'
-  const parts: Array<{ text: string; token: string }> = []
-  const tokenPattern = /%(?:index|input_number|filename|stem|model|yyyyMMdd|hhmmss|ddmmss)%/g
-  let cursor = 0
-  for (const match of template.matchAll(tokenPattern)) {
-    const token = match[0]
-    const index = match.index ?? 0
-    if (index > cursor) parts.push({ text: template.slice(cursor, index), token: 'literal' })
-    parts.push({ text: values[token] || token, token })
-    cursor = index + token.length
-  }
-  if (cursor < template.length) parts.push({ text: template.slice(cursor), token: 'literal' })
-  const namedParts = parts.length
-    ? parts.map(part => ({ ...part, text: normalizeFilenameFragment(part.text) }))
-    : [{ text: 'output', token: 'literal' }]
-  const firstPart = namedParts[0]
-  const lastPart = namedParts[namedParts.length - 1]
-  firstPart.text = firstPart.text.replace(/^[ ._]+/g, '')
-  lastPart.text = lastPart.text.replace(/[ ._]+$/g, '')
-  const fullName = namedParts.map(part => part.text).join('')
-  if (!fullName) namedParts.splice(0, namedParts.length, { text: 'output', token: 'literal' })
-  else {
-    const safeName = safeFilenamePart(fullName)
-    if (safeName.startsWith(fullName)) lastPart.text += safeName.slice(fullName.length)
-  }
-  return [
-    ...namedParts.filter(part => part.text),
-    { text: `.${effectiveFormat.value || 'wav'}`, token: 'extension' },
-  ]
-}
 
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items
@@ -1235,32 +1156,6 @@ function finishStemPointerDrag(event?: PointerEvent) {
   draggedStemIndex.value = null
 }
 
-async function insertNamingToken(token: string) {
-  const input = namingTemplateInputRef.value?.inputElRef as HTMLInputElement | undefined
-  const current = outputNamingTemplate.value
-  const withSeparators = (start: number, end: number) => {
-    const before = current.slice(0, start)
-    const after = current.slice(end)
-    const prefix = before && !before.endsWith('_') ? '_' : ''
-    const suffix = after && !after.startsWith('_') ? '_' : ''
-    return {
-      text: `${before}${prefix}${token}${suffix}${after}`,
-      cursor: before.length + prefix.length + token.length,
-    }
-  }
-  if (!input) {
-    const next = withSeparators(current.length, current.length)
-    outputNamingTemplate.value = next.text
-    return
-  }
-  const start = input.selectionStart ?? current.length
-  const end = input.selectionEnd ?? start
-  const next = withSeparators(start, end)
-  outputNamingTemplate.value = next.text
-  await nextTick()
-  input.focus()
-  input.setSelectionRange(next.cursor, next.cursor)
-}
 
 function resetOutputNaming() {
   outputNamingTemplate.value = '%index%_%filename%_%stem%'
