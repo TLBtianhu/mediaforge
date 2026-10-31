@@ -10,14 +10,6 @@ mod error;
 mod log_record;
 mod model_dir_migration;
 mod plugin_views;
-#[cfg(any(target_os = "macos", test))]
-mod macos_update;
-#[cfg(any(target_os = "linux", test))]
-mod linux_update;
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
-mod update_startup;
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
-mod update_stream;
 mod python;
 mod rba;
 mod session_log;
@@ -27,8 +19,6 @@ mod runtime_assets;
 mod version_check;
 mod storage;
 mod terminal;
-mod update_manager;
-mod update_sources;
 mod workflow_editors;
 
 use state::AppState;
@@ -48,15 +38,7 @@ fn main() {
     if session_log::configure_startup_logging(std::env::args_os().skip(1)) {
         session_log::early("DEBUG", "app.debug", "Verbose logging enabled by --debug");
     }
-    #[cfg(not(feature = "vst-lab"))]
-    if let Some(code) = update_manager::run_helper_from_args() {
-        std::process::exit(code);
-    }
-    #[cfg(not(feature = "vst-lab"))]
-    if let Some(code) = update_manager::recover_interrupted_update_from_startup() {
-        std::process::exit(code);
-    }
-    // Managed-update/helper modes return above. Normal launches acquire a
+    // Normal launches acquire a
     // process-wide lock so a second launch cannot create another WebView
     // process and operate on the same runtime environment concurrently.
     let _single_instance = match single_instance::acquire_or_focus() {
@@ -106,7 +88,6 @@ fn main() {
         .manage(workflow_editors::WorkflowEditors::default());
 
     #[cfg(all(desktop, not(feature = "vst-lab")))]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -197,10 +178,6 @@ fn main() {
             commands::debug_cmd::debug_editor_playback,
             commands::app_cmd::editor_preview_chunk,
             commands::debug_cmd::debug_log_read,
-            commands::app_cmd::check_managed_update,
-            commands::app_cmd::start_managed_update,
-            commands::app_cmd::confirm_managed_update_startup,
-            commands::app_cmd::get_managed_update_state,
             commands::debug_cmd::debug_runtime_override_active,
             commands::debug_cmd::debug_runtime_pointers,
             commands::debug_cmd::debug_runtime_restore_file,

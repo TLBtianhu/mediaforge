@@ -11,7 +11,6 @@ use crate::python::worker::{
 use crate::session_log::{self, DebugLogContent, DebugLogInfo, DebugLogReport};
 use crate::state::{AppState, ProxySettings};
 use crate::storage;
-use crate::update_manager;
 use crate::workflow_editors::{self, RegistrySnapshot, WorkflowEditorKind, WorkflowEditors};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
@@ -38,7 +37,6 @@ pub struct BuildInfo {
     build_time: &'static str,
     target: &'static str,
     variant: &'static str,
-    update_supported: bool,
     official: bool,
 }
 
@@ -107,66 +105,9 @@ pub fn get_build_info() -> BuildInfo {
         build_time: option_env!("PYMSS_BUILD_TIME").unwrap_or(""),
         target: option_env!("PYMSS_BUILD_TARGET").unwrap_or("dev"),
         variant: option_env!("PYMSS_BUILD_VARIANT").unwrap_or("development"),
-        update_supported: !cfg!(feature = "vst-lab")
-            && option_env!("PYMSS_BUILD_UPDATE_SUPPORTED") == Some("true")
-            && option_env!("PYMSS_BUILD_OFFICIAL") == Some("true")
-            && update_manager::update_supported(),
         official: option_env!("PYMSS_BUILD_OFFICIAL") == Some("true"),
     }
 }
-
-#[tauri::command]
-pub async fn check_managed_update(
-    app: AppHandle,
-    channel: update_manager::UpdateChannel,
-    endpoint_override: Option<String>,
-    source: Option<update_manager::UpdateSource>,
-) -> AppResult<Option<update_manager::ManagedUpdateInfo>> {
-    if cfg!(feature = "vst-lab") {
-        return Err(AppError::Worker("Updates are disabled in VST Lab".into()));
-    }
-    update_manager::check(&app, channel, endpoint_override, source.unwrap_or_default()).await
-}
-
-#[tauri::command]
-pub async fn start_managed_update(
-    app: AppHandle,
-    channel: update_manager::UpdateChannel,
-    endpoint_override: Option<String>,
-    expected_version: String,
-    source: Option<update_manager::UpdateSource>,
-) -> AppResult<()> {
-    if cfg!(feature = "vst-lab") {
-        return Err(AppError::Worker("Updates are disabled in VST Lab".into()));
-    }
-    update_manager::start(&app, channel, endpoint_override, expected_version, source.unwrap_or_default()).await
-}
-
-#[tauri::command]
-pub fn get_managed_update_state() -> Value {
-    serde_json::json!({ "restartRequired": update_manager::restart_required() })
-}
-
-#[tauri::command]
-pub fn confirm_managed_update_startup(window: tauri::WebviewWindow) -> AppResult<()> {
-    if cfg!(feature = "vst-lab") {
-        return Ok(());
-    }
-    #[cfg(target_os = "macos")]
-    if window.label() == "main" {
-        crate::macos_update::confirm_startup(window.app_handle())?;
-    }
-    #[cfg(target_os = "linux")]
-    if window.label() == "main" {
-        crate::linux_update::confirm_startup(window.app_handle())?;
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    let _ = window;
-    Ok(())
-}
-
-
-
 
 #[tauri::command]
 pub fn write_frontend_log(app: AppHandle, window: tauri::WebviewWindow, record: Value) -> AppResult<()> {
