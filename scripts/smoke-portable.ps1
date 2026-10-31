@@ -1,0 +1,86 @@
+# 便携版边界冒烟：解压到一个任意目录，确认它用 <exe>\data，且不碰安装版的数据根。
+#
+# 用法：
+#   powershell -ExecutionPolicy Bypass -File scripts/smoke-portable.ps1 `
+#       -Zip release/MediaForge-0.0.23-windows-x64-portable.zip
+#
+# 旧版便携 zip 没有 mediaforge.portable 标记；脚本会先把标记补进 zip 的副本，
+# 用来验证"标记 → 便携数据根"这条链路，而不依赖某个已发布的包。
+param(
+    [Parameter(Mandatory = $true)][string]$Zip,
+    [int]$LaunchSeconds = 8
+)
+
+$ErrorActionPreference = 'Stop'
+$failures = New-Object System.Collections.Generic.List[string]
+function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
+    if ($Ok) { Write-Host ("  [ok]   {0} {1}" -f $Name, $Detail) }
+    else { Write-Host ("  [FAIL] {0} {1}" -f $Name, $Detail); $script:failures.Add("$Name $Detail") }
+}
+
+$source = (Resolve-Path $Zip).Path
+$work = Join-Path $env:TEMP ('mediaforge-portable-smoke-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $work | Out-Null
+$zip = Join-Path $work 'portable.zip'
+Copy-Item $source $zip
+$sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+if (-not (Test-Path $sevenZip)) { throw "需要 7-Zip：$sevenZip" }
+
+Write-Host "便携版冒烟"
+Write-Host "  source: $source"
+Write-Host "  work:   $work"
+
+# 1) 归档里没有标记就补一个（发布产物已经有；旧 zip 用来复现修复前的场景）
+$listing = & $sevenZip l $zip 2>&1 | Out-String
+if ($listing -notmatch 'mediaforge\.portable') {
+    if ($zip -notmatch '\.zip$') { throw "归档缺少 mediaforge.portable，且不是 zip，无法补标记" }
+    $markerDir = Join-Path $work 'marker'
+    New-Item -ItemType Directory -Force -Path $markerDir | Out-Null
+    Set-Content (Join-Path $markerDir 'mediaforge.portable') 'portable' -Encoding ASCII
+    Push-Location $markerDir
+    try {
+        & $sevenZip a -tzip -bso0 -bsp0 $zip 'mediaforge.portable' | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "添加标记失败：$LASTEXITCODE" }
+    } finally { Pop-Location }
+} else {
+    Write-Host '  [ok]   归档已带标记'
+}
+
+# 2) 解压
+$extract = Join-Path $work 'portable'
+& $sevenZip x -o"$extract" -y $zip | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "解压失败：$LASTEXITCODE" }
+# 发布用的 7z 里有一个顶层目录；测试用的 zip 可能是平铺的，两种都要能跑。
+$exeItem = Get-ChildItem -Path $extract -Recurse -Filter 'MediaForge.exe' -File | Select-Object -First 1
+Check '解压后有主程序' ($null -ne $exeItem)
+if (-not $exeItem) { exit 1 }
+$app = $exeItem.Directory.FullName
+$exe = $exeItem.FullName
+Check '标记随包' (Test-Path (Join-Path $app 'mediaforge.portable'))
+
+# 3) 启动，确认数据落在程序旁的 data\，而不是用户的 .mediaforge
+$installedSettings = Join-Path $env:USERPROFILE '.mediaforge\settings'
+$installedBefore = if (Test-Path $installedSettings) { (Get-Item $installedSettings).LastWriteTimeUtc } else { $null }
+$process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru
+Start-Sleep -Seconds $LaunchSeconds
+Check '应用启动后保持运行' (-not $process.HasExited)
+$portableSettings = Join-Path $app 'data\settings'
+Check '数据根在程序旁 data\' (Test-Path $portableSettings)
+if (Test-Path $installedSettings) {
+    $installedAfter = (Get-Item $installedSettings).LastWriteTimeUtc
+    Check '安装版数据根未被写入' ($installedBefore -eq $installedAfter)
+} else {
+    Write-Host '  [skip] 本机没有安装版数据根，跳过"未被写入"检查'
+}
+if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+Start-Sleep -Seconds 1
+
+Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host ''
+if ($failures.Count -gt 0) {
+    Write-Host ("FAILED: {0} 项" -f $failures.Count)
+    $failures | ForEach-Object { Write-Host ("  - {0}" -f $_) }
+    exit 1
+}
+Write-Host 'PASS: 便携版使用程序旁数据根'
+exit 0

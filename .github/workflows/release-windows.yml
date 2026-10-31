@@ -164,6 +164,12 @@ jobs:
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the CUDA portable archive" }
            Pop-Location
 
+      - name: Portable data-root smoke test (CUDA)
+        shell: pwsh
+        run: |
+          $stageName = '${{ needs.windows-cuda-prepare.outputs.stage_name }}'
+          ./scripts/smoke-portable.ps1 -Zip "release/$stageName.7z"
+
       - name: Upload Windows portable archive artifact
         uses: actions/upload-artifact@v4
         with:
@@ -339,6 +345,12 @@ jobs:
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the CPU portable archive" }
            Pop-Location
 
+      - name: Portable data-root smoke test (CPU)
+        shell: pwsh
+        run: |
+          $stageName = '${{ needs.windows-cpu-prepare.outputs.stage_name }}'
+          ./scripts/smoke-portable.ps1 -Zip "release/$stageName.7z"
+
       - name: Upload Windows CPU portable archive artifact
         uses: actions/upload-artifact@v4
         with:
@@ -477,6 +489,7 @@ jobs:
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the Online portable archive" }
            Pop-Location
+
            Push-Location "release/$stageName"
            # Keep bundled tools in the portable archive only. Add bin here when a tool update needs to be distributed.
            & "C:\Program Files\7-Zip\7z.exe" a -tzip $updateArchive "MediaForge.exe" "python"
@@ -484,6 +497,12 @@ jobs:
           Pop-Location
           $updateSize = (Get-Item -LiteralPath $updateArchive).Length
           if ($updateSize -gt 512MB) { throw "Managed update archive exceeds the 512 MiB client limit" }
+      - name: Portable data-root smoke test (Online)
+        shell: pwsh
+        run: |
+          $stageName = '${{ needs.windows-online-prepare.outputs.stage_name }}'
+          ./scripts/smoke-portable.ps1 -Zip "release/$stageName.7z"
+
       - uses: actions/upload-artifact@v4
         with:
           name: MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-online-portable
@@ -644,6 +663,13 @@ jobs:
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the ROCm portable archive" }
            Pop-Location
+
+      - name: Portable data-root smoke test (ROCm)
+        shell: pwsh
+        run: |
+          $stageName = '${{ needs.windows-rocm-prepare.outputs.stage_name }}'
+          ./scripts/smoke-portable.ps1 -Zip "release/$stageName.7z"
+
       - uses: actions/upload-artifact@v4
         with:
           name: MediaForge-${{ needs.windows-rocm-prepare.outputs.version }}-windows-x64-rocm-portable

@@ -15,6 +15,17 @@
 
 便携版靠程序同目录的 `mediaforge.portable` 标记选择 `<exe>\data`；这个文件名必须和打包脚本、CI 完全一致，改名会让便携版静默落回安装版的数据根。
 
+
+## 0.1 形态边界的两条冒烟
+
+| 脚本 | 验证什么 | 在 CI 里跑在哪 |
+|---|---|---|
+| `scripts/smoke-installer.ps1` | 安装版：静默安装 → 契约清单/引导解释器/VC 运行库 → 干净数据根跑 worker → 启动应用 → 卸载只删程序、保留数据 | `release-windows.yml` 的 CUDA setup exe job |
+| `scripts/smoke-portable.ps1` | 便携版：带 `mediaforge.portable` 标记解压 → 启动 → 数据根落在 `<exe>\data`，且安装版 `~/.mediaforge` 未被写入 | `release-windows.yml` 的四个便携 7z job |
+
+旧便携包缺标记时，`smoke-portable.ps1` 会先在 zip 副本里补上标记再测，用来复现"修复前 vs 修复后"的差异；发布产物本身已经带标记，脚本检测到后跳过补写。
+
+
 ## 1. 固定位置（谁都不许改）
 
 | 内容 | 用户态（安装版） | 开发态（仓库） |
