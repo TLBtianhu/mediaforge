@@ -189,8 +189,8 @@ python/
 |---|---|---|---|
 | `commands/app_cmd.rs` | 3467 | 已删除 | `commands/app/` 下 13 个按域模块 |
 | `commands/plugin_host.rs` | 2955 | 134（模块根） | process / session / state / live / request / scan_engine / scan / render，测试移到 `plugin_host/tests.rs`（1165） |
-| `views/SeparateView.vue` | 4824 | 2682 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList}.ts` |
-| `views/DebugView.vue` | 3457 | 1718 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint}.ts` |
+| `views/SeparateView.vue` | 4824 | 2430 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList,inferenceDefaults,playback,stemSelection,queue}.ts` |
+| `views/DebugView.vue` | 3457 | 1689 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint,executionLog}.ts` |
 | `python/core/worker_bootstrap.py` | 2430 | 232（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（484/496/468/1020），跨符号调用走门面 |
 
 拆分边界由测试契约决定：`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`
@@ -240,9 +240,9 @@ powershell -File scripts/smoke-portable.ps1  -Zip       release/MediaForge-<ver>
 
 明确保留的残留工作：
 
-- `SeparateView` 与 `DebugView` 剩下的脚本逻辑被四个源码扫描测试按名字取用
-  （`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`），
-  继续外移需要先改测试的取用方式，已记录为独立的后续任务。
+- Vue 测试已改为直接调用工厂（`makeInferenceDefaults` / `makePlayback` / `makeStemSelection` /
+  `makeQueue` / `makeExecutionLog`），不再从 SFC 按名字取声明；剩余待办只有
+  `runtimePlatformBoundary` 的 4 个运行时调试函数与 `separateViewUx` 的输出目录簇。
 - `plugin_host` 的 97/98 本地失败来自 Windows junction 的 `0xC0000142` 环境问题，
   CI 对应平台通过；`worker_bootstrap` 的 40 个组合错误在单文件基线上同样复现（torch DLL）。
 
