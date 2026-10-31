@@ -188,13 +188,14 @@ python/
 | 文件 | 起点 | 现在 | 拆出的模块 |
 |---|---|---|---|
 | `commands/app_cmd.rs` | 3467 | 已删除 | `commands/app/` 下 13 个按域模块 |
-| `commands/plugin_host.rs` | 2955 | 134（模块根） | process / session / state / live / request / scan_engine / scan / render，测试移到 `plugin_host/tests.rs`（1165） |
-| `views/SeparateView.vue` | 4824 | 2430 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList,inferenceDefaults,playback,stemSelection,queue}.ts` |
-| `views/DebugView.vue` | 3457 | 1689 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint,executionLog}.ts` |
-| `python/core/worker_bootstrap.py` | 2430 | 232（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（484/496/468/1020），跨符号调用走门面 |
+| `commands/plugin_host.rs` | 2955 | 142（模块根） | 同目录 18 个子模块：process / session / state / live / request / scan_engine / scan / scan_pipeline / scan_control / render / blacklist / dialogs …，测试拆到 `tests.rs`（1220）与四个 `*_tests.rs` |
+| `views/SeparateView.vue` | 4824 | 2479 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList,inferenceDefaults,playback,stemSelection,queue,outputDirectory}.ts` |
+| `views/DebugView.vue` | 3457 | 1736 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint,executionLog,runtimeDebugFiles}.ts` |
+| `python/core/worker_bootstrap.py` | 2430 | 337（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（589/555/509/1059），跨符号调用走门面 |
 
-拆分边界由测试契约决定：`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`
-都会按名字从 SFC/源码里取声明并执行，被取用的声明必须留在顶层；其余逻辑才可外移。
+拆分边界由测试契约决定：早期测试按名字从 SFC 里取声明，被取用的声明只能留在顶层；
+现在输出目录、队列、播放、词干选择、推理默认值、执行日志、运行时调试文件都已搬进
+`makeX(deps)` 工厂，测试直接实例化工厂并注入桩依赖，SFC 只剩装配与模板。
 
 ## 8. 验收清单（每批次都跑）
 
@@ -236,13 +237,15 @@ powershell -File scripts/smoke-portable.ps1  -Zip       release/MediaForge-<ver>
 | (1) 物理归位 | 完成 | `python/` 根目录只剩 `worker.py`、`agent_bridge.py` 与数据文件；实现分布在 `shared/`、`core/`、`surfaces/`、`media_ops/`；检查器守着根目录白名单与三条依赖方向 |
 | (2) 协议扩域 | 完成 | `protocol.json` 覆盖 system/media/audio/model/runtime/plugin/graph/workflow 共 48 条命令，handler 为 `module:function`；`surfaces/dispatch.py` 按协议查表，worker 的 if 链已删除；旧事件别名全部删除，引擎只发 `task.progress` / `task.result` |
 | (3) 版本轴 | 完成 | 只保留 app 与 runtime 两轴；catalog 轴从 `versions.json`、Rust 文档与文档中删除；设置页有检查/切换卡；`runtime.json` 只由 Rust 解析并经 `MEDIAFORGE_RUNTIME_ASSET` 传给 worker，Python 不再读 `active-runtime.json` |
-| (4) 巨文件与 CI | 完成 | `app_cmd.rs` 删除；`worker_bootstrap` 232 行门面 + 四层实现；`plugin_host` 134 行模块根 + 9 子模块 + 独立测试；两个 Vue 文件分别 4824→2682、3457→1718；CI 只在 PR/手动触发；安装版与便携版冒烟接进发布流水线 |
+| (4) 巨文件与 CI | 完成 | `app_cmd.rs` 删除；`worker_bootstrap` 337 行门面 + 四层实现；`plugin_host` 142 行模块根 + 18 个子模块 + 独立测试；两个 Vue 文件分别 4824→2479、3457→1736；CI 只在 PR/手动触发；安装版与便携版冒烟接进发布流水线 |
 
 明确保留的残留工作：
 
-- Vue 测试已改为直接调用工厂（`makeInferenceDefaults` / `makePlayback` / `makeStemSelection` /
-  `makeQueue` / `makeExecutionLog`），不再从 SFC 按名字取声明；剩余待办只有
-  `runtimePlatformBoundary` 的 4 个运行时调试函数与 `separateViewUx` 的输出目录簇。
+- Vue 测试已全部改为直接调用工厂（`makeInferenceDefaults` / `makePlayback` / `makeStemSelection` /
+  `makeQueue` / `makeExecutionLog` / `makeOutputDirectory` / `makeRuntimeDebugFiles`），
+  不再从 SFC 按名字取声明；这条拆分债清空。
+- 分发侧：`versions.json` 仍是占位 URL，运行时 3.45 GB 的首次下载与签名链路还没在真机上验证过；
+  便携包/安装包需要按 `mediaforge.portable` 标记重新打包后再发。
 - `plugin_host` 的 97/98 本地失败来自 Windows junction 的 `0xC0000142` 环境问题，
   CI 对应平台通过；`worker_bootstrap` 的 40 个组合错误在单文件基线上同样复现（torch DLL）。
 
