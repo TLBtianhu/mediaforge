@@ -196,7 +196,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                 completed = subprocess.run([
                     str(python), "-c",
                     "import json,sys; from unittest import mock; from core import worker_bootstrap as worker; "
-                    "worker._verify_runtime_audio=mock.Mock(); "
+                    "from core.bootstrap import operations; operations._verify_runtime_audio=mock.Mock(); "
                     "raise SystemExit(worker.cmd_update_runtime_core(json.loads(sys.argv[1])))",
                     json.dumps(payload),
                 ], env=environment, capture_output=True, text=True, timeout=60)

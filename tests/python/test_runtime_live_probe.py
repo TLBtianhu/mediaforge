@@ -16,6 +16,12 @@ else:
 from core import worker_bootstrap
 
 
+
+from core.bootstrap import base as bootstrap_base
+from core.bootstrap import commands as bootstrap_commands
+from core.bootstrap import operations as bootstrap_operations
+from core.bootstrap import primitives as bootstrap_primitives
+
 class RuntimeLiveProbeTests(unittest.TestCase):
     def setUp(self):
         self.python = Path(sys.executable)
@@ -26,13 +32,13 @@ class RuntimeLiveProbeTests(unittest.TestCase):
             "manifestVersion": MANIFEST["manifestVersion"], "installedAt": "2026-09-01",
         }
         self.original = copy.deepcopy(self.state)
-        self.probe = self.enterContext(mock.patch.object(worker_bootstrap, "_probe_python_runtime"))
-        self.enterContext(mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST))
-        self.enterContext(mock.patch.object(worker_bootstrap, "_read_runtime_state", return_value=self.state))
-        self.enterContext(mock.patch.object(worker_bootstrap, "_installed_envs", side_effect=lambda *a, **k: [copy.deepcopy(self.state)]))
-        self.enterContext(mock.patch.object(worker_bootstrap, "_module_available", return_value=True))
-        self.enterContext(mock.patch.object(worker_bootstrap, "_detect_gpu_vendors", return_value=[]))
-        self.write = self.enterContext(mock.patch.object(worker_bootstrap, "_atomic_write_json"))
+        self.probe = self.enterContext(mock.patch.object(bootstrap_operations, "_probe_python_runtime"))
+        self.enterContext(mock.patch.object(bootstrap_base, "_manifest", return_value=MANIFEST))
+        self.enterContext(mock.patch.object(bootstrap_operations, "_read_runtime_state", return_value=self.state))
+        self.enterContext(mock.patch.object(bootstrap_operations, "_installed_envs", side_effect=lambda *a, **k: [copy.deepcopy(self.state)]))
+        self.enterContext(mock.patch.object(bootstrap_base, "_module_available", return_value=True))
+        self.enterContext(mock.patch.object(bootstrap_primitives, "_detect_gpu_vendors", return_value=[]))
+        self.write = self.enterContext(mock.patch.object(bootstrap_primitives, "_atomic_write_json"))
 
     def assert_failed(self, result, code):
         self.assertFalse(result["ready"])
@@ -62,7 +68,7 @@ class RuntimeLiveProbeTests(unittest.TestCase):
         for failure, code in failures:
             with self.subTest(code=code):
                 self.probe.side_effect = failure
-                result = worker_bootstrap._runtime_info_payload({})
+                result = bootstrap_commands._runtime_info_payload({})
                 self.assert_failed(result, code)
                 self.assertNotIn("secret-", json.dumps(result))
                 self.assertLessEqual(len(result["liveProbeError"]["message"]), 240)
@@ -73,7 +79,7 @@ class RuntimeLiveProbeTests(unittest.TestCase):
             "pymssVersion": "2.1.3", "pymssCoreVersion": "1.0.0",
             "acceleratorAvailable": True,
         }
-        result = worker_bootstrap._runtime_info_payload({})
+        result = bootstrap_commands._runtime_info_payload({})
         self.assert_failed(result, "TORCH_IMPORT_FAILED")
         self.assertIn("WinError 1455", result["liveProbeError"]["message"])
         for secret in ("secret-", "password", "https://", "token="):
@@ -81,10 +87,10 @@ class RuntimeLiveProbeTests(unittest.TestCase):
 
     def test_successful_refresh_clears_failure_and_restores_live_capabilities(self):
         self.probe.side_effect = OSError("first probe failed")
-        self.assert_failed(worker_bootstrap._runtime_info_payload({}), "PYTHON_START_FAILED")
+        self.assert_failed(bootstrap_commands._runtime_info_payload({}), "PYTHON_START_FAILED")
         self.probe.side_effect = None
         self.probe.return_value = probe_result("cuda")
-        result = worker_bootstrap._runtime_info_payload({})
+        result = bootstrap_commands._runtime_info_payload({})
         self.assertIsNone(result["liveProbeError"])
         self.assertTrue(result["ready"])
         self.assertTrue(result["acceleratorAvailable"])
@@ -98,13 +104,13 @@ class RuntimeLiveProbeTests(unittest.TestCase):
             json.JSONDecodeError("invalid", "secret-response", 0),
             probe_result("error:OSError: [WinError 1455] secret-path"),
         )
-        with mock.patch.object(worker_bootstrap, "_read_runtime_state", return_value=None), \
-                mock.patch.object(worker_bootstrap, "_installed_envs", return_value=[]):
+        with mock.patch.object(bootstrap_operations, "_read_runtime_state", return_value=None), \
+                mock.patch.object(bootstrap_operations, "_installed_envs", return_value=[]):
             for failure in failures:
                 with self.subTest(failure=type(failure).__name__):
                     self.probe.side_effect = failure if isinstance(failure, Exception) else None
                     self.probe.return_value = failure
-                    result = worker_bootstrap._runtime_info_payload({})
+                    result = bootstrap_commands._runtime_info_payload({})
                     self.assertFalse(result["ready"])
                     self.assertFalse(result["acceleratorAvailable"])
                     self.assertIsNone(result["pymssGraphAvailable"])
@@ -117,19 +123,19 @@ class RuntimeLiveProbeTests(unittest.TestCase):
 
 class RuntimeProbeProtocolTests(unittest.TestCase):
     def setUp(self):
-        self.enterContext(mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST))
+        self.enterContext(mock.patch.object(bootstrap_base, "_manifest", return_value=MANIFEST))
 
     def test_empty_non_object_and_incomplete_responses_are_rejected(self):
         for output in ("", "not json", "null", "[]", "{}", '{"packages":{},"torchBackend":"cpu"}'):
             with self.subTest(output=output), \
-                    mock.patch.object(worker_bootstrap.subprocess, "check_output", return_value=output):
+                    mock.patch.object(bootstrap_base.subprocess, "check_output", return_value=output):
                 with self.assertRaises(ValueError):
-                    worker_bootstrap._probe_python_runtime(Path(sys.executable))
+                    bootstrap_operations._probe_python_runtime(Path(sys.executable))
 
     def test_valid_probe_response_is_preserved_and_stderr_is_captured(self):
         result = probe_result("cpu")
-        with mock.patch.object(worker_bootstrap.subprocess, "check_output", return_value=json.dumps(result)) as run:
-            self.assertEqual(worker_bootstrap._probe_python_runtime(Path(sys.executable)), result)
+        with mock.patch.object(bootstrap_base.subprocess, "check_output", return_value=json.dumps(result)) as run:
+            self.assertEqual(bootstrap_operations._probe_python_runtime(Path(sys.executable)), result)
         self.assertEqual(run.call_args.kwargs["stderr"], subprocess.PIPE)
 
     def test_missing_and_non_boolean_capability_fields_are_rejected(self):
@@ -140,9 +146,9 @@ class RuntimeProbeProtocolTests(unittest.TestCase):
                     result[field] = value
                     if value == "absent":
                         del result[field]
-                    with mock.patch.object(worker_bootstrap.subprocess, "check_output", return_value=json.dumps(result)):
+                    with mock.patch.object(bootstrap_base.subprocess, "check_output", return_value=json.dumps(result)):
                         with self.assertRaises(ValueError):
-                            worker_bootstrap._probe_python_runtime(Path(sys.executable))
+                            bootstrap_operations._probe_python_runtime(Path(sys.executable))
 
     def test_requested_package_versions_must_be_present_and_nullable_strings(self):
         for value in ("absent", 123, {}, []):
@@ -151,9 +157,9 @@ class RuntimeProbeProtocolTests(unittest.TestCase):
                 result["packageVersions"]["pymss"] = value
                 if value == "absent":
                     del result["packageVersions"]["pymss"]
-                with mock.patch.object(worker_bootstrap.subprocess, "check_output", return_value=json.dumps(result)):
+                with mock.patch.object(bootstrap_base.subprocess, "check_output", return_value=json.dumps(result)):
                     with self.assertRaises(ValueError):
-                        worker_bootstrap._probe_python_runtime(Path(sys.executable))
+                        bootstrap_operations._probe_python_runtime(Path(sys.executable))
 
 
 if __name__ == "__main__":
