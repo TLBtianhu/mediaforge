@@ -231,6 +231,13 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
     }
     extract_zip(&archive, &target).map_err(|error| error.to_string())?;
 
+    if let Some(vcrt) = bundled_vcrt_dir(app) {
+        let scripts = target.join("Scripts");
+        let copied = copy_dlls(&vcrt, &scripts).map_err(|error| format!("复制 VC++ 运行库失败：{error}"))?;
+        emit(app, &descriptor, "verifying", descriptor.size, &format!("已放置 {copied} 个 VC++ 运行库文件"));
+    }
+    verify_interpreter(&target.join("Scripts").join("python.exe"))?;
+
     let record = json!({
         "pythonPath": target.join("Scripts").join("python.exe").to_string_lossy(),
         "backend": descriptor.backend,
@@ -245,6 +252,54 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
     let _ = fs::remove_dir_all(&staging);
     emit(app, &descriptor, "done", descriptor.size, "运行时已就绪");
     Ok(())
+}
+
+/// 安装包里的 VC++ 可再发行 DLL（`bin\vcrt`）。per-user 安装没有管理员权限，
+/// 不能依赖 vc_redist，所以运行时装好后把它们复制进解释器目录。
+fn bundled_vcrt_dir(app: &AppHandle) -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let bundled = exe_dir.join("bin").join("vcrt");
+    if bundled.is_dir() {
+        return Some(bundled);
+    }
+    let resource = app.path().resource_dir().ok()?.join("bin").join("vcrt");
+    resource.is_dir().then_some(resource)
+}
+
+/// 把 DLL 复制到目标目录，返回复制数量。纯函数便于测试。
+fn copy_dlls(from: &Path, to: &Path) -> std::io::Result<usize> {
+    fs::create_dir_all(to)?;
+    let mut copied = 0;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) == Some("dll") {
+            let name = path.file_name().unwrap_or_default();
+            fs::copy(&path, to.join(name))?;
+            copied += 1;
+        }
+    }
+    Ok(copied)
+}
+
+/// 装完立刻验证解释器能加载 C++ 运行库：失败时给出可操作的错误，
+/// 而不是等用户点任务才看到 "DLL load failed"。
+fn verify_interpreter(python: &Path) -> Result<(), String> {
+    let output = Command::new(python)
+        .args([
+            "-c",
+            "import ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); print('ok')",
+        ])
+        .output()
+        .map_err(|error| format!("无法启动解释器自检：{error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let detail = String::from_utf8_lossy(&output.stderr);
+    Err(format!(
+        "运行时自检失败（解释器无法加载 VC++ 运行库）：{}",
+        detail.trim()
+    ))
 }
 
 fn download(
@@ -359,6 +414,23 @@ fn extract_zip(archive: &Path, target: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod descriptor_tests {
     use super::*;
+
+    #[test]
+    fn copy_dlls_only_takes_dlls_and_creates_the_target() {
+        let root = std::env::temp_dir().join(format!("mediaforge-vcrt-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let source = root.join("vcrt");
+        let target = root.join("env").join("Scripts");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("msvcp140.dll"), b"stub").unwrap();
+        fs::write(source.join("SOURCE.json"), b"{}").unwrap();
+
+        let copied = copy_dlls(&source, &target).unwrap();
+        assert_eq!(copied, 1);
+        assert!(target.join("msvcp140.dll").is_file());
+        assert!(!target.join("SOURCE.json").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn embedded_manifest_resolves_the_fallback_asset() {

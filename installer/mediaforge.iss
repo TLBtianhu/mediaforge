@@ -71,8 +71,6 @@ Root: HKCU; Subkey: "Software\MediaForge"; ValueType: string; ValueName: "Instal
 [Run]
 ; 安装结束把 MediaForge 接进 DeepSeek Harness（没有 DSH 时脚本自己跳过）。
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\integrations\dsh-mediaforge\register.ps1"""; StatusMsg: "Registering MediaForge with DeepSeek Harness..."; Flags: runhidden waituntilterminated skipifdoesntexist
-Filename: "{app}\bin\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Flags: waituntilterminated runhidden skipifdoesntexist; Check: IsAdminInstallMode and not IsVCRedistX64Installed
-Filename: "{cmd}"; Parameters: "/C del /F /Q ""{app}\bin\VC_redist.x64.exe"""; Flags: runhidden waituntilterminated skipifdoesntexist; Check: IsAdminInstallMode and not IsVCRedistX64Installed
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]

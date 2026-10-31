@@ -75,10 +75,6 @@ jobs:
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
 
-          $vcRedist = "$bin/VC_redist.x64.exe"
-          if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
-          & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path $vcRedist)) { throw "VC_redist.x64.exe download failed with exit code $LASTEXITCODE" }
 
       - name: Stage portable directory
         shell: pwsh
@@ -258,10 +254,6 @@ jobs:
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
 
-          $vcRedist = "$bin/VC_redist.x64.exe"
-          if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
-          & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path $vcRedist)) { throw "VC_redist.x64.exe download failed with exit code $LASTEXITCODE" }
 
       - name: Stage portable directory
         shell: pwsh
@@ -421,10 +413,6 @@ jobs:
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-          $vcRedist = "$bin/VC_redist.x64.exe"
-          if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
-          & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path $vcRedist)) { throw "VC_redist.x64.exe download failed with exit code $LASTEXITCODE" }
       - name: Stage online portable directory
         shell: pwsh
         run: |
@@ -573,10 +561,6 @@ jobs:
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-          $vcRedist = "$bin/VC_redist.x64.exe"
-          if (Test-Path $vcRedist) { Remove-Item $vcRedist -Force }
-          & curl.exe --location --fail --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 --max-time 600 --output $vcRedist "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          if ($LASTEXITCODE -ne 0 -or !(Test-Path $vcRedist)) { throw "VC_redist.x64.exe download failed with exit code $LASTEXITCODE" }
       - name: Stage ROCm portable directory
         shell: pwsh
         run: |

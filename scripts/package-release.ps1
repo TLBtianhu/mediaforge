@@ -107,8 +107,21 @@ if (Test-Path "$stage\python-runtime\runtime-envs") {
 if (-not (Test-Path "$stage\python\safe_fs.py")) { throw "staging 缺少 python\safe_fs.py" }
 if (-not (Test-Path "$stage\integrations\dsh-mediaforge\cordis.patch.yml")) { throw "staging 缺少 DSH 集成包" }
 if (-not (Test-Path "$root\release\bin")) { throw "缺少 release\bin（ffmpeg/aria2c）" }
+# VC++ 运行库：per-user 安装没有管理员权限，不能依赖 vc_redist；
+# 这里把可再发行 DLL 放进 bin\vcrt（随安装包走），并由运行时装好后复制到
+# runtime-envs/<assetId>\Scripts。缺这一层时，torch/cv2 的 import 会直接失败。
+$vcrtSource = "$root\release\bin\vcrt"
+if (-not (Test-Path $vcrtSource)) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\fetch-vcrt.ps1"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $vcrtSource)) { throw "缺少 VC++ 运行库（release\bin\vcrt）" }
+}
 if (Test-Path "$stage\bin") { Remove-Item "$stage\bin" -Recurse -Force }
 Copy-Item "$root\release\bin" "$stage\bin" -Recurse
+# 引导解释器也一并带上：python.exe 本身自带 vcruntime，但 C++ 扩展需要 msvcp140。
+foreach ($dll in Get-ChildItem $vcrtSource -Filter '*.dll') {
+    Copy-Item $dll.FullName "$stage\python-runtime\$($dll.Name)" -Force
+}
+Write-Host "  已把 VC++ 运行库放入 bin\vcrt 与 python-runtime"
 @"
 MediaForge $Version (Windows x64 CUDA)
 Author: TheSmallHanCat
