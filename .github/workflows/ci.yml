@@ -56,14 +56,11 @@ jobs:
         run: |
           cargo check --manifest-path src-tauri/Cargo.toml
           cargo test --manifest-path src-tauri/Cargo.toml bootstrap_cache
-          cargo test --manifest-path src-tauri/Cargo.toml linux_update
-          cargo test --manifest-path src-tauri/Cargo.toml update_startup
           cargo test --manifest-path src-tauri/Cargo.toml trusted_digest_is_bound_to_the_same_bytes_as_the_signature
-          cargo test --manifest-path src-tauri/Cargo.toml update_sources
           cargo test --manifest-path src-tauri/Cargo.toml single_instance
 
-  macos-updater:
-    name: macOS updater
+  macos-native:
+    name: macOS native checks
     runs-on: macos-14
     timeout-minutes: 20
     steps:
@@ -72,11 +69,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify archive generation and platform-specific installation
+      - name: Verify single instance and bundled bootstrap
         run: |
-          python -m unittest discover -s tests/python -t tests -p 'test_macos_update_release.py'
-          cargo test --manifest-path src-tauri/Cargo.toml macos_update
-          cargo test --manifest-path src-tauri/Cargo.toml update_startup
           cargo test --manifest-path src-tauri/Cargo.toml single_instance
           cargo test --manifest-path src-tauri/Cargo.toml bundled_bootstrap_uses_user_overlay_without_changing_bundle
       - name: Verify plugin resources and native protocol paths

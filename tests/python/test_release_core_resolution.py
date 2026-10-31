@@ -124,8 +124,6 @@ class ReleaseCoreResolutionTests(unittest.TestCase):
         prepare = workflow.index("bash scripts/prepare-python-runtime.sh mlx")
         prepared_check = workflow.index("scripts/resolve-release-core.py python/runtime-manifest.json --verify")
         bundle_check = workflow.index('scripts/resolve-release-core.py "$(dirname "$WORKER")/runtime-manifest.json" --verify')
-        package = workflow.index("- name: Build managed macOS update archive")
         self.assertLess(resolve, prepare)
         self.assertLess(prepare, prepared_check)
         self.assertLess(prepared_check, bundle_check)
-        self.assertLess(bundle_check, package)

@@ -256,23 +256,6 @@ jobs:
           codesign --verify --deep --strict --verbose=4 "$APP"
           python3 scripts/verify-native-plugins.py "$APP" --platform macos
 
-      - name: Verify core overlays survive signed bundle replacement and rollback
-        run: |
-          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
-          python3 scripts/check-macos-core-update.py "$APP"
-
-      - name: Build managed macOS update archive from final signed app
-        run: |
-          VERSION="${MEDIAFORGE_VERSION#v}"
-          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
-          codesign --verify --deep --strict "$APP"
-          python3 scripts/build-macos-update.py "$APP" "release/MediaForge-${VERSION}-macos-arm64-update.app.tar.gz"
-
-      - name: Verify macOS update logic
-        run: |
-          python3 -m unittest discover -s tests/python -t tests -p 'test_macos_update_release.py'
-          cargo test --manifest-path src-tauri/Cargo.toml macos_update
-
       - name: Build DMG with hdiutil
         run: |
           VERSION="${MEDIAFORGE_VERSION#v}"
@@ -300,4 +283,3 @@ jobs:
           name: MediaForge-${{ env.MEDIAFORGE_VERSION }}-macos-${{ matrix.arch }}-mlx
           path: |
             release/*.dmg
-            release/*-macos-arm64-update.app.tar.gz*
