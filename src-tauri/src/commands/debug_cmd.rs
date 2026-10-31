@@ -3,10 +3,14 @@
 //! 这些命令只在排查问题时被调用（日志、目录指针、运行时覆盖、目录快照），
 //! 与业务主链路无关，因此单独成文件，避免继续堆在 app_cmd.rs 里。
 
-use super::app_cmd::require_runtime_debug_developer_mode;
+use super::app::debug::{
+    collect_debug_runtime_files, create_debug_runtime_backup, debug_runtime_backup_path,
+    require_runtime_debug_developer_mode, resolve_debug_runtime_path,
+    validate_debug_runtime_override, DebugActiveRuntimeOverrideRequest, DebugRuntimeBackup,
+    DebugRuntimePointersPayload, DebugRuntimeRestoreRequest, DebugRuntimeWriteRequest,
+    DEBUG_RUNTIME_MAX_FILE_BYTES,
+};
 use super::app::runtime::require_windows_runtime_management;
-use super::app_cmd::{DEBUG_RUNTIME_MAX_FILE_BYTES, DebugActiveRuntimeOverrideRequest, DebugRuntimeBackup, DebugRuntimePointersPayload, DebugRuntimeRestoreRequest, DebugRuntimeWriteRequest, collect_debug_runtime_files, create_debug_runtime_backup, debug_runtime_backup_path, resolve_debug_runtime_path, validate_debug_runtime_override};
-
 
 use crate::error::{AppError, AppResult};
 use crate::session_log::{self, DebugLogContent, DebugLogInfo, DebugLogReport};
