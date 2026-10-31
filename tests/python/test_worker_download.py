@@ -17,7 +17,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-from worker_download import (
+from core.worker_download import (
     _make_pymss_progress_adapter,
     _pymss_reports_progress,
     _watch_download_progress,
@@ -88,7 +88,7 @@ class PymssCapabilityTest(unittest.TestCase):
             pass
 
         module = SimpleNamespace(ARIA2C_PATH="C:/bin/aria2c.exe")
-        with mock.patch("worker_download.emit"):
+        with mock.patch("core.worker_download.emit"):
             prepare_pymss_download(module, "task", old_style)
 
         self.assertIsNone(module.ARIA2C_PATH)
@@ -98,7 +98,7 @@ class PymssCapabilityTest(unittest.TestCase):
             pass
 
         module = SimpleNamespace(ARIA2C_PATH="C:/bin/aria2c.exe")
-        with mock.patch("worker_download.emit"):
+        with mock.patch("core.worker_download.emit"):
             prepare_pymss_download(module, "task", new_style)
 
         self.assertEqual(module.ARIA2C_PATH, "C:/bin/aria2c.exe")
@@ -108,7 +108,7 @@ class PymssCapabilityTest(unittest.TestCase):
             pass
 
         module = SimpleNamespace(ARIA2C_PATH="C:/bin/aria2c.exe")
-        with mock.patch("worker_download.emit"):
+        with mock.patch("core.worker_download.emit"):
             prepare_pymss_download(module, "task", new_style, "urllib")
 
         self.assertIsNone(module.ARIA2C_PATH)
@@ -126,7 +126,7 @@ class StudioModelFileResolutionTest(unittest.TestCase):
         root = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(root, True))
 
-        with mock.patch("worker_download.get_any_model_entry", return_value=entry):
+        with mock.patch("core.worker_download.get_any_model_entry", return_value=entry):
             resolved_entry, files = files_for_studio_model("debug_model.ckpt", str(root))
 
         self.assertIs(resolved_entry, entry)
@@ -159,7 +159,7 @@ class Aria2FallbackTest(unittest.TestCase):
         root = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(root, True))
 
-        with mock.patch("worker_download.emit"), \
+        with mock.patch("core.worker_download.emit"), \
              mock.patch.dict(os.environ, {
                  "PYMSS_STUDIO_OPENSSL_CONF": "/app/bin/openssl/openssl.cnf",
                  "PYMSS_STUDIO_OPENSSL_MODULES": "/app/bin/openssl/ossl-modules",
@@ -290,15 +290,15 @@ class DownloadCacheIntegrityTest(unittest.TestCase):
         self.enterContext(mock.patch.object(self.module, "_download_file", download))
         self.enterContext(mock.patch.object(self.module, "ARIA2C_PATH", None))
         self.enterContext(mock.patch.object(self.module, "remote_url", return_value="https://example.test/model.bin"))
-        self.events = self.enterContext(mock.patch("worker_download.emit"))
-        self.failures = self.enterContext(mock.patch("worker_download.emit_error", return_value=1))
-        self.enterContext(mock.patch("worker_download.effective_proxy_url", return_value=""))
-        self.enterContext(mock.patch("worker_download.model_root", return_value=self.root))
-        self.model_info = self.enterContext(mock.patch("worker_download.model_to_dict", return_value={"name": "model"}))
-        self.enterContext(mock.patch("worker_download.effective_source_for", return_value="modelscope"))
+        self.events = self.enterContext(mock.patch("core.worker_download.emit"))
+        self.failures = self.enterContext(mock.patch("core.worker_download.emit_error", return_value=1))
+        self.enterContext(mock.patch("core.worker_download.effective_proxy_url", return_value=""))
+        self.enterContext(mock.patch("core.worker_download.model_root", return_value=self.root))
+        self.model_info = self.enterContext(mock.patch("core.worker_download.model_to_dict", return_value={"name": "model"}))
+        self.enterContext(mock.patch("core.worker_download.effective_source_for", return_value="modelscope"))
 
     def command(self, **payload):
-        with mock.patch("worker_download.files_for_studio_model", return_value=(SimpleNamespace(name="model"), self.files)):
+        with mock.patch("core.worker_download.files_for_studio_model", return_value=(SimpleNamespace(name="model"), self.files)):
             return cmd_download_model({"model": "model", "taskId": "cache-integrity", **payload})
 
     def test_command_rejects_unverified_cache_after_index_failure(self):
@@ -442,19 +442,19 @@ class DownloadCommandProgressTest(unittest.TestCase):
         self.enterContext(mock.patch.dict(sys.modules, {
             "pymss": package, "pymss.model_download": self.module,
         }))
-        self.enterContext(mock.patch("worker_download.time.monotonic", side_effect=lambda: self.now))
-        self.enterContext(mock.patch("worker_download.effective_proxy_url", return_value=""))
-        self.enterContext(mock.patch("worker_download.model_root", return_value=self.root))
-        self.enterContext(mock.patch("worker_download.model_to_dict", return_value={"name": "model"}))
-        self.enterContext(mock.patch("worker_download.effective_source_for", return_value="modelscope"))
-        self.failures = self.enterContext(mock.patch("worker_download.emit_error", return_value=1))
+        self.enterContext(mock.patch("core.worker_download.time.monotonic", side_effect=lambda: self.now))
+        self.enterContext(mock.patch("core.worker_download.effective_proxy_url", return_value=""))
+        self.enterContext(mock.patch("core.worker_download.model_root", return_value=self.root))
+        self.enterContext(mock.patch("core.worker_download.model_to_dict", return_value={"name": "model"}))
+        self.enterContext(mock.patch("core.worker_download.effective_source_for", return_value="modelscope"))
+        self.failures = self.enterContext(mock.patch("core.worker_download.emit_error", return_value=1))
 
         def emit(event, payload, **kwargs):
             self.events.append((event, dict(payload), kwargs.get("task_id"), self.now))
             if event == "download_progress":
                 self.progress_updates.put(dict(payload))
 
-        self.enterContext(mock.patch("worker_download.emit", side_effect=emit))
+        self.enterContext(mock.patch("core.worker_download.emit", side_effect=emit))
 
     def run_command(self, files, downloader, *, legacy=False):
         def with_callback(_name, progress_callback=None):
@@ -466,7 +466,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
         self.module.download_model = without_callback if legacy else with_callback
         self.module._download_file = downloader
         entry = SimpleNamespace(name="model")
-        with mock.patch("worker_download.files_for_studio_model", return_value=(entry, files)):
+        with mock.patch("core.worker_download.files_for_studio_model", return_value=(entry, files)):
             result = cmd_download_model({"model": "model", "taskId": "transfer"})
         self.assertEqual(result, 0, self.failures.call_args)
         self.failures.assert_not_called()
@@ -612,7 +612,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
         self.module.download_model = with_callback
         self.module._download_file = download
         files = [("model.bin", self.root / "model.bin")]
-        with mock.patch("worker_download.files_for_studio_model", return_value=(SimpleNamespace(name="model"), files)):
+        with mock.patch("core.worker_download.files_for_studio_model", return_value=(SimpleNamespace(name="model"), files)):
             result = cmd_download_model({"model": "model", "taskId": "transfer"})
         self.assertEqual(result, 1)
         self.failures.assert_called_once()

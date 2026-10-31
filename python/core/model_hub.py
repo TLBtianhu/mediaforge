@@ -12,7 +12,7 @@ import json
 import shutil
 import time
 
-from download_watchdog import ProgressWatchdog, stall_seconds
+from core.download_watchdog import ProgressWatchdog, stall_seconds
 import urllib.parse
 import urllib.request
 
@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 PYMSS_REPO = "baicai1145/pymss"
-AUDIO_CATALOG = Path(__file__).with_name("audio_catalog.json")
-MEDIA_CATALOG = Path(__file__).with_name("media_ops") / "media_catalog.json"
+AUDIO_CATALOG = Path(__file__).parents[1] / "audio_catalog.json"
+MEDIA_CATALOG = Path(__file__).parents[1] / "media_ops" / "media_catalog.json"
 
 AUDIO_SOURCES = {
     "modelscope": f"https://www.modelscope.cn/models/{PYMSS_REPO}/resolve/master",

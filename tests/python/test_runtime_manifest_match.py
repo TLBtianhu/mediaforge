@@ -21,7 +21,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import worker_models  # noqa: E402
+from core import worker_models  # noqa: E402
 
 
 class PythonMatchesManifestTests(unittest.TestCase):

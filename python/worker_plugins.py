@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from shared.worker_protocol import emit, emit_error, isolate_protocol_stdout
-from worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}\Z")
 _PROBE_MARKER = "__STUDIO_PLUGIN_PROBE__"
@@ -36,7 +36,7 @@ def _name(value: Any) -> str:
 
 
 def _root() -> Path:
-    from worker_optional_packages import _runtime_context
+    from core.worker_optional_packages import _runtime_context
 
     runtime = _runtime_context()
     # Preserve the venv path: resolving its python symlink would merge distinct venvs.
@@ -416,7 +416,7 @@ def _install_dependencies(plugin: Path, root: Path, task_id: str | None, payload
     constraints = plugin.parent / "constraints.txt"
     constraints.write_text("".join(f"{name}=={version}\n" for name, version in sorted(versions.items())), encoding="utf-8")
     report = plugin.parent / "pip-report.json"
-    from worker_bootstrap import _resolve_pypi_mirror
+    from core.worker_bootstrap import _resolve_pypi_mirror
     _, index = _resolve_pypi_mirror(str(payload.get("mirror") or "auto"), str(payload.get("locale") or ""))
     index_args = ["--index-url", index] if index else []
     base = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--prefer-binary"]

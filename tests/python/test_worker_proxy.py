@@ -10,7 +10,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-from worker_connection import _test_url_for_source
+from core.worker_connection import _test_url_for_source
 from shared.worker_proxy import ProxyConfigError, configure_process_proxy, effective_proxy_url, parse_proxy_config, redacted_proxy
 
 

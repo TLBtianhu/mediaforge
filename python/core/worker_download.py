@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import inspect
 
-from download_watchdog import DownloadStalled, ProgressWatchdog, stall_seconds
+from core.download_watchdog import DownloadStalled, ProgressWatchdog, stall_seconds
 import os
 import threading
 import time
@@ -11,7 +11,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from worker_models import (
+from core.worker_models import (
     auxiliary_paths_for,
     config_path_for,
     effective_source_for,

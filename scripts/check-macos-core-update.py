@@ -150,7 +150,7 @@ def protocol_payload(output: str, event: str) -> dict:
 def verify_runtime(app: Path, directory: Path, replacement_app: Path | None = None) -> None:
     runtime, python, worker_path = bundle_paths(app)
     sys.path.insert(0, str(worker_path.parent))
-    import worker_bootstrap as worker
+    from core import worker_bootstrap as worker
 
     wheelhouse = directory / "wheels"
     for name in ("pymss", "pymss-core"):

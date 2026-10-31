@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 from shared import worker_paths
 
-from worker_models import (
+from core.worker_models import (
     _derive_overlap_size_from_num_overlap,
     auxiliary_paths_for,
     config_path_for,
@@ -492,7 +492,7 @@ def _resolve_audio_catalog_record(model_name: str) -> dict[str, Any] | None:
     `audio.separate` 会报 "Unknown pymss model"。这里补一层映射。
     """
     try:
-        from model_hub import list_models  # 局部导入：只有音频路径才需要
+        from core.model_hub import list_models  # 局部导入：只有音频路径才需要
     except Exception:
         return None
     try:
@@ -636,7 +636,7 @@ def _prepare_separator(
             raise ModelNotFoundError(str(resolve_exc)) from resolve_exc
         from pymss import model_download as pymss_model_download  # type: ignore
         from pymss.model_download import download_model  # type: ignore
-        from worker_download import download_studio_model, effective_proxy_url, files_for_studio_model, prepare_pymss_download
+        from core.worker_download import download_studio_model, effective_proxy_url, files_for_studio_model, prepare_pymss_download
         emit("task_stage", {"stage": "downloading_model", "message": "Downloading model files"}, task_id=task_id)
         try:
             prepare_pymss_download(pymss_model_download, task_id, download_model, download_method)

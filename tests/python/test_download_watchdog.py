@@ -13,7 +13,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-from download_watchdog import (  # noqa: E402
+from core.download_watchdog import (  # noqa: E402
     DEFAULT_STALL_SECONDS,
     DownloadStalled,
     ProgressWatchdog,
@@ -95,25 +95,25 @@ class WatchdogTests(unittest.TestCase):
 
 class LegacyGuardTests(unittest.TestCase):
     def test_guard_abandons_a_call_that_never_reports_progress(self) -> None:
-        import worker_download
+        from core import worker_download
 
         watchdog = ProgressWatchdog("stuck.bin", timeout=0.2, poll_interval=0.02)
         with self.assertRaises(DownloadStalled):
             worker_download._download_with_stall_guard("stuck.bin", lambda: time.sleep(5), watchdog)
 
     def test_guard_returns_the_value_when_the_call_finishes(self) -> None:
-        import worker_download
+        from core import worker_download
 
         watchdog = ProgressWatchdog("ok.bin", timeout=5, poll_interval=0.02)
         self.assertEqual(worker_download._download_with_stall_guard("ok.bin", lambda: 42, watchdog), 42)
 
     def test_guard_calls_straight_through_without_a_watchdog(self) -> None:
-        import worker_download
+        from core import worker_download
 
         self.assertEqual(worker_download._download_with_stall_guard("x.bin", lambda: "done", None), "done")
 
     def test_guard_propagates_the_original_exception(self) -> None:
-        import worker_download
+        from core import worker_download
 
         watchdog = ProgressWatchdog("x.bin", timeout=5, poll_interval=0.02)
 

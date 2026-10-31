@@ -249,7 +249,7 @@ def setup(plugin):
         self.assertEqual(sys.path[-1], str(deps))
 
     def test_inventory_does_not_hold_exclusive_lock_while_probing(self):
-        from worker_runtime_lock import runtime_lock
+        from core.worker_runtime_lock import runtime_lock
         def probe(root):
             with runtime_lock(root / ".lock", timeout=0):
                 return []
@@ -269,7 +269,7 @@ def setup(plugin):
         live = self.root / "transactions/install-live"
         live.mkdir(parents=True)
         live.joinpath("marker").write_text("active writer")
-        script = "from pathlib import Path; import sys; from worker_runtime_lock import runtime_lock\nwith runtime_lock(Path(sys.argv[1])):\n print('locked', flush=True)\n sys.stdin.read(1)"
+        script = "from pathlib import Path; import sys; from core.worker_runtime_lock import runtime_lock\nwith runtime_lock(Path(sys.argv[1])):\n print('locked', flush=True)\n sys.stdin.read(1)"
         environment = dict(os.environ, PYTHONPATH=str(Path(plugins.__file__).parent))
         child = subprocess.Popen([sys.executable, "-u", "-c", script, str(self.root / ".lock")],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -331,7 +331,7 @@ def setup(plugin):
 
     def test_network_update_check_does_not_hold_the_writer_lock(self):
         from pymss.plugins import install as installer
-        from worker_runtime_lock import runtime_lock
+        from core.worker_runtime_lock import runtime_lock
         self.install(self.source())
         manifest_path = self.root / "installed/hello/.pymss-install.json"
         metadata = json.loads(manifest_path.read_text())

@@ -14,8 +14,8 @@ from unittest import mock
 
 from . import _bootstrap
 
-import worker_bootstrap
-from worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core import worker_bootstrap
+from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 
 
 class RuntimeLockTests(unittest.TestCase):
@@ -70,7 +70,7 @@ class RuntimeLockTests(unittest.TestCase):
             code = """
 import sys
 from pathlib import Path
-from worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 try:
     with runtime_lock(Path(sys.argv[1]), timeout=0):
         print('acquired')
@@ -180,7 +180,7 @@ except RuntimeLockBusy:
         code = """
 import sys
 from pathlib import Path
-from worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 try:
     with runtime_lock(Path(sys.argv[1]), timeout=0):
         print('acquired')
@@ -205,7 +205,7 @@ except RuntimeLockBusy:
         code = """
 import sys
 from pathlib import Path
-from worker_runtime_lock import runtime_lock
+from core.worker_runtime_lock import runtime_lock
 path = Path(sys.argv[1])
 with runtime_lock(path):
     path.with_suffix('.ready').write_text('ready')

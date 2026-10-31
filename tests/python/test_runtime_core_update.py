@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import worker_bootstrap
+from core import worker_bootstrap
 
 
 COMMON = {

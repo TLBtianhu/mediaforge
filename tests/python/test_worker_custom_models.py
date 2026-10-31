@@ -13,7 +13,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_custom_models as ccm
+from core import worker_custom_models as ccm
 
 # mock.patch.dict needs the mapping object itself; the module reads os.environ directly.
 os_environ_target = ccm.os.environ

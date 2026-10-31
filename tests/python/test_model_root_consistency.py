@@ -27,15 +27,15 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import model_hub  # noqa: E402
+from core import model_hub  # noqa: E402
 from shared import worker_paths  # noqa: E402
 from media_ops import capabilities  # noqa: E402
 
 # worker_models / worker_custom_models 会拉进 yaml 这类运行时依赖；裸解释器下跳过，
 # CI（装了 requirements-ci.txt）和运行时环境里会真正参与比对。
 try:
-    import worker_custom_models  # noqa: E402
-    import worker_models  # noqa: E402
+    from core import worker_custom_models  # noqa: E402
+    from core import worker_models  # noqa: E402
 
     FULL_COVERAGE = True
     IMPORT_SKIP_REASON = ""

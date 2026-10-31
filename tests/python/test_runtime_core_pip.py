@@ -16,8 +16,8 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-import worker_bootstrap as worker
-import worker_optional_packages as optional_packages
+from core import worker_bootstrap as worker
+from core import worker_optional_packages as optional_packages
 
 
 class OfflineCoreUpdateTests(unittest.TestCase):
@@ -159,7 +159,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                 self.assertEqual(result["source"], "managed")
                 loaded = subprocess.run([
                     str(python), "-c",
-                    "import json; from worker_optional_packages import activate_optional_packages; "
+                    "import json; from core.worker_optional_packages import activate_optional_packages; "
                     "activate_optional_packages(); import pymss, funasr, torchaudio, torch; "
                     "print(json.dumps({m.__name__: m.__file__ for m in (pymss, funasr, torchaudio, torch)}))",
                 ], env=environment, capture_output=True, text=True, timeout=30, check=True)
@@ -181,7 +181,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                 # importing the replacement bundle's rollback code afresh.
                 completed = subprocess.run([
                     str(python), "-c",
-                    "import json,sys; from unittest import mock; import worker_bootstrap as worker; "
+                    "import json,sys; from unittest import mock; from core import worker_bootstrap as worker; "
                     "worker._verify_runtime_audio=mock.Mock(); "
                     "raise SystemExit(worker.cmd_update_runtime_core(json.loads(sys.argv[1])))",
                     json.dumps(payload),

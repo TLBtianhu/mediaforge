@@ -6,7 +6,7 @@ from typing import Any
 
 from shared.worker_protocol import emit, emit_error
 
-import model_hub
+from core import model_hub
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:

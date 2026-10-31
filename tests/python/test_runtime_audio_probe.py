@@ -15,8 +15,8 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_bootstrap
-import runtime_audio_probe
+from core import worker_bootstrap
+from core import runtime_audio_probe
 
 
 class RuntimeAudioProbeTests(unittest.TestCase):
@@ -44,7 +44,7 @@ class RuntimeAudioProbeTests(unittest.TestCase):
 
     def test_audio_decode_and_resampling_keep_both_channels(self) -> None:
         completed = subprocess.run(
-            [sys.executable, str(_worker_test_bootstrap.WORKER_DIR / "runtime_audio_probe.py")],
+            [sys.executable, str(_worker_test_bootstrap.WORKER_DIR / "core" / "runtime_audio_probe.py")],
             capture_output=True,
             text=True,
             timeout=60,
@@ -64,7 +64,7 @@ class MissingAudioread(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, MissingAudioread())
 import librosa
 print('top-level import succeeded', flush=True)
-from runtime_audio_probe import verify_audio_runtime
+from core.runtime_audio_probe import verify_audio_runtime
 verify_audio_runtime()
 """
         result = subprocess.run(

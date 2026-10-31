@@ -22,9 +22,9 @@ from pip._vendor.packaging.specifiers import SpecifierSet
 from pip._vendor.packaging.utils import canonicalize_name
 from pip._vendor.packaging.version import Version
 
-from worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 
-MANIFEST_PATH = Path(__file__).with_name("runtime-manifest.json")
+MANIFEST_PATH = Path(__file__).parents[1] / "runtime-manifest.json"
 
 
 def _default_runtime_envs_dir() -> Path:

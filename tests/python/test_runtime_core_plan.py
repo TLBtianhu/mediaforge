@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import worker_bootstrap as worker
+from core import worker_bootstrap as worker
 from . import test_runtime_core_update as fixture
 
 manifest = fixture.manifest

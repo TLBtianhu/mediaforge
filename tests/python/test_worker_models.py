@@ -12,7 +12,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_models
+from core import worker_models
 
 
 class FakeUserModelEntry:
@@ -107,7 +107,7 @@ class LightweightModelDiscoveryTests(unittest.TestCase):
         早已改成"先看仓库里的 audio_catalog.json"，那条断言再也不可能成立
         （测试比实现旧了一版，于是常红）。
         """
-        bundled = Path(worker_models.__file__).with_name("audio_catalog.json")
+        bundled = Path(worker_models.__file__).parents[1] / "audio_catalog.json"
         self.assertTrue(bundled.is_file(), "仓库里应当有 python/audio_catalog.json")
         self.assertEqual(worker_models._model_catalog_path(), bundled)
 
@@ -519,7 +519,7 @@ class UserModelSerializationTests(unittest.TestCase):
         # This is what lets the removal dialog state whether files will actually be deleted,
         # instead of describing both cases and leaving the user to guess.
         with mock.patch.dict("sys.modules", {
-            "worker_custom_models": mock.Mock(sidecar_entry=mock.Mock(return_value={"importMode": "copy"})),
+            "core.worker_custom_models": mock.Mock(sidecar_entry=mock.Mock(return_value={"importMode": "copy"})),
         }):
             payload = worker_models.model_to_dict(FakeUserModelEntry("m", self.weights))
         self.assertEqual(payload["importMode"], "copy")
@@ -528,14 +528,14 @@ class UserModelSerializationTests(unittest.TestCase):
         # `pymss register` leaves no side-car. Assuming 'copy' would let the UI promise a file
         # deletion that must never happen.
         with mock.patch.dict("sys.modules", {
-            "worker_custom_models": mock.Mock(sidecar_entry=mock.Mock(return_value={})),
+            "core.worker_custom_models": mock.Mock(sidecar_entry=mock.Mock(return_value={})),
         }):
             payload = worker_models.model_to_dict(FakeUserModelEntry("m", self.weights))
         self.assertEqual(payload["importMode"], "reference")
 
     def test_an_unreadable_sidecar_falls_back_to_reference(self):
         with mock.patch.dict("sys.modules", {
-            "worker_custom_models": mock.Mock(sidecar_entry=mock.Mock(side_effect=OSError("denied"))),
+            "core.worker_custom_models": mock.Mock(sidecar_entry=mock.Mock(side_effect=OSError("denied"))),
         }):
             payload = worker_models.model_to_dict(FakeUserModelEntry("m", self.weights))
         self.assertEqual(payload["importMode"], "reference")

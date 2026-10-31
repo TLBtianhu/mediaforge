@@ -166,7 +166,7 @@ class RegisteredUserModelEntry:
 def _model_catalog_path() -> Path:
     # MediaForge ships a pinned catalog so the audio model library can be
     # browsed before the inference runtime (and pymss) is installed.
-    bundled = Path(__file__).with_name("audio_catalog.json")
+    bundled = Path(__file__).parents[1] / "audio_catalog.json"
     if bundled.is_file():
         return bundled
     try:
@@ -801,7 +801,7 @@ def _user_model_import_mode(entry: Any) -> str | None:
     if not is_user_model_entry(entry):
         return None
     try:
-        from worker_custom_models import sidecar_entry
+        from core.worker_custom_models import sidecar_entry
         return str(sidecar_entry(str(entry.name)).get("importMode") or "reference")
     except Exception:
         return "reference"
@@ -898,7 +898,7 @@ def _runtime_manifest() -> dict[str, Any]:
     于是"只在 3.11 上出现"的问题（比如 `Path.is_junction` 不存在）本地看不到、
     CI 也测不出来。把这个差异变成 env_info 里的两个字段，比写进文档有用。
     """
-    path = Path(__file__).with_name("runtime-manifest.json")
+    path = Path(__file__).parents[1] / "runtime-manifest.json"
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):

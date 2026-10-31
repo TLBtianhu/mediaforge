@@ -16,7 +16,7 @@ else:
     import _bootstrap as _worker_test_bootstrap
 
 import worker_infer
-import worker_models
+from core import worker_models
 
 
 class InferenceParameterCompatibilityTests(unittest.TestCase):

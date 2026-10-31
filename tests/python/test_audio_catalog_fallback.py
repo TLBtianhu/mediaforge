@@ -48,7 +48,7 @@ class AudioCatalogFallbackTests(unittest.TestCase):
     def _resolve_record(self, name: str, records=None):
         records = [DEMUCS_RECORD] if records is None else records
         module = self._fake_list_models(records)
-        with mock.patch.dict(sys.modules, {"model_hub": module}):
+        with mock.patch.dict(sys.modules, {"core.model_hub": module}):
             return worker_infer._resolve_audio_catalog_record(name)
 
     def test_matches_the_catalog_id(self) -> None:

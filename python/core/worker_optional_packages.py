@@ -330,7 +330,7 @@ def _resolve_install_requirements(
         constraints.unlink(missing_ok=True)
     report = json.loads(report_path.read_text(encoding="utf-8"))
     from pip._vendor.packaging.utils import canonicalize_name
-    from worker_bootstrap import _is_base_accelerator_package
+    from core.worker_bootstrap import _is_base_accelerator_package
 
     resolved: list[str] = []
     for item in report.get("install") or []:
@@ -372,7 +372,7 @@ def _torchaudio_requirement(runtime: RuntimeContext | None = None) -> tuple[str,
     torchaudio_version = _environment_version("torchaudio", runtime)
     if torchaudio_version == torch_version:
         return None
-    from worker_bootstrap import _manifest
+    from core.worker_bootstrap import _manifest
     backend = runtime.backend
     torch_spec = ((_manifest().get("backends") or {}).get(backend) or {}).get("torch") or {}
     if backend == "rocm":
@@ -414,7 +414,7 @@ def _install_package(
     task_id: str | None = None,
     runtime: RuntimeContext | None = None,
 ) -> None:
-    from worker_bootstrap import PYPI_MIRROR_URLS, _resolve_pypi_mirror
+    from core.worker_bootstrap import PYPI_MIRROR_URLS, _resolve_pypi_mirror
 
     runtime = runtime or _runtime_context()
 

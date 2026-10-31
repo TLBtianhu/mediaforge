@@ -21,7 +21,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-import model_hub  # noqa: E402
+from core import model_hub  # noqa: E402
 
 
 class DownloadIntegrityTests(unittest.TestCase):
@@ -89,7 +89,7 @@ class MediaFilesTests(unittest.TestCase):
     """catalog → _media_files → 下载器：sha256 必须一路传到，否则校验形同虚设。"""
 
     def test_media_files_propagates_the_declared_checksum(self) -> None:
-        from model_hub import _media_files
+        from core.model_hub import _media_files
 
         record = {
             "id": "demo",
@@ -103,7 +103,7 @@ class MediaFilesTests(unittest.TestCase):
         self.assertEqual(files[0]["sha256"], "abc123")
 
     def test_missing_checksum_stays_empty(self) -> None:
-        from model_hub import _media_files
+        from core.model_hub import _media_files
 
         files = _media_files({"id": "demo", "name": "Demo.pth", "url": "u"})
         self.assertEqual(files[0]["sha256"], "")
@@ -115,7 +115,7 @@ class MediaFilesTests(unittest.TestCase):
         from pathlib import Path as _Path
 
         from shared import worker_paths
-        from model_hub import _media_files
+        from core.model_hub import _media_files
 
         catalog = json.loads(
             (_Path(__file__).resolve().parents[2] / "python" / "media_ops" / "media_catalog.json").read_text(

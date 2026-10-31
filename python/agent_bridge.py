@@ -29,7 +29,7 @@ VERSION = "0.1.0"
 sys.path.insert(0, str(ROOT))
 import agent_contract  # noqa: E402
 import media_eval  # noqa: E402
-import model_hub  # noqa: E402
+from core import model_hub  # noqa: E402
 from shared import worker_paths  # noqa: E402
 from media_ops import capabilities  # noqa: E402
 

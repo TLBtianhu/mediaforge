@@ -21,7 +21,7 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-import worker_optional_packages as optional_packages
+from core import worker_optional_packages as optional_packages
 
 
 class OptionalRuntimePackageTests(unittest.TestCase):
@@ -305,7 +305,7 @@ class OptionalRuntimePackageTests(unittest.TestCase):
 
     def test_linux_rocm_audio_uses_the_linux_index_instead_of_windows_wheels(self) -> None:
         self.active_file.write_text(json.dumps({"backend": "rocm"}), encoding="utf-8")
-        with mock.patch("worker_bootstrap.sys.platform", "linux"), mock.patch.object(
+        with mock.patch("core.worker_bootstrap.sys.platform", "linux"), mock.patch.object(
             optional_packages, "_environment_version", side_effect=lambda name, runtime=None: {
                 "torch": "2.10.0+rocm7.1", "torchaudio": None,
             }.get(name),
@@ -530,7 +530,7 @@ class OfflineOptionalPackageTests(unittest.TestCase):
                 loaded = subprocess.run([
                     str(python), "-c",
                     "import sys, json; sys.path.insert(0, sys.argv[1]); "
-                    "from worker_optional_packages import activate_optional_packages; activate_optional_packages(); "
+                    "from core.worker_optional_packages import activate_optional_packages; activate_optional_packages(); "
                     "import funasr, component_helper, torchaudio, torch, mlx; "
                     "print(json.dumps({m.__name__: m.__file__ for m in (funasr, component_helper, torchaudio, torch, mlx)}))",
                     str(_worker_test_bootstrap.WORKER_DIR),

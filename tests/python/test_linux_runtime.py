@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from . import _bootstrap
-import worker_bootstrap as worker
+from core import worker_bootstrap as worker
 
 
 ROOT = Path(__file__).resolve().parents[2]

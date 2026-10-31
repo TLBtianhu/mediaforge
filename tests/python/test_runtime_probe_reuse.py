@@ -15,7 +15,7 @@ else:
     import _bootstrap as _worker_test_bootstrap
     from test_worker_bootstrap import MANIFEST, probe_result
 
-import worker_bootstrap
+from core import worker_bootstrap
 
 
 class RuntimeProbeReuseTests(unittest.TestCase):

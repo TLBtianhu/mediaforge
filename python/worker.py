@@ -31,15 +31,15 @@ def run_command(command: str, payload: dict) -> int:
             return emit_error("PROTOCOL_INVALID", "protocol_call 不能指向自己")
         return run_command(handler, inner)
     if command == "runtime_info":
-        from worker_bootstrap import cmd_runtime_info
+        from core.worker_bootstrap import cmd_runtime_info
         return cmd_runtime_info(payload)
     if command == "install_runtime":
         configure_process_proxy(load_proxy_config())
-        from worker_bootstrap import cmd_install_runtime
+        from core.worker_bootstrap import cmd_install_runtime
         return cmd_install_runtime(payload)
     if command == "runtime_core_versions":
         configure_process_proxy(load_proxy_config())
-        from worker_bootstrap import cmd_runtime_core_versions
+        from core.worker_bootstrap import cmd_runtime_core_versions
         return cmd_runtime_core_versions(payload)
     if command == "plugin_marketplace":
         configure_process_proxy(load_proxy_config())
@@ -50,20 +50,20 @@ def run_command(command: str, payload: dict) -> int:
         from worker_plugins import cmd_manage_plugin
         return cmd_manage_plugin(payload)
     if command == "optional_package_status":
-        from worker_optional_packages import cmd_optional_package_status
+        from core.worker_optional_packages import cmd_optional_package_status
         return cmd_optional_package_status(payload)
     if command == "manage_optional_package":
         configure_process_proxy(load_proxy_config())
-        from worker_optional_packages import cmd_manage_optional_package
+        from core.worker_optional_packages import cmd_manage_optional_package
         return cmd_manage_optional_package(payload)
     if command == "activate_runtime":
-        from worker_bootstrap import cmd_activate_runtime
+        from core.worker_bootstrap import cmd_activate_runtime
         return cmd_activate_runtime(payload)
     if command == "runtime_env_sizes":
-        from worker_bootstrap import cmd_runtime_env_sizes
+        from core.worker_bootstrap import cmd_runtime_env_sizes
         return cmd_runtime_env_sizes(payload)
     if command == "delete_runtime":
-        from worker_bootstrap import cmd_delete_runtime
+        from core.worker_bootstrap import cmd_delete_runtime
         return cmd_delete_runtime(payload)
     if command == "test_connection":
         configure_process_proxy(parse_proxy_config({
@@ -76,10 +76,10 @@ def run_command(command: str, payload: dict) -> int:
         # returned, having set up their own proxy when they need the network.
         configure_process_proxy(load_proxy_config())
     if command == "health":
-        from worker_models import cmd_health
+        from core.worker_models import cmd_health
         return cmd_health()
     if command == "env_info":
-        from worker_models import cmd_env_info
+        from core.worker_models import cmd_env_info
         return cmd_env_info()
     if command == "media_tool":
         # 契约里的 media.run 指向这里。旧的 audio_tools + operation=media_* 入口
@@ -111,55 +111,55 @@ def run_command(command: str, payload: dict) -> int:
         from media_eval import cmd_evaluate_media
         return cmd_evaluate_media(payload)
     if command == "model_interface":
-        from worker_models import cmd_model_interface
+        from core.worker_models import cmd_model_interface
         return cmd_model_interface(payload)
     if command == "list_models":
-        from worker_models import cmd_list_models
+        from core.worker_models import cmd_list_models
         return cmd_list_models(payload)
     if command == "debug_catalog_info":
-        from worker_models import cmd_debug_catalog_info
+        from core.worker_models import cmd_debug_catalog_info
         return cmd_debug_catalog_info(payload)
     if command == "debug_catalog_save":
-        from worker_models import cmd_debug_catalog_save
+        from core.worker_models import cmd_debug_catalog_save
         return cmd_debug_catalog_save(payload)
     if command == "debug_catalog_reset":
-        from worker_models import cmd_debug_catalog_reset
+        from core.worker_models import cmd_debug_catalog_reset
         return cmd_debug_catalog_reset(payload)
     if command == "debug_model_config":
-        from worker_models import cmd_debug_model_config
+        from core.worker_models import cmd_debug_model_config
         return cmd_debug_model_config(payload)
     if command == "model_info":
-        from worker_models import cmd_model_info
+        from core.worker_models import cmd_model_info
         return cmd_model_info(payload)
     if command == "delete_model":
-        from worker_models import cmd_delete_model
+        from core.worker_models import cmd_delete_model
         return cmd_delete_model(payload)
     if command == "inspect_custom_model":
-        from worker_custom_models import cmd_inspect_custom_model
+        from core.worker_custom_models import cmd_inspect_custom_model
         return cmd_inspect_custom_model(payload)
     if command == "import_custom_model":
-        from worker_custom_models import cmd_import_custom_model
+        from core.worker_custom_models import cmd_import_custom_model
         return cmd_import_custom_model(payload)
     if command == "unregister_custom_model":
-        from worker_custom_models import cmd_unregister_custom_model
+        from core.worker_custom_models import cmd_unregister_custom_model
         return cmd_unregister_custom_model(payload)
     if command == "relink_custom_model":
-        from worker_custom_models import cmd_relink_custom_model
+        from core.worker_custom_models import cmd_relink_custom_model
         return cmd_relink_custom_model(payload)
     if command == "remap_custom_model_paths":
-        from worker_custom_models import cmd_remap_custom_model_paths
+        from core.worker_custom_models import cmd_remap_custom_model_paths
         return cmd_remap_custom_model_paths(payload)
     if command == "model_storage_summary":
-        from worker_models import cmd_model_storage_summary
+        from core.worker_models import cmd_model_storage_summary
         return cmd_model_storage_summary(payload)
     if command == "delete_tool_model":
-        from worker_models import cmd_delete_tool_model
+        from core.worker_models import cmd_delete_tool_model
         return cmd_delete_tool_model(payload)
     if command == "cleanup_model_residual_files":
-        from worker_models import cmd_cleanup_model_residual_files
+        from core.worker_models import cmd_cleanup_model_residual_files
         return cmd_cleanup_model_residual_files(payload)
     if command == "test_connection":
-        from worker_connection import cmd_test_connection
+        from core.worker_connection import cmd_test_connection
         return cmd_test_connection(payload)
     if command == "audio_metadata":
         from worker_audio import cmd_audio_metadata
@@ -172,7 +172,7 @@ def run_command(command: str, payload: dict) -> int:
         return cmd_export_editor_mix(payload)
     if command == "audio_tools":
         if str(payload.get("operation") or "").strip().lower() == "asr":
-            from worker_optional_packages import activate_optional_packages
+            from core.worker_optional_packages import activate_optional_packages
             activate_optional_packages()
         from worker_tools import cmd_audio_tools
         return cmd_audio_tools(payload)
@@ -184,10 +184,10 @@ def run_command(command: str, payload: dict) -> int:
         emit("media_capabilities_result", list_capabilities(payload.get("modelDir")))
         return 0
     if command == "model_hub":
-        from model_hub_worker import cmd_model_hub
+        from core.model_hub_worker import cmd_model_hub
         return cmd_model_hub(payload)
     if command == "model_download":
-        from model_hub_worker import cmd_model_download
+        from core.model_hub_worker import cmd_model_download
         return cmd_model_download(payload)
     if command == "infer":
         from worker_infer import cmd_infer
