@@ -1,4 +1,5 @@
 use super::*;
+use super::scan::{restore_scan_entry, skip_scan};
 
 #[cfg(feature = "native-plugins")]
 #[test]
