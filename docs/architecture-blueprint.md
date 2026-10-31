@@ -27,13 +27,15 @@ manifest/
 ### 1.3 三层代码，依赖严格单向
 
 ```
-media_engine/    纯计算：算子、加载器、管线（不 import app/surfaces/音频）
-app_core/        状态：素材索引、模型注册、路径解析、资产管理
-surfaces/        适配：worker stdio 协议、MCP、CLI
+media_ops/       纯计算：算子、加载器、管线（不 import core/surfaces/shared 之外的层）
+core/            状态与编排：素材索引、模型注册、运行时、作业、插件
+surfaces/        适配：worker stdio、MCP、协议查表 dispatch
+shared/          跨层原语：协议信封、路径、恢复、安全文件、代理
 ```
 
-规则：`media_engine` ← `app_core` ← `surfaces`，反向 import 由静态检查拒绝。
-视频不是独立引擎，是 `media_engine` 里调用 ffmpeg 的管线。
+规则：`media_ops` ← `core` ← `surfaces`；`shared` 被所有层依赖但不依赖任何层。
+反向 import 由 `scripts/check-architecture.py` 拒绝。
+视频不是独立引擎，是 `media_ops` 里调用 ffmpeg 的管线。
 
 ### 1.4 事件与命令只有一套
 
@@ -57,12 +59,12 @@ runtime.state / catalog.state / app.state
 | ~~Catalog~~ | 已删除：catalog 随应用发布，没有独立更新通道 | — |
 
 `versions.json`（签名）只做"比较 + 提示"，永远整包替换，不打补丁、不迁移。
-catalog 轴在 0.0.24 被删除：它只有声明没有实现，留着就是假的三条轴。
+catalog 轴在 0.0.23 之后被删除：它只有声明没有实现，留着就是假的三条轴。
 运行时并列存放意味着回滚只是改一个指针，不需要"兼容旧运行时"。
 
 ### 1.6 音频是外部引擎
 
-pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接入同一套协议。
+pymss 以外部包形式存在，通过 `core` 里的 audio 适配器接入同一套协议。
 它的版本、依赖、许可证都不进入本站的构建主体，媒体侧可以独立重写。
 
 ## 2. 分阶段路径
@@ -124,12 +126,14 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 
 ## 3. 不变量（用脚本守住）
 
-1. `media_engine` 不 import `app_core` / `surfaces` / `pymss` / `audio_tools`
-2. 代码里出现的每个事件名都在 `protocol.json` 里声明
-3. 代码里出现的每个命令都在 `protocol.json` 里声明
-4. capabilities 引用的每个模型都在 catalog 里，且有 `size` / `url` / `licenseSpdx`
-5. 运行时清单声明能力；UI 只展示"当前运行时支持"的能力
-6. 发布物里没有机器相关的绝对路径；启动器由脚本生成
+1. `media_ops` 不 import `core` / `surfaces` / `app_core` / `pymss` / `audio_tools`
+2. `core` 不 import `surfaces`
+3. `shared` 不 import 任何上层
+4. `python/` 根目录只有 `worker.py`、`agent_bridge.py` 和数据文件
+5. 引擎发出的每个事件名都在 `protocol.json.events.canonical` 里；旧别名已删除
+6. 每个命令的 handler 都能解析到 `module:function`，且模块/函数真实存在
+7. capabilities 引用的每个模型都在 catalog 里，且有 `size` / `url` / `licenseSpdx`
+8. 发布物里没有机器相关的绝对路径；启动器由脚本生成
 
 ## 4. 明确不做
 
@@ -191,3 +195,36 @@ python/
 
 拆分边界由测试契约决定：`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`
 都会按名字从 SFC/源码里取声明并执行，被取用的声明必须留在顶层；其余逻辑才可外移。
+
+## 8. 验收清单（每批次都跑）
+
+```powershell
+# 前端
+node --test --test-reporter=tap "tests/**/*.test.*"
+node_modules\.bin\vue-tsc.CMD --noEmit
+pnpm build
+
+# Rust
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test  --manifest-path src-tauri/Cargo.toml --no-run
+
+# Python
+$py = "$env:USERPROFILE\.mediaforge\runtime-envs\cuda\Scripts\python.exe"
+& $py -m unittest discover -s tests/python -t .
+& $py scripts\check-architecture.py
+& $py scripts\smoke-media-models.py
+& $py scripts\smoke_mcp.py
+
+# 分发表
+& $py python\worker.py health
+```
+
+发布前额外跑：
+
+```powershell
+powershell -File scripts/smoke-installer.ps1 -Installer release/MediaForge-<ver>-windows-x64-cuda-setup.exe
+powershell -File scripts/smoke-portable.ps1  -Zip       release/MediaForge-<ver>-windows-x64-cuda-portable.7z
+```
+
+`cargo test` 里与本机环境相关的失败（Windows junction、torch DLL、bash 脚本）在 CI 对应平台上验证；
+本地验收以"失败集合与基线一致"为准。

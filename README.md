@@ -43,7 +43,7 @@ powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MediaForge\int
 - [x] Fork、独立仓库、MediaForge 品牌壳
 - [x] FFmpeg 媒体后端：`probe`、视频/音频/图片转码、提取音频、GIF
 - [x] `/factory` 格式工厂页面：文件选择、输出格式、CRF/预设、进度、结果
-- [x] 复用 PyMSS worker 事件协议（`audio_tool_progress` / `audio_tool_result`）
+- [x] 复用 PyMSS worker 事件协议（`task.progress` / `task.result`）
 - [x] Tauri release 构建通过
 - [x] 素材台：SQLite 索引、缩略图、导入文件/文件夹、搜索/筛选、拖拽导入、去格式工厂
 - [x] 统一模型库：音频 + 图像/视频 30 个条目（21 个可用），统一检索、状态与下载
