@@ -26,6 +26,31 @@ function componentComputed(file, name, scope) {
   return vm.runInNewContext(`${code}\n${name}`, { computed: fn => fn(), ...scope })
 }
 
+function runtimeDebugFiles(scope) {
+  const source = readFileSync(new URL('../src/views/debug/runtimeDebugFiles.ts', import.meta.url), 'utf8')
+  const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
+  return vm.runInNewContext(`${code}\nmakeRuntimeDebugFiles`, {})(scope)
+}
+
+function runtimeDebugScope(overrides = {}) {
+  return {
+    app: { runtimeDebugSupported: false, updateDebugRuntime: async () => ({ files: [] }) },
+    developerMode: { value: true },
+    t: key => key,
+    message: { success() {}, error() {} },
+    runtimeDebugEditingPath: { value: '' },
+    runtimeDebugEditingContent: { value: '' },
+    runtimeDebugEditorVisible: { value: false },
+    runtimeDebugSaving: { value: '' },
+    runtimeOverrideBackend: { value: 'cuda' },
+    runtimeOverridePythonPath: { value: 'python.exe' },
+    runtimeOverrideDirty: { value: false },
+    setRuntimeDebugInfo() {},
+    syncRuntimeOverrideFromCurrent() {},
+    ...overrides,
+  }
+}
+
 
 
 test('the ASR page only offers removal for removable components', () => {
@@ -173,8 +198,46 @@ test('every confirmation dismissal settles the pending runtime operation', async
 })
 
 test('non-Windows developer controls cannot open an editor or mutate runtime files', async () => {
-  const scope = { app: { runtimeManagementSupported: true, runtimeDebugSupported: false } }
+  const mutations = []
+  const scope = runtimeDebugScope({
+    app: {
+      runtimeDebugSupported: false,
+      updateDebugRuntime: async (...args) => { mutations.push(args); return { files: [] } },
+    },
+    message: { success: value => mutations.push(value), error: value => mutations.push(value) },
+    setRuntimeDebugInfo: value => mutations.push(value),
+    syncRuntimeOverrideFromCurrent: value => mutations.push(value),
+  })
+  const files = runtimeDebugFiles(scope)
   for (const name of ['openRuntimeDebugEditor', 'saveRuntimeDebugEditor', 'restoreRuntimeDebugFile', 'overrideActiveRuntimePointer']) {
-    await componentFunction('../src/views/DebugView.vue', name, scope)({ editable: true, backupExists: true })
+    await files[name]({ editable: true, backupExists: true })
   }
+  assert.deepEqual(mutations, [])
+  assert.equal(scope.runtimeDebugEditorVisible.value, false)
+  assert.equal(scope.runtimeDebugSaving.value, '')
+})
+
+test('a supported developer session writes, restores and overrides through the platform bridge', async () => {
+  const calls = []
+  const scope = runtimeDebugScope({
+    app: {
+      runtimeDebugSupported: true,
+      updateDebugRuntime: async (command, payload) => { calls.push([command, payload]); return { files: [] } },
+    },
+    runtimeDebugEditingPath: { value: 'conf.json' },
+    runtimeDebugEditingContent: { value: '{"a":1}' },
+    setRuntimeDebugInfo: info => calls.push(['info', info]),
+  })
+  const files = runtimeDebugFiles(scope)
+  files.openRuntimeDebugEditor({ path: 'conf.json', content: '{"a":2}', editable: true, backupExists: false })
+  assert.equal(scope.runtimeDebugEditorVisible.value, true)
+  assert.equal(scope.runtimeDebugEditingContent.value, '{"a":2}')
+  await files.saveRuntimeDebugEditor()
+  // 载荷对象在 VM realm 里创建，先过 JSON 再比对原型无关的内容。
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), ['debug_runtime_write_file', { path: 'conf.json', content: '{"a":2}', backup: true }])
+  assert.equal(scope.runtimeDebugEditorVisible.value, false)
+  await files.restoreRuntimeDebugFile({ path: 'conf.json', content: '', editable: true, backupExists: true })
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[2])), ['debug_runtime_restore_file', { path: 'conf.json' }])
+  await files.overrideActiveRuntimePointer()
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[4])), ['debug_runtime_override_active', { backend: 'cuda', pythonPath: 'python.exe' }])
 })

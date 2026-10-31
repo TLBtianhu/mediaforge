@@ -1,4 +1,4 @@
-﻿// SeparateView 的输出目录：默认值、平台校验、预览、提交入口。
+// SeparateView 的输出目录：默认值、平台校验、预览、提交入口。
 import type { StemOutput } from '@/stores/task'
 
 type Deps = Record<string, any>

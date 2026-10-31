@@ -47,7 +47,7 @@ const { downloadTasks } = storeToRefs(modelStore)
 
 import type {
   CatalogEditMode, DebugCatalogInfo, DebugLogCategoryFilter, DebugLogContent, DebugLogInfo,
-  DebugLogLevelFilter, DebugLogReport, DebugModelConfig, DebugRuntimeFileInfo, DebugRuntimePointers,
+  DebugLogLevelFilter, DebugLogReport, DebugModelConfig, DebugRuntimePointers,
   DebugTab, DebugWorkerEvent, DebugWorkerEventGroup, ParsedDebugLogLine, RuntimeDebugEnvironmentRow,
   RuntimeTreeChild, RuntimeTreeNode,
 } from './debug_types'
@@ -57,6 +57,7 @@ const {
 } = useUpdateEndpoint({ t, message, updateEndpointOverride })
 import { useCatalogEditor } from './debug/useCatalogEditor'
 import { makeExecutionLog } from './debug/executionLog'
+import { makeRuntimeDebugFiles } from './debug/runtimeDebugFiles'
 import { useUpdateEndpoint } from './debug/useUpdateEndpoint'
 import { groupWorkerEvents, isNewerTimestamp } from './debug/workerEvents'
 
@@ -702,48 +703,6 @@ async function loadRuntimeDebugPointers() {
   }
 }
 
-function openRuntimeDebugEditor(file: DebugRuntimeFileInfo) {
-  if (!app.runtimeDebugSupported || !developerMode.value || !file.editable) return
-  runtimeDebugEditingPath.value = file.path
-  runtimeDebugEditingContent.value = file.content || ''
-  runtimeDebugEditorVisible.value = true
-}
-
-async function saveRuntimeDebugEditor() {
-  if (!app.runtimeDebugSupported) return
-  const path = runtimeDebugEditingPath.value
-  if (!path) return
-  runtimeDebugSaving.value = path
-  try {
-    const info = await app.updateDebugRuntime<DebugRuntimePointers>('debug_runtime_write_file', {
-      path, content: runtimeDebugEditingContent.value || '', backup: true,
-    })
-    setRuntimeDebugInfo(info)
-    runtimeDebugEditorVisible.value = false
-    runtimeDebugEditingPath.value = ''
-    runtimeDebugEditingContent.value = ''
-    message.success(t('debug.runtimeDebugSaved'))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeDebugSaving.value = ''
-  }
-}
-
-async function restoreRuntimeDebugFile(file: DebugRuntimeFileInfo) {
-  if (!app.runtimeDebugSupported || !developerMode.value || !file.backupExists) return
-  runtimeDebugSaving.value = file.path
-  try {
-    const info = await app.updateDebugRuntime<DebugRuntimePointers>('debug_runtime_restore_file', { path: file.path })
-    setRuntimeDebugInfo(info)
-    message.success(t('debug.runtimeDebugRestored'))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeDebugSaving.value = ''
-  }
-}
-
 function parseDebugLogLine(raw: string, index: number): ParsedDebugLogLine {
   const record = normalizeLogRecord(raw, index)
   const severity: DebugLogLevelFilter = record.level === 'fatal' ? 'error'
@@ -816,23 +775,14 @@ function markRuntimeOverrideDirty() {
   runtimeOverrideDirty.value = true
 }
 
-async function overrideActiveRuntimePointer() {
-  if (!app.runtimeDebugSupported || !developerMode.value || !runtimeOverrideBackend.value || !runtimeOverridePythonPath.value.trim()) return
-  runtimeDebugSaving.value = 'active-runtime'
-  try {
-    const info = await app.updateDebugRuntime<DebugRuntimePointers>('debug_runtime_override_active', {
-      backend: runtimeOverrideBackend.value, pythonPath: runtimeOverridePythonPath.value.trim(),
-    })
-    setRuntimeDebugInfo(info)
-    runtimeOverrideDirty.value = false
-    syncRuntimeOverrideFromCurrent(true)
-    message.success(t('debug.runtimeDebugOverrideSaved'))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeDebugSaving.value = ''
-  }
-}
+const {
+  openRuntimeDebugEditor, saveRuntimeDebugEditor, restoreRuntimeDebugFile, overrideActiveRuntimePointer,
+} = makeRuntimeDebugFiles({
+  app, developerMode, t, message,
+  runtimeDebugEditingPath, runtimeDebugEditingContent, runtimeDebugEditorVisible, runtimeDebugSaving,
+  runtimeOverrideBackend, runtimeOverridePythonPath, runtimeOverrideDirty,
+  setRuntimeDebugInfo, syncRuntimeOverrideFromCurrent,
+})
 
 function loadDebugPageData() {
   if (!developerMode.value) return
