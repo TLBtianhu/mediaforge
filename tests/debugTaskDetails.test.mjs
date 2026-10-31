@@ -7,42 +7,10 @@ import { computed, effectScope, nextTick, reactive, ref, watch } from 'vue'
 import { summarizeDiagnosticChecks } from '../src/utils/diagnostics.ts'
 import { normalizeLogRecord } from '../src/utils/logRecord.ts'
 
-const source = readFileSync(new URL('../src/views/DebugView.vue', import.meta.url), 'utf8')
-  .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-const parsed = ts.createSourceFile('DebugView.vue', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-const declarationNames = [
-  'diagnosticDetailsOpen', 'executionLogVisible', 'executionLogTaskId', 'executionDownloadSnapshot',
-  'executionLogTask', 'liveExecutionDownload', 'executionLogDownload', 'executionLogName',
-  'executionLogs', 'executionNodeLogs', 'executionLogError', 'canReturnToTask', 'diagnosticSummary',
-]
-const watchedNames = ['liveExecutionDownload', 'diagnosticSummary']
-
-function containsIdentifier(node, name) {
-  return ts.isIdentifier(node) && node.text === name
-    || Boolean(ts.forEachChild(node, child => containsIdentifier(child, name)))
-}
-
-const declarations = declarationNames.map(name => {
-  const statement = parsed.statements.find(node => ts.isVariableStatement(node)
-    && node.declarationList.declarations.some(declaration => declaration.name.getText(parsed) === name))
-  assert.ok(statement, `DebugView declaration ${name} must exist`)
-  return statement
-})
-const watchers = watchedNames.map(name => {
-  const statement = parsed.statements.find(node => ts.isExpressionStatement(node)
-    && ts.isCallExpression(node.expression)
-    && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'watch'
-    && containsIdentifier(node.expression.arguments[0], name))
-  assert.ok(statement, `DebugView watcher for ${name} must exist`)
-  return statement
-})
-const showExecutionLogs = parsed.statements.find(node => ts.isFunctionDeclaration(node)
-  && node.name?.text === 'showExecutionLogs')
-assert.ok(showExecutionLogs, 'DebugView showExecutionLogs must exist')
-const statements = [...declarations, ...watchers, showExecutionLogs].sort((left, right) => left.pos - right.pos)
-const code = ts.transpileModule(statements.map(node => node.getText(parsed)).join('\n'), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022 },
-}).outputText
+const executionLogCode = ts.transpileModule(
+  readFileSync(new URL('../src/views/debug/executionLog.ts', import.meta.url), 'utf8'),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+).outputText.replace(/^export /gm, '')
 
 function environment(t, { enabled = true, state = 'ok' } = {}) {
   const scope = effectScope()
@@ -54,9 +22,9 @@ function environment(t, { enabled = true, state = 'ok' } = {}) {
     task: reactive({ tasks: [] }),
   }
   const exposed = scope.run(() => vm.runInNewContext(
-    `${code}\n({ ${declarationNames.join(', ')}, showExecutionLogs })`,
+    `${executionLogCode}\nmakeExecutionLog`,
     { ...inputs, computed, ref, watch, normalizeLogRecord, summarizeDiagnosticChecks },
-  ))
+  )({ ...inputs, computed, ref, watch, normalizeLogRecord, summarizeDiagnosticChecks }))
   t.after(() => scope.stop())
   return { ...inputs, ...exposed }
 }

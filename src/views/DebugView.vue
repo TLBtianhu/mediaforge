@@ -56,6 +56,7 @@ const {
   beginUpdateEndpointEdit, cancelUpdateEndpointEdit, saveUpdateEndpointOverride, resetUpdateEndpointOverride,
 } = useUpdateEndpoint({ t, message, updateEndpointOverride })
 import { useCatalogEditor } from './debug/useCatalogEditor'
+import { makeExecutionLog } from './debug/executionLog'
 import { useUpdateEndpoint } from './debug/useUpdateEndpoint'
 import { groupWorkerEvents, isNewerTimestamp } from './debug/workerEvents'
 
@@ -84,7 +85,6 @@ const {
 } = useCatalogEditor({ t, message, modelStore, downloadSource })
 
 const activeTab = ref<DebugTab>('overview')
-const diagnosticDetailsOpen = ref(false)
 const selectedDebugModel = ref('')
 const debugConfigLoading = ref(false)
 const debugConfigSaving = ref(false)
@@ -122,50 +122,27 @@ const activityLoadError = ref('')
 const eventQuery = ref('')
 const eventIssuesOnly = ref(false)
 const debugLogError = ref('')
-const executionLogVisible = ref(false)
-const executionLogTaskId = ref('')
-const executionDownloadSnapshot = ref<DownloadTask | null>(null)
 const executionLogBody = ref<HTMLElement | null>(null)
 const failedTaskPage = ref(1)
 const failedTaskPageSize = 5
 const failedTaskScroller = ref<HTMLElement | null>(null)
-const executionLogTask = computed(() => task.tasks.find(item => item.id === executionLogTaskId.value))
-const liveExecutionDownload = computed(() => Object.values(downloadTasks.value).find(item => item.taskId === executionLogTaskId.value))
-watch(liveExecutionDownload, (current, previous) => {
-  if (current) executionDownloadSnapshot.value = current
-  else if (previous?.taskId === executionLogTaskId.value && modelStore.downloadStates[previous.model] === 'done') {
-    executionDownloadSnapshot.value = { ...previous, status: 'done', progress: 100, speedBytesPerSecond: 0 }
-  }
-}, { flush: 'sync' })
-const executionLogDownload = computed(() => liveExecutionDownload.value || executionDownloadSnapshot.value)
-const executionLogName = computed(() => executionLogTask.value?.runConfig?.workflowName || executionLogTask.value?.model || executionLogDownload.value?.model || executionLogTaskId.value)
-const executionLogs = computed(() => executionLogTask.value?.logs || (executionLogDownload.value?.logs || []).map(entry => entry.record || normalizeLogRecord({
-  message: entry.message, level: entry.level, timestamp: Number.isFinite(entry.ts) ? new Date(entry.ts).toISOString() : '',
-  source: 'worker', taskId: executionLogTaskId.value,
-})))
-const executionNodeLogs = computed(() => executionLogTask.value?.nodeLogs || {})
-const executionLogError = computed(() => executionLogTask.value?.error
-  || (executionLogTask.value?.status === 'failed' ? executionLogTask.value.message : '')
-  || executionLogDownload.value?.errorMessage
-  || (executionLogDownload.value?.status === 'error' ? executionLogDownload.value.message : '')
-  || '')
-const executionFailedNodes = computed(() => Object.entries(executionLogTask.value?.nodeStates || {})
+const executionFailedNodes = computed(() => Object.entries((executionLogTask.value?.nodeStates || {}) as Record<string, { status: string }>)
   .filter(([, state]) => state.status === 'failed').map(([id]) => id))
 const executionLogStatus = computed(() => executionLogTask.value ? t(taskStatusKeys[executionLogTask.value.status] || 'debug.stateUnknown')
   : executionLogDownload.value ? downloadStatusLabel(executionLogDownload.value) : t('debug.stateUnknown'))
-const canReturnToTask = computed(() => executionLogTaskId.value && (executionLogTask.value || executionLogDownload.value))
 const isMac = computed(() => detectRuntimePlatform(app.runtimeInfo).isMac)
 const diagnostics = computed(() => buildDiagnosticChecks({
   env: app.envInfo, runtime: app.runtimeInfo, envError: app.envError, runtimeError: app.runtimeInfoError,
   connection: app.workerEventConnectionStatus, connectionError: app.workerEventConnectionError,
   optionalPackage: funAsr.status.value, optionalError: funAsr.error.value, isMac: isMac.value,
 }))
-const diagnosticSummary = computed(() => summarizeDiagnosticChecks(diagnostics.value))
-watch([developerMode, () => diagnosticSummary.value.state], ([enabled, state], [wasEnabled]) => {
-  if (!enabled) diagnosticDetailsOpen.value = false
-  else if (!wasEnabled) diagnosticDetailsOpen.value = state === 'error' || state === 'warn'
-  else if (state === 'error' || state === 'warn') diagnosticDetailsOpen.value = true
-}, { immediate: true })
+const {
+  diagnosticDetailsOpen, executionLogVisible, executionLogTaskId, executionDownloadSnapshot,
+  executionLogTask, liveExecutionDownload, executionLogDownload, executionLogName, executionLogs,
+  executionNodeLogs, executionLogError, canReturnToTask, diagnosticSummary, showExecutionLogs,
+} = makeExecutionLog({
+  task, downloadTasks, modelStore, developerMode, diagnostics, computed, ref, watch, normalizeLogRecord, summarizeDiagnosticChecks,
+})
 const diagnosticStateLabels: Record<DiagnosticState, string> = {
   ok: 'debug.stateOk', warn: 'debug.stateWarning', error: 'debug.stateError', unknown: 'debug.stateUnknown', optional: 'debug.stateOptional',
 }
@@ -386,7 +363,7 @@ const debugLogIssueCounts = computed(() => {
   return { errors, warnings, tracebacks }
 })
 const statusCards = computed(() => [
-  { label: t('debug.envStatus'), value: t(diagnosticStateLabels[diagnosticSummary.value.state]), tone: diagnosticSummary.value.state, detail: t('debug.checkCounts', { ok: diagnosticSummary.value.ok, total: diagnostics.value.length }), tab: 'overview' as DebugTab },
+  { label: t('debug.envStatus'), value: t(diagnosticStateLabels[diagnosticSummary.value.state as DiagnosticState]), tone: diagnosticSummary.value.state, detail: t('debug.checkCounts', { ok: diagnosticSummary.value.ok, total: diagnostics.value.length }), tab: 'overview' as DebugTab },
   { label: t('debug.runningTasks'), value: String(runningTasks.value.length), tone: 'neutral', detail: [t('debug.workflowCount', { count: runningTasks.value.filter(item => item.runConfig?.runMode === 'workflow').length }), t('debug.queuedCount', { count: task.queuedTasks.length })].join(' · '), tab: 'activity' as DebugTab },
   { label: t('debug.downloadingModels'), value: String(runningDownloadTasks.value.length), tone: 'neutral', detail: t('debug.openActivity'), tab: 'activity' as DebugTab },
 ])
@@ -512,7 +489,7 @@ async function copyText(text: string, success: string) {
 function copyDiagnosticSummary() {
   const content = [
     `MediaForge ${app.buildInfoVersion || '-'} (${app.buildInfoVariant || '-'})`,
-    `${t('debug.envStatus')}: ${t(diagnosticStateLabels[diagnosticSummary.value.state])}`,
+    `${t('debug.envStatus')}: ${t(diagnosticStateLabels[diagnosticSummary.value.state as DiagnosticState])}`,
     `${t('debug.lastChecked')}: ${lastCheckedAt.value ? new Date(lastCheckedAt.value).toISOString() : t('debug.stateUnknown')}`,
     ...diagnostics.value.map(check => `${check.label.startsWith('debug.') ? t(check.label) : check.label}: ${t(diagnosticStateLabels[check.state])}${check.value ? ` · ${check.value}` : ''}${check.detail && check.state !== 'ok' ? `\n  ${check.detail.replace(/\n/g, '\n  ')}` : ''}`),
     `${t('debug.activeWorkerTasks')}: ${activeWorkerTasks.value.length}; ${t('debug.queuedCount', { count: task.queuedTasks.length })}`,
@@ -528,12 +505,6 @@ async function showTaskLogs(taskId: string) {
   await loadDebugLog()
 }
 
-function showExecutionLogs(taskId: string) {
-  executionLogTaskId.value = taskId
-  executionDownloadSnapshot.value = Object.values(downloadTasks.value).find(item => item.taskId === taskId)
-    || (executionDownloadSnapshot.value?.taskId === taskId ? executionDownloadSnapshot.value : null)
-  executionLogVisible.value = true
-}
 
 async function showExecutionApplicationLogs() {
   executionLogVisible.value = false
@@ -557,7 +528,7 @@ function showFailedNodeLogs(nodeId: string) {
 
 const executionLogText = computed(() => [
   ...executionLogs.value,
-  ...Object.entries(executionNodeLogs.value).flatMap(([id, lines]) => [`[node:${id}]`, ...lines]),
+  ...Object.entries((executionNodeLogs.value || {}) as Record<string, unknown[]>).flatMap(([id, lines]) => [`[node:${id}]`, ...lines]),
 ].map(entry => formatLogRecord(normalizeLogRecord(entry))).join('\n'))
 
 const taskStatusKeys: Record<string, string> = {
