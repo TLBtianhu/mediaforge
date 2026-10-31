@@ -1,8 +1,12 @@
 pub mod debug;
+pub mod dialogs;
 pub mod editor;
+pub mod migration;
 pub mod models;
 pub mod plugin;
 pub mod runtime;
 pub mod scan;
 pub mod session;
+pub mod tasks;
+pub mod trash;
 pub mod window;

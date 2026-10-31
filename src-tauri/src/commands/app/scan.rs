@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::AppHandle;
 
-const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus"];
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "mov", "avi", "webm", "flv"];
+pub(crate) const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus"];
+pub(crate) const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "mov", "avi", "webm", "flv"];
 
 #[derive(Debug, Serialize)]
 pub struct ScanAudioPathsResult {
@@ -115,7 +115,7 @@ fn stable_dedup(paths: Vec<String>) -> Vec<String> {
 
 /// 图片扩展名：与 `scan_media_paths` 的音视频集合分开，
 /// 否则把一张 png 拖进图片页会被判成"不支持的文件"。
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"];
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"];
 
 fn is_image_file(path: &Path) -> bool {
     path.extension()

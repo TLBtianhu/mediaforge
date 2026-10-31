@@ -12,7 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::commands::app_cmd::value_type;
+use crate::commands::app::tasks::value_type;
 
 #[tauri::command]
 pub async fn update_proxy_settings(

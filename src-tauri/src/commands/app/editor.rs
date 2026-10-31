@@ -22,11 +22,13 @@ use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 
-use crate::commands::app_cmd::cancel_task;
+use crate::commands::app::dialogs::path_to_string;
+use crate::commands::app::tasks::cancel_task;
+use crate::commands::app::trash::is_link_metadata;
 use crate::commands::app::scan::{is_audio_file, scan_audio_paths};
 use crate::commands::app_cmd::{
     build_file_name_index, build_relink_candidate, derive_relink_root, enrich_editor_project_sources,
-    is_link_metadata, linked_asset_from_path, normalize_path_key, path_to_string,
+    linked_asset_from_path, normalize_path_key,
     preferred_match_by_relative_path,
 };
 

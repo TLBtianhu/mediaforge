@@ -9,7 +9,8 @@ use crate::state::AppState;
 use serde_json::Value;
 use tauri::{AppHandle, State};
 
-use super::super::app_cmd::{cancel_task, chrono_like_timestamp};
+use super::super::app::tasks::cancel_task;
+use super::super::app_cmd::chrono_like_timestamp;
 
 #[tauri::command]
 pub async fn runtime_info(app: AppHandle, payload: Option<Value>) -> AppResult<Value> {
