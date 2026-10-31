@@ -92,7 +92,8 @@ if (-not $SkipBuild) {
 Write-Host "[2/6] staging"
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item "$root\src-tauri\target\release\pymss-studio.exe" "$stage\MediaForge.exe" -Force
-foreach ($item in @('python', 'python-runtime', 'integrations')) {
+# manifest/ 是运行时契约（protocol/runtime/catalog 声明在运行时被读取），必须随包。
+foreach ($item in @('python', 'python-runtime', 'integrations', 'manifest')) {
     $source = Join-Path $root $item
     $target = Join-Path $stage $item
     if (-not (Test-Path $source)) { throw "缺少 $item，无法打包" }
@@ -201,8 +202,18 @@ $signingPassword = Get-SigningPassword
 if ($signingPassword -and (Test-Path $keyPath)) {
     $signer = "$root\node_modules\.bin\tauri.cmd"
     Push-Location $root
+    # tauri CLI 会把 TAURI_SIGNING_PRIVATE_KEY 环境变量也算作"已提供 key"，
+    # 与显式 -f/-p 同时出现会直接报冲突；这里只在子进程环境里摘掉它们。
+    $savedKey = $env:TAURI_SIGNING_PRIVATE_KEY
+    $savedPassword = $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+    Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
+    Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
     try { Invoke-Native 'signer' { & $signer signer sign -f $keyPath -p $signingPassword $updateZip } }
-    finally { Pop-Location }
+    finally {
+        Pop-Location
+        if ($savedKey) { $env:TAURI_SIGNING_PRIVATE_KEY = $savedKey }
+        if ($savedPassword) { $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $savedPassword }
+    }
     if (Test-Path "$updateZip.sig") {
         $b64 = (Get-Content "$updateZip.sig" -Raw).Trim()  # .sig 本身就是 base64，清单直接用
         [System.IO.File]::WriteAllText("$updateZip.signature.b64", $b64, (New-Object System.Text.UTF8Encoding($false)))
