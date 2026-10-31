@@ -188,6 +188,13 @@ jobs:
           output-artifact: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup
           output-file: MediaForge-${{ needs.windows-cuda-prepare.outputs.version }}-windows-x64-cuda-setup.exe
 
+      - name: Clean-profile install smoke test
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Recurse -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw "没有找到安装包" }
+          ./scripts/smoke-installer.ps1 -Installer $setup.FullName
+
   windows-cpu-prepare:
     name: Windows x64 CPU prepare
     runs-on: windows-latest
