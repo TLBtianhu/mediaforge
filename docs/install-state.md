@@ -7,16 +7,36 @@
 
 | 内容 | 用户态（安装版） | 开发态（仓库） |
 |---|---|---|
-| 程序本体 | `C:\Program Files\MediaForge` | `C:\MediaForge`（exe 在 `src-tauri\target\debug`） |
+| 程序本体 | `%LOCALAPPDATA%\Programs\MediaForge`（per-user，不需要管理员） | `C:\MediaForge`（exe 在 `src-tauri\target\debug`） |
+| 契约清单 | `<安装目录>\manifest\`（protocol / runtime / catalog） | `<repo>\manifest\` |
 | 用户数据根 | `%USERPROFILE%\.mediaforge` | `<repo>\.dev-data` |
+| 运行时环境 | `<数据根>\runtime-envs\<assetId>\` + `active-runtime.json` 指针 | `<repo>\.dev-data\runtime-envs\<assetId>\` |
 | 模型 | `<数据根>\models` | `<repo>\.dev-data\models` |
 | 输出 / 日志 / 设置 | `<数据根>\{outputs,logs,settings}` | `<repo>\.dev-data\{...}` |
-| 运行时环境 | `<安装目录>\python-runtime\runtime-envs` | `<repo>\.dev-data\runtime-envs` |
+| VC++ 运行库 | `<安装目录>\bin\vcrt`、`<安装目录>\python-runtime`，安装运行时后复制到 `runtime-envs\<assetId>\Scripts` | 同一个（随安装包） |
 | MCP 启动器 | `%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd` | 同一个（指向仓库根） |
-| 安装指针 | `%LOCALAPPDATA%\MediaForge\home.txt` + `HKCU\Software\MediaForge\InstallDir` | 同一个（指向仓库根） |
+| 安装指针 | `HKCU\Software\MediaForge\InstallDir` + `%LOCALAPPDATA%\Programs\MediaForge\home.txt` | 同一个（指向仓库根） |
 
 判定依据是 `storage.rs` 的 `resolve_data_root`：
 **环境变量 `MEDIAFORGE_DATA_ROOT` → 开发态 `<repo>\.dev-data` → 便携标记 `<exe>\data` → `~/.mediaforge`**。
+
+## 1.1 VC++ 运行库为什么不装 vc_redist
+
+安装是 per-user（`PrivilegesRequired=lowest`），没有管理员权限跑 `VC_redist.x64.exe`。
+而缺少 `msvcp140.dll` 时，torch/cv2 这类 C++ 扩展会在 import 阶段直接
+`DLL load failed`，用户无从判断。
+
+做法是 **app-local 捆绑**：
+
+```
+安装包 bin\vcrt\           8 个可再发行 DLL（msvcp140 系列 / vcruntime140 系列 /
+                             concrt140 / vcomp140）+ SOURCE.json 记录来源版本
+安装包 python-runtime\     同一组 DLL，保证引导解释器能加载 C++ 扩展
+运行时安装后                runtime-envs\<assetId>\Scripts\ 再复制一份，
+                             并跑 python -c "ctypes.CDLL('msvcp140.dll')…" 自检
+```
+
+自检失败会让运行时安装直接报错，而不是等到用户点任务。许可与来源写在 `NOTICE`。
 
 ## 2. 三条硬规则
 
