@@ -38,6 +38,7 @@ import {
 } from './separate/format'
 import { useModelList } from './separate/useModelList'
 import { makeInferenceDefaults } from './separate/inferenceDefaults'
+import { makePlayback } from './separate/playback'
 import { useOutputNaming } from './separate/useOutputNaming'
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
 import { resolveJobStatus } from '@/features/tasks/lifecycle'
@@ -168,6 +169,10 @@ const WINDOWS_RESERVED_FILENAMES = new Set([
   ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
 ])
 const PREVIEW_AUDIO_CACHE_LIMIT = 8
+const {
+  getOutputPlayback, setOutputPlayback, touchPreviewAudio, releasePreviewAudio,
+  trimPreviewAudioCache, getAudio, syncOutputPreviewAudio,
+} = makePlayback({ outputPlayback, playingOutputPath, audioAccessOrder, audioElements, PREVIEW_AUDIO_CACHE_LIMIT, Audio, convertFileSrc })
 let unlistenDragDrop: UnlistenFn | null = null
 
 const formatOptions = [
@@ -824,94 +829,6 @@ const currentBatchOutputSummary = computed(() => {
   return t('separate.batchResultSummary', { count: currentBatchDoneCount.value, total: currentBatchTotal.value })
 })
 
-
-function getOutputPlayback(path: string) {
-  return outputPlayback.value[path] || { currentTime: 0, duration: 0 }
-}
-
-function setOutputPlayback(path: string, patch: Partial<{ currentTime: number; duration: number }>) {
-  const previous = getOutputPlayback(path)
-  outputPlayback.value = {
-    ...outputPlayback.value,
-    [path]: { ...previous, ...patch },
-  }
-}
-
-function touchPreviewAudio(path: string) {
-  const index = audioAccessOrder.indexOf(path)
-  if (index >= 0) audioAccessOrder.splice(index, 1)
-  audioAccessOrder.push(path)
-}
-
-function releasePreviewAudio(path: string) {
-  const audio = audioElements.get(path)
-  if (audio) {
-    audioElements.delete(path)
-    audio.pause()
-    audio.removeAttribute('src')
-    audio.load()
-  }
-  const accessIndex = audioAccessOrder.indexOf(path)
-  if (accessIndex >= 0) audioAccessOrder.splice(accessIndex, 1)
-  if (playingOutputPath.value === path) playingOutputPath.value = ''
-  if (outputPlayback.value[path]) {
-    const { [path]: _, ...rest } = outputPlayback.value
-    outputPlayback.value = rest
-  }
-}
-
-function trimPreviewAudioCache(protectedPath = '') {
-  while (audioElements.size > PREVIEW_AUDIO_CACHE_LIMIT) {
-    const candidate = audioAccessOrder.find(path => path !== protectedPath && path !== playingOutputPath.value)
-      || audioAccessOrder[0]
-    if (!candidate) return
-    releasePreviewAudio(candidate)
-  }
-}
-
-function getAudio(path: string) {
-  const cached = audioElements.get(path)
-  if (cached) {
-    touchPreviewAudio(path)
-    return cached
-  }
-
-  const audio = new Audio()
-  audio.preload = 'metadata'
-  audio.src = convertFileSrc(path)
-  audio.addEventListener('loadedmetadata', () => {
-    if (audioElements.get(path) !== audio) return
-    setOutputPlayback(path, { duration: audio.duration || 0 })
-  })
-  audio.addEventListener('timeupdate', () => {
-    if (audioElements.get(path) !== audio) return
-    setOutputPlayback(path, { currentTime: audio.currentTime || 0, duration: audio.duration || 0 })
-  })
-  audio.addEventListener('ended', () => {
-    if (audioElements.get(path) !== audio) return
-    if (playingOutputPath.value === path) playingOutputPath.value = ''
-    setOutputPlayback(path, { currentTime: 0, duration: audio.duration || 0 })
-  })
-  audio.addEventListener('error', () => {
-    if (audioElements.get(path) !== audio) return
-    if (playingOutputPath.value === path) playingOutputPath.value = ''
-  })
-  audioElements.set(path, audio)
-  touchPreviewAudio(path)
-  trimPreviewAudioCache(path)
-  audio.load()
-  return audio
-}
-
-function syncOutputPreviewAudio(outputs: StemOutput[]) {
-  const activePaths = new Set(outputs.map(output => output.path).filter(Boolean))
-  for (const path of [...audioElements.keys()]) {
-    if (!activePaths.has(path)) releasePreviewAudio(path)
-  }
-  outputs.slice(0, PREVIEW_AUDIO_CACHE_LIMIT).forEach((output) => {
-    if (output.path) getAudio(output.path)
-  })
-}
 
 watch(playableOutputs, syncOutputPreviewAudio, { immediate: true })
 

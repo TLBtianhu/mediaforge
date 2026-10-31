@@ -38,10 +38,11 @@ const selected = script.statements.filter(statement => (
     : ts.isVariableStatement(statement) && statement.declarationList.declarations.some(item => names.has(item.name.getText(script)))
 ))
 // 推理默认值四函数已移入 separate/inferenceDefaults.ts 工厂，SFC 只保留其余 9 个声明
-assert.equal(selected.length, names.size - 4)
+assert.equal(selected.length, names.size - 11)
 const code = ts.transpileModule(selected.map(statement => statement.getText(script)).join('\n'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText
+const playbackCode = ts.transpileModule(readFileSync(new URL('../src/views/separate/playback.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
 const logSource = ts.createSourceFile('taskLog.ts', readFileSync(new URL('../src/utils/taskLog.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true)
 const logLevelFunctions = logSource.statements.filter(statement => (
   ts.isFunctionDeclaration(statement) && ['getLogLineLevel', 'getLogLineLevels'].includes(statement.name?.text)
@@ -619,7 +620,7 @@ test('preview audio requests metadata before playback', () => {
     playingOutputPath: { value: '' },
     convertFileSrc: value => `asset:${value}`,
   }
-  const result = vm.runInNewContext(`${code}\n({ getAudio, getOutputPlayback })`, context)
+  const result = vm.runInNewContext(`${code}\n${playbackCode}\nmakePlayback`, context)(context)
   result.getAudio('output.wav')
 
   assert.deepEqual(calls, [
@@ -659,7 +660,7 @@ test('preview audio preload is bounded and stale players are released', () => {
     playingOutputPath: { value: '' },
     convertFileSrc: value => `asset:${value}`,
   }
-  const result = vm.runInNewContext(`${code}\n({ syncOutputPreviewAudio })`, context)
+  const result = vm.runInNewContext(`${code}\n${playbackCode}\nmakePlayback`, context)(context)
   result.syncOutputPreviewAudio(Array.from({ length: 20 }, (_, index) => ({ path: `output-${index}.wav` })))
   assert.equal(context.audioElements.size, 8)
   assert.deepEqual([...context.audioElements.keys()], Array.from({ length: 8 }, (_, index) => `output-${index}.wav`))
@@ -700,7 +701,7 @@ test('released audio cannot restore stale playback state', () => {
     playingOutputPath: { value: '' },
     convertFileSrc: value => `asset:${value}`,
   }
-  const result = vm.runInNewContext(`${code}\n({ syncOutputPreviewAudio })`, context)
+  const result = vm.runInNewContext(`${code}\n${playbackCode}\nmakePlayback`, context)(context)
   result.syncOutputPreviewAudio([{ path: 'old.wav' }])
   const oldAudio = instances[0]
   result.syncOutputPreviewAudio([{ path: 'replacement.wav' }])
