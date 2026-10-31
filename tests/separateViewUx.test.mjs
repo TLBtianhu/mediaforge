@@ -9,7 +9,8 @@ import { getSeparateWorkflowInputIssue } from '../src/utils/workflowInputs.ts'
 const path = new URL('../src/views/SeparateView.vue', import.meta.url)
 const { descriptor } = parse(readFileSync(path, 'utf8'))
 const template = descriptor.template?.content || ''
-const style = descriptor.styles.map(item => item.content).join('\n')
+const style = descriptor.styles.map(item => item.content
+  || (item.src ? readFileSync(new URL(item.src, path), 'utf8') : '')).join('\n')
 const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
 const modelsTemplate = parse(readFileSync(modelsPath, 'utf8')).descriptor.template?.content || ''
 const scriptSource = descriptor.scriptSetup.content
