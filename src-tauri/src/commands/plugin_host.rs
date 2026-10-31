@@ -16,10 +16,12 @@ mod blacklist;
 mod dialogs;
 mod process_exit;
 pub(crate) mod process;
+pub(crate) mod session;
 pub(crate) mod render;
 pub(crate) mod request;
 pub(crate) mod scan_engine;
 pub(crate) use process::*;
+pub(crate) use session::*;
 pub(crate) use scan_engine::*;
 pub(crate) mod scan;
 #[cfg(test)]
@@ -46,154 +48,6 @@ const MAX_REQUEST_BYTES: usize = 64 * 1024 * 1024;
 const MAX_CACHE_BYTES: u64 = 8 * 1024 * 1024;
 const SCAN_CACHE_VERSION: u32 = 3;
 
-#[derive(Default)]
-struct Session {
-    generation: u64,
-    project_id: Option<String>,
-    native_session_id: Option<String>,
-    process: Option<HostProcess>,
-}
-
-#[derive(Clone, Default)]
-pub struct PluginHostState {
-    session: Arc<Mutex<Session>>,
-    session_pid: Arc<ProcessLease>,
-    renders: Arc<Mutex<HashMap<String, Arc<ProcessLease>>>>,
-    scan_lock: Arc<Mutex<()>>,
-    scan_process: Arc<ProcessLease>,
-    scan_control: Arc<ScanControl>,
-    scan_storage: Arc<Mutex<()>>,
-    scan_sequence: Arc<AtomicU64>,
-    generation: Arc<AtomicU64>,
-    stopping: Arc<AtomicBool>,
-}
-
-impl PluginHostState {
-    pub fn shutdown(&self) {
-        self.stopping.store(true, Ordering::Release);
-        self.generation.fetch_add(1, Ordering::AcqRel);
-        self.session_pid.cancel();
-        self.scan_process.cancel();
-        self.scan_control.shutdown();
-        if let Ok(renders) = self.renders.lock() {
-            for pid in renders.values() {
-                pid.cancel();
-            }
-        }
-        if let Ok(mut session) = self.session.lock() {
-            session.process.take();
-            session.project_id = None;
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-struct HostCapabilities {
-    enabled: bool,
-    native_editor: bool,
-}
-
-fn platform_capabilities(host: bool, platform: &str, display: bool) -> HostCapabilities {
-    let enabled = host && matches!(platform, "windows" | "macos" | "linux");
-    HostCapabilities {
-        enabled,
-        native_editor: enabled && (platform != "linux" || display),
-    }
-}
-
-fn host_capabilities() -> HostCapabilities {
-    platform_capabilities(
-        cfg!(feature = "native-plugins"),
-        std::env::consts::OS,
-        std::env::var_os("DISPLAY").is_some_and(|value| !value.is_empty()),
-    )
-}
-
-fn enabled() -> bool {
-    host_capabilities().enabled
-}
-
-fn require_enabled() -> Result<(), String> {
-    if enabled() {
-        Ok(())
-    } else {
-        Err("Native plugin hosting requires a build with native-plugins enabled on Windows, macOS, or Linux".into())
-    }
-}
-
-#[tauri::command]
-pub fn plugin_host_capabilities() -> Value {
-    let capabilities = host_capabilities();
-    #[cfg(feature = "native-plugins")]
-    let (formats, native_editor_formats) = if capabilities.enabled {
-        (
-            pymss_audio_host::supported_formats(),
-            if capabilities.native_editor {
-                pymss_audio_host::native_editor_formats()
-            } else {
-                Vec::new()
-            },
-        )
-    } else {
-        (Vec::new(), Vec::new())
-    };
-    #[cfg(not(feature = "native-plugins"))]
-    let (formats, native_editor_formats): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
-    #[cfg(feature = "native-plugins")]
-    let default_directories = if capabilities.enabled {
-        pymss_audio_host::default_search_paths().into_iter().filter(|path| path.is_absolute()).collect::<Vec<_>>()
-    } else { Vec::new() };
-    #[cfg(not(feature = "native-plugins"))]
-    let default_directories: Vec<PathBuf> = Vec::new();
-    json!({
-        "enabled": capabilities.enabled, "platform": std::env::consts::OS,
-        "formats": formats, "nativeEditorFormats": native_editor_formats,
-        "recording": capabilities.enabled,
-        "nativeEditor": capabilities.native_editor, "experimental": true,
-        "labBuild": cfg!(feature = "vst-lab"),
-        "scanControl": capabilities.enabled,
-        "catalogCache": capabilities.enabled,
-        "nativeTransport": capabilities.enabled && cfg!(any(windows, target_os = "macos")),
-        "defaultDirectories": default_directories,
-    })
-}
-
-/// Report build capabilities before desktop, storage, logging or singleton startup.
-/// This also handles builds without the optional host, so packaging checks never open a GUI.
-pub fn run_capabilities_cli() -> Option<i32> {
-    let mut args = std::env::args_os().skip(1);
-    if args.next().as_deref() != Some(std::ffi::OsStr::new("--plugin-host-capabilities")) {
-        return None;
-    }
-    if args.next().is_some() {
-        eprintln!("The plugin capability query does not accept additional arguments");
-        return Some(2);
-    }
-    let mut output = std::io::stdout().lock();
-    let result = serde_json::to_writer(&mut output, &plugin_host_capabilities())
-        .map_err(std::io::Error::other)
-        .and_then(|()| output.write_all(b"\n"))
-        .and_then(|()| output.flush());
-    Some(match result {
-        Ok(()) => 0,
-        Err(error) => {
-            eprintln!("Cannot write plugin host capabilities: {error}");
-            1
-        }
-    })
-}
-
-/// Establish lab storage before logging, recovery, or Tauri initializes.
-pub fn configure_lab_environment() {
-    #[cfg(feature = "vst-lab")]
-    if std::env::var_os("PYMSS_STUDIO_DATA_ROOT").is_none_or(|value| value.is_empty()) {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("the application manifest has a project parent")
-            .join("data-vst-lab");
-        std::env::set_var("PYMSS_STUDIO_DATA_ROOT", root);
-    }
-}
 
 
 fn close_session(session: &mut Session, pid: &ProcessLease) {
