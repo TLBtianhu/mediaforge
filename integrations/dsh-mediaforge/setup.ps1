@@ -28,26 +28,47 @@ if (-not (Test-Path -LiteralPath $template)) {
     throw "launcher.template.cmd is missing next to this script"
 }
 
-# 1) 启动器：数据根下的固定位置（模板里没有绝对路径，直接复制即可）
-$binDir = Join-Path $env:USERPROFILE '.mediaforge\bin'
+# 1) 启动器：开发态只写 <repo>\.dev-data，安装/便携态才写用户数据根。
+#    判定开发树的标准是存在 src-tauri\Cargo.toml（分发物里没有这个目录）。
+$isDevCheckout = Test-Path -LiteralPath (Join-Path $root 'src-tauri\Cargo.toml')
+$dataRoot = if ($isDevCheckout) { Join-Path $root '.dev-data' } else { Join-Path $env:USERPROFILE '.mediaforge' }
+$binDir = Join-Path $dataRoot 'bin'
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 $launcher = Join-Path $binDir 'mediaforge-mcp.cmd'
 Copy-Item -LiteralPath $template -Destination $launcher -Force
 
-# 2) 安装路径指针：用户级注册表，不需要管理员
-New-Item -Path 'HKCU:\Software\MediaForge' -Force | Out-Null
-New-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name 'InstallDir' -Value $root -PropertyType String -Force | Out-Null
+# 2) 安装路径指针：只在分发态写用户级注册表（不需要管理员）和用户数据根。
+#    开发态不写注册表、不碰 %USERPROFILE%\.mediaforge。
+if ($isDevCheckout) {
+    [System.IO.File]::WriteAllText(
+        (Join-Path $dataRoot 'home.txt'),
+        $root,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+} else {
+    New-Item -Path 'HKCU:\Software\MediaForge' -Force | Out-Null
+    New-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name 'InstallDir' -Value $root -PropertyType String -Force | Out-Null
 
-# 3) 一个人类可读的指针文件，排障时不用去翻注册表
-[System.IO.File]::WriteAllText(
-    (Join-Path $env:USERPROFILE '.mediaforge\home.txt'),
-    $root,
-    (New-Object System.Text.UTF8Encoding($false))
-)
+    # 3) 一个人类可读的指针文件，排障时不用去翻注册表
+    [System.IO.File]::WriteAllText(
+        (Join-Path $env:USERPROFILE '.mediaforge\home.txt'),
+        $root,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+}
 
 Write-Host "launcher : $launcher"
-Write-Host "registry : HKCU\Software\MediaForge\InstallDir = $root"
-Write-Host "home.txt : $env:USERPROFILE\.mediaforge\home.txt"
+if ($isDevCheckout) {
+    Write-Host "home.txt : $dataRoot\home.txt"
+    Write-Host "mode     : dev checkout（未写注册表，未碰用户数据根）"
+} else {
+    Write-Host "registry : HKCU\Software\MediaForge\InstallDir = $root"
+    Write-Host "home.txt : $env:USERPROFILE\.mediaforge\home.txt"
+}
 Write-Host ""
 Write-Host "next: install this bundle in DSH (plugin_manager install_bundle -> $PSScriptRoot)"
-Write-Host "check: powershell -ExecutionPolicy Bypass -File verify.ps1"
+if ($isDevCheckout) {
+    Write-Host "check: powershell -ExecutionPolicy Bypass -File verify.ps1 -DataRoot '$dataRoot'"
+} else {
+    Write-Host "check: powershell -ExecutionPolicy Bypass -File verify.ps1"
+}

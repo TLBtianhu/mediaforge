@@ -4,10 +4,14 @@
 #
 # 依次检查：启动器存在 → 能找到应用 → bridge 能起 MCP 握手 → 报出工具数量。
 # 任何一步失败都会打印它试过的位置，方便直接定位，而不是只看到"没有工具"。
+param(
+    # 开发态传 <repo>\.dev-data；不传则用安装版的用户数据根
+    [string]$DataRoot = (Join-Path $env:USERPROFILE '.mediaforge')
+)
 $ErrorActionPreference = 'Stop'
 
-$launcher = Join-Path $env:USERPROFILE '.mediaforge\bin\mediaforge-mcp.cmd'
-$homeFile = Join-Path $env:USERPROFILE '.mediaforge\home.txt'
+$launcher = Join-Path $DataRoot 'bin\mediaforge-mcp.cmd'
+$homeFile = Join-Path $DataRoot 'home.txt'
 
 Write-Host '== 1. 启动器 =='
 if (-not (Test-Path -LiteralPath $launcher)) {

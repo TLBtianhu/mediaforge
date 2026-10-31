@@ -37,7 +37,7 @@
 | 模型 | `<数据根>\models` | `<repo>\.dev-data\models` |
 | 输出 / 日志 / 设置 | `<数据根>\{outputs,logs,settings}` | `<repo>\.dev-data\{...}` |
 | VC++ 运行库 | `<安装目录>\bin\vcrt`、`<安装目录>\python-runtime`，安装运行时后复制到 `runtime-envs\<assetId>\Scripts` | 同一个（随安装包） |
-| MCP 启动器 | `%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd` | 同一个（指向仓库根） |
+| MCP 启动器 | `%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd` | `<repo>\.dev-data\bin\mediaforge-mcp.cmd`（开发态不写注册表、不碰用户数据根） |
 | 安装指针 | `HKCU\Software\MediaForge\InstallDir` + `%LOCALAPPDATA%\Programs\MediaForge\home.txt` | 同一个（指向仓库根） |
 
 判定依据是 `storage.rs` 的 `resolve_data_root`：
