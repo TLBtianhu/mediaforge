@@ -5,7 +5,7 @@ use crate::model_dir_migration::{
     StartModelDirMigrationRequest,
 };
 use crate::python::worker::{
-    bundled_bin_dirs, cleanup_editor_export_temp_files, editor_export_task_token, run_worker_once,
+    bundled_bin_dirs, cleanup_editor_export_temp_files, editor_export_task_token,
     run_worker_with_payload, spawn_worker_background, kill_process_tree,
 };
 use crate::session_log::{self, DebugLogContent, DebugLogInfo, DebugLogReport};
@@ -23,99 +23,6 @@ use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuildInfo {
-    version: &'static str,
-    git_commit: &'static str,
-    git_tag: &'static str,
-    git_ref: &'static str,
-    run_id: &'static str,
-    run_attempt: &'static str,
-    repository: &'static str,
-    repository_owner: &'static str,
-    build_time: &'static str,
-    target: &'static str,
-    variant: &'static str,
-    official: bool,
-}
-
-
-#[tauri::command]
-pub fn get_build_info() -> BuildInfo {
-    BuildInfo {
-        version: env!("CARGO_PKG_VERSION"),
-        git_commit: option_env!("PYMSS_BUILD_GIT_COMMIT").unwrap_or(""),
-        git_tag: option_env!("PYMSS_BUILD_GIT_TAG").unwrap_or(""),
-        git_ref: option_env!("PYMSS_BUILD_GIT_REF").unwrap_or(""),
-        run_id: option_env!("PYMSS_BUILD_RUN_ID").unwrap_or(""),
-        run_attempt: option_env!("PYMSS_BUILD_RUN_ATTEMPT").unwrap_or(""),
-        repository: option_env!("PYMSS_BUILD_REPOSITORY").unwrap_or(""),
-        repository_owner: option_env!("PYMSS_BUILD_REPOSITORY_OWNER").unwrap_or(""),
-        build_time: option_env!("PYMSS_BUILD_TIME").unwrap_or(""),
-        target: option_env!("PYMSS_BUILD_TARGET").unwrap_or("dev"),
-        variant: option_env!("PYMSS_BUILD_VARIANT").unwrap_or("development"),
-        official: option_env!("PYMSS_BUILD_OFFICIAL") == Some("true"),
-    }
-}
-
-#[tauri::command]
-pub fn write_frontend_log(app: AppHandle, window: tauri::WebviewWindow, record: Value) -> AppResult<()> {
-    let mut record = crate::log_record::LogRecord::from_payload(&record)
-        .ok_or_else(|| AppError::Worker("Invalid frontend log record".into()))?;
-    record.source = "studio".into();
-    record.context.insert("windowLabel".into(), Value::String(window.label().into()));
-    session_log::append_record(&app, record);
-    Ok(())
-}
-
-
-
-
-#[tauri::command]
-pub async fn get_env_info(app: AppHandle) -> AppResult<Value> {
-    run_worker_once(&app, "env_info")
-}
-
-#[tauri::command]
-pub async fn start_env_check(app: AppHandle, request_id: String) -> AppResult<Value> {
-    let handle = app.clone();
-    std::thread::spawn(move || {
-        let result = run_worker_once(&handle, "env_info");
-        match result {
-            Ok(payload) => {
-                let _ = handle.emit(
-                    "pymss://worker-event",
-                    serde_json::json!({
-                        "type": "env_info",
-                        "requestId": request_id,
-                        "taskId": Value::Null,
-                        "timestamp": Value::Null,
-                        "payload": payload,
-                    }),
-                );
-            }
-            Err(error) => {
-                let _ = handle.emit(
-                    "pymss://worker-event",
-                    serde_json::json!({
-                        "type": "error",
-                        "requestId": request_id,
-                        "taskId": Value::Null,
-                        "timestamp": Value::Null,
-                        "payload": {
-                            "code": "ENV_CHECK_FAILED",
-                            "message": error.to_string(),
-                            "recoverable": true,
-                        },
-                    }),
-                );
-            }
-        }
-    });
-
-    Ok(serde_json::json!({ "started": true }))
-}
 
 
 
@@ -584,52 +491,6 @@ fn write_editor_project(app: &AppHandle, project: &Value) -> AppResult<Value> {
     Ok(project.clone())
 }
 
-
-#[tauri::command]
-pub async fn close_current_window(window: tauri::WebviewWindow) -> AppResult<()> {
-    window
-        .destroy()
-        .map_err(|error| AppError::Worker(error.to_string()))
-}
-
-#[tauri::command]
-pub async fn minimize_current_window(window: tauri::WebviewWindow) -> AppResult<()> {
-    window
-        .minimize()
-        .map_err(|error| AppError::Worker(error.to_string()))
-}
-
-#[tauri::command]
-pub async fn toggle_maximize_current_window(window: tauri::WebviewWindow) -> AppResult<bool> {
-    let maximized = window
-        .is_maximized()
-        .map_err(|error| AppError::Worker(error.to_string()))?;
-    if maximized {
-        window
-            .unmaximize()
-            .map_err(|error| AppError::Worker(error.to_string()))?;
-        Ok(false)
-    } else {
-        window
-            .maximize()
-            .map_err(|error| AppError::Worker(error.to_string()))?;
-        Ok(true)
-    }
-}
-
-#[tauri::command]
-pub async fn is_current_window_maximized(window: tauri::WebviewWindow) -> AppResult<bool> {
-    window
-        .is_maximized()
-        .map_err(|error| AppError::Worker(error.to_string()))
-}
-
-#[tauri::command]
-pub async fn start_drag_current_window(window: tauri::WebviewWindow) -> AppResult<()> {
-    window
-        .start_dragging()
-        .map_err(|error| AppError::Worker(error.to_string()))
-}
 
 #[tauri::command]
 pub async fn open_workflow_node_editor_window(

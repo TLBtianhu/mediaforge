@@ -3,7 +3,6 @@
 //! 从 app_cmd.rs 拆出；debug_cmd 直接使用这里的数据结构与函数。
 
 use crate::error::{AppError, AppResult};
-use crate::session_log;
 use crate::storage;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

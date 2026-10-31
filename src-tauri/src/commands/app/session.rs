@@ -3,13 +3,14 @@
 //! 从 app_cmd.rs 拆出。store 的写入仍然经过 storage，权限与原子性不变。
 
 use crate::error::{AppError, AppResult};
-use crate::python::worker::run_worker_with_payload;
+use crate::python::worker::{run_worker_once, run_worker_with_payload};
 use crate::session_log;
 use crate::state::{AppState, ProxySettings};
 use crate::storage;
 use crate::workflow_editors::{self, WorkflowEditors};
+use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::app_cmd::value_type;
 
@@ -165,4 +166,98 @@ pub async fn mutate_workflow_store(
         workflow_editors::emit_snapshot(&app, &snapshot);
     }
     Ok(response)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildInfo {
+    version: &'static str,
+    git_commit: &'static str,
+    git_tag: &'static str,
+    git_ref: &'static str,
+    run_id: &'static str,
+    run_attempt: &'static str,
+    repository: &'static str,
+    repository_owner: &'static str,
+    build_time: &'static str,
+    target: &'static str,
+    variant: &'static str,
+    official: bool,
+}
+
+
+#[tauri::command]
+pub fn get_build_info() -> BuildInfo {
+    BuildInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        git_commit: option_env!("PYMSS_BUILD_GIT_COMMIT").unwrap_or(""),
+        git_tag: option_env!("PYMSS_BUILD_GIT_TAG").unwrap_or(""),
+        git_ref: option_env!("PYMSS_BUILD_GIT_REF").unwrap_or(""),
+        run_id: option_env!("PYMSS_BUILD_RUN_ID").unwrap_or(""),
+        run_attempt: option_env!("PYMSS_BUILD_RUN_ATTEMPT").unwrap_or(""),
+        repository: option_env!("PYMSS_BUILD_REPOSITORY").unwrap_or(""),
+        repository_owner: option_env!("PYMSS_BUILD_REPOSITORY_OWNER").unwrap_or(""),
+        build_time: option_env!("PYMSS_BUILD_TIME").unwrap_or(""),
+        target: option_env!("PYMSS_BUILD_TARGET").unwrap_or("dev"),
+        variant: option_env!("PYMSS_BUILD_VARIANT").unwrap_or("development"),
+        official: option_env!("PYMSS_BUILD_OFFICIAL") == Some("true"),
+    }
+}
+
+#[tauri::command]
+pub fn write_frontend_log(app: AppHandle, window: tauri::WebviewWindow, record: Value) -> AppResult<()> {
+    let mut record = crate::log_record::LogRecord::from_payload(&record)
+        .ok_or_else(|| AppError::Worker("Invalid frontend log record".into()))?;
+    record.source = "studio".into();
+    record.context.insert("windowLabel".into(), Value::String(window.label().into()));
+    session_log::append_record(&app, record);
+    Ok(())
+}
+
+
+
+
+#[tauri::command]
+pub async fn get_env_info(app: AppHandle) -> AppResult<Value> {
+    run_worker_once(&app, "env_info")
+}
+
+#[tauri::command]
+pub async fn start_env_check(app: AppHandle, request_id: String) -> AppResult<Value> {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let result = run_worker_once(&handle, "env_info");
+        match result {
+            Ok(payload) => {
+                let _ = handle.emit(
+                    "pymss://worker-event",
+                    serde_json::json!({
+                        "type": "env_info",
+                        "requestId": request_id,
+                        "taskId": Value::Null,
+                        "timestamp": Value::Null,
+                        "payload": payload,
+                    }),
+                );
+            }
+            Err(error) => {
+                let _ = handle.emit(
+                    "pymss://worker-event",
+                    serde_json::json!({
+                        "type": "error",
+                        "requestId": request_id,
+                        "taskId": Value::Null,
+                        "timestamp": Value::Null,
+                        "payload": {
+                            "code": "ENV_CHECK_FAILED",
+                            "message": error.to_string(),
+                            "recoverable": true,
+                        },
+                    }),
+                );
+            }
+        }
+    });
+
+    Ok(serde_json::json!({ "started": true }))
 }
