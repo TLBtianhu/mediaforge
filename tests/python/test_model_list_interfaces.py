@@ -14,7 +14,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 from core import worker_models  # noqa: E402
-from app_core import interface as model_interface  # noqa: E402
+from core import interface as model_interface  # noqa: E402
 from shared.worker_protocol import set_event_sink  # noqa: E402
 
 FAKE_INTERFACE = {

@@ -42,7 +42,6 @@ FORBIDDEN_IMPORTS = {
     "agent_contract",
     "embedded_loop",
     "media_eval",
-    "app_core",
     "core",
     "surfaces",
 }

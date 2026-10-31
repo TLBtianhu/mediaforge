@@ -1211,7 +1211,7 @@ def cmd_model_interface(payload: dict[str, Any]) -> int:
 
     UI 与 agent 都从这里拿"这个模型支持哪些可调槽位"，布局由前端布局档决定。
     """
-    from app_core import interface as model_interface
+    from core import interface as model_interface
 
     model_id = str(payload.get("model") or payload.get("modelId") or "").strip()
     if not model_id:
@@ -1244,7 +1244,7 @@ def cmd_list_models(payload: dict[str, Any]) -> int:
     if payload.get("includeInterfaces"):
         # 模型列表可以顺带带上槽位接口（UI 用来生成参数表单）。
         # 默认关闭：326 个模型每个带 3–6 个槽位会让列表载荷变大，按需开启。
-        from app_core import interface as model_interface
+        from core import interface as model_interface
 
         for item in models:
             name = str(item.get("name") or "").strip()

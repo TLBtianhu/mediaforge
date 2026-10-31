@@ -14,7 +14,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
-from app_core import registry as reg  # noqa: E402
+from core import registry as reg  # noqa: E402
 
 
 class ShapeTests(unittest.TestCase):

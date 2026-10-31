@@ -15,7 +15,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 from shared import recovery  # noqa: E402
-from app_core import interface as model_interface  # noqa: E402
+from core import interface as model_interface  # noqa: E402
 
 
 class ClassifyTests(unittest.TestCase):

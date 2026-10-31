@@ -177,7 +177,7 @@ def run_command(command: str, payload: dict) -> int:
         from core.worker_tools import cmd_audio_tools
         return cmd_audio_tools(payload)
     if command == "media_library":
-        from app_core.library_worker import cmd_media_library
+        from core.library_worker import cmd_media_library
         return cmd_media_library(payload)
     if command == "media_capabilities":
         from media_ops.capabilities import list_capabilities
