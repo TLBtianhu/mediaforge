@@ -416,6 +416,36 @@ mod descriptor_tests {
     use super::*;
 
     #[test]
+    fn verify_interpreter_reports_success_for_a_working_python() {
+        // 只有本机装了运行时的开发环境才跑；CI 的 Windows runner 没有这份解释器。
+        let candidate = std::env::var_os("MEDIAFORGE_TEST_PYTHON")
+            .map(PathBuf::from)
+            .or_else(|| {
+                dirs_runtime_python()
+            });
+        let Some(python) = candidate else {
+            eprintln!("skip: no test interpreter");
+            return;
+        };
+        if !python.is_file() {
+            eprintln!("skip: {} missing", python.display());
+            return;
+        }
+        verify_interpreter(&python).expect("working python must pass the self-check");
+    }
+
+    fn dirs_runtime_python() -> Option<PathBuf> {
+        let home = std::env::var_os("USERPROFILE").map(PathBuf::from)?;
+        let path = home
+            .join(".mediaforge")
+            .join("runtime-envs")
+            .join("runtime-cuda-2026.10.2")
+            .join("Scripts")
+            .join("python.exe");
+        Some(path)
+    }
+
+    #[test]
     fn copy_dlls_only_takes_dlls_and_creates_the_target() {
         let root = std::env::temp_dir().join(format!("mediaforge-vcrt-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
