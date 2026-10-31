@@ -1,8 +1,7 @@
 //! 插件扫描命令：状态、跳过、取消、黑名单、扫描与报告。
 
-use crate::commands::plugin_host::{
-    require_enabled, scan_pipeline, scan_plugins, PluginHostState,
-};
+use crate::commands::plugin_host::{require_enabled, scan_pipeline, PluginHostState};
+use crate::commands::plugin_host::scan_engine::scan_plugins;
 use serde_json::Value;
 use tauri::{AppHandle, State};
 use super::*;
