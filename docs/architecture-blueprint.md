@@ -187,7 +187,7 @@ python/
 | `commands/plugin_host.rs` | 2955 | 1300（余下几乎全是测试） | process / session / state / live / request / scan_engine / scan / render |
 | `views/SeparateView.vue` | 4824 | 2682 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList}.ts` |
 | `views/DebugView.vue` | 3457 | 1718 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint}.ts` |
-| `python/core/worker_bootstrap.py` | 2430 | 232（门面）+ `bootstrap_parts.py` 2395 | 实现已移入门面背后；下一步把 parts 按层再拆 |
+| `python/core/worker_bootstrap.py` | 2430 | 232（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（484/496/468/1020），跨符号调用走门面 |
 
 拆分边界由测试契约决定：`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`
 都会按名字从 SFC/源码里取声明并执行，被取用的声明必须留在顶层；其余逻辑才可外移。
