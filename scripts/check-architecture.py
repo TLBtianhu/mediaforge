@@ -11,6 +11,16 @@
 from __future__ import annotations
 
 import ast
+import sys
+
+# GitHub 的 Windows runner 控制台默认是 cp1252；直接打印 ✓/中文会抛
+# UnicodeEncodeError，把"检查失败"伪装成"脚本崩了"。先固定输出编码。
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
 import json
 import re
 import sys
@@ -132,13 +142,13 @@ def main() -> int:
     for label, problems in results.items():
         if problems:
             failed = True
-            print(f"  ✗ {label}（{len(problems)}）")
+            print(f"  [FAIL] {label}（{len(problems)}）")
             for problem in problems[:10]:
                 print(f"      {problem}")
             if len(problems) > 10:
                 print(f"      …… 还有 {len(problems) - 10} 条")
         else:
-            print(f"  ✓ {label}")
+            print(f"  [ok] {label}")
     return 1 if failed else 0
 
 
