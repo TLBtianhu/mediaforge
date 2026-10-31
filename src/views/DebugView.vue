@@ -51,7 +51,12 @@ import type {
   DebugTab, DebugWorkerEvent, DebugWorkerEventGroup, ParsedDebugLogLine, RuntimeDebugEnvironmentRow,
   RuntimeTreeChild, RuntimeTreeNode,
 } from './debug_types'
+const {
+  updateEndpointEditing, updateEndpointDraft, effectiveUpdateEndpoint, updateEndpointMode,
+  beginUpdateEndpointEdit, cancelUpdateEndpointEdit, saveUpdateEndpointOverride, resetUpdateEndpointOverride,
+} = useUpdateEndpoint({ t, message, updateEndpointOverride })
 import { useCatalogEditor } from './debug/useCatalogEditor'
+import { useUpdateEndpoint } from './debug/useUpdateEndpoint'
 import { groupWorkerEvents, isNewerTimestamp } from './debug/workerEvents'
 
 const {
@@ -97,8 +102,6 @@ const runtimeDebugEditingContent = ref('')
 const runtimeOverrideBackend = ref('cuda')
 const runtimeOverridePythonPath = ref('')
 const runtimeOverrideDirty = ref(false)
-const updateEndpointEditing = ref(false)
-const updateEndpointDraft = ref('')
 const debugLogLoading = ref(false)
 const debugLogClearing = ref(false)
 const debugLogReportLoading = ref(false)
@@ -213,44 +216,10 @@ const debugModelOptions = computed(() => modelStore.models
     label: `${model.name}${model.source === 'user' ? ` · ${t('debug.userModelReadonly')}` : ''}`,
     value: model.name,
   })))
-const effectiveUpdateEndpoint = computed(() => updateEndpointOverride.value.trim() || t('debug.updateEndpointManaged'))
-const updateEndpointMode = computed(() => updateEndpointOverride.value.trim() ? t('debug.updateEndpointCustom') : t('debug.updateEndpointDefault'))
 
-function beginUpdateEndpointEdit() {
-  updateEndpointDraft.value = updateEndpointOverride.value.trim()
-  updateEndpointEditing.value = true
-}
 
-function cancelUpdateEndpointEdit() {
-  updateEndpointDraft.value = ''
-  updateEndpointEditing.value = false
-}
 
-function saveUpdateEndpointOverride() {
-  const endpoint = updateEndpointDraft.value.trim()
-  if (!endpoint) {
-    updateEndpointOverride.value = ''
-    cancelUpdateEndpointEdit()
-    message.success(t('debug.updateEndpointRestored'))
-    return
-  }
-  try {
-    new URL(endpoint)
-  } catch {
-    message.error(t('debug.updateEndpointInvalid'))
-    return
-  }
-  updateEndpointOverride.value = endpoint
-  cancelUpdateEndpointEdit()
-  message.success(t('debug.updateEndpointSaved'))
-}
 
-function resetUpdateEndpointOverride() {
-  updateEndpointOverride.value = ''
-  updateEndpointDraft.value = ''
-  updateEndpointEditing.value = false
-  message.success(t('debug.updateEndpointRestored'))
-}
 
 const runningDownloadTasks = computed(() => Object.values(downloadTasks.value).filter((item) => ['preparing', 'downloading'].includes(item.status)))
 const runtimeDevice = computed(() => settings.getRuntimeDeviceConfig(app.envInfo))

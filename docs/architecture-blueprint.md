@@ -144,7 +144,7 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
 |---|---|---|
 | P1 契约 | 完成 | `manifest/protocol.json`、`protocol_contract.py`、`media_tool`/`protocol_call` |
 | P2 事件 | 完成 | 边界处映射为 `task.*`，前端按域判断 |
-| P3 边界 | 完成 | `app_core/`（library/registry/interface），引擎零反向依赖，CI 检查 |
+| P3 边界 | 完成 | `core/`（library/registry/interface 已并入），引擎零反向依赖，CI 检查 |
 | P4 运行时 | 完成 | `manifest/runtime.json` 带能力/sha/urls，并列目录 + `active-runtime.json` |
 | P5 更新 | 完成 | 签名 `versions.json`、`versions_check`、`versions_accept_runtime` |
 | P6 工具面 | 完成 | 工具由能力生成，`mcpSchemaVersion` 校验，模型清单随 catalog 变 |
@@ -156,12 +156,12 @@ pymss 以外部包形式存在，通过 `surfaces` 里的 `audio` 适配器接�
   `runtime.json` schemaVersion = 1；不兼容变更走主版本号。
 - 版本轴只有两条：app 与 runtime；catalog 随应用走，不再声明独立轴。
 - 管道上只有 `task.*` / 资产事件；`audio_tool_*` 仅作为代码里的书写别名，由 `emit()` 转成规范名。
-- 三条版本轴：app（整包安装）、runtime（并列目录 + 指针）、catalog（整份覆盖）。
 
 仍然保留、明确不在本轮处理的：
 
-- `update_manager.rs`（1872 行旧 latest.json 更新路径）：`endpoints` 为空，实际不运行；下线需要单独决定。
 - 音频引擎仍是外部 pymss 包，通过 `audio_tools` 适配器接入。
+  - `worker_bootstrap.py`（2430 行）仍是单文件；它的测试大量直接 patch 内部符号，
+    拆分必须先补公共 API，再拆实现。
 
 ## 6. 物理分层现状（0.0.23 之后）
 
@@ -178,3 +178,15 @@ python/
 检查器守住七条：引擎方向、shared 方向、core 方向、根目录白名单、
 事件覆盖、handler 存在性、catalog 关联。worker 里不再有命令 if 链。
 
+## 7. 巨文件拆分进度（0.0.23 之后）
+
+| 文件 | 起点 | 现在 | 拆出的模块 |
+|---|---|---|---|
+| `commands/app_cmd.rs` | 3467 | 已删除 | `commands/app/` 下 13 个按域模块 |
+| `commands/plugin_host.rs` | 2955 | 1300（余下几乎全是测试） | process / session / state / live / request / scan_engine / scan / render |
+| `views/SeparateView.vue` | 4824 | 2682 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList}.ts` |
+| `views/DebugView.vue` | 3457 | 1718 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint}.ts` |
+| `python/core/worker_bootstrap.py` | 2430 | 2430（未动，等 API 优先） | — |
+
+拆分边界由测试契约决定：`ensembleOutput`、`separateViewUx`、`debugTaskDetails`、`runtimePlatformBoundary`
+都会按名字从 SFC/源码里取声明并执行，被取用的声明必须留在顶层；其余逻辑才可外移。
