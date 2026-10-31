@@ -22,7 +22,6 @@ static JSON_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // Multiple WebView windows can autosave the same store at once. Serialize the temporary-file
 // replacement in the Rust process so a second writer never races the first ReplaceFileW call.
 static JSON_WRITE_LOCK: Mutex<()> = Mutex::new(());
-#[cfg(windows)]
 const PORTABLE_MARKER_FILE_NAME: &str = "mediaforge.portable";
 
 #[derive(Debug, Clone, Serialize)]
@@ -55,17 +54,23 @@ fn development_data_root_dir() -> AppResult<PathBuf> {
     Ok(project_root.join(LOCAL_DATA_ROOT_DIR_NAME))
 }
 
+/// 便携版判定：程序同目录存在标记文件时，数据放在 `<exe 目录>\\data`。
+/// 标记名必须与打包脚本和 CI 一致，否则便携版会静默落回安装版的数据根。
+pub(crate) fn portable_data_root_for(exe: &Path) -> Option<PathBuf> {
+    let exe_dir = exe.parent()?;
+    exe_dir
+        .join(PORTABLE_MARKER_FILE_NAME)
+        .is_file()
+        .then(|| exe_dir.join(LOCAL_DATA_ROOT_DIR_NAME))
+}
+
 fn portable_data_root_dir() -> AppResult<Option<PathBuf>> {
     #[cfg(windows)]
     {
         let exe = std::env::current_exe()?;
-        let exe_dir = exe
-            .parent()
-            .ok_or_else(|| AppError::Worker("failed to resolve executable directory".into()))?;
-        if exe_dir.join(PORTABLE_MARKER_FILE_NAME).exists() {
-            return Ok(Some(exe_dir.join(LOCAL_DATA_ROOT_DIR_NAME)));
-        }
+        return Ok(portable_data_root_for(&exe));
     }
+    #[allow(unreachable_code)]
     Ok(None)
 }
 
@@ -1366,6 +1371,23 @@ mod tests {
         );
 
         assert_eq!(root, path("portable-data"));
+    }
+
+    #[test]
+    fn portable_marker_next_to_the_executable_selects_data_beside_it() {
+        let fixture = ResourceFixture::new();
+        let exe_dir = fixture.0.join("MediaForge-Portable");
+        std::fs::create_dir_all(&exe_dir).unwrap();
+        let exe = exe_dir.join("MediaForge.exe");
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(super::portable_data_root_for(&exe), None);
+        std::fs::write(exe_dir.join(super::PORTABLE_MARKER_FILE_NAME), b"portable").unwrap();
+        assert_eq!(super::portable_data_root_for(&exe), Some(exe_dir.join("data")));
+    }
+
+    #[test]
+    fn portable_marker_name_must_match_the_packaging_scripts() {
+        assert_eq!(super::PORTABLE_MARKER_FILE_NAME, "mediaforge.portable");
     }
 
     #[test]

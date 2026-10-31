@@ -149,7 +149,15 @@ if (-not $SkipZip) {
     Write-Host "[3/6] 便携 zip"
     $zip = "$out\MediaForge-$Version-windows-x64-portable.zip"
     if (Test-Path $zip) { Remove-Item $zip -Force }
-    Compress-Folder -Source $stage -Destination $zip -Label "portable"
+    # 便携版靠程序同目录的标记文件选择 <exe>\data；安装包不能带这个文件，
+    # 所以只在压缩期间放进 stage，压缩完立即删掉。
+    $portableMarker = Join-Path $stage 'mediaforge.portable'
+    Set-Content $portableMarker 'portable' -Encoding ASCII
+    try {
+        Compress-Folder -Source $stage -Destination $zip -Label "portable"
+    } finally {
+        Remove-Item $portableMarker -Force -ErrorAction SilentlyContinue
+    }
     } else {
     Write-Host "[3/5] 跳过 zip（-SkipZip）"
 }

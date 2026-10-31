@@ -158,7 +158,7 @@ jobs:
           $version = '${{ needs.windows-cuda-prepare.outputs.version }}'
           $stageName = '${{ needs.windows-cuda-prepare.outputs.stage_name }}'
           if (Test-Path "release/$stageName.7z") { Remove-Item "release/$stageName.7z" -Force }
-          Set-Content "release/$stageName/pymss-studio.portable" -Value "portable" -Encoding ASCII
+          Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
            Push-Location "release"
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the CUDA portable archive" }
@@ -333,7 +333,7 @@ jobs:
         run: |
           $stageName = '${{ needs.windows-cpu-prepare.outputs.stage_name }}'
           if (Test-Path "release/$stageName.7z") { Remove-Item "release/$stageName.7z" -Force }
-          Set-Content "release/$stageName/pymss-studio.portable" -Value "portable" -Encoding ASCII
+          Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
            Push-Location "release"
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the CPU portable archive" }
@@ -471,7 +471,7 @@ jobs:
         shell: pwsh
         run: |
           $stageName = '${{ needs.windows-online-prepare.outputs.stage_name }}'
-          Set-Content "release/$stageName/pymss-studio.portable" -Value "portable" -Encoding ASCII
+          Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
           $updateArchive = (Resolve-Path "release").Path + "\MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip"
            Push-Location release
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
@@ -639,7 +639,7 @@ jobs:
         shell: pwsh
         run: |
           $stageName = '${{ needs.windows-rocm-prepare.outputs.stage_name }}'
-          Set-Content "release/$stageName/pymss-studio.portable" -Value "portable" -Encoding ASCII
+          Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
            Push-Location release
            & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the ROCm portable archive" }
