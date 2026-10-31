@@ -1,3 +1,4 @@
+pub mod app;
 pub mod debug_cmd;
 pub mod app_cmd;
 pub mod tempo_key;
