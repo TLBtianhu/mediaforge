@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
         def fake_run(command: str, payload: dict) -> int:
             worker_protocol.emit(
-                "audio_tool_result",
+                "task.result",
                 {"outputs": [], "completed": 0, "failed": [{"path": "a.png", "error": "no watermark"}]},
             )
             return 0

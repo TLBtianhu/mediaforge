@@ -37,7 +37,7 @@ class WorkerProtocolTests(unittest.TestCase):
 
         self.assertEqual(incidental_stdout.getvalue(), "third-party diagnostic\n")
         event = json.loads(protocol_stdout.getvalue())
-        self.assertEqual(event["type"], "audio_tool_progress")
+        self.assertEqual(event["type"], "task.progress")
         self.assertEqual(event["payload"], {"phase": "loading_model"})
 
     def test_emit_retries_transient_windows_pipe_errors(self) -> None:

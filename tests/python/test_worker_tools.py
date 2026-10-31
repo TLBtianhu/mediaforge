@@ -65,7 +65,7 @@ class WorkerToolsTests(unittest.TestCase):
 
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertEqual(code, 0)
-        self.assertEqual([event["type"] for event in events], ["audio_tool_progress", "audio_tool_result", "audio_tool_progress"])
+        self.assertEqual([event["type"] for event in events], ["task.progress", "task.result", "task.progress"])
         self.assertEqual(events[0]["requestId"], "loudness-request-1")
         self.assertEqual(events[1]["requestId"], "loudness-request-1")
         # The binding is scoped to the handler call and must not leak afterwards.
