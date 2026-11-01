@@ -155,15 +155,18 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integratio
 3. 数据根：缺失时自动创建（需在代码里确认每层都 `mkdir`）
 4. 开发态防呆：开发构建若数据根落到 `~/.mediaforge` 就警告并退出
 5. 去掉一切 junction 用法（已清除现场的链接）
-6. **首装"下载运行时"端到端冒烟（唯一没闭环的用户路径）**：
-   正确做法是给应用加一个 dev-only CLI 入口（例如 `MediaForge.exe --smoke-install-runtime`），
-   由真实进程**主线程**跑 `runtime_assets::install_blocking`，配一个
-   `scripts/smoke-first-install.ps1`（本地 HTTP 服务托管 versions.json+sig+runtime zip，
-   隔离数据根，断言解包 + active-runtime.json + .asset-id + worker health，并含 sha256 不符的负例）。
+6. **首装"下载运行时"端到端冒烟（已实现，2026-11-01 本地 PASS）**：
+   入口 `MediaForge.exe --smoke-install-runtime`（dev-only CLI，真实进程**主线程**跑
+   `runtime_assets::install_blocking`），驱动脚本 `scripts/smoke-first-install.ps1`
+   （本地 HTTP 服务托管 runtime zip、隔离数据根、断言解包 + active-runtime.json +
+   .asset-id + 解释器可运行，另含 sha256 不符的负例）。
+   用法：`powershell -File scripts/smoke-first-install.ps1 -AppExe release\stage-<ver>\MediaForge.exe`
+   （必须用**打包的便携版**——`download()` 需要 `bin/aria2c.exe`，开发构建没有打包资源）。
    为什么不能走别的路：① headless Chromium + mock `__TAURI_INTERNALS__`（diagnostics_ui_smoke 的方式）
    只能测前端，测不到真实 Rust 下载；② 在 `#[test]` 里 `Builder::build` 起 AppHandle 会 panic——
    Windows 的 Tao 事件循环要求主线程，而 Rust 测试跑在独立线程（2026-11-01 探针实证）。
    所以唯一干净的端到端入口是 dev-only CLI 子命令，而不是测试内 build 或前端 mock。
+   目前依赖本机的 runtime zip 与打包 stage，属本地/发布前验证；接 CI 需换成小夹具运行时。
 
 ## 6. 升级策略：只发安装包
 

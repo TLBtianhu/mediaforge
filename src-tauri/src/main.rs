@@ -94,7 +94,7 @@ fn main() {
         .menu(app_quit::menu)
         .on_menu_event(app_quit::on_menu_event);
 
-    builder
+    let app = builder
         .setup(|app| {
             let _ = session_log::init_session_log(app.handle());
             python::worker::recover_audio_output_temps(app.handle());
@@ -235,8 +235,16 @@ fn main() {
             commands::app::runtime::delete_runtime,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Pymss Studio")
-        .run(|app, event| {
+        .expect("error while building Pymss Studio");
+
+    // dev-only 首装冒烟：`MediaForge.exe --smoke-install-runtime` 在真实进程主线程里
+    // 跑完整运行时安装（下载→校验→解包→激活），由 scripts/smoke-first-install.ps1 驱动。
+    // 必须在 .run() 之前分支，否则就进入 GUI 事件循环了。
+    if std::env::args().any(|arg| arg == "--smoke-install-runtime") {
+        std::process::exit(runtime_assets::smoke_install(&app.handle()));
+    }
+
+    app.run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 app.state::<commands::plugin_host::PluginHostState>().shutdown();
                 session_log::finish_automatic_reports(app);

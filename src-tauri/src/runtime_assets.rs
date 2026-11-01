@@ -203,6 +203,41 @@ pub fn runtime_asset_install(app: AppHandle) -> AppResult<Value> {
     Ok(json!({ "started": true, "installed": false }))
 }
 
+/// dev-only 首装冒烟入口：在真实进程主线程里跑完整安装，返回进程退出码。
+///
+/// 为什么走 CLI 而不是 #[test]：Windows 的 Tao 事件循环要求主线程，测试线程起不了 App。
+/// `MEDIAFORGE_SMOKE_RUNTIME_URL` 可把下载源换成本地 HTTP（不打外网、可复现）。
+pub fn smoke_install(app: &AppHandle) -> i32 {
+    if let Ok(url) = std::env::var("MEDIAFORGE_SMOKE_RUNTIME_URL") {
+        let url = url.trim().to_string();
+        if !url.is_empty() {
+            match embedded_descriptor() {
+                Ok(mut descriptor) => {
+                    descriptor.urls = vec![url];
+                    if let Err(error) = write_desired(app, &descriptor) {
+                        eprintln!("smoke-install-runtime: 写入本地描述符失败: {error}");
+                        return 1;
+                    }
+                }
+                Err(error) => {
+                    eprintln!("smoke-install-runtime: 读取内嵌描述符失败: {error}");
+                    return 1;
+                }
+            }
+        }
+    }
+    match install_blocking(app) {
+        Ok(()) => {
+            println!("smoke-install-runtime: OK");
+            0
+        }
+        Err(error) => {
+            eprintln!("smoke-install-runtime: FAILED: {error}");
+            1
+        }
+    }
+}
+
 fn install_blocking(app: &AppHandle) -> Result<(), String> {
     let descriptor = desired_runtime(app).map_err(|error| error.to_string())?;
     let envs = envs_dir(app).map_err(|error| error.to_string())?;
