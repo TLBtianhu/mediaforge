@@ -30,7 +30,7 @@
       "secondary_category": "audio_restoration",
       "secondary_category_cn": "音频/人声修复",
       "target_stem": "restored",
-      "sha256": {
+      "file_hashes": {
         "cleanup/audio_restoration/Apollo_LQ_MP3_restoration.ckpt": "99d9af7f1ff20e63c393035513a655392818d66b4d7fc23d658175c1f15e8d76",
         "cleanup/audio_restoration/Apollo_LQ_MP3_restoration.yaml": "80bf789f8aea563845c5b775c5b0783b1136f039be5f0d8642f6dd910737d3f3",
         "cleanup/audio_restoration/Apollo_LQ_MP3_restoration.pymss_state_dict.pt": "a6f3c0eaa983e319f9285668802115d67b7a1cbae6f8b522a82d322e006d537f",
@@ -56,7 +56,7 @@
       "secondary_category": "audio_restoration",
       "secondary_category_cn": "音频/人声修复",
       "target_stem": "restored",
-      "sha256": {
+      "file_hashes": {
         "cleanup/audio_restoration/apollo_model.ckpt": "61b93332da9cde13925b2726b0b31167b05bc20030271b19a583ccf76d69354b",
         "cleanup/audio_restoration/apollo_model.yaml": "864cc59f18b21e436bda0a4c20ef58a8db63a4163c6e6d1d5b02de681a5b930c"
       }
@@ -80,7 +80,7 @@
       "secondary_category": "audio_restoration",
       "secondary_category_cn": "音频/人声修复",
       "target_stem": "restored",
-      "sha256": {
+      "file_hashes": {
         "cleanup/audio_restoration/apollo_model_v2.ckpt": "d9255c2f43b467840260dc4c0f99f26bcdb0a7c3523d7b5165d13322ca955b41",
         "cleanup/audio_restoration/apollo_model_v2.yaml": "9203ef6628d2aae63a1347bf4a4fbf37562032d099733ed9bf6f1a8658dd333e"
       }
@@ -104,7 +104,7 @@
       "secondary_category": "audio_restoration",
       "secondary_category_cn": "音频/人声修复",
       "target_stem": "restored",
-      "sha256": {
+      "file_hashes": {
         "cleanup/audio_restoration/model_apollo_vocals_ep_54.ckpt": "59e1311f93e1f0fde6d5d11fa69d97e41cdee39be38f0cf4ccb80cfce34b2a2b",
         "cleanup/audio_restoration/model_apollo_vocals_ep_54.yaml": "caa5981df1fd476fbdfb6175207789bb1e2e68dcf628814feee4c74c9a722969"
       }
@@ -128,7 +128,7 @@
       "secondary_category": "crowd_removal",
       "secondary_category_cn": "人群/观众声移除",
       "target_stem": "crowd",
-      "sha256": {
+      "file_hashes": {
         "cleanup/crowd_removal/mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144.ckpt": "ca8799531fe51c94172cc047226209ed48bf7d8c02e04671795a15d2a1c318af",
         "cleanup/crowd_removal/mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144.yaml": "00cd5cd077860b38aa6b269550dc9f70d8bf501e2cc80260afaba04e47836909"
       }
@@ -152,7 +152,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "dry",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/denoise_mel_band_roformer_aufr33_aggr_sdr_27.9768.ckpt": "a25e3b233722cd81e2de7b8e798a3fef29d4b9799ccacda60b0dc958a1e2a5bb",
         "cleanup/noise_bleed_control/denoise_mel_band_roformer_aufr33_aggr_sdr_27.9768.yaml": "542ee2dc7d26d126f664a1ca5f18e17bb4a2071d807b707f74fc8acf5801fa8d"
       }
@@ -176,7 +176,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "dry",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt": "7c1c39191edc34e942ca7f2346ce6b6c0e1208a5f76349ffce6f696bd12910de",
         "cleanup/noise_bleed_control/denoise_mel_band_roformer_aufr33_sdr_27.9959.yaml": "542ee2dc7d26d126f664a1ca5f18e17bb4a2071d807b707f74fc8acf5801fa8d"
       }
@@ -200,7 +200,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/kimmel_unwa_ft2_bleedless.ckpt": "3c450bd66a98b49dd03231fc5ebb84121eef8418236b179423c2b171d62b04d9",
         "cleanup/noise_bleed_control/kimmel_unwa_ft2_bleedless.yaml": "f4c10e5f6ffe8ff2f5a6b4a5ad5820448ec9a0620e3c3c3571db3c35fae1b62e"
       }
@@ -224,7 +224,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/mel_band_roformer_bleed_suppressor_v1.ckpt": "a9a9d10faa7f8997676a78e66d741d7acb9cc449334763f3c8f626d68ec6e575",
         "cleanup/noise_bleed_control/mel_band_roformer_bleed_suppressor_v1.yaml": "ea441289aabe272eedbee35b9fbc496a4e8ea7c81842a7845641fcef6f720cd6"
       }
@@ -248,7 +248,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/mel_band_roformer_denoise_debleed_gabox.ckpt": "91aa7a546ed2e93482e4629c982d35b0d258bb3de6eeab497fd91658cc86c7fd",
         "cleanup/noise_bleed_control/mel_band_roformer_denoise_debleed_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -272,7 +272,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/mel_band_roformer_instrumental_bleedless_v1_gabox.ckpt": "de972fb724601beef237abe94c8b934c73218e9baf3e344ab4c2333276e5cfe7",
         "cleanup/noise_bleed_control/mel_band_roformer_instrumental_bleedless_v1_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -296,7 +296,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/mel_band_roformer_instrumental_bleedless_v2_gabox.ckpt": "6109687febb8f18cd5a45207fee35f18ba8b9467b18a4b2e982a3b7dc04a9d72",
         "cleanup/noise_bleed_control/mel_band_roformer_instrumental_bleedless_v2_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -320,7 +320,7 @@
       "secondary_category": "noise_bleed_control",
       "secondary_category_cn": "降噪/串音抑制",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "cleanup/noise_bleed_control/mel_band_roformer_instrumental_bleedless_v3_gabox.ckpt": "5578545e094e584835b3184310ed1b12072f15d4b6ed8f4359ecc17358a66676",
         "cleanup/noise_bleed_control/mel_band_roformer_instrumental_bleedless_v3_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -344,7 +344,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "restored",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/apollo_model_uni.ckpt": "11433256eca90143d32f1108d156ac756fd0201fbc69e5f736def4062fb52186",
         "experimental_general/apollo_model_uni.yaml": "b8907db2acddef203f3e3c17fd71c2025a32732c7693988e74a7781515a699dd"
       }
@@ -368,7 +368,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/BS-Roformer_LargeV1.ckpt": "3d1334565bb9e4c08f4b3891d5ac39e269b511baf66024a3fd8a10112d52b945",
         "experimental_general/BS-Roformer_LargeV1.yaml": "a88e3df7d62cd352b5dfdcca59f23c5bf7d750fa4bae62dd4434e649d4dff2a9"
       }
@@ -392,7 +392,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/bs_roformer_anvuew_sdr_12.45.ckpt": "8d0f72ad0ac4154f5f4c3cdf230880bbb9a5bd01dc610241a2abfe787f0d7784",
         "experimental_general/bs_roformer_anvuew_sdr_12.45.yaml": "9039825a42dfc5d33414ffcd3b60cb3d5bce25262d9e897b99a7e85f3ff3be19"
       }
@@ -416,7 +416,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "Voices",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/BS_Roformer_FNF_V1.ckpt": "10b6f24495595f976390083ba115371d29b0fd600400488342f168935da3e834",
         "experimental_general/BS_Roformer_FNF_V1.yaml": "3a9f8111876e82a08891484f411fad140836951a50f621ad6f0e6b42e586b42f"
       }
@@ -440,7 +440,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/bs_roformer_ft1_anvuew_sdr_12.55.ckpt": "60347271e8493fdff28ef558c3b2297afb869a1f4462594ed548038264bec395",
         "experimental_general/bs_roformer_ft1_anvuew_sdr_12.55.yaml": "9039825a42dfc5d33414ffcd3b60cb3d5bce25262d9e897b99a7e85f3ff3be19"
       }
@@ -464,7 +464,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/bs_roformer_mag_anvuew.ckpt": "16792de7af1a5d5293debec24d4566b13b645e6707776234409cce7697ea933d",
         "experimental_general/bs_roformer_mag_anvuew.yaml": "d62d4a3e6389e0daa4322bd4ab47c0d56156aee2bd50ae7eb1018178a2811f28"
       }
@@ -488,7 +488,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/bs_roformer_revive.ckpt": "f1d7e4bfdfef07c6b2bc1d65283a7d03c3c38f8c7dbc8d729b785f93c8b8699a",
         "experimental_general/bs_roformer_revive.yaml": "c95db0635555dc04e2630baa304c175daa4e5fc50cc0b31166d16323c9e5d4d0"
       }
@@ -512,7 +512,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/bs_roformer_revive2.ckpt": "58098850c882a7472dad39f99fb8040ce6eaafe671cfe9881d89aea276bbb5f5",
         "experimental_general/bs_roformer_revive2.yaml": "c95db0635555dc04e2630baa304c175daa4e5fc50cc0b31166d16323c9e5d4d0"
       }
@@ -536,7 +536,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/bs_roformer_revive3e.ckpt": "1b0751b9a15c591407c3b77f08eb4ad3005e42e96051f3f2b39760f1130c467b",
         "experimental_general/bs_roformer_revive3e.yaml": "c95db0635555dc04e2630baa304c175daa4e5fc50cc0b31166d16323c9e5d4d0"
       }
@@ -560,7 +560,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "speech/music/sfx",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/checkpoint-cmn_state_dict.ckpt": "f4099d1e87130ec930e99fd56089062a6192a4141a5a2305d2e92ededd0688c1",
         "experimental_general/checkpoint-cmn_state_dict.yaml": "635a58ac72823078091ae6e2c0a00b2e6a01896b40a722b260aff57edb88b29e"
       }
@@ -584,7 +584,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "speech/music/sfx",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/checkpoint-deu_state_dict.ckpt": "67cb1e2c8d8b34c0072237ce5f326d5f64ca3eb8fb2d5f8d90680b39903d8b8d",
         "experimental_general/checkpoint-deu_state_dict.yaml": "635a58ac72823078091ae6e2c0a00b2e6a01896b40a722b260aff57edb88b29e"
       }
@@ -608,7 +608,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "speech/music/sfx",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/checkpoint-eng_state_dict.ckpt": "4ff55ca2699f043bf2451288fe6d4738dde59767b67e28b4f23a1dd33bf4e99a",
         "experimental_general/checkpoint-eng_state_dict.yaml": "635a58ac72823078091ae6e2c0a00b2e6a01896b40a722b260aff57edb88b29e"
       }
@@ -632,7 +632,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "speech/music/sfx",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/checkpoint-fao_state_dict.ckpt": "bae55e12a54dea95ce7827f86b0fc15f2ebd2df625272ed9b9bba2677c60c4a5",
         "experimental_general/checkpoint-fao_state_dict.yaml": "635a58ac72823078091ae6e2c0a00b2e6a01896b40a722b260aff57edb88b29e"
       }
@@ -656,7 +656,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "speech/music/sfx",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/checkpoint-fra_state_dict.ckpt": "0f27f67f45263d2110179c9e57270dc59319fe4382de051956e7efff937672df",
         "experimental_general/checkpoint-fra_state_dict.yaml": "635a58ac72823078091ae6e2c0a00b2e6a01896b40a722b260aff57edb88b29e"
       }
@@ -680,7 +680,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "speech/music/sfx",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/checkpoint-spa_state_dict.ckpt": "0ba2813404727c0ae9e7895a6dc757ff0bcb0e21dc7e4b9159ba04c3e91a3d70",
         "experimental_general/checkpoint-spa_state_dict.yaml": "635a58ac72823078091ae6e2c0a00b2e6a01896b40a722b260aff57edb88b29e"
       }
@@ -704,7 +704,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/Fullness.ckpt": "c67f47fa84146c8182f0061c194a51782439fe732e6ffecb810f0e4af7026f6d",
         "experimental_general/Fullness.yaml": "72852751241da280e7cc21135adf3c483b436ac1e4f37a21d6715ada2e2aa133"
       }
@@ -728,7 +728,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/INSTV8.ckpt": "5d51dae045064a5817cd7588c46bfe2f93542d4dbe66c1e1a6e75ca081299a53",
         "experimental_general/INSTV8.yaml": "72852751241da280e7cc21135adf3c483b436ac1e4f37a21d6715ada2e2aa133"
       }
@@ -752,7 +752,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/INSTV9.ckpt": "3b689ffa942c48353bbad9e8df7b96d61a24b5c50256b0052579b327552565c8",
         "experimental_general/INSTV9.yaml": "72852751241da280e7cc21135adf3c483b436ac1e4f37a21d6715ada2e2aa133"
       }
@@ -776,7 +776,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/mel_band_roformer_small.ckpt": "20cc592a9dff7dc34a3fb0bf399cd68c950b03ff5f334725e74feb3d0186272f",
         "experimental_general/mel_band_roformer_small.yaml": "759dc95d003ab2831e2c777534dbae59cf0ae82e17b2a60390d92f5144ac37fc"
       }
@@ -800,7 +800,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/melband_roformer_small_v1.ckpt": "9a1b9f3c32946b66781b82d5de856703d0fdf3359f047830c1373c0310dcb522",
         "experimental_general/melband_roformer_small_v1.yaml": "708075962e2e567232398606e4345f02bccda3a8a924fe3fd0728ec83ca00db3"
       }
@@ -824,7 +824,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/MelBandRoformerBigSYHFTV1.ckpt": "e2327e3e81f19e67c307f8c830c54267c09ecb0e9c6ad2b40a80c310899c955f",
         "experimental_general/MelBandRoformerBigSYHFTV1.yaml": "9001d63d4fe0b2c1567677859b657d50680da652e5a31d2f2c538c5ae42764da"
       }
@@ -848,7 +848,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/MelBandRoformerSYHFT.ckpt": "f319dfcde4396ea3106658f457f5eb0bc577e113491f61ae8bab216fe84b0c0c",
         "experimental_general/MelBandRoformerSYHFT.yaml": "af831e56391c43df758b114eb0f7067e7bc571b119fe1fabde0bf62c2951e9ec"
       }
@@ -872,7 +872,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/MelBandRoformerSYHFTB1.ckpt": "739df364e7e07d072e60850c91bc525b2f8a7de468b29dcc8a948ac67cd754f3",
         "experimental_general/MelBandRoformerSYHFTB1.yaml": "c3c1f6d277a6c0951ab36feaee21d9880717d1150944966c1780540927d5e5d4"
       }
@@ -896,7 +896,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/MelBandRoformerSYHFTV2.5.ckpt": "916e3a2c1e63b1457bcad823b98ca705e4933deffd2a5ab3a370e10f68bf47e2",
         "experimental_general/MelBandRoformerSYHFTV2.5.yaml": "af831e56391c43df758b114eb0f7067e7bc571b119fe1fabde0bf62c2951e9ec"
       }
@@ -920,7 +920,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/MelBandRoformerSYHFTV2.ckpt": "2e99f8efa5315300c197295592bd7e56c21c1d77e1884c904b5128c54a2a4632",
         "experimental_general/MelBandRoformerSYHFTV2.yaml": "af831e56391c43df758b114eb0f7067e7bc571b119fe1fabde0bf62c2951e9ec"
       }
@@ -944,7 +944,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/MelBandRoformerSYHFTV3Epsilon.ckpt": "4c886092e4aae13aa089263a0d54d483643f58c16ec221aed37268e2c1031397",
         "experimental_general/MelBandRoformerSYHFTV3Epsilon.yaml": "af831e56391c43df758b114eb0f7067e7bc571b119fe1fabde0bf62c2951e9ec"
       }
@@ -968,7 +968,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/merge_syhft.ckpt": "e00f50365e5e87990f0f2ce4f9ae68ffc5dd82d2b37718a430bb046706265e00",
         "experimental_general/merge_syhft.yaml": "af831e56391c43df758b114eb0f7067e7bc571b119fe1fabde0bf62c2951e9ec"
       }
@@ -992,7 +992,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/model2.ckpt": "5942ddaa713ee92f660098a5241572b6f05e46c4014f8836ac2130b35dc03516",
         "experimental_general/model2.yaml": "c3c1f6d277a6c0951ab36feaee21d9880717d1150944966c1780540927d5e5d4"
       }
@@ -1016,7 +1016,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/model3.ckpt": "b889c8efdf19e3332e5f29834545aaa2c0287d3125c08dfa00273170702ad2cb",
         "experimental_general/model3.yaml": "c3c1f6d277a6c0951ab36feaee21d9880717d1150944966c1780540927d5e5d4"
       }
@@ -1040,7 +1040,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "No Drum-Bass",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/model_bs_roformer_ep_937_sdr_10.5309.ckpt": "a2e825a03bc908cb04dbd88eddeefbf5147dd1cf1f95cebf453d9dbfabec494b",
         "experimental_general/model_bs_roformer_ep_937_sdr_10.5309.yaml": "ef0180b5b0e75f4e4aae16811407d657cd9ee29f29a640093d11aee74beca0b1"
       }
@@ -1064,7 +1064,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "drums/bass/piano/other",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/model_jazz_scnet.ckpt": "0db306f83f69afd1ec4d391d6d452e3b1a49862c68d7a8b41097368965b487ff",
         "experimental_general/model_jazz_scnet.yaml": "11467784fc3511d1ce6e42ffef698fbf25ef1711be86fd2b8e37f8236a58101e"
       }
@@ -1088,7 +1088,7 @@
       "secondary_category": "",
       "secondary_category_cn": "通用源分离",
       "target_stem": "dry",
-      "sha256": {
+      "file_hashes": {
         "experimental_general/model_mel_band_roformer_ep_3_sdr_14.8359.ckpt": "49248d3e106e95f351b4a51942b87c00b6c3d3f6c0da11f6cf4d86b2d8ba55f9",
         "experimental_general/model_mel_band_roformer_ep_3_sdr_14.8359.yaml": "375175faf3965a8c52d27f6c102a9f394742853ea85397168c8671518af42347"
       }
@@ -1112,7 +1112,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "instrument",
-      "sha256": {
+      "file_hashes": {
         "instrumental/bs_roformer_inst_hyperacev2.ckpt": "4d61178ef966d2b4e9ad456ffbbc6fd5b2828df07a7af32931142c1a5ff1fe6f",
         "instrumental/bs_roformer_inst_hyperacev2.yaml": "75979fedf4c0eaecd16b80f89746e7587851af00f91989c96c0b6b04cdb2eedd"
       }
@@ -1136,7 +1136,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/essid_mel_inst.ckpt": "5ce4ee5c6d57122d69fd74705c9abe009be24e1d74711d0907fdfbe4eff1260c",
         "instrumental/essid_mel_inst.yaml": "6c7021848629364d7d97463febd61ea9630ee7b10836f796589c7a7139d088cc"
       }
@@ -1160,7 +1160,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/essid_mel_inst_old.ckpt": "a90e6c282f3b5fc146b08748865766fa2d5b9c404551191e5efe13f1bade145d",
         "instrumental/essid_mel_inst_old.yaml": "6c7021848629364d7d97463febd61ea9630ee7b10836f796589c7a7139d088cc"
       }
@@ -1184,7 +1184,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/Inst_ExperimentalV1.ckpt": "fb19b968287d31b6d229816342aa7f08f7e4010b7c61be2427fbdb0c04a8a020",
         "instrumental/Inst_ExperimentalV1.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1208,7 +1208,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/Inst_Fv8.ckpt": "026caebb240226f64b1611e623735bb14c042f772464292aa1a26e896a759cc5",
         "instrumental/Inst_Fv8.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1232,7 +1232,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/Inst_Fv9.ckpt": "a6c02cd154bb49d6d08044a8dc935a94ec26d09f2a0e6a03cc80a65d05a98ff2",
         "instrumental/Inst_Fv9.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1256,7 +1256,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/inst_gaboxFlowersV10.ckpt": "fe3aa51927beb60ff345b8b672c11760fb8bdaa6039d8c61631416a5b4f7a047",
         "instrumental/inst_gaboxFlowersV10.yaml": "40a8731742f8d9b762dfc550eb67decf3766c8ab86f612290ffedfbf40ac7d23"
       }
@@ -1280,7 +1280,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/Inst_GaboxFv9.ckpt": "068d29a54e71f69ed871ca410e09b9877e153ad1439e825bd093573ea4de5762",
         "instrumental/Inst_GaboxFv9.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1304,7 +1304,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/Inst_GaboxV7.ckpt": "e725a860176acb475d983a1ddd9c1a99a619c69cc9ceda808dd294d10db746a5",
         "instrumental/Inst_GaboxV7.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1328,7 +1328,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/last_mel_band_roformer.ckpt": "25a20a3660cc609d25e57880ee2a52d6933efd10636bf849386aeef3ea3b7ca3",
         "instrumental/last_mel_band_roformer.yaml": "6c7021848629364d7d97463febd61ea9630ee7b10836f796589c7a7139d088cc"
       }
@@ -1352,7 +1352,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_2_gabox.ckpt": "e03ca459c339f88b7521c367c897d0c3f5362b38a6cdb96cb28e625ca0f9931e",
         "instrumental/mel_band_roformer_instrumental_2_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1376,7 +1376,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_3_gabox.ckpt": "f9ec9f299cf617bf6afe1c382f4b0761cd9bee78323da94889951812328e10fb",
         "instrumental/mel_band_roformer_instrumental_3_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1400,7 +1400,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_becruily.ckpt": "a8da6632a1c25efb1c9be783ce9ea367d226d4b918cd6c3717c8b1d7a396041d",
         "instrumental/mel_band_roformer_instrumental_becruily.yaml": "a71083f7767ae742130418cc0966cf658bd7af1d4cc76f1bd65dbe12272e2db3"
       }
@@ -1424,7 +1424,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fullness_noise_v4_gabox.ckpt": "f50296e913b9af3b5b3b961e92877ef0d4a74f9a433e796e89960c4c2b1abe53",
         "instrumental/mel_band_roformer_instrumental_fullness_noise_v4_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1448,7 +1448,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fullness_v1_gabox.ckpt": "31140eccf271d2a9e8a538b092b1f70dfd6471aa5ad163b22bccc758b9f38b62",
         "instrumental/mel_band_roformer_instrumental_fullness_v1_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1472,7 +1472,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fullness_v2_gabox.ckpt": "c446c34551333dd3d45b8d0708658a10f28c5e289f8ec27b5f0e22803681bef3",
         "instrumental/mel_band_roformer_instrumental_fullness_v2_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1496,7 +1496,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fullness_v3_gabox.ckpt": "fbb229209a8942d34664e19d2f4862e357ea3108a4e8c04b69aa0aba523a4481",
         "instrumental/mel_band_roformer_instrumental_fullness_v3_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1520,7 +1520,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fullness_v4_gabox.ckpt": "b03d9bf0fc643dabf006dee38fd798140b4884c1b65c573b4488c1a2a876ad84",
         "instrumental/mel_band_roformer_instrumental_fullness_v4_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1544,7 +1544,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fv7z_gabox.ckpt": "ef229f0dcd370c1767e4292981c59e5248814da45f32bfacebcc0f28adaa30a1",
         "instrumental/mel_band_roformer_instrumental_fv7z_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1568,7 +1568,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fv8_gabox.ckpt": "50bfa127d21f419e0da89730867d28c7ac4484c9473e6f313d036bc8b429df80",
         "instrumental/mel_band_roformer_instrumental_fv8_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1592,7 +1592,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fv8b_gabox.ckpt": "5a28f79ae38b92caaeb37c5ccdf3912316b135414353ec0d5553d507e3de8ef7",
         "instrumental/mel_band_roformer_instrumental_fv8b_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1616,7 +1616,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_fvx_gabox.ckpt": "545ef13b0cdbac505818a38db98e09c54e7c03ea17b4e0c895a531bfa352fa59",
         "instrumental/mel_band_roformer_instrumental_fvx_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1640,7 +1640,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_gabox.ckpt": "7b3ad6bd8bed3aaaa4d9320ea2ca910d140196a2302186db1754f3a8d8e16fb1",
         "instrumental/mel_band_roformer_instrumental_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1664,7 +1664,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv5_gabox.ckpt": "38e935cf1e97afcc1de84d0bdb87dd8090bad530fa0df28e707d16448e1d38e2",
         "instrumental/mel_band_roformer_instrumental_instv5_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1688,7 +1688,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv5n_gabox.ckpt": "175203923fac3e52ae00e7e37d41e8a7fef5020b6ee4e4144f4786daabc54b34",
         "instrumental/mel_band_roformer_instrumental_instv5n_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1712,7 +1712,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv6_gabox.ckpt": "677951b8556a27abe32e39705640638826e78101fa901a51ad73d20522be6d25",
         "instrumental/mel_band_roformer_instrumental_instv6_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1736,7 +1736,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv6n_gabox.ckpt": "802f3e5d183d7c4b50dea147c320e61634f5be6ff55fa899fdebeaf0f3cf7f42",
         "instrumental/mel_band_roformer_instrumental_instv6n_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1760,7 +1760,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv7_gabox.ckpt": "1b4f12d81fd7fb02f38609216d59f0e42b3dca655fd90ca275ab5321b3e4d9aa",
         "instrumental/mel_band_roformer_instrumental_instv7_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1784,7 +1784,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv7n_gabox.ckpt": "b0ca36af5d1314be46b56c8a53b6be02f98511fa5d7e3e196fd895755e65be3c",
         "instrumental/mel_band_roformer_instrumental_instv7n_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1808,7 +1808,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv8_gabox.ckpt": "4d7d97418012e1d241853260d82330869c3e945ffdef9d7841fd90f5b24f20ff",
         "instrumental/mel_band_roformer_instrumental_instv8_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1832,7 +1832,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/mel_band_roformer_instrumental_instv8n_gabox.ckpt": "25920c876e601d4ccbf1684b19ecdac4b9fcfcc7f48d2c095d81040ec3fecbea",
         "instrumental/mel_band_roformer_instrumental_instv8n_gabox.yaml": "4e9b6dd2944e1f598e762f5c6813ac3594e22f7bbacf52651b8e7637b6ca9e28"
       }
@@ -1857,7 +1857,7 @@
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
       "target_instrument_override": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "instrumental/model_mel_band_roformer_ep_0_sdr_11.4805.ckpt": "12219998d4fcf208636472d48efc4a05fa42d3e3e68c5f7abfcb9fd8dac9b9d1",
         "instrumental/model_mel_band_roformer_ep_0_sdr_11.4805.yaml": "6c7021848629364d7d97463febd61ea9630ee7b10836f796589c7a7139d088cc"
       }
@@ -1881,7 +1881,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/model_mel_band_roformer_ep_0_sdr_16.8230.ckpt": "da1da5e35fd83f5abd77a313b91a59bd3d23c7d60d39a0b4a54893c7f6807c03",
         "instrumental/model_mel_band_roformer_ep_0_sdr_16.8230.yaml": "2e63994f87cd3fc72ce68e5a5bce23f1b47c92694a837e131b51f804891d81ef"
       }
@@ -1905,7 +1905,7 @@
       "secondary_category": "",
       "secondary_category_cn": "伴奏/无人声提取",
       "target_stem": "Instrumental",
-      "sha256": {
+      "file_hashes": {
         "instrumental/Neo_InstVFX.ckpt": "10d95b882c81c2b462d54f35c4c5b81ac6eee04f6e3746af95a79066010b012a",
         "instrumental/Neo_InstVFX.yaml": "db411ead370aafab420a80f990e0baa96160f1a6d64eee4356f66655c6dd112d"
       }
@@ -1929,7 +1929,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/bs_karaoke_gabox_IS.ckpt": "db8357825398d4231031ad1ab4aa12a94bcaad8d67e8ce5e4b3c5b48fdee1d4f",
         "karaoke/bs_karaoke_gabox_IS.yaml": "8360384097cc7a0b229b2918f70270bf7f5e64630d933ff359ceb6eaadf40fd9"
       }
@@ -1953,7 +1953,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/bs_roformer_karaoke_anvuew.ckpt": "206d04757cb5f75ca3b55f8a0a48f5c26aa2351d4ff3c7adbfc9affa30ea3ae4",
         "karaoke/bs_roformer_karaoke_anvuew.yaml": "14d6df6dcf9ddf2eb27f60aa3f26ba3e614996747e291ed46cd70bf453adf722"
       }
@@ -1977,7 +1977,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/bs_roformer_karaoke_frazer_becruily.ckpt": "eb90ee24c1154d83fbcfd27e96182f19e061557cc6e4746953125e08c29389f9",
         "karaoke/bs_roformer_karaoke_frazer_becruily.yaml": "85f18ece538aece3c55bea3bc7cc4c9a84409063f79038540ba0d004e95656a8"
       }
@@ -2001,7 +2001,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/mel_band_karaoke_fusion_aggressive.ckpt": "a769b82198727e243ed95cecbfb14bec6e3ddf16ba7b5dc9ab3bc130bb2e88b8",
         "karaoke/mel_band_karaoke_fusion_aggressive.yaml": "0efffad6a77166fbe41553d9fa15804fc7c7205d4dc2b3dd950c38330f474696"
       }
@@ -2025,7 +2025,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/mel_band_karaoke_fusion_standard.ckpt": "1b22f8715c73e5de48dd57230b46b6c08ddf90e45e6bd086e793330e12f3f2d0",
         "karaoke/mel_band_karaoke_fusion_standard.yaml": "0efffad6a77166fbe41553d9fa15804fc7c7205d4dc2b3dd950c38330f474696"
       }
@@ -2049,7 +2049,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Lead",
-      "sha256": {
+      "file_hashes": {
         "karaoke/mel_band_roformer_bve_gonza.ckpt": "e003bbb97ebef78c59cd6b46c5fc3d0f2303cd49f6fb98eb8b8f0f8075899ae3",
         "karaoke/mel_band_roformer_bve_gonza.yaml": "b007766aae28f5f3ae8a9688b45c79eb62526d69964c036a273d5383e73d6d1a"
       }
@@ -2073,7 +2073,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "karaoke/mel_band_roformer_karaoke_becruily.ckpt": "d3aa262ac01df870b9fc033e9c7b6cad33fe04fc9c148b6c40841326a515a0e0",
         "karaoke/mel_band_roformer_karaoke_becruily.yaml": "05a249043133e969ee5eae74bb9250c818354ec15ce095a33420cf2f9ecc4a33"
       }
@@ -2097,7 +2097,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/mel_band_roformer_karaoke_gabox.ckpt": "303fc631e7aa587e9dc1e6ac4bb3667c6ba53aacb6b6a90abcfcf57935b92bd8",
         "karaoke/mel_band_roformer_karaoke_gabox.yaml": "bbd4048f17d525be5f62ce9382e49e864e5d51df7753061ae4a1abc5d56d0f6f"
       }
@@ -2121,7 +2121,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/mel_band_roformer_karaoke_gabox_v2.ckpt": "ec34be50327aeaf1a996c27977f5c30d1ac80c0076d69683d3e5184c31ea29d3",
         "karaoke/mel_band_roformer_karaoke_gabox_v2.yaml": "bbd4048f17d525be5f62ce9382e49e864e5d51df7753061ae4a1abc5d56d0f6f"
       }
@@ -2145,7 +2145,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "karaoke",
-      "sha256": {
+      "file_hashes": {
         "karaoke/model_mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt": "1de20d459332fe8869aeb01327a31df0032262706e1365114e852dc271779813",
         "karaoke/model_mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.yaml": "2d8164ee36c03884f02e0c07b8d0667fbb65509482a757a0503c796f9560320d"
       }
@@ -2169,7 +2169,7 @@
       "secondary_category": "",
       "secondary_category_cn": "卡拉OK/和声",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "karaoke/small_karaoke_gaboxaufr.ckpt": "6182fc508c0791d5a2ee4121b51f5ae9115a1bdbd209a8688b0620f4fd17fdca",
         "karaoke/small_karaoke_gaboxaufr.yaml": "5232524272f3c3d5d69d625adeacdc31db10c97c3165a1d178b212bb48fe0bb0"
       }
@@ -2193,7 +2193,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/0d19c1c6-0f06f20e.th": "0f06f20ed6ddc8058fa72ccc4845f3a88916eff7d007b623924193de217bbcf4"
       }
     },
@@ -2216,7 +2216,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/1ef250f1-592467ce.th": "592467cef0b0d878bc66fe38c8456353ff435334331baab08e1dc82beeefd596"
       }
     },
@@ -2239,7 +2239,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/75fc33f5-1941ce65.th": "1941ce654b11df4132b9f4eae408556b4c83fad6fe26b4bc0dbcb36b975befb3"
       }
     },
@@ -2262,7 +2262,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/7d865c68-3d5dd56b.th": "3d5dd56b5bc986f136dff98655ded22b2b033f465ccec7a28640a6b15fd71ed6"
       }
     },
@@ -2285,7 +2285,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/7ecf8ec1-70f50cc9.th": "70f50cc947d08f32e6dd8e2b687d398fa5ef9e51d1bd7600e32205d1f44be6b9"
       }
     },
@@ -2308,7 +2308,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/902315c2-b39ce9c9.th": "b39ce9c97b5603fbaee99ec59fe1d2db570c77a37356c9c85542d881517c3302"
       }
     },
@@ -2331,7 +2331,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/9a6b4851-03af0aa6.th": "03af0aa64af2c4f0795659c265fdead238fab31c064a8a4b5b051c1b22c8ad48"
       }
     },
@@ -2354,7 +2354,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/cfa93e08-61801ae1.th": "61801ae1567d606c97a9c3469e943ae306d0a873eeb60d623ae7cfc7042b3f68"
       }
     },
@@ -2377,7 +2377,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/demucs-e07c671f.th": "e07c671f8da9f16450730df0e4815e97c07555f3dc0a06d236201c268b372e33",
         "legacy_models/demucs-e07c671f.yaml": "40dd1254be3d410a0ab18522c40f535b0a9fcb5691a7224449fae35b83f5b382"
       }
@@ -2401,7 +2401,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/demucs.th": "f6c4148ba0dc92242d82d7b3f2af55c77bd7cb4ff1a0a3028a523986f36a3cfd",
         "legacy_models/demucs.yaml": "40dd1254be3d410a0ab18522c40f535b0a9fcb5691a7224449fae35b83f5b382"
       }
@@ -2425,7 +2425,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/demucs48_hq-28a1282c.th": "28a1282c89ced9b343d284f61ed32cc3d03ce3e9d356076539924189d94c4eb5"
       }
     },
@@ -2448,7 +2448,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/demucs_extra-3646af93.th": "3646af93cb495138aefd44801dc792cbfdd6e31ebced741c5707ce4461fbc4c6",
         "legacy_models/demucs_extra-3646af93.yaml": "40dd1254be3d410a0ab18522c40f535b0a9fcb5691a7224449fae35b83f5b382"
       }
@@ -2472,7 +2472,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/demucs_extra.th": "3331bcc5d09ba1d791c3cf851970242b0bb229ce81dbada557b6d39e8c6a6a87",
         "legacy_models/demucs_extra.yaml": "40dd1254be3d410a0ab18522c40f535b0a9fcb5691a7224449fae35b83f5b382"
       }
@@ -2496,7 +2496,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/demucs_unittest-09ebc15f.th": "09ebc15ff947a7a8ed10ed6d8a1210f8c33189ea3bb3d0202310cb8d12968157",
         "legacy_models/demucs_unittest-09ebc15f.yaml": "40dd1254be3d410a0ab18522c40f535b0a9fcb5691a7224449fae35b83f5b382"
       }
@@ -2520,7 +2520,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/e51eebcc-c1b80bdd.th": "c1b80bdd6de58274abf359e66822a76f49ce2b9f086fc5dc917ac14598e6bebf"
       }
     },
@@ -2543,7 +2543,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/ebf34a2db.th": "dbdd521017d706829716055df8a86e7ee5d05a590508488c82ffb551c6edb918"
       }
     },
@@ -2566,7 +2566,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/fa0cb7f9-100d8bf4.th": "100d8bf4dc5e228edfd9bb7a2ec44ad9f44d8f0a845964d38ee8c11ea8ca1399"
       }
     },
@@ -2589,7 +2589,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/HTDemucs4_FT_other.th": "ef3bcb9c8b40d14ae5d51b6db2587339cc12c6b77c0be151ce6d69002e087bf2",
         "legacy_models/HTDemucs4_FT_other.yaml": "340cd3f1f00f75f521a38235f7689d95a9e820738439561ca79818e54bc8863a"
       }
@@ -2613,7 +2613,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/light.th": "79d1ee3c1541c729c552327756954340a1a46a11ce0009dea77dc583e4b6269c"
       }
     },
@@ -2636,7 +2636,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/tasnet-beb46fac.th": "beb46fac044130652e64e0316447478762d76e03596cabf1cf483f4ac7cfbb0a"
       }
     },
@@ -2659,7 +2659,7 @@
       "secondary_category": "",
       "secondary_category_cn": "Demucs/HTDemucs 系列",
       "target_stem": "",
-      "sha256": {
+      "file_hashes": {
         "legacy_models/tasnet.th": "be56693f6a5c4854b124f95bb9dd043f3167614898493738ab52e25648bec8a2"
       }
     },
@@ -2682,7 +2682,7 @@
       "secondary_category": "vr_backing_vocal",
       "secondary_category_cn": "VR 伴唱/和声",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_backing_vocal/UVR-BVE-4B_SN-44100-1.pth": "56165bdfa0dd5df7930ff76652200dc287e1bfef622bba5c812c736dc22067fe",
         "legacy_vr/vr_backing_vocal/UVR-BVE-4B_SN-44100-1.yaml": "f244a586fcd8ecebbea41de46129cc03a8ec4d081baafbf27c7334bcf025b379"
       }
@@ -2706,7 +2706,7 @@
       "secondary_category": "vr_deecho",
       "secondary_category_cn": "VR 去回声",
       "target_stem": "No Echo/Echo",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_deecho/UVR-De-Echo-Aggressive.pth": "1bd1d79d9c5d1b17d20f96f8a9f8aff1b55a83014f70712446bf420c0188e0a0",
         "legacy_vr/vr_deecho/UVR-De-Echo-Aggressive.yaml": "07e57251e2430c368555683e051cf99d6d0983ffbdced743d36eb2b6ba856d61"
       }
@@ -2730,7 +2730,7 @@
       "secondary_category": "vr_deecho",
       "secondary_category_cn": "VR 去回声",
       "target_stem": "No Echo/Echo",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_deecho/UVR-De-Echo-Normal.pth": "b849dd575643b075c257fb7a96c2ef5a79d7a5e7df74a2b319ad47118f1ee769",
         "legacy_vr/vr_deecho/UVR-De-Echo-Normal.yaml": "07e57251e2430c368555683e051cf99d6d0983ffbdced743d36eb2b6ba856d61"
       }
@@ -2754,7 +2754,7 @@
       "secondary_category": "vr_deecho_dereverb",
       "secondary_category_cn": "VR 去回声+去混响",
       "target_stem": "No Reverb/Reverb",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_deecho_dereverb/UVR-DeEcho-DeReverb.pth": "e644028ec82865dc0fe082bc6fea85a43f7c71cfe375caee2da2d154aa661ee7",
         "legacy_vr/vr_deecho_dereverb/UVR-DeEcho-DeReverb.yaml": "cee1aed65596dd00eecbad9577e2ee69f07eb670f295b4566d9894d44ce11949"
       }
@@ -2778,7 +2778,7 @@
       "secondary_category": "vr_denoise",
       "secondary_category_cn": "VR 降噪",
       "target_stem": "Noise/No Noise",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_denoise/UVR-DeNoise-Lite.pth": "0023492fe98c406817b5253965de19ede65d1c147db015a3a428f07602e99571",
         "legacy_vr/vr_denoise/UVR-DeNoise-Lite.yaml": "554c5ee8d72c8a05836d452c8495fc51836282feb8a480d5cb11d328562cc071"
       }
@@ -2802,7 +2802,7 @@
       "secondary_category": "vr_denoise",
       "secondary_category_cn": "VR 降噪",
       "target_stem": "Noise/No Noise",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_denoise/UVR-DeNoise.pth": "5addf43ece5bddd18da9f575a02d7ffdb32342414e6ad7ac8d1dd7a04138a628",
         "legacy_vr/vr_denoise/UVR-DeNoise.yaml": "55d88e731497eecca37ecb3852058b51cf1a0ba0d5eeae8e09471e5da42c2e92"
       }
@@ -2826,7 +2826,7 @@
       "secondary_category": "vr_dereverb",
       "secondary_category_cn": "VR 去混响",
       "target_stem": "Dry/Reverb",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_dereverb/UVR-DeReverb-aufr33-jarredou_4band_v4_ms_fullband.pth": "fff726b0adf09f2eadc2151645557db81e1a01fe15d91f9bbbfa9b50a007f1fd",
         "legacy_vr/vr_dereverb/UVR-DeReverb-aufr33-jarredou_4band_v4_ms_fullband.yaml": "c702f8f7230bbd62b9b431c1ef8344eb3f6e63962b049b976d016abba856ef8a"
       }
@@ -2850,7 +2850,7 @@
       "secondary_category": "vr_harmonic_noise",
       "secondary_category_cn": "VR 谐波/噪声分离",
       "target_stem": "No Aspiration/Aspiration",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_harmonic_noise/Harmonic_Noise_Separation_yxlllc.pth": "d4dd9f8259692f9ceb5b05d86fd53553ef582a1c65184f4cfff2e00cdfe33dd2",
         "legacy_vr/vr_harmonic_noise/Harmonic_Noise_Separation_yxlllc.yaml": "2294424b89599d2a31d7314cfc450999448005e3089bf600e95f018e424bd0cd"
       }
@@ -2874,7 +2874,7 @@
       "secondary_category": "vr_hp2",
       "secondary_category_cn": "VR HP2 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_hp2/7_HP2-UVR.pth": "545ee733b704a263bf6f75328c5ed14f0fb439dcda7a6e8f53c8cecb92877afe",
         "legacy_vr/vr_hp2/7_HP2-UVR.yaml": "c8958ab538cee5158945e79b9d7c890eaa27641b9a13e9678a23ddd77f9172e2"
       }
@@ -2898,7 +2898,7 @@
       "secondary_category": "vr_hp2",
       "secondary_category_cn": "VR HP2 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_hp2/8_HP2-UVR.pth": "e072299a87cf3fcdd36da6adc6d2837bed0c07a208775a7678c3d5deeea58f79",
         "legacy_vr/vr_hp2/8_HP2-UVR.yaml": "d563b6982bfdf43706e7b7f95d96306fb4efda71fe99fee579179d5fa2a1b005"
       }
@@ -2922,7 +2922,7 @@
       "secondary_category": "vr_hp2",
       "secondary_category_cn": "VR HP2 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_hp2/9_HP2-UVR.pth": "a99d032ed8c9d59077a8a41f0ceccb279d59ec10c87102167a283151d25ad9a2",
         "legacy_vr/vr_hp2/9_HP2-UVR.yaml": "d563b6982bfdf43706e7b7f95d96306fb4efda71fe99fee579179d5fa2a1b005"
       }
@@ -2946,7 +2946,7 @@
       "secondary_category": "vr_instrumental_extraction",
       "secondary_category_cn": "VR 伴奏/无人声提取",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_instrumental_extraction/1_HP-UVR.pth": "d9c654305888fe09668078ade76962b32d3782848f158192da7403a650e935a6",
         "legacy_vr/vr_instrumental_extraction/1_HP-UVR.yaml": "d563b6982bfdf43706e7b7f95d96306fb4efda71fe99fee579179d5fa2a1b005"
       }
@@ -2970,7 +2970,7 @@
       "secondary_category": "vr_instrumental_extraction",
       "secondary_category_cn": "VR 伴奏/无人声提取",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_instrumental_extraction/2_HP-UVR.pth": "26d6400d2d2e90811ba2381828c8c3519196097375af524c3d0edd969acf5356",
         "legacy_vr/vr_instrumental_extraction/2_HP-UVR.yaml": "742476644e8f98c4f4831004f6411d040cc2f224900624f2bdf8c118acd0cfc2"
       }
@@ -2994,7 +2994,7 @@
       "secondary_category": "vr_karaoke",
       "secondary_category_cn": "VR 和声/伴唱",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_karaoke/5_HP-Karaoke-UVR.pth": "fe00891defbb61f4261500af22f7624f1a3df8dc75fa3998d1aece02e6be4537",
         "legacy_vr/vr_karaoke/5_HP-Karaoke-UVR.yaml": "2875da6dac23956774be3ad433c35391637e5227b9c85060a4f2a791b35cb05e"
       }
@@ -3018,7 +3018,7 @@
       "secondary_category": "vr_karaoke",
       "secondary_category_cn": "VR 和声/伴唱",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_karaoke/6_HP-Karaoke-UVR.pth": "4ce7eaaa9e56f09366b788aebf6d3a72aec8145692c56f1e090e4e7e2d7ce65f",
         "legacy_vr/vr_karaoke/6_HP-Karaoke-UVR.yaml": "c8958ab538cee5158945e79b9d7c890eaa27641b9a13e9678a23ddd77f9172e2"
       }
@@ -3042,7 +3042,7 @@
       "secondary_category": "vr_mgm",
       "secondary_category_cn": "VR MGM 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_mgm/MGM_HIGHEND_v4.pth": "67bf5241072ae938ae0e6bec44d2d8307d9db81a5299382a5cfe12188131f9ce",
         "legacy_vr/vr_mgm/MGM_HIGHEND_v4.yaml": "0604d85c14332572bdef399d0460f6f88357cc566cd298af6a514a44ae975ee9"
       }
@@ -3066,7 +3066,7 @@
       "secondary_category": "vr_mgm",
       "secondary_category_cn": "VR MGM 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_mgm/MGM_LOWEND_A_v4.pth": "c5def7a35afecde33a77db214b3e9eeff0e47e8329ff5522d33332bc02b4b0e3",
         "legacy_vr/vr_mgm/MGM_LOWEND_A_v4.yaml": "1cfa760e872e7bf3bcdec53edecd22d5f8a777e79a7a103ff9c64fe77b5a3d02"
       }
@@ -3090,7 +3090,7 @@
       "secondary_category": "vr_mgm",
       "secondary_category_cn": "VR MGM 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_mgm/MGM_LOWEND_B_v4.pth": "93d6a08abf6357e5f37d4eb6892267520f5bb9e90f45486b08a0857d5fcb2ec8",
         "legacy_vr/vr_mgm/MGM_LOWEND_B_v4.yaml": "321600d6f7ec3de88b505085de37ee0ca4acfd5c1d8ce9ced1c9b5dc49bf928a"
       }
@@ -3114,7 +3114,7 @@
       "secondary_category": "vr_mgm",
       "secondary_category_cn": "VR MGM 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_mgm/MGM_MAIN_v4.pth": "0e6f0c0592333a3b215f61ac1e01f6c24c059f903f0789cf634e92daffae1dce",
         "legacy_vr/vr_mgm/MGM_MAIN_v4.yaml": "797c6f008e58ab62e81bff6b2d36be73bf33878379a3ffbb9d206880351a5474"
       }
@@ -3138,7 +3138,7 @@
       "secondary_category": "vr_sp",
       "secondary_category_cn": "VR SP 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_sp/10_SP-UVR-2B-32000-1.pth": "a178d8a8bc2c992bc5e5a045ef5ab8706d55c375d1bfe34700c1946d6c2d28b6",
         "legacy_vr/vr_sp/10_SP-UVR-2B-32000-1.yaml": "b55ed0e46430f7904c5bed1a711bac4dcd0181abd4edbea3ffe7d8a156968a92"
       }
@@ -3162,7 +3162,7 @@
       "secondary_category": "vr_sp",
       "secondary_category_cn": "VR SP 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_sp/11_SP-UVR-2B-32000-2.pth": "9e80e69ecd2244496710fa77e7d2c785bad93e2a87a7def65c38272cc9fd1613",
         "legacy_vr/vr_sp/11_SP-UVR-2B-32000-2.yaml": "b55ed0e46430f7904c5bed1a711bac4dcd0181abd4edbea3ffe7d8a156968a92"
       }
@@ -3186,7 +3186,7 @@
       "secondary_category": "vr_sp",
       "secondary_category_cn": "VR SP 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_sp/12_SP-UVR-3B-44100.pth": "5b826e6a44dbe007bde36c720bb2afeed008348cef1b61e35898fee5282d3918",
         "legacy_vr/vr_sp/12_SP-UVR-3B-44100.yaml": "9bbb18a008b2126d5601f8959cf9b53d9c5ce1bea9ab78a3382566a240934e77"
       }
@@ -3210,7 +3210,7 @@
       "secondary_category": "vr_sp",
       "secondary_category_cn": "VR SP 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_sp/13_SP-UVR-4B-44100-1.pth": "afb84b3d1da4a7e24033e5a0e85dbde2ac5f5e4b1e839788748735ac3bcc5046",
         "legacy_vr/vr_sp/13_SP-UVR-4B-44100-1.yaml": "d563b6982bfdf43706e7b7f95d96306fb4efda71fe99fee579179d5fa2a1b005"
       }
@@ -3234,7 +3234,7 @@
       "secondary_category": "vr_sp",
       "secondary_category_cn": "VR SP 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_sp/14_SP-UVR-4B-44100-2.pth": "78404d85d6e4e11a3d2362f6577fc398f77406b7881fbac402e0c6191d6efca1",
         "legacy_vr/vr_sp/14_SP-UVR-4B-44100-2.yaml": "d563b6982bfdf43706e7b7f95d96306fb4efda71fe99fee579179d5fa2a1b005"
       }
@@ -3258,7 +3258,7 @@
       "secondary_category": "vr_sp",
       "secondary_category_cn": "VR SP 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_sp/15_SP-UVR-MID-44100-1.pth": "bd03d4061ce34569e8df9e0a13a235af7ff0d3c0c3def491db4439f9ff344dd0",
         "legacy_vr/vr_sp/15_SP-UVR-MID-44100-1.yaml": "33e81effcb97411d77251c66857d0dc24425af7cac3cfccb70ede051bcf90cd1"
       }
@@ -3282,7 +3282,7 @@
       "secondary_category": "vr_sp",
       "secondary_category_cn": "VR SP 系列",
       "target_stem": "Instrumental/Vocals",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_sp/16_SP-UVR-MID-44100-2.pth": "f0e5025987670f963a339db861b078d8526bf912f0ce2e00f732a7f0a3e846cc",
         "legacy_vr/vr_sp/16_SP-UVR-MID-44100-2.yaml": "33e81effcb97411d77251c66857d0dc24425af7cac3cfccb70ede051bcf90cd1"
       }
@@ -3306,7 +3306,7 @@
       "secondary_category": "vr_vocal_extraction",
       "secondary_category_cn": "VR 人声提取",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_vocal_extraction/3_HP-Vocal-UVR.pth": "7d3f9be265b2f2c3d684f23a9905674627c2552e0f6b5f36325cef8dc1f0ff6b",
         "legacy_vr/vr_vocal_extraction/3_HP-Vocal-UVR.yaml": "5e660882e5b2dd82414a605d360716a54415d2836116cdd902432c4eaae1d134"
       }
@@ -3330,7 +3330,7 @@
       "secondary_category": "vr_vocal_extraction",
       "secondary_category_cn": "VR 人声提取",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_vocal_extraction/4_HP-Vocal-UVR.pth": "295d1e1e3a52c17a040a4a6fe390214ad8ca0797f091b7c6d8db97d247a27271",
         "legacy_vr/vr_vocal_extraction/4_HP-Vocal-UVR.yaml": "5e660882e5b2dd82414a605d360716a54415d2836116cdd902432c4eaae1d134"
       }
@@ -3354,7 +3354,7 @@
       "secondary_category": "vr_wind_instrumental",
       "secondary_category_cn": "VR 风声/管乐伴奏",
       "target_stem": "No Woodwinds/Woodwinds",
-      "sha256": {
+      "file_hashes": {
         "legacy_vr/vr_wind_instrumental/17_HP-Wind_Inst-UVR.pth": "acc6d472b4b478da9c9ab5af45b167749e05a7f65b30c7d5988b3700a513aeee",
         "legacy_vr/vr_wind_instrumental/17_HP-Wind_Inst-UVR.yaml": "14673ec54031486a930d19342f087d786d2d8f0c16010155cd24cab10a86a920"
       }
@@ -3378,7 +3378,7 @@
       "secondary_category": "dnr_stems",
       "secondary_category_cn": "DNR 对话/音乐/音效分轨",
       "target_stem": "Speech/Music/Effects",
-      "sha256": {
+      "file_hashes": {
         "music_stems/dnr_stems/model_bandit_plus_dnr_sdr_11.47.ckpt": "c48284779f7d1258a6527d3aaa18a532d45c1f506e2dcc25d5ab179a8c5e2573",
         "music_stems/dnr_stems/model_bandit_plus_dnr_sdr_11.47.yaml": "6ee5880f7da8187c8fb27d49563755b408cf14b2f4aaef1c808e16b731fe8c80"
       }
@@ -3402,7 +3402,7 @@
       "secondary_category": "drum_stems",
       "secondary_category_cn": "鼓组细分",
       "target_stem": "drums/other",
-      "sha256": {
+      "file_hashes": {
         "music_stems/drum_stems/gilliaan_drumsV1.ckpt": "f60c4370257257301922dec9c6528cfab1b82b02d772ae0a0090cb566d4c4ca7",
         "music_stems/drum_stems/gilliaan_drumsV1.yaml": "ee20ad01f6353365911d10897307733fedc18eeb811442885c389d251c50599c"
       }
@@ -3426,7 +3426,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/bs_roformer_4stems_ft.ckpt": "a64c61c5972fe3fdf331d98f06bb4d6e237147c83a4bc71fd4e00e254c9b7652",
         "music_stems/four_stem/bs_roformer_4stems_ft.yaml": "c134a0f5ef6d991f34459be4db25f7580a805d48e4c2e57be1660f33993026e9"
       }
@@ -3450,7 +3450,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/HTDemucs4.th": "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4",
         "music_stems/four_stem/HTDemucs4.yaml": "340cd3f1f00f75f521a38235f7689d95a9e820738439561ca79818e54bc8863a"
       }
@@ -3474,7 +3474,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/mel_band_roformer_4stems_large_ver1.ckpt": "a2ca1ac95e203d2630994c3d4a0cebabd7160e70bb010adab794843340fb704f",
         "music_stems/four_stem/mel_band_roformer_4stems_large_ver1.yaml": "662e2fddb2f58303b8ad70573d31b4b001c1440c233e28c6e5c95fc5c5c385fc"
       }
@@ -3498,7 +3498,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/mel_band_roformer_4stems_xl_ver1.ckpt": "ca5f7c78543d84c369319f226b7337a6cc0b2e1a75d20409fc3ebde32686e94b",
         "music_stems/four_stem/mel_band_roformer_4stems_xl_ver1.yaml": "2d426f17b3eb32ad43ce6e8f077cee38dc9e69ca99399bc3489b4166875f73bf"
       }
@@ -3522,7 +3522,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/MelBandRoformer4StemFTLarge.ckpt": "590358e6abe3255d87d7173ca2e4005de082f14cbb466ea4c5ffedbcc3964506",
         "music_stems/four_stem/MelBandRoformer4StemFTLarge.yaml": "d0e99e1f1c900df4e988646d808aa576cc92b6bc0e513e8e610a975e6a1b657e"
       }
@@ -3546,7 +3546,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_bs_roformer_ep_17_sdr_9.6568.ckpt": "3e9daecd70aaed5b5a0d1f861cc4d77eaa45afb3fc6301b1cf32c1be0f5868fb",
         "music_stems/four_stem/model_bs_roformer_ep_17_sdr_9.6568.yaml": "961f728747edcd9581457069f3de31cdb83f0225c872fbd66bd6ad03b1d1e2d0"
       }
@@ -3570,7 +3570,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_ep_168_sdr_7.8127.ckpt": "3138fef1739d5a922d50258ea50805e5b55a3e795a5b593fcb0650980b5d8128",
         "music_stems/four_stem/model_mel_band_roformer_ep_168_sdr_7.8127.yaml": "b649f5a49ed255e7dde8ac8f5432102a51198f2dba5ef2512ceaa7721a153ac3"
       }
@@ -3594,7 +3594,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_ep_1_sdr_8.2175.ckpt": "c50eb0498511fff2d7f3fc6d6385addae1d7cd6219c87a5be64f0a501e10eaf9",
         "music_stems/four_stem/model_mel_band_roformer_ep_1_sdr_8.2175.yaml": "aa0986061bc788651c5e5741dec1f680a202e1d48ae8c79625f8a2371c5d0c1d"
       }
@@ -3618,7 +3618,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_ep_38_sdr_6.4698.ckpt": "1e00a25bbfb5caafa3a93c1d3133ad256e32e4021552c91e20d3804ca27a6f95",
         "music_stems/four_stem/model_mel_band_roformer_ep_38_sdr_6.4698.yaml": "32af61904bb4be2234a7cedfc2b0159fb83f2c0ac4712b3ccdb19e92767ed618"
       }
@@ -3642,7 +3642,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_ep_7_sdr_6.8652.ckpt": "bf2a6fd552005adc95b80f23d23517fa95a474c22f4490b31c4aafeee5003ca1",
         "music_stems/four_stem/model_mel_band_roformer_ep_7_sdr_6.8652.yaml": "c9f2cb0e8e6ba89b2f5ba7c022c852a0d4b0d4fb31c74982f987196a9ec01e7e"
       }
@@ -3666,7 +3666,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_15_sdr_6.4908.ckpt": "7164a4962b6e43a53cec05dcc866428a77b111d1569b2ba7bba103bc55a0127c",
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_15_sdr_6.4908.yaml": "34e82f7892d6376b52ea95baa8f1c39438e1bc80465d46e12d6ff2c160cbec84"
       }
@@ -3690,7 +3690,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_166_sdr_6.7022.ckpt": "c8067adba1853a07cbd041c35915b08e9386fbd8516d619655a4ce458fef2636",
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_166_sdr_6.7022.yaml": "4896a3b2cd8c9be58b5f20face9bdabb043505a030cc57e5f60959d0bdd3af06"
       }
@@ -3714,7 +3714,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_48_sdr_7.0412.ckpt": "2faf9582ad8811ddc573925c54c91b5c8471cbe66805de404d5fb611d59adaac",
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_48_sdr_7.0412.yaml": "2e022059e28a42e07ae5a5bad87f14ab67f96e1d3963ab217645a1950b526b7d"
       }
@@ -3738,7 +3738,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_53_sdr_5.1235.ckpt": "b6b2d654d257cb84d4546846253a098dc3cf17ce87568c00e35e41f48c9b52e7",
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_53_sdr_5.1235.yaml": "9676add31a104593458900508b62221fce60b4e2483ba5a739b17aa1c3947f96"
       }
@@ -3762,7 +3762,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_9_sdr_6.5254.ckpt": "8c25e58bca49df88438e96f9a7ac6f5e00cda64b7228384cd9af499ab9b88596",
         "music_stems/four_stem/model_mel_band_roformer_experimental_ep_9_sdr_6.5254.yaml": "024ae5b20b06e7f0d9710aca4006b9294018833c5eca25e1500065ad2c1c8114"
       }
@@ -3786,7 +3786,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_scnet_ep_36_sdr_10.0891.ckpt": "ac25975f0f5704f3d1a3c3c251505b7a0f417a22eafe82773440ee4f7e14b74f",
         "music_stems/four_stem/model_scnet_ep_36_sdr_10.0891.yaml": "7640c30cfc9f8a1047561b4188278453405b5c36e71ce370e35879672604d1e9"
       }
@@ -3810,7 +3810,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_scnet_ep_54_sdr_9.8051.ckpt": "fd889cc1d97619ccac59280ecc859c190cd3cc1b1557fbe3a19b1610bb67e410",
         "music_stems/four_stem/model_scnet_ep_54_sdr_9.8051.yaml": "08b5fc5b48617e5a0d9604dbf658482afa64d9686d2eaa2d36aaaffc0fdd892b"
       }
@@ -3834,7 +3834,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/model_scnet_sdr_9.3244.ckpt": "fe550315a76e8f4aed8475d7d5952137504a3b6c63b3adcef2443bfe73aac540",
         "music_stems/four_stem/model_scnet_sdr_9.3244.yaml": "1c0f0a82e07268a4ae6580a85994cf2186daa3e6d5c254f272077688eab7b1a0"
       }
@@ -3858,7 +3858,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/SCNet-large_starrytong_fixed.ckpt": "65900dfa07d6b6e5d784c0f143920200a4bd281d6e78a806c549d0b912d5885e",
         "music_stems/four_stem/SCNet-large_starrytong_fixed.yaml": "a496781cb41744b5670aece6b0c2100c17b35f955886790874353617711bdc25"
       }
@@ -3882,7 +3882,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/scnet_checkpoint_musdb18.ckpt": "1bc0d1abb20bfdf966dcd07637bafd03e4bc13653d09ef18bc9b3e342eafe2aa",
         "music_stems/four_stem/scnet_checkpoint_musdb18.yaml": "4fd9a69748ead73e9d72663b6a94b8e565fde6d803c50d81fdbed810eeb3d0c2"
       }
@@ -3906,7 +3906,7 @@
       "secondary_category": "four_stem",
       "secondary_category_cn": "四轨分离",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "music_stems/four_stem/ver2.ckpt": "835ce9fa6651769c28ad5a2c87f9220b003a461d7d6c57ebe0898fff5479138c",
         "music_stems/four_stem/ver2.yaml": "d0e99e1f1c900df4e988646d808aa576cc92b6bc0e513e8e610a975e6a1b657e"
       }
@@ -3930,7 +3930,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "accordion",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_accordion_mvsep.ckpt": "aafcbe186aaec0489d28e388d9d1d3c12660c5640a8494bdaf3cbfee60c08c78",
         "music_stems/mega_53_stems/bs_mega_53stem_accordion_mvsep.yaml": "f9c6a1a39d9b7b7fd3fa4aae27c78737861ea6b797018a00660a87e55cd29f94"
       }
@@ -3954,7 +3954,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "acoustic-guitar",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_acoustic-guitar_mvsep.ckpt": "fa386b2e7b1ea4f12b9b5c557444c0dc78648ef4ee299de2759d86457e182b3e",
         "music_stems/mega_53_stems/bs_mega_53stem_acoustic-guitar_mvsep.yaml": "77e6a71f4451c207af7a498e403264ec695890be1d27351f87a1f95d7083df0d"
       }
@@ -3978,7 +3978,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "back-vocal",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_back-vocal_mvsep.ckpt": "9e60a9057340574977b0f858084113d952ba4731a7bbe054bf49d1d5338ca9d9",
         "music_stems/mega_53_stems/bs_mega_53stem_back-vocal_mvsep.yaml": "41231127b1f72cca550c848e30f1108c607d2ca7e7d1958591bdea2b2db3e7bb"
       }
@@ -4002,7 +4002,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "banjo",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_banjo_mvsep.ckpt": "7f9d0ad56db9289c767d41104156c2dce5b88631e05958bc78479b77e62e4f0d",
         "music_stems/mega_53_stems/bs_mega_53stem_banjo_mvsep.yaml": "51ac1c822705f1a7d3b94e9f9a003b9eddf1f4856d8d0c4ca5357076eb22edab"
       }
@@ -4026,7 +4026,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "bass",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_bass_mvsep.ckpt": "b17600dd1c2027a72ab34180ff6191d3bdeb786db9fbb13c58337c33fc10163c",
         "music_stems/mega_53_stems/bs_mega_53stem_bass_mvsep.yaml": "6dbc16d12aadb3aa02e267f628cd628fb6eacfd0b0d0a2236161c026f30fe369"
       }
@@ -4050,7 +4050,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "bassoon",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_bassoon_mvsep.ckpt": "2d7329356a80027377e11d6d20c1c37a6b1c8a97e6fc502379142ba88773caae",
         "music_stems/mega_53_stems/bs_mega_53stem_bassoon_mvsep.yaml": "6673d289521241e2176bbf9a60242086a61357ae930113712781f0126996255c"
       }
@@ -4074,7 +4074,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "bells",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_bells_mvsep.ckpt": "6328f387259bb50ef12e36d3ef6cc5703520a0a89cd3bd743cf4f420f87701b8",
         "music_stems/mega_53_stems/bs_mega_53stem_bells_mvsep.yaml": "2a87b20c03640a09e7e4ead90ada790aa128ea8ede990b98afab152859409e53"
       }
@@ -4098,7 +4098,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "bowed_strings",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_bowed_strings_mvsep.ckpt": "598a644d78dd6a385140b2134733eef42d9525805a84d55f224c80a1ca39ff61",
         "music_stems/mega_53_stems/bs_mega_53stem_bowed_strings_mvsep.yaml": "c2cbd73c4a5b46e0a933aa44a96ced18eb065ea9e8b6321bf1b572b3cdaec62d"
       }
@@ -4122,7 +4122,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "brass",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_brass_mvsep.ckpt": "e7d7bf86a031f3253019ff9dc424485d8085946fc428ab66522c568ee17b8027",
         "music_stems/mega_53_stems/bs_mega_53stem_brass_mvsep.yaml": "1d2571fcde175ebd0ac40f055c3f61d9cc04466b82f0193a7109d5d56b733f39"
       }
@@ -4146,7 +4146,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "cello",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_cello_mvsep.ckpt": "bb6600ebc4dfe1d896d221073d114f51902a0b385afa23503034b9e8befba62c",
         "music_stems/mega_53_stems/bs_mega_53stem_cello_mvsep.yaml": "10aaee25672f1d69b3a0348d81d0760923bd6dbcf894b4c070fac85c2ade331e"
       }
@@ -4170,7 +4170,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "clarinet",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_clarinet_mvsep.ckpt": "3c4ac033c03727943a491e05dc9c9aebbd92afc3d8e83b3484881e9ed3f3dde7",
         "music_stems/mega_53_stems/bs_mega_53stem_clarinet_mvsep.yaml": "f95880336174c8002290efcbe93574400e7923ec396c1b840ced4f5543a44658"
       }
@@ -4194,7 +4194,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "congas",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_congas_mvsep.ckpt": "78885092a3fdf0f63f349ba34e8fa4ff1ef84959a7e94f544b437e2404af5287",
         "music_stems/mega_53_stems/bs_mega_53stem_congas_mvsep.yaml": "5d7bb3b0e501c4e297e56f861a7028d039fff1631e03d6649db0844efd5ae5bd"
       }
@@ -4218,7 +4218,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "digital-piano",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_digital-piano_mvsep.ckpt": "481c741ff36208c9b11860297ff5c9a502873662724d35a437bf64aaade890bd",
         "music_stems/mega_53_stems/bs_mega_53stem_digital-piano_mvsep.yaml": "f769be4607cca070832290f83be88a0da02fc954b065fcc2c5fb89f89056917d"
       }
@@ -4242,7 +4242,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "dobro",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_dobro_mvsep.ckpt": "a8b99b1b837f04200cbb5b99d33c0ea2ac46bb76424879385d8fc6dde8abfe0b",
         "music_stems/mega_53_stems/bs_mega_53stem_dobro_mvsep.yaml": "9dc37ca36675179d4f2e177184f4292e52b8be192f0550a875dfe70d490b7643"
       }
@@ -4266,7 +4266,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "double-bass",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_double-bass_mvsep.ckpt": "731d7bcaae4ce02f5a19116c1b5c1004bfe7208d14cc6b93aaab2753c0302cfb",
         "music_stems/mega_53_stems/bs_mega_53stem_double-bass_mvsep.yaml": "b4db56c54523c041698c977558f645e5919fca68f54a86fa82846c33f6efcf6e"
       }
@@ -4290,7 +4290,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "drums",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_drums_mvsep.ckpt": "abfa64203417f0874aa3936320b1666364ef1badd917f5613a3017d0ea73c7a2",
         "music_stems/mega_53_stems/bs_mega_53stem_drums_mvsep.yaml": "54b000d84b0fd863f7cf1955fc07fa2f8327805e7bc15c776744691d5f11d723"
       }
@@ -4314,7 +4314,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "electric-guitar",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_electric-guitar_mvsep.ckpt": "cd506bfce9474f91a31001967f2c4935ce4e67f643da3df20d04058da927c553",
         "music_stems/mega_53_stems/bs_mega_53stem_electric-guitar_mvsep.yaml": "cb235299e7b58b11aedb2a359f7e03c5ab93d9f03fe4ef95683fe9ff65ffadbf"
       }
@@ -4338,7 +4338,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "flute",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_flute_mvsep.ckpt": "65dfa1e2c093165812cbdf8945715e7f71566bc3a8196ecad3edce1d29bb2e45",
         "music_stems/mega_53_stems/bs_mega_53stem_flute_mvsep.yaml": "78207aa8e43dd8a734240c0d8eaab6f534a817dae2786b74153473310f5206f6"
       }
@@ -4362,7 +4362,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "french-horn",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_french-horn_mvsep.ckpt": "484b9e68a962891daffb1d671f847509a7e6c7f72de42c445c774881dfe2c420",
         "music_stems/mega_53_stems/bs_mega_53stem_french-horn_mvsep.yaml": "cb453739b827baa14fd242fcb2c39007eac8760813f9a232d2f01d8becb08e41"
       }
@@ -4386,7 +4386,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "glockenspiel",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_glockenspiel_mvsep.ckpt": "dc18ac41fb8e0e1cf2dcb290d67c9e2f7a295f380e91864eda9f3cc805015231",
         "music_stems/mega_53_stems/bs_mega_53stem_glockenspiel_mvsep.yaml": "ad0320a9b56a00ce5eb91c1761c881a1b42a696dcea638e80386a0b5da73f3ec"
       }
@@ -4410,7 +4410,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "guitar",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_guitar_mvsep.ckpt": "9e4524d60cc7eb01eae4048ecda6e3fbf9a9a404e12838f4ed58b8dfb733762d",
         "music_stems/mega_53_stems/bs_mega_53stem_guitar_mvsep.yaml": "6662b795a3905ea5593e4e02c05e9273c2d4334538249643e7f9b980dc7467e8"
       }
@@ -4434,7 +4434,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "harmonica",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_harmonica_mvsep.ckpt": "90f9e794573c6492695efb18c5bd8967f28f7a1832aa9d237a2ebe53ffd7347c",
         "music_stems/mega_53_stems/bs_mega_53stem_harmonica_mvsep.yaml": "7f1d2819bb10734502c222025987a7848fec800a758ba5aa7b695fcdd5d306de"
       }
@@ -4458,7 +4458,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "harp",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_harp_mvsep.ckpt": "5fde42f720b062391e5a62df3b0ab86244bb0a6471b4896db3677e88cbf90ef6",
         "music_stems/mega_53_stems/bs_mega_53stem_harp_mvsep.yaml": "f4ffcbf3f5be9b5cad404dfa2cfc866b422296bc34f9340c31944c8b372106a3"
       }
@@ -4482,7 +4482,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "harpsichord",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_harpsichord_mvsep.ckpt": "362f6c681a465aea21d3d4b8d8eba29e0e2ae41152bf0b8798201cfb00f32ee1",
         "music_stems/mega_53_stems/bs_mega_53stem_harpsichord_mvsep.yaml": "63a993c4daf859223b76ae4706d9930351f3283d13711b77b25a41970ac931bb"
       }
@@ -4506,7 +4506,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "hh",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_hh_mvsep.ckpt": "94901a05d358f16b2de4064eec45f0947bb28bf239040a3fe79e2ae7fadd2984",
         "music_stems/mega_53_stems/bs_mega_53stem_hh_mvsep.yaml": "255cdb1e966870cc01bf84be979da3a1e3d705b97f49f68e51c6368de6afcf10"
       }
@@ -4530,7 +4530,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "keys",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_keys_mvsep.ckpt": "4bc2bde8c5b26d5e22720304deace45dfeaffb2d02dc07922a8f2be17d82c844",
         "music_stems/mega_53_stems/bs_mega_53stem_keys_mvsep.yaml": "a56716fe736d4e4db9a1375b236703cc4c2e3780c7fe1e8dc3e2074b3bc09756"
       }
@@ -4554,7 +4554,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "kick",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_kick_mvsep.ckpt": "ad914b83f9ef13bedf9608771f4f1a86174e27a84f7f235dc2d1dd91bab85fbc",
         "music_stems/mega_53_stems/bs_mega_53stem_kick_mvsep.yaml": "d6b80d69dbbc4df964bf5991fa94c6287f07b85063782d95bc4d39a461c97ea3"
       }
@@ -4578,7 +4578,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "lead-vocal",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_lead-vocal_mvsep.ckpt": "7622ef83040f3a1e683d4250af10bcc52ebc36f0b4188ff2101d23c6dae310ce",
         "music_stems/mega_53_stems/bs_mega_53stem_lead-vocal_mvsep.yaml": "c27dc11f977ae1168664955bc7818a0ef090d82fdbe0d4b13d1127e2652fb64a"
       }
@@ -4602,7 +4602,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "mandolin",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_mandolin_mvsep.ckpt": "1a5589c6ee51a8f3f87f68e48aaf41792c31f63d5c0eaba497ae0ecd4bb6a675",
         "music_stems/mega_53_stems/bs_mega_53stem_mandolin_mvsep.yaml": "5526a62400628d25305a4806f5c7e3e55321b31765b5f101a23e4303a4911650"
       }
@@ -4626,7 +4626,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "marimba",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_marimba_mvsep.ckpt": "559835d6525898228f1ebcfac770ed44185217e547159a3c0f836391637fc3e8",
         "music_stems/mega_53_stems/bs_mega_53stem_marimba_mvsep.yaml": "2f283b316149145081cb0e6844c62e6e0c4a297cf92525ef68a79e8ebd55cbb2"
       }
@@ -4650,7 +4650,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "oboe",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_oboe_mvsep.ckpt": "7de88790f82b86af910f943f5a31f30237c48997011e6123c5922449f2a22285",
         "music_stems/mega_53_stems/bs_mega_53stem_oboe_mvsep.yaml": "85edc82dca52e29eb3b4dda4f4acefa16db5424ae8c006a3c5bdeed06fa89147"
       }
@@ -4674,7 +4674,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "organ",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_organ_mvsep.ckpt": "14c1c2a26fbd5061be85a31a170b6989ba296871895905ea6a1a048d200895ba",
         "music_stems/mega_53_stems/bs_mega_53stem_organ_mvsep.yaml": "c9fee5cb3dc06ce90fef1d4c306b252a8c9fe8876266904841bf32e53e277f28"
       }
@@ -4698,7 +4698,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "percussion",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_percussion_mvsep.ckpt": "82187665185d51e6050b4d6afaf45e7acafd85d1eefffd86c47ac0aa601e089f",
         "music_stems/mega_53_stems/bs_mega_53stem_percussion_mvsep.yaml": "db3f192bd8ecd0405a129f8abeea832752e52dc535ebf595bb1f0cdfc4781be5"
       }
@@ -4722,7 +4722,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "piano",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_piano_mvsep.ckpt": "8e58ad544386136028ec1f5764bb95a235235492144112d94782ff1333905fe9",
         "music_stems/mega_53_stems/bs_mega_53stem_piano_mvsep.yaml": "989a18c9ac6b31cc779ed4004bbc61f921ad3f5f1d18467562c0e47f2d06414b"
       }
@@ -4746,7 +4746,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "saxophone",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_saxophone_mvsep.ckpt": "7027da3852828194f224f5f822582a38015b0afc452fe3e407229084c10de6a9",
         "music_stems/mega_53_stems/bs_mega_53stem_saxophone_mvsep.yaml": "362976ea8390e3d69883d4f40b85624f1e211e87908e52e676ad0c73d30ece11"
       }
@@ -4770,7 +4770,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "sitar",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_sitar_mvsep.ckpt": "32683e3fcddebe1a5605fb5cffc76f8e89ec19d35f0ed49fe6f0f31476fd37d1",
         "music_stems/mega_53_stems/bs_mega_53stem_sitar_mvsep.yaml": "edf6dae4228b0a7e93cea0f91636aa9e675943213246b7da86eeaf42858b7fbb"
       }
@@ -4794,7 +4794,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "snare",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_snare_mvsep.ckpt": "c4cde14867f1311836d4aa07649e39df4df43c4ba98780783fe96cd4fe8293bf",
         "music_stems/mega_53_stems/bs_mega_53stem_snare_mvsep.yaml": "066457c0d5d52a58059a655f1a9380cef9be4758a154b96d342def2c500860c8"
       }
@@ -4818,7 +4818,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "strings",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_strings_mvsep.ckpt": "2e8b76ff287f6127e1f3dd927b56946784d368d5a40e7f4f74b1373a647675c5",
         "music_stems/mega_53_stems/bs_mega_53stem_strings_mvsep.yaml": "8b8d465a4277e7e412283c882d6d0ed1cbf6d2f86333df35241c1606efa7c7f3"
       }
@@ -4842,7 +4842,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "synth",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_synth_mvsep.ckpt": "04749df7e2fab770a0d26bf9aa4850c1a6cd89547fc8bfe9c9d223602c0afb82",
         "music_stems/mega_53_stems/bs_mega_53stem_synth_mvsep.yaml": "545c99b93158be95e2702309d017e3e98acc404074e5eb9c13328f7288bc177d"
       }
@@ -4866,7 +4866,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "tambourine",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_tambourine_mvsep.ckpt": "8e22d5e185ab3db1262f1fc6b98eff22d9f97fc6f6e7f381cacf4624e6b69ad2",
         "music_stems/mega_53_stems/bs_mega_53stem_tambourine_mvsep.yaml": "1a06cd034339fbe7762be890b126e28e8ac00eb50dceff900f51bca53df48984"
       }
@@ -4890,7 +4890,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "timpani",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_timpani_mvsep.ckpt": "a2f4813c366246f3af010340d9f1c7854bcb48e3187e51065dfaff34ca515b54",
         "music_stems/mega_53_stems/bs_mega_53stem_timpani_mvsep.yaml": "cb55c177234cad6e0b64c421d0d7cf648ee9997b76b3bf03a4d1f52eec29b13d"
       }
@@ -4914,7 +4914,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "toms",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_toms_mvsep.ckpt": "ceb45bbc16419363bb842484dadcc786a9ca290c4553c9eced0e98dc8f0f2458",
         "music_stems/mega_53_stems/bs_mega_53stem_toms_mvsep.yaml": "254151801cd584657f3b2ee4fed6e6187cc7790af338d186fa8105b842f901da"
       }
@@ -4938,7 +4938,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "triangle",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_triangle_mvsep.ckpt": "8e3692157868c6c7d0d4d6f36be263ed363e01cf66e4c97a400acb8c05ca250f",
         "music_stems/mega_53_stems/bs_mega_53stem_triangle_mvsep.yaml": "94e2cc59e8d84e729ee6cd9d8898f5c840dfde06b94e554d35c80c6bfdbc6261"
       }
@@ -4962,7 +4962,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "trombone",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_trombone_mvsep.ckpt": "f50d2e13e3e02cd74c3a5e084975d64a2a1f2090757c64495944a00823947f0d",
         "music_stems/mega_53_stems/bs_mega_53stem_trombone_mvsep.yaml": "2de1b5ad285ae456cc0919731856f6b09eead857509152b145fcceb184cab3f2"
       }
@@ -4986,7 +4986,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "trumpet",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_trumpet_mvsep.ckpt": "47530e8c6ee14eb3f4469efc629b0a3942cfff062f3a7eb788cb15355fd7b724",
         "music_stems/mega_53_stems/bs_mega_53stem_trumpet_mvsep.yaml": "a21d02cb5918c99cca36462ec89f797ebeec572908cac60903758881bec6848c"
       }
@@ -5010,7 +5010,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "tuba",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_tuba_mvsep.ckpt": "0bb341f247101ba9e723a57089e0bdade930eab9fa09c349d1d36c3272bce34f",
         "music_stems/mega_53_stems/bs_mega_53stem_tuba_mvsep.yaml": "6e0df35e3019a71a93cfaafc855a2628e5b1842ecb893550a389b774128c290f"
       }
@@ -5034,7 +5034,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "ukulele",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_ukulele_mvsep.ckpt": "56eb5a2cb4c3a45be630c27b03815ead66e9a892922b84f9ac27eeb1fe0be2f0",
         "music_stems/mega_53_stems/bs_mega_53stem_ukulele_mvsep.yaml": "d64aedc59ee21d3b84d76eadddba03e9ea035dc6275b847421870d64b548a623"
       }
@@ -5058,7 +5058,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "viola",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_viola_mvsep.ckpt": "41d47d879a45fe94bba0db01476cce5e93395b06c756b98463b1eda95a468354",
         "music_stems/mega_53_stems/bs_mega_53stem_viola_mvsep.yaml": "ea688e3a488012a9868e2cf84adfc1ea48c3d07f36ae220bebed0650a4ba43ad"
       }
@@ -5082,7 +5082,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "violin",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_violin_mvsep.ckpt": "43dd11a1816ba7c58d74f4de1a48ffc05b98fc499dfb24cf8e71c5ba729f2ada",
         "music_stems/mega_53_stems/bs_mega_53stem_violin_mvsep.yaml": "9e03151bbd4100486d42b1ef7be9735ee09f38ae554227189368b6e41e622517"
       }
@@ -5106,7 +5106,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "vocal",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_vocal_mvsep.ckpt": "917580ad6a1bab75d1b438db537ab98387839efb1809e5a50c78b7afdb96c8af",
         "music_stems/mega_53_stems/bs_mega_53stem_vocal_mvsep.yaml": "d810ad9784aecf3ec4a0d33c1a1c32bce5ed5a268be3bd05756199de14ba5140"
       }
@@ -5130,7 +5130,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "wind-chimes",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_wind-chimes_mvsep.ckpt": "9bcb89de76916a44243e89ffd02051b527848afd8d2d618bd82e04de3bd861f3",
         "music_stems/mega_53_stems/bs_mega_53stem_wind-chimes_mvsep.yaml": "1dee846e7b3c848ec687aa2e6b23bf43cfd9d782542cf6495a4418bfc9414607"
       }
@@ -5154,7 +5154,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "wind",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_wind_mvsep.ckpt": "c2ae2f8b7aa777dba3596fa8a8c0aec42b1bf3c493ebdc9aaf2daeffcab9d025",
         "music_stems/mega_53_stems/bs_mega_53stem_wind_mvsep.yaml": "f4299056438ecbcd89685263bc4052dd1cb9b9459257337a39be44da9fd3836c"
       }
@@ -5178,7 +5178,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "woodwind",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/bs_mega_53stem_woodwind_mvsep.ckpt": "9a1335d2cd21cd4fdd6964e7ab96c9e9776b2643644f763e2f59bb6c53d39060",
         "music_stems/mega_53_stems/bs_mega_53stem_woodwind_mvsep.yaml": "4cbc36a498993cd2c6959897f690a531a311b9bd1daa5e7f8d065ad36d69b9b6"
       }
@@ -5202,7 +5202,7 @@
       "secondary_category": "mega_53_stems",
       "secondary_category_cn": "MVSep 53 轨分离",
       "target_stem": "accordion/acoustic-guitar/back-vocal/banjo/bass/bassoon/bells/bowed_strings/brass/cello/clarinet/congas/digital-piano/dobro/double-bass/drums/electric-guitar/flute/french-horn/glockenspiel/guitar/harmonica/harp/harpsichord/hh/keys/kick/lead-vocal/mandolin/marimba/oboe/organ/percussion/piano/saxophone/sitar/snare/strings/synth/tambourine/timpani/toms/triangle/trombone/trumpet/tuba/ukulele/viola/violin/vocal/wind/wind-chimes/woodwind",
-      "sha256": {
+      "file_hashes": {
         "music_stems/mega_53_stems/mvsep_mega_model_bs_roformer_53_stems_v1.ckpt": "c62820893bbf86d4e734f966bd142d9157cfc8bb8e79e9d8f9ea553f3ff3519f",
         "music_stems/mega_53_stems/mvsep_mega_model_bs_roformer_53_stems_v1.yaml": "4b515cf97aeebdd1717d62052ff0555e898dac935fe3399f5877e0115ecef559"
       }
@@ -5226,7 +5226,7 @@
       "secondary_category": "six_stem",
       "secondary_category_cn": "六轨分离",
       "target_stem": "bass/drums/other/vocals/guitar/piano",
-      "sha256": {
+      "file_hashes": {
         "music_stems/six_stem/BS-Roformer-SW.ckpt": "24e7d35ee9c64415673d3fd33e06a67cac2c103c5df6267ba1576459c775916e",
         "music_stems/six_stem/BS-Roformer-SW.yaml": "f76111edc8ffa6fdf4f7f777b0826a052e551b855d976086d7f20bcecde73c89"
       }
@@ -5250,7 +5250,7 @@
       "secondary_category": "six_stem",
       "secondary_category_cn": "六轨分离",
       "target_stem": "drums/bass/other/vocals/guitar/piano",
-      "sha256": {
+      "file_hashes": {
         "music_stems/six_stem/HTDemucs4_6stems.th": "34c22ccb381c6f9fdbf324f04e1e2fe21aaaf293f5ded163a162697ff9a02ddd",
         "music_stems/six_stem/HTDemucs4_6stems.yaml": "077134694bd069ee3343106e45427288669e8f27e727819b3e38e9e9bc7b7bc9"
       }
@@ -5274,7 +5274,7 @@
       "secondary_category": "six_stem",
       "secondary_category_cn": "六轨分离",
       "target_stem": "bass/drums/other/vocals/guitar/piano",
-      "sha256": {
+      "file_hashes": {
         "music_stems/six_stem/logic_bs_roformer.ckpt": "57c4a987b7e99b4d313018eabf7a8b7b585bfbb64e809657a7e94faede62333a",
         "music_stems/six_stem/logic_bs_roformer.yaml": "070da10aa5cedefbf7cf1f8c5812c9ab8b43af48aa0f757b23a37c4ed856a383"
       }
@@ -5298,7 +5298,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "dry",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/de_big_reverb_mbr_ep_362.ckpt": "0506455e74ffc02bbec700df9863ae243597034003815f1418227c6dee33b6ea",
         "reverb_echo_control/dereverb/de_big_reverb_mbr_ep_362.yaml": "fc5253154dfd499366605a3039f6086c64ecc4551552c59e7518aa4636422193"
       }
@@ -5322,7 +5322,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/dereverb_bs_roformer_anvuew_sdr_22.5050.ckpt": "b4dfa4c4aa251c0afc303e5d512d904a1c2255e51d8d0dbfbddb18d740563d42",
         "reverb_echo_control/dereverb/dereverb_bs_roformer_anvuew_sdr_22.5050.yaml": "3e2e8ec6b33384b089e5a6d9c80e858d7f10cfa8febbfe28d808d963df56365d"
       }
@@ -5346,7 +5346,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt": "9262877b87e9ebb0fb808a456b0a411fa677f5df31c8383c1254af531c078970",
         "reverb_echo_control/dereverb/dereverb_mel_band_roformer_anvuew_sdr_19.1729.yaml": "f0c577433cfe3be440a0df33153678d40a1ba44b195c5304f642cdebbf3f55cf"
       }
@@ -5370,7 +5370,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050.ckpt": "0db8f1b41c00cead1112e967262a12802fd32e76c0c3a8eb207e772bae25d07b",
         "reverb_echo_control/dereverb/dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050.yaml": "f0c577433cfe3be440a0df33153678d40a1ba44b195c5304f642cdebbf3f55cf"
       }
@@ -5394,7 +5394,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/dereverb_mel_band_roformer_mono_anvuew.ckpt": "f099ee717eb57fb0ad5eb0e7c9ad6787c36168140b61ce2b158b90c2c4ecee79",
         "reverb_echo_control/dereverb/dereverb_mel_band_roformer_mono_anvuew.yaml": "f0c577433cfe3be440a0df33153678d40a1ba44b195c5304f642cdebbf3f55cf"
       }
@@ -5418,7 +5418,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/dereverb_room_anvuew_sdr_13.7432.ckpt": "2edec521f09e26341c1923dc82c8c52dbc86478b42b9999f679535743c970cb3",
         "reverb_echo_control/dereverb/dereverb_room_anvuew_sdr_13.7432.yaml": "23c67f7c6ca74d19196b3a4dc3393a718aa70f908d16d091a1285379d4b553f6"
       }
@@ -5442,7 +5442,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "dry",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/dereverb_super_big_mbr_ep_346.ckpt": "26dda242bce4405555f2d6086d079fe8cc23f1f04e02e501d2689bfe3ece0489",
         "reverb_echo_control/dereverb/dereverb_super_big_mbr_ep_346.yaml": "ee69528fcc24611cf4297aa0b344b37b2fb1e030575f9349e09ef2997cce0564"
       }
@@ -5466,7 +5466,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "No Reverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/deverb_bs_roformer_8_256dim_8depth.ckpt": "ee204fc59fa4111674536d47bd1ef3759acb9f7cf5a759ec4b867a828bb76c64",
         "reverb_echo_control/dereverb/deverb_bs_roformer_8_256dim_8depth.yaml": "73ac5feaea281a3c70e4c6ddcd438428ad8c39ec73c913c67536f808a1773162"
       }
@@ -5490,7 +5490,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/deverb_bs_roformer_8_384dim_10depth.ckpt": "9c38653aaa5e49f2f7b84dd3be2b6b679e0cbea23978e6b48389ee6f0a914768",
         "reverb_echo_control/dereverb/deverb_bs_roformer_8_384dim_10depth.yaml": "ebb73e6b2503760c9161cb7061dbc3bf5bf388b81fd557db9a5e47a287fc4bcc"
       }
@@ -5514,7 +5514,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/deverb_mel_band_roformer_8_256dim_6depth.ckpt": "c3469d6b383b7ae0fff8aa6cb292eedf1eec132d3a960cadeecdec145123566d",
         "reverb_echo_control/dereverb/deverb_mel_band_roformer_8_256dim_6depth.yaml": "02658f1df193890b0d0f8c051ef6737fdf0e986b7fe96b8206ce2c612cdcdc9e"
       }
@@ -5538,7 +5538,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/deverb_mel_band_roformer_8_512dim_12depth.ckpt": "6bd652149c50c6b816cdde6dbbb6ab2702e742fe25ec66592c6eb1ba9eb1a1ce",
         "reverb_echo_control/dereverb/deverb_mel_band_roformer_8_512dim_12depth.yaml": "22428112fb30617a88257665a6dd05e9b153889d4f9fc04244e3a988d1110623"
       }
@@ -5562,7 +5562,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/deverb_mel_band_roformer_ep_27_sdr_10.4567.ckpt": "29c311f2f3561c73f2084d59aa5dc2a077d907293bbbb1ce6548247ddb0671ff",
         "reverb_echo_control/dereverb/deverb_mel_band_roformer_ep_27_sdr_10.4567.yaml": "988357b4a06fd4300f3da5134017ddb37774d12bb38b28d76bf1d990413810e1"
       }
@@ -5586,7 +5586,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "noreverb",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/Lead_VocalDereverb.ckpt": "097c13b298414905651867ef315d881bbf2604a5c04be28820ed5946338b3eb4",
         "reverb_echo_control/dereverb/Lead_VocalDereverb.yaml": "075e90763f8a0048c13085b7ea0141875a73f19b8ecd1223599d06ea14661cca"
       }
@@ -5610,7 +5610,7 @@
       "secondary_category": "dereverb_deecho",
       "secondary_category_cn": "去混响+去回声",
       "target_stem": "dry/No dry",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb_deecho/dereverb-echo_mel_band_roformer_sdr_10.0169.ckpt": "cd2b737a394cfb80cd48cc9fcbaf89f5f4062f6b93066c2911617a06d8b7860a",
         "reverb_echo_control/dereverb_deecho/dereverb-echo_mel_band_roformer_sdr_10.0169.yaml": "d038938926273eb193bde2028480ca54d06caa9b39394050e9ab3df5cf32ef86"
       }
@@ -5634,7 +5634,7 @@
       "secondary_category": "dereverb_deecho",
       "secondary_category_cn": "去混响+去回声",
       "target_stem": "dry",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb_deecho/dereverb-echo_mel_band_roformer_sdr_13.4843_v2.ckpt": "396432f5af25992fe82d0286634bd879027c073721db6ab10199e75459708b9f",
         "reverb_echo_control/dereverb_deecho/dereverb-echo_mel_band_roformer_sdr_13.4843_v2.yaml": "374914c5a8d94ba9079f18398f70c520acfd75d3ae3e4adf5108d504a1ae7aac"
       }
@@ -5658,7 +5658,7 @@
       "secondary_category": "dereverb_deecho",
       "secondary_category_cn": "去混响+去回声",
       "target_stem": "dry",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb_deecho/dereverb_echo_mbr_fused_0.5_v2_0.25_big_0.25_super.ckpt": "1596b1063238f487d54a0510a8c92cb28c000c803a271dd618ac49efc99ef3f7",
         "reverb_echo_control/dereverb_deecho/dereverb_echo_mbr_fused_0.5_v2_0.25_big_0.25_super.yaml": "fc5253154dfd499366605a3039f6086c64ecc4551552c59e7518aa4636422193"
       }
@@ -5682,7 +5682,7 @@
       "secondary_category": "bass",
       "secondary_category_cn": "贝斯",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "single_instrument/bass/HTDemucs4_FT_bass.th": "e57c48e6b0e38af4f7118d7bd08c49f0a0c0edf7d09143bdd902ea0d237303e6",
         "single_instrument/bass/HTDemucs4_FT_bass.yaml": "340cd3f1f00f75f521a38235f7689d95a9e820738439561ca79818e54bc8863a"
       }
@@ -5706,7 +5706,7 @@
       "secondary_category": "bass",
       "secondary_category_cn": "贝斯",
       "target_stem": "drums/bass/piano/other",
-      "sha256": {
+      "file_hashes": {
         "single_instrument/bass/model_jazz_scnet_bass_drums.ckpt": "9f89d89892782d39dabb356087cc36635dca2d52c13f27ba580ce0537c51030b",
         "single_instrument/bass/model_jazz_scnet_bass_drums.yaml": "11467784fc3511d1ce6e42ffef698fbf25ef1711be86fd2b8e37f8236a58101e"
       }
@@ -5730,7 +5730,7 @@
       "secondary_category": "drums_percussion",
       "secondary_category_cn": "鼓/打击乐",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "single_instrument/drums_percussion/HTDemucs4_FT_drums.th": "ba3fe64ae8ef66ac9a4857222ce48efbdc5eb3ad375cb79dd13debee5aaa4066",
         "single_instrument/drums_percussion/HTDemucs4_FT_drums.yaml": "340cd3f1f00f75f521a38235f7689d95a9e820738439561ca79818e54bc8863a"
       }
@@ -5754,7 +5754,7 @@
       "secondary_category": "drums_percussion",
       "secondary_category_cn": "鼓/打击乐",
       "target_stem": "drums/bass/piano/other",
-      "sha256": {
+      "file_hashes": {
         "single_instrument/drums_percussion/model_jazz_scnet_piano_drums.ckpt": "5d7fca79de2299382e72ad84d972755ed9830610b635ba55fba4f384f874a594",
         "single_instrument/drums_percussion/model_jazz_scnet_piano_drums.yaml": "11467784fc3511d1ce6e42ffef698fbf25ef1711be86fd2b8e37f8236a58101e"
       }
@@ -5778,7 +5778,7 @@
       "secondary_category": "guitar",
       "secondary_category_cn": "吉他",
       "target_stem": "Guitar",
-      "sha256": {
+      "file_hashes": {
         "single_instrument/guitar/becruily_guitar.ckpt": "83472bbf125774af5282d2e0b86df89eaf2dd45e8a4ec8d68e820ebf3e42a83c",
         "single_instrument/guitar/becruily_guitar.yaml": "ecb1ab7127ca0ca09a6cb8b50685d08f62e1a2c9576e26b3cbcf553412dbe402"
       }
@@ -5802,7 +5802,7 @@
       "secondary_category": "guitar",
       "secondary_category_cn": "吉他",
       "target_stem": "guitar",
-      "sha256": {
+      "file_hashes": {
         "single_instrument/guitar/model_mel_band_roformer_ep_314_sdr_7.9825.ckpt": "1a81a87b46eed215c051579ac5cff3b139bfdfb9fa3bf4666df059ef87404d14",
         "single_instrument/guitar/model_mel_band_roformer_ep_314_sdr_7.9825.yaml": "f1b8e927eed4e003a56636ed7978451df3c1872d1678b6e8090275afb4af62b4"
       }
@@ -5826,7 +5826,7 @@
       "secondary_category": "strings",
       "secondary_category_cn": "弦乐",
       "target_stem": "strings/other",
-      "sha256": {
+      "file_hashes": {
         "single_instrument/strings/gilliaan_bowedstrings_bs_v1.ckpt": "282fabc28fb106edcc5e5e8383ea36559602fe53d0c406c736e08f58d66710fc",
         "single_instrument/strings/gilliaan_bowedstrings_bs_v1.yaml": "d36e5f5522941d29ce8d309d817c34847b720fd85c0ed819eb16c3d46330b828"
       }
@@ -5850,7 +5850,7 @@
       "secondary_category": "mono_stereo_duality",
       "secondary_category_cn": "单声道/立体声分离",
       "target_stem": "center/wide",
-      "sha256": {
+      "file_hashes": {
         "spatial/mono_stereo_duality/gilliaan_MonoStereo_Dual_Beta1.ckpt": "62579f748925893d0b1408e5a3319b1bbd8451a8f62d948e8438c72471f4574f",
         "spatial/mono_stereo_duality/gilliaan_MonoStereo_Dual_Beta1.yaml": "f76c968b960ed51cc395e725e83ab1a02e6e6b8d13a193a09b09fa8ebb5435e8"
       }
@@ -5874,7 +5874,7 @@
       "secondary_category": "mono_stereo_duality",
       "secondary_category_cn": "单声道/立体声分离",
       "target_stem": "center/wide",
-      "sha256": {
+      "file_hashes": {
         "spatial/mono_stereo_duality/gilliaan_MonoStereo_Dual_Beta2.ckpt": "a77908f6e91d091e549525a4ad0053ce49a06ba4901a56659a76f864bc095502",
         "spatial/mono_stereo_duality/gilliaan_MonoStereo_Dual_Beta2.yaml": "f76c968b960ed51cc395e725e83ab1a02e6e6b8d13a193a09b09fa8ebb5435e8"
       }
@@ -5898,7 +5898,7 @@
       "secondary_category": "phantom_center_wide",
       "secondary_category_cn": "中央/宽声像提取",
       "target_stem": "center",
-      "sha256": {
+      "file_hashes": {
         "spatial/phantom_center_wide/gilliaan_CenterExtractor_Single_StemV1.ckpt": "334bc80ca5830e87e464694ff197c60372a2758c427d63588dc0cc2c1b3c885e",
         "spatial/phantom_center_wide/gilliaan_CenterExtractor_Single_StemV1.yaml": "9ce1ce1040f8a2691f6e259eaccb8f711fce9726774d6efc3b961daf6265661e"
       }
@@ -5922,7 +5922,7 @@
       "secondary_category": "phantom_center_wide",
       "secondary_category_cn": "中央/宽声像提取",
       "target_stem": "center",
-      "sha256": {
+      "file_hashes": {
         "spatial/phantom_center_wide/gilliaan_CenterExtractor_Single_StemV2.ckpt": "72cbc991fc8fe96a9f6c33d5683649c662343a9e906e6c73189ff0f692ef9fe4",
         "spatial/phantom_center_wide/gilliaan_CenterExtractor_Single_StemV2.yaml": "9ce1ce1040f8a2691f6e259eaccb8f711fce9726774d6efc3b961daf6265661e"
       }
@@ -5946,7 +5946,7 @@
       "secondary_category": "phantom_center_wide",
       "secondary_category_cn": "中央/宽声像提取",
       "target_stem": "center/wide",
-      "sha256": {
+      "file_hashes": {
         "spatial/phantom_center_wide/gilliaan_scnet_centerwide_dual.ckpt": "3817f96f5e446d07c91a731f37a00f5a3638a27d583b9390bb81c6cf001971c4",
         "spatial/phantom_center_wide/gilliaan_scnet_centerwide_dual.yaml": "c14bccfda9eb9ed47e31cfb64f31e1d3442a947734a32724896b41a397cf9557"
       }
@@ -5970,7 +5970,7 @@
       "secondary_category": "",
       "secondary_category_cn": "相似/差异分离",
       "target_stem": "similarity/difference",
-      "sha256": {
+      "file_hashes": {
         "special/model_htdemucs_ep_21_sdr_13.6970.ckpt": "b9970dca36a15c0d0cf3338d24592aa35469697dc3be4b07e9056f5d54b82185",
         "special/model_htdemucs_ep_21_sdr_13.6970.yaml": "cdc9f166e42ef30823b4f1b6ff07c2819be6a7472138768ff016219bdb8c501c"
       }
@@ -5994,7 +5994,7 @@
       "secondary_category": "",
       "secondary_category_cn": "相似/差异分离",
       "target_stem": "difference",
-      "sha256": {
+      "file_hashes": {
         "special/model_scnet_ep_102_sdr_12.8941.ckpt": "3f372358803933b27f5c0d4273d333bee46c57741a043ca30f062f204afe5b24",
         "special/model_scnet_ep_102_sdr_12.8941.yaml": "ea63fe6cc4ac57576beaf32a59e93b24b4a1e285f3284bd0a0d51df1429cb208"
       }
@@ -6018,7 +6018,7 @@
       "secondary_category": "",
       "secondary_category_cn": "相似/差异分离",
       "target_stem": "difference",
-      "sha256": {
+      "file_hashes": {
         "special/model_scnet_ep_30_sdr_15.1291.ckpt": "1f9a8671b338ef136afe0deb812737537264b1f42d8e5bc3fcc656e2c778a4e4",
         "special/model_scnet_ep_30_sdr_15.1291.yaml": "ea63fe6cc4ac57576beaf32a59e93b24b4a1e285f3284bd0a0d51df1429cb208"
       }
@@ -6042,7 +6042,7 @@
       "secondary_category": "aspiration_breath",
       "secondary_category_cn": "气声/呼吸声分离",
       "target_stem": "aspiration/other",
-      "sha256": {
+      "file_hashes": {
         "vocal/aspiration_breath/aspiration_mel_band_roformer_less_aggr_sdr_18.1201.ckpt": "83bfe991cec4fbadde9f30d1f79cd5293ad0b1f936256be327bba5cbb4883374",
         "vocal/aspiration_breath/aspiration_mel_band_roformer_less_aggr_sdr_18.1201.yaml": "e19f3ef204329eb22a5dbc79da1e101349facbe26095fda0cdffbe2327f40a34"
       }
@@ -6066,7 +6066,7 @@
       "secondary_category": "aspiration_breath",
       "secondary_category_cn": "气声/呼吸声分离",
       "target_stem": "aspiration/other",
-      "sha256": {
+      "file_hashes": {
         "vocal/aspiration_breath/aspiration_mel_band_roformer_sdr_18.9845.ckpt": "9e791258c866c6c8da66052693d8cc3b64f1f42c01e052dbdc570cd278380cc5",
         "vocal/aspiration_breath/aspiration_mel_band_roformer_sdr_18.9845.yaml": "e19f3ef204329eb22a5dbc79da1e101349facbe26095fda0cdffbe2327f40a34"
       }
@@ -6090,7 +6090,7 @@
       "secondary_category": "choir_vocal",
       "secondary_category_cn": "合唱/人群歌声分离",
       "target_stem": "alto/bass/soprano/tenor",
-      "sha256": {
+      "file_hashes": {
         "vocal/choir_vocal/model_scnet_ep_36_sdr_5.4596.ckpt": "1e104ce6f6733542f8356ac2e59f2b7ece49ebfd2713d1ff635806de5ceb483f",
         "vocal/choir_vocal/model_scnet_ep_36_sdr_5.4596.yaml": "3cc60593d8cdc34d90481382a932a41c6b589bf2e24f58c58ce4aaa7982ae855"
       }
@@ -6114,7 +6114,7 @@
       "secondary_category": "choir_vocal",
       "secondary_category_cn": "合唱/人群歌声分离",
       "target_stem": "alto/bass/soprano/tenor",
-      "sha256": {
+      "file_hashes": {
         "vocal/choir_vocal/model_scnet_ep_42_sdr_5.2559.ckpt": "14a668939243ab1551d2643820d4ff1a2b8f3c4ac1b9642718d5673405ea2f8b",
         "vocal/choir_vocal/model_scnet_ep_42_sdr_5.2559.yaml": "3cc60593d8cdc34d90481382a932a41c6b589bf2e24f58c58ce4aaa7982ae855"
       }
@@ -6138,7 +6138,7 @@
       "secondary_category": "duet_vocal",
       "secondary_category_cn": "双人/二重唱分离",
       "target_stem": "singer_1/singer_2",
-      "sha256": {
+      "file_hashes": {
         "vocal/duet_vocal/model_mel_band_roformer_ep_0_sdr_7.9319_fixed.ckpt": "9ae8ae1a7d2fab0a7c405fee27ac8332702a31d689de58c9fb6f63b30410832b",
         "vocal/duet_vocal/model_mel_band_roformer_ep_0_sdr_7.9319_fixed.yaml": "8b0b76fb2880b822f46f58ec072556fe35e60588e403714eceebaec6da14846d"
       }
@@ -6162,7 +6162,7 @@
       "secondary_category": "speech_vocal",
       "secondary_category_cn": "语音/说话人声分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/speech_vocal/speech_bs_roformer_AliceN_sdr_20.4440.ckpt": "f4300ef0b230bf308fc8a606bbdcf38cd5002856b6dbe625b73576257f8641ae",
         "vocal/speech_vocal/speech_bs_roformer_AliceN_sdr_20.4440.yaml": "14774a40f78841695ff52f20bbccebc35f50f3bac1bf94d743e6916ae82c6a3a"
       }
@@ -6186,7 +6186,7 @@
       "secondary_category": "speech_vocal",
       "secondary_category_cn": "语音/说话人声分离",
       "target_stem": "vocals/other",
-      "sha256": {
+      "file_hashes": {
         "vocal/speech_vocal/speech_mel_roformer_AliceN_sdr_16.5716.ckpt": "f2bd58827042b372f010d9e0a6bcae025e37b4f256f329066cf160c315558137",
         "vocal/speech_vocal/speech_mel_roformer_AliceN_sdr_16.5716.yaml": "9e9377d8c02935dedab574bcd1e68514e8bbce7203333578007c247b2b33ba3a"
       }
@@ -6210,7 +6210,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/big_beta5e.ckpt": "32b876e1163716a9a007438b5a5107069586aa9b9ca653a5f63013b1edf6920c",
         "vocal/vocal_extraction/big_beta5e.yaml": "e7632669bc0d83b2026d8b5f51b2ac8696bf9ac7a4cc72b9e4a2e017dcb619bb"
       }
@@ -6234,7 +6234,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/big_beta6.ckpt": "f51cbb94b4ed5c36cb36fd2024236a8af3ed6886567981702ad6f094b2c6c820",
         "vocal/vocal_extraction/big_beta6.yaml": "2983249ca57cc119f5b2c29d5e47d592d02d6686140e66f7dd88c8108494b73a"
       }
@@ -6258,7 +6258,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/big_beta6x.ckpt": "e16d702f4e20f13d60b293541c1dea75cb4414a5846b36780e28ef70352a4e5c",
         "vocal/vocal_extraction/big_beta6x.yaml": "f9f3e9aaa6fe6013277195d0e718f731b5e8db90e3c5e65df64888d2b7b2075b"
       }
@@ -6282,7 +6282,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/big_beta7.ckpt": "9d68b9a8689a3500c45d3418a7811934e557760db07285f483088a0965b0eb88",
         "vocal/vocal_extraction/big_beta7.yaml": "07c7de4af7618d932190bdb503bc095caf6cd58ae84d7f19c16eeffadf5acfff"
       }
@@ -6306,7 +6306,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/BS-Roformer-Resurrection.ckpt": "9dbfe5cb572e4ed32a15ec727d7bd06c8d7aba97509e6fda5bc008bb1e0b2dd5",
         "vocal/vocal_extraction/BS-Roformer-Resurrection.yaml": "c37556718bd7c1440a502cb4d3db093286daa51b7b92a0804f486337d283d3ae"
       }
@@ -6330,7 +6330,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/bs_roformer_voc_hyperacev2.ckpt": "54cf516f621f2f460bf660ed137e244b8931bf7a2ce85ddceecff816dbc4d668",
         "vocal/vocal_extraction/bs_roformer_voc_hyperacev2.yaml": "18c9edecb4168e92b3aaba6b3b9c22448b3a4ebc445becc4b4ae808e57d29f7f"
       }
@@ -6354,7 +6354,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/bs_roformer_vocals_gabox.ckpt": "18d58efe5e949e70fab11b875329af6d06ef11ccc29574bfe943fb57cc827f38",
         "vocal/vocal_extraction/bs_roformer_vocals_gabox.yaml": "3dae086b481bc6adecccb6bdfd2386ffd78708e11c221876a146972cab5b2afe"
       }
@@ -6378,7 +6378,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "drums/bass/other/vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/HTDemucs4_FT_vocals_official.th": "f3cf25b222c4eed7cd49dd8b2c9597d50c18bd154090f7b919cfa5f93cf22c49",
         "vocal/vocal_extraction/HTDemucs4_FT_vocals_official.yaml": "340cd3f1f00f75f521a38235f7689d95a9e820738439561ca79818e54bc8863a"
       }
@@ -6402,7 +6402,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/inst_fv7b.ckpt": "3cf9538616c835575eb07bef1fe4550b2406c852919a5644d22e9ae84a2ec6ba",
         "vocal/vocal_extraction/inst_fv7b.yaml": "9d8dc7d8d54c6ad336a31ceed294ed816d674fad42205f526e0756bca4f102df"
       }
@@ -6426,7 +6426,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/instv7beta2.ckpt": "11dcd18b2bca5ff189924145a52c9e1a145632c7659aac59b239221dca4f1703",
         "vocal/vocal_extraction/instv7beta2.yaml": "9d8dc7d8d54c6ad336a31ceed294ed816d674fad42205f526e0756bca4f102df"
       }
@@ -6450,7 +6450,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/instv7beta3.ckpt": "bc33cc26ab805b057e47a753241bc17102564af4bc1c0e76364f3bb6a31c09d2",
         "vocal/vocal_extraction/instv7beta3.yaml": "9d8dc7d8d54c6ad336a31ceed294ed816d674fad42205f526e0756bca4f102df"
       }
@@ -6474,7 +6474,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/instv7plus.ckpt": "7baf1aab873e534a186e2dcf6e64bebad2dbf3e2c49337729487294539118232",
         "vocal/vocal_extraction/instv7plus.yaml": "9d8dc7d8d54c6ad336a31ceed294ed816d674fad42205f526e0756bca4f102df"
       }
@@ -6498,7 +6498,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/Kim_MelBandRoformer.ckpt": "87201f4d31afb5bc79993230fc49446918425574db48c01c405e44f365c7559e",
         "vocal/vocal_extraction/Kim_MelBandRoformer.yaml": "b00e5407944cb14e763c9d41af9e18390d0294abc85c71092c2b8b5e1e54eca1"
       }
@@ -6522,7 +6522,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/kimmel_unwa_ft.ckpt": "e6bd8d333880191254a6ef6be3cb0ffa4dda9d3282e36b0cce2e88a660e00d39",
         "vocal/vocal_extraction/kimmel_unwa_ft.yaml": "f4c10e5f6ffe8ff2f5a6b4a5ad5820448ec9a0620e3c3c3571db3c35fae1b62e"
       }
@@ -6546,7 +6546,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/kimmel_unwa_ft2.ckpt": "5ed7b9e4c2eebbec7a7e5e8113058f7b68ba5e6048db8eaccfbbeb884c7884c0",
         "vocal/vocal_extraction/kimmel_unwa_ft2.yaml": "f4c10e5f6ffe8ff2f5a6b4a5ad5820448ec9a0620e3c3c3571db3c35fae1b62e"
       }
@@ -6570,7 +6570,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/kimmel_unwa_ft3_prev.ckpt": "1b10db0095c42576a32aeb3a1c8054af9dea0333e1c38477091d78316a007e52",
         "vocal/vocal_extraction/kimmel_unwa_ft3_prev.yaml": "f4c10e5f6ffe8ff2f5a6b4a5ad5820448ec9a0620e3c3c3571db3c35fae1b62e"
       }
@@ -6594,7 +6594,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/last_bs_roformer.ckpt": "028ea94e354218fb4218b76233834a82e281661bcb6e613f6d04a7173b6455eb",
         "vocal/vocal_extraction/last_bs_roformer.yaml": "8360384097cc7a0b229b2918f70270bf7f5e64630d933ff359ceb6eaadf40fd9"
       }
@@ -6618,7 +6618,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocal_fullness_aname.ckpt": "a64a27a672b457de23d9decd1fc7b58b0664a9f4f24bb43af154708e2ef07d2f",
         "vocal/vocal_extraction/mel_band_roformer_vocal_fullness_aname.yaml": "7299857559655a1e7e20d6a0b5eaf96757d493c3508d8943f83eb05ca7146390"
       }
@@ -6642,7 +6642,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_becruily.ckpt": "a05961310cc55fbb901290c2e8be02682942f73522b6ac76bf2ec11e347ed95a",
         "vocal/vocal_extraction/mel_band_roformer_vocals_becruily.yaml": "a3799cefc73358ca3b6f4838f10f26cdc78c1f39eadc28092df7bdb4a3d1ef33"
       }
@@ -6666,7 +6666,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv1_gabox.ckpt": "c4dff354d81152d1b4321f6491f242c060919148239fbfe22a1015513de4a7fe",
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv1_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6690,7 +6690,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv2_gabox.ckpt": "2888813aa5b519941fa8548efc5a4331d63c61909007eb17fe95c367be230196",
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv2_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6714,7 +6714,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv3_gabox.ckpt": "49d81446b34a7848446efde7898b25bdc32fe872c2393617acb5356649f7ea93",
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv3_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6738,7 +6738,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv4_gabox.ckpt": "1a9657de5fd3ed87ad4fd1a9d2069743ecb33424836973ad0f3288e2a64e90bc",
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv4_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6762,7 +6762,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv5_gabox.ckpt": "6ede0504ddc55cb44b966a8212dac75a364f8157974cc40c8e92b9f5d4f17ce2",
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv5_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6786,7 +6786,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv6_gabox.ckpt": "25033d944288cb032fc51faab044bbd7f90bb81e82cada637ecdec699c2ff773",
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv6_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6810,7 +6810,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv7b_gabox.ckpt": "6bb98488b80e7797e6f447c0dd8f89f2b7040eebc5e839b5a59871b7a3a19265",
         "vocal/vocal_extraction/mel_band_roformer_vocals_fv7b_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6834,7 +6834,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_gabox.ckpt": "ff802a67501fac70587c3ff4e8dbc89c2558e7d8911c92222dfea2aaac208517",
         "vocal/vocal_extraction/mel_band_roformer_vocals_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6858,7 +6858,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/mel_band_roformer_vocals_v2_gabox.ckpt": "fac81dbebc0992503df55110d64d86c4fb74a1529527a819a253f3d20ef72bc1",
         "vocal/vocal_extraction/mel_band_roformer_vocals_v2_gabox.yaml": "8b5529a7a24210513319bb3019c2c976cd4f71f44bbc0d55b4b35d2c37671f33"
       }
@@ -6882,7 +6882,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/melband_roformer_big_beta1.ckpt": "59dfc7ecd486cb6276b00ab5618208fddda7d6bf5c1f0f6e3e769be9fa2801de",
         "vocal/vocal_extraction/melband_roformer_big_beta1.yaml": "e7632669bc0d83b2026d8b5f51b2ac8696bf9ac7a4cc72b9e4a2e017dcb619bb"
       }
@@ -6906,7 +6906,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/melband_roformer_big_beta2.ckpt": "756d87988f98c6333395d3621b18855d82a0faefea1dcd0c168108c1964dcde3",
         "vocal/vocal_extraction/melband_roformer_big_beta2.yaml": "e7632669bc0d83b2026d8b5f51b2ac8696bf9ac7a4cc72b9e4a2e017dcb619bb"
       }
@@ -6930,7 +6930,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/melband_roformer_big_beta3.ckpt": "e67ca768e2fe3ef61a83702dcafa861df8a70b17a30262c4c00195e632afcd6b",
         "vocal/vocal_extraction/melband_roformer_big_beta3.yaml": "e7632669bc0d83b2026d8b5f51b2ac8696bf9ac7a4cc72b9e4a2e017dcb619bb"
       }
@@ -6954,7 +6954,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/melband_roformer_big_beta4.ckpt": "700a9bd3831d4f7f44cc0019b238774e31045bcbc361fbb69235535c40fc1454",
         "vocal/vocal_extraction/melband_roformer_big_beta4.yaml": "688209b44ec36a6321f63cb6503800293f8fa1844ac676477b0fee02c9a17bac"
       }
@@ -6978,7 +6978,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/model_bs_roformer_ep_317_sdr_12.9755.ckpt": "5b84f37e8d444c8cb30c79d77f613a41c05868ff9c9ac6c7049c00aefae115aa",
         "vocal/vocal_extraction/model_bs_roformer_ep_317_sdr_12.9755.yaml": "3dae086b481bc6adecccb6bdfd2386ffd78708e11c221876a146972cab5b2afe"
       }
@@ -7002,7 +7002,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/model_bs_roformer_ep_368_sdr_12.9628.ckpt": "f6c94864adfb73bbb0ca58ec14d58dd0b364549e9fb61433ae51916f3e2f8d0b",
         "vocal/vocal_extraction/model_bs_roformer_ep_368_sdr_12.9628.yaml": "3dae086b481bc6adecccb6bdfd2386ffd78708e11c221876a146972cab5b2afe"
       }
@@ -7026,7 +7026,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/model_bsrofomer_essid_vocals.ckpt": "5f4af693f8fd546f218f2df63514e063479ff29e445f21e54f79c33685d64d47",
         "vocal/vocal_extraction/model_bsrofomer_essid_vocals.yaml": "804ae6c2752f79aee36ffc40ee23c0e6d248437b6f692d959cbc931676bb61ae"
       }
@@ -7050,7 +7050,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt": "21b9d0958e35b8ebfbe2afe69bbd5444e5ffe2f5d80ae0d583b833d2f3c0d139",
         "vocal/vocal_extraction/model_mel_band_roformer_ep_3005_sdr_11.4360.yaml": "746f79905051fbc62d7cbc38defe33e437a7fe89746ea340574a57de3562f158"
       }
@@ -7074,7 +7074,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/model_vocals.ckpt": "e89b915fb0d4b1f23a9ebed8f499ada3c212256fa6f449e1b2c16412eeb3c38e",
         "vocal/vocal_extraction/model_vocals.yaml": "1f05f1ac243d9b0f79ec13816dbcfedf87dcf98cfde7df2727b9ccc911f7215d"
       }
@@ -7098,7 +7098,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/model_vocals_mel_band_roformer_sdr_8.42.ckpt": "d9ce706b49cebf0af018590d8deb47ad5434987bf8f7bd3a87a4e5e8c30acb26",
         "vocal/vocal_extraction/model_vocals_mel_band_roformer_sdr_8.42.yaml": "1f7dce878a5d4b4d393b529910972be6abce758ca57b940173023a261b868ad6"
       }
@@ -7122,7 +7122,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/voc_fv7.ckpt": "77b9e4b54802d670c02daceb30c61ec825dc54ca6c29c34b03cdd5e9f78382b6",
         "vocal/vocal_extraction/voc_fv7.yaml": "d2cfa4fd73b3e0bffc1bbee8ddbb566cfd63de6551b2e06dc09e7e42278a147e"
       }
@@ -7146,7 +7146,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/vocfv7beta2.ckpt": "85bcaa03568f96e56b245302c177658e8cb83aa6e2f4ae260e67202db9d56123",
         "vocal/vocal_extraction/vocfv7beta2.yaml": "9d8dc7d8d54c6ad336a31ceed294ed816d674fad42205f526e0756bca4f102df"
       }
@@ -7170,7 +7170,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "Vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/vocfv7beta3.ckpt": "45463b0051651b7ed15677cc41f21bd384d66796938f46955617bf6f1d661988",
         "vocal/vocal_extraction/vocfv7beta3.yaml": "9d8dc7d8d54c6ad336a31ceed294ed816d674fad42205f526e0756bca4f102df"
       }
@@ -7194,7 +7194,7 @@
       "secondary_category": "vocal_gender_chorus",
       "secondary_category_cn": "男女声/合唱分离",
       "target_stem": "male/female",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_gender_chorus/bs_roformer_male_female_by_aufr33_sdr_7.2889.ckpt": "3cf11736d1b42a11ae55d8299316585921477dd2a671b24b663660846ca9861b",
         "vocal/vocal_gender_chorus/bs_roformer_male_female_by_aufr33_sdr_7.2889.yaml": "a4bb49a80e0fef59d884ffb4b9fd9ddbe799fa3d83e5a403bf80ad5554824625"
       }
@@ -7218,7 +7218,7 @@
       "secondary_category": "vocal_gender_chorus",
       "secondary_category_cn": "男女声/合唱分离",
       "target_stem": "male/female",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_gender_chorus/model_chorus_bs_roformer_ep_146_sdr_23.8613.ckpt": "755e3641645687c618a448605ba71c30abd3be1b1a8861e5bfa12362a85c609a",
         "vocal/vocal_gender_chorus/model_chorus_bs_roformer_ep_146_sdr_23.8613.yaml": "8257c8ee6a435fd194f52a699032dcec66a30cbbbf0b652f967b6621db6c7331"
       }
@@ -7242,7 +7242,7 @@
       "secondary_category": "vocal_gender_chorus",
       "secondary_category_cn": "男女声/合唱分离",
       "target_stem": "male/female",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_gender_chorus/model_chorus_bs_roformer_ep_267_sdr_24.1275.ckpt": "123c00786bdbc6bd462dddb35cd21fd6ae99ab8319f93f63a8abc1012e593d94",
         "vocal/vocal_gender_chorus/model_chorus_bs_roformer_ep_267_sdr_24.1275.yaml": "a4bb49a80e0fef59d884ffb4b9fd9ddbe799fa3d83e5a403bf80ad5554824625"
       }
@@ -7266,7 +7266,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/becruily_deux.ckpt": "10255c02295bf3e3865d4ee50ff752d7b19b124ed5fd93b147babc4333eda3aa",
         "vocal/vocal_instrumental_dual/becruily_deux.yaml": "9e0cb960b94d76f0308c25ac14d0ba3d88b24551b5835928fcdfbe55d2f95a40"
       }
@@ -7290,7 +7290,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/BS-Roformer-Resurrection-Inst.ckpt": "16311025a5133ae6411760ccfe9e3e66b31a01d9d8bec0a03fa7ec4bedac7a15",
         "vocal/vocal_instrumental_dual/BS-Roformer-Resurrection-Inst.yaml": "149c5c959050091fe673e733759fdbbf00a4710982e953a7079c630180501776"
       }
@@ -7314,7 +7314,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/bs_roformer_instrumental_resurrection_gabox.ckpt": "d28b3a422531e1ca482d29302a5b67614eb45c09d72ce954258011ce24ef0919",
         "vocal/vocal_instrumental_dual/bs_roformer_instrumental_resurrection_gabox.yaml": "490b162aead6db48e24ea7fb972809ccf4fe2dfb05e7cfcbb2f43248effbeecf"
       }
@@ -7338,7 +7338,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "vocals",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/duality_v1.ckpt": "69c244e76d7142a948f0d41c67e293112ba84f12a28c89d24b22a3fecd9ef79e",
         "vocal/vocal_instrumental_dual/duality_v1.yaml": "3934585144760f5fbfaae6b1949329ff49d1952e4f2e389491198a4cf0632f8f"
       }
@@ -7362,7 +7362,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/essid_mel_vocal_v1.ckpt": "4d4c8f69c52adce7b2fd3602fc004b27b4305700b70232b461fb3bb15400c3f2",
         "vocal/vocal_instrumental_dual/essid_mel_vocal_v1.yaml": "46b661d9e3c70c7306bcf9f3052f5d4c7e743bf48013f912bbe606e75d2f1cef"
       }
@@ -7386,7 +7386,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/essid_mel_vocal_v2.ckpt": "33ef2fc4c87d4d1d02614027643246ff287f57e8fad497138c3b8a2574a2bed5",
         "vocal/vocal_instrumental_dual/essid_mel_vocal_v2.yaml": "46b661d9e3c70c7306bcf9f3052f5d4c7e743bf48013f912bbe606e75d2f1cef"
       }
@@ -7410,7 +7410,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/inst_v1_plus_test.ckpt": "25fe6ab4db95a6c20468f6c082f9bfc30904b8727ed8d069110bd0960da4879a",
         "vocal/vocal_instrumental_dual/inst_v1_plus_test.yaml": "6924de90e7c1f37cdf9c20a1e318f45394f32985a0cef4ccb70a7601e3df69c9"
       }
@@ -7434,7 +7434,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/inst_v1e.ckpt": "df2bcdb8838b88264f5381dbb0ccd84a9926c9775cf548c34d8846f5cd20fe96",
         "vocal/vocal_instrumental_dual/inst_v1e.yaml": "6924de90e7c1f37cdf9c20a1e318f45394f32985a0cef4ccb70a7601e3df69c9"
       }
@@ -7458,7 +7458,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/inst_v1e_plus.ckpt": "6a4ddba739f0352407fb6e18b29206b82318ec427fe37fcedb0f83241e4e15fb",
         "vocal/vocal_instrumental_dual/inst_v1e_plus.yaml": "6924de90e7c1f37cdf9c20a1e318f45394f32985a0cef4ccb70a7601e3df69c9"
       }
@@ -7482,7 +7482,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/INSTV10.ckpt": "6eb987c3fd93c66adfea2e4284d1da668e80a98f75b6436b4be454780a728182",
         "vocal/vocal_instrumental_dual/INSTV10.yaml": "4a342cc0c7283785d8ffa997055dcf1d3e6e0a5135c283b69332c922154b6776"
       }
@@ -7506,7 +7506,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/melband_roformer_inst_v1.ckpt": "6f88d96958b2b7dec32286b0ced00bbcbd37e28741cad9038758b1eaf9b5c057",
         "vocal/vocal_instrumental_dual/melband_roformer_inst_v1.yaml": "6924de90e7c1f37cdf9c20a1e318f45394f32985a0cef4ccb70a7601e3df69c9"
       }
@@ -7530,7 +7530,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/melband_roformer_inst_v2.ckpt": "bd19766620f7d6f58fdf7aaada7e89907fe41bc64490ce3faa9a6dab15d6e1f2",
         "vocal/vocal_instrumental_dual/melband_roformer_inst_v2.yaml": "e8ac4fd5030228f6150029f232671a8f3ae844d77d309edc3413d6dc159df8d5"
       }
@@ -7556,7 +7556,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/melband_roformer_instvoc_duality_v1.ckpt": "4640a59d454bf9f69d67460592ab71e7cdce3afa0c0a6f0cf4500bb4ac0b8381",
         "vocal/vocal_instrumental_dual/melband_roformer_instvoc_duality_v1.yaml": "0e2eee6184bee6eda469d35d19e798f1fe428aebbb1efc6086a5d64db5eb0e53"
       }
@@ -7582,7 +7582,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/melband_roformer_instvox_duality_v2.ckpt": "b4a69558708f2857e36ac86a0e03ed95c4e3d8b9c5b8113963987d0d7df7e20f",
         "vocal/vocal_instrumental_dual/melband_roformer_instvox_duality_v2.yaml": "0e2eee6184bee6eda469d35d19e798f1fe428aebbb1efc6086a5d64db5eb0e53"
       }
@@ -7606,7 +7606,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/metal_roformer_inst_mesk_preview.ckpt": "46f3f92abdd76ebe192f7c9e6167bf4d75fcffd21628f7844e7e48da42bcd7eb",
         "vocal/vocal_instrumental_dual/metal_roformer_inst_mesk_preview.yaml": "8579ccc9457d79bb8ae85c0d0e35349ab00910cd57f3109023153d94dc0c6ab4"
       }
@@ -7630,7 +7630,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "vocals/other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/model_vocals_htdemucs_sdr_8.78.ckpt": "0ea6e9495685045e6b4e66174131be5d19808bb0d6d1a1ba717d238f9380e8d0",
         "vocal/vocal_instrumental_dual/model_vocals_htdemucs_sdr_8.78.yaml": "5fcb93ace3b097f4ee3956a689a39c7716f227fc7c7540474f9075fd72ba633b"
       }
@@ -7654,7 +7654,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/neo_inst_beta.ckpt": "ec725df7ccea51b3250004aa0299a7fbac3dfaab2beb19f2dd04d2a4296736b0",
         "vocal/vocal_instrumental_dual/neo_inst_beta.yaml": "b53ffdd784f691159975d30e3ae13ea94407dd71e40ec22337cacb3a9360f598"
       }
@@ -7678,7 +7678,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/MDX23C-8KFFT-InstVoc_HQ.ckpt": "49d51472769e34a2501cd1da782346a3212555c3a5619fc2c53507445528d816",
         "vocal/vocal_instrumental_dual/MDX23C-8KFFT-InstVoc_HQ.yaml": "a8fc36d2669a8ec1277239cf2f1c6e678b36c74148ae5e59d4ef5a3d1ee1035d"
       }
@@ -7702,7 +7702,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/MDX23C-8KFFT-InstVoc_HQ_2.ckpt": "7d960d8e40a458120412c1bd807e013d2dbca7b959cc9da2bbcb0eb203d1daea",
         "vocal/vocal_instrumental_dual/MDX23C-8KFFT-InstVoc_HQ_2.yaml": "a8fc36d2669a8ec1277239cf2f1c6e678b36c74148ae5e59d4ef5a3d1ee1035d"
       }
@@ -7726,7 +7726,7 @@
       "secondary_category": "vocal_instrumental_dual",
       "secondary_category_cn": "人声-伴奏双向分离",
       "target_stem": "Vocals/Instrumental",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_instrumental_dual/MDX23C_D1581.ckpt": "d7d4d2137f12764950205b095da20032fef1d41f077bacc8582f20ed40e8cb28",
         "vocal/vocal_instrumental_dual/MDX23C_D1581.yaml": "4bf27e490d59f5a3ca8b8c5fc56f135029f6a51ca63459be9b263f1744e72095"
       }
@@ -7750,7 +7750,7 @@
       "secondary_category": "vocal_extraction",
       "secondary_category_cn": "人声提取",
       "target_stem": "vocals/other",
-      "sha256": {
+      "file_hashes": {
         "vocal/vocal_extraction/model_mdx23c_ep_0_sdr_14.6632.ckpt": "f75a7e9cf05664fd265e14c7225d85c15c6498b98c55a7ddbfd44fbd0ec13841",
         "vocal/vocal_extraction/model_mdx23c_ep_0_sdr_14.6632.yaml": "5bd71dcf149cea42a7f119d957f2af0c48b9f4c8639709d1e994d479304b897c"
       }
@@ -7774,7 +7774,7 @@
       "secondary_category": "dereverb",
       "secondary_category_cn": "去混响",
       "target_stem": "dry/No dry",
-      "sha256": {
+      "file_hashes": {
         "reverb_echo_control/dereverb/MDX23C-De-Reverb-aufr33-jarredou.ckpt": "eae2471b707758d74db38ac1b1d5800e12f57c4e9d1ebbb2faf004b8e086e914",
         "reverb_echo_control/dereverb/MDX23C-De-Reverb-aufr33-jarredou.yaml": "0dd3abb99a26976f780815dc632679d9dd4fc973c4d9dff6085d6930834c2636"
       }
@@ -7798,7 +7798,7 @@
       "secondary_category": "drum_stems",
       "secondary_category_cn": "鼓组细分",
       "target_stem": "kick/snare/toms/hh/ride/crash",
-      "sha256": {
+      "file_hashes": {
         "music_stems/drum_stems/MDX23C-DrumSep-aufr33-jarredou.ckpt": "d2a4aa53eb584d21eead358a4e66d1882ad182911be018f052b5da73be9096d0",
         "music_stems/drum_stems/MDX23C-DrumSep-aufr33-jarredou.yaml": "e73f5acc0abe6f0ecbcb8b62de7905228ca6f6a5b28d43f1c035de922f86b4d0"
       }
@@ -7822,7 +7822,7 @@
       "secondary_category": "phantom_center_wide",
       "secondary_category_cn": "中央/宽声像提取",
       "target_stem": "Similarity",
-      "sha256": {
+      "file_hashes": {
         "spatial/phantom_center_wide/model_mdx23c_ep_271_l1_freq_72.2383.ckpt": "1227f8d97c7436004d03e46091427393abefebcc08ce53ef30082742c4e482f7",
         "spatial/phantom_center_wide/model_mdx23c_ep_271_l1_freq_72.2383.yaml": "72d63cd651b279cf325ddf53a538f56ba9c2ac4b9087bdd1012fa4ab9b552ebb"
       }

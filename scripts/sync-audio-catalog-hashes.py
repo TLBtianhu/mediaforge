@@ -9,8 +9,9 @@
     python scripts/sync-audio-catalog-hashes.py            # 抓取并写回
     python scripts/sync-audio-catalog-hashes.py --check    # 只报告，不写文件
 
-schema：每条模型新增一个 `sha256` 映射（relpath → 哈希），覆盖主权重、config、
-auxiliary 全部文件；不改变既有字段。同时校验 size_bytes 与 index 是否一致。
+schema：每条模型新增一个 `file_hashes` 映射（relpath → 哈希），覆盖主权重、config、
+auxiliary 全部文件；主权重的单个哈希由 ModelEntry 从该映射推导，不重复存。
+同时校验 size_bytes 与 index 是否一致。
 """
 from __future__ import annotations
 
@@ -68,8 +69,10 @@ def main() -> int:
             else:
                 missing.append(relpath)
         if hashes:
-            model["sha256"] = hashes
+            model["file_hashes"] = hashes
             filled += 1
+        # 主权重的单个哈希由 ModelEntry 从 file_hashes 推导，catalog 不再单独存 sha256 字段。
+        model.pop("sha256", None)
         if missing:
             incomplete.append(f"{name}: {len(missing)} 个文件无哈希")
         # size_bytes 是主权重大小，应与 index 的 Size 一致；不一致说明 catalog 过期。

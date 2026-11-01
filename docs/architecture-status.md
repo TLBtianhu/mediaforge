@@ -37,16 +37,20 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
    前端按通道分别处理，Rust 的终态表也分开列。合并需要先定"统一载荷"的形态，
    暂时保留，且只在 protocol.json 的 events 里声明一次。
 
-2. 模型下载有两份实现（元数据已统一，下载器待收敛）
-   清单真源其实只有一份：worker_models 与 model_hub 都读 python/audio_catalog.json，
-   pymss registry 只是 bundled 缺失时的兜底。真正的分裂点是"音频缺 sha256，
-   只能靠 pymss 联网 file index 校验"。
-   已做（2026-11-01）：scripts/sync-audio-catalog-hashes.py 把 326 条音频模型的
-   sha256 全部写回 catalog（权重+config+auxiliary），model_hub 的音频下载因此
-   可以离线校验。catalog 更新统一走这个脚本。
-   剩余：infer 的自动补下载仍走 pymss 下载器；core/worker_download.cmd_download_model
-   是孤儿命令（不在 protocol.json、dispatch 够不到）。下一步 = infer 改走统一下载器，
-   删孤儿命令并把 test_worker_download.py 的进度用例迁到 model_hub_worker。
+2. 模型下载（元数据已统一，两份传输各就其位）
+   清单真源只有一份：worker_models 与 model_hub 都读 python/audio_catalog.json，
+   pymss registry 只是 bundled 缺失时的兜底。
+   已做（2026-11-01）：
+   - scripts/sync-audio-catalog-hashes.py 把 326 条音频模型的 sha256 写回 catalog
+     （file_hashes：权重+config+auxiliary 全文件映射，size 与 index 全部一致）。
+     catalog 更新统一走这个脚本。
+   - model_hub 的音频下载据此离线校验；ModelEntry 携带 file_hashes，主权重哈希由其推导。
+   - infer 的自动补下载改为把 catalog 的 file_hashes 经 catalog_file_index() 传给
+     pymss 下载器，完整性校验全程离线，不再联网 file index；aria2c 加速保留。
+   - 孤儿命令 cmd_download_model 及其专属事件流测试已删除。
+   结论：元数据只有一份，传输有两种（模型库走 model_hub/urllib，推理走 pymss/aria2c），
+   这是"同一 catalog、两种传输策略"，不是重复实现。富进度（字节/速度/逐文件）
+   是否补回 model_hub_worker 的模型库下载卡片，是另一个待定点。
 
 3. versions.json 还没发布
    version_check.rs 里的两个 URL（GitHub release 与魔搭）实测都是 404；

@@ -56,6 +56,7 @@ class ModelEntry:
     classification_basis: str
     debug_source: str = ""
     target_instrument_override: str = ""
+    file_hashes: dict = field(default_factory=dict)
 
     @property
     def stem(self) -> str:
@@ -78,7 +79,8 @@ class ModelEntry:
             config_relpath=data.get("config_relpath", ""),
             auxiliary_relpaths=tuple(data.get("auxiliary_relpaths", ())),
             size_bytes=int(data.get("size_bytes", 0)),
-            sha256=data.get("sha256", ""),
+            # 主权重的单个哈希由 file_hashes 推导；catalog 的 file_hashes 是全文件映射（relpath → 哈希）。
+            sha256=(data.get("file_hashes") or {}).get(data["relpath"], "") or data.get("sha256", ""),
             primary_category=data.get("primary_category", ""),
             primary_category_cn=data.get("primary_category_cn", ""),
             secondary_category=data.get("secondary_category", ""),
@@ -90,6 +92,7 @@ class ModelEntry:
             classification_confidence=data.get("classification_confidence", ""),
             classification_basis=data.get("classification_basis", ""),
             debug_source=data.get("debug_source", ""),
+            file_hashes=dict(data.get("file_hashes") or {}),
         )
 
 
@@ -222,6 +225,7 @@ def _entry_to_catalog_dict(entry: ModelEntry) -> dict[str, Any]:
         "auxiliary_relpaths": list(entry.auxiliary_relpaths),
         "size_bytes": entry.size_bytes,
         "sha256": entry.sha256,
+        "file_hashes": dict(entry.file_hashes),
         "primary_category": entry.primary_category,
         "primary_category_cn": entry.primary_category_cn,
         "secondary_category": entry.secondary_category,

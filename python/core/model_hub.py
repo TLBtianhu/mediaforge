@@ -47,7 +47,7 @@ def model_dir(override: str | None = None) -> Path:
 
 def _audio_files(item: dict, source: str) -> list[dict]:
     base = AUDIO_SOURCES.get(source, AUDIO_SOURCES["modelscope"])
-    hashes = item.get("sha256") or {}
+    hashes = item.get("file_hashes") or {}
     paths: list[tuple[str, int]] = []
     primary = str(item.get("relpath") or "")
     if primary:

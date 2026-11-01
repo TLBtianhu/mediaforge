@@ -104,6 +104,21 @@ def files_for_studio_model(model_name: str, model_dir: str | None = None) -> tup
     return entry, files
 
 
+def catalog_file_index(entry: Any) -> dict[str, dict[str, Any]]:
+    """把 catalog 的 file_hashes 转成 pymss 下载器期望的 file-index 形状。
+
+    有了它，下载完整性校验完全离线：不必再 fetch_modelscope_file_index() 联网拿哈希，
+    这正是"统一模型元数据"要的那一步——清单、文件、校验都住在同一份 catalog 里。
+    """
+    index: dict[str, dict[str, Any]] = {}
+    for relpath in [entry.relpath, entry.config_relpath, *(entry.auxiliary_relpaths or ())]:
+        if not relpath:
+            continue
+        size = entry.size_bytes if relpath == entry.relpath else 0
+        index[relpath] = {"Size": size or None, "Sha256": entry.file_hashes.get(relpath, "")}
+    return index
+
+
 def _file_size_probe(paths: Any) -> int:
     total = 0
     for path in paths:
@@ -429,200 +444,3 @@ def _make_pymss_progress_adapter(
     return on_progress
 
 
-def cmd_download_model(payload: dict[str, Any]) -> int:
-    """Download a model.
-
-    Studio resolves the files so local Debug catalog entries download to the same paths that the
-    model page and inference use. The transfer itself still uses pymss's downloader helpers.
-    """
-    model_name = payload.get("model")
-    if not model_name:
-        return emit_error("MODEL_NOT_FOUND", "Missing model name")
-
-    task_id = payload.get("taskId") or f"download_{model_name}"
-    model_dir = payload.get("modelDir") or None
-    source = payload.get("source") or "modelscope"
-    download_method = _normalize_download_method(payload.get("downloadMethod"))
-    endpoint = payload.get("endpoint") or None
-    force = bool(payload.get("force", False))
-    timeout = _safe_int(payload.get("timeout"), 30)
-
-    try:
-        from pymss import model_download as pymss_model_download  # type: ignore
-        from pymss.model_download import (  # type: ignore
-            _already_valid,
-            _expected_size_and_hash,
-            download_model,
-            fetch_modelscope_file_index,
-        )
-    except Exception as exc:
-        return emit_error("PYMSS_IMPORT_FAILED", str(exc), traceback.format_exc(), task_id=task_id)
-
-    stop_watching = threading.Event()
-    watcher: threading.Thread | None = None
-    try:
-        prepare_pymss_download(pymss_model_download, task_id, download_model, download_method)
-
-        entry, files = files_for_studio_model(model_name, model_dir)
-        total_files = max(1, len(files))
-        emit("asset.started", {
-            "model": entry.name,
-            "source": source,
-            "force": force,
-            "totalFiles": total_files,
-            "completedFiles": 0,
-            "progress": 0,
-        }, task_id=task_id)
-        emit("asset.stage", {"stage": "resolving_files", "progress": 0}, task_id=task_id)
-
-        # Fresh downloads can fall back to file counts when index metadata is unavailable.
-        # Existing cache files require a successful lookup unless a fresh download is forced.
-        index = None
-        try:
-            index = fetch_modelscope_file_index(timeout=timeout, proxy=effective_proxy_url()) if endpoint is None else None
-        except Exception as exc:
-            _emit_download_log(task_id, "warning", f"File index unavailable; published progress and validation metadata cannot be used: {exc}")
-        if endpoint is None:
-            _require_index_for_cached_files(files, index, force=force)
-
-        expected_sizes: dict[str, int] = {}
-        already_done: set[str] = set()
-        for relpath, dest in files:
-            expected_size, expected_sha256 = _expected_size_and_hash(relpath, index)
-            expected_sizes[str(dest)] = int(expected_size or 0)
-            if not force and _already_valid(dest, expected_size, expected_sha256):
-                already_done.add(str(dest))
-                if not expected_sizes[str(dest)]:
-                    expected_sizes[str(dest)] = dest.stat().st_size
-            _emit_download_log(
-                task_id,
-                "info",
-                f"[{len(expected_sizes)}/{total_files}] {relpath}"
-                + (f", {expected_size / 1048576:.1f} MB" if expected_size else ""),
-            )
-
-        last_emitted_progress = -1
-        last_emitted_files = -1
-        last_emitted_metrics: tuple[int, int, float] | None = None
-        last_emitted_at = 0.0
-
-        def emit_progress(
-            *,
-            downloaded_bytes: int,
-            total_bytes: int,
-            completed_files: int,
-            speed_bytes_per_second: float,
-            force: bool = False,
-        ) -> None:
-            nonlocal last_emitted_progress, last_emitted_files, last_emitted_metrics, last_emitted_at
-            if total_bytes > 0:
-                progress = min(95, int(downloaded_bytes / total_bytes * 95))
-            else:
-                progress = min(95, int((completed_files / total_files) * 95))
-            metrics = (downloaded_bytes, total_bytes, speed_bytes_per_second)
-            now = time.monotonic()
-            # Without a known total, byte/speed labels change even when the bar does not.
-            # Sample those changes once a second; bar and file transitions remain immediate.
-            if progress == last_emitted_progress and completed_files == last_emitted_files:
-                if metrics == last_emitted_metrics or (not force and now - last_emitted_at < 1.0):
-                    return
-            last_emitted_progress = progress
-            last_emitted_files = completed_files
-            last_emitted_metrics = metrics
-            last_emitted_at = now
-            emit("asset.progress", {
-                "model": entry.name,
-                "completedFiles": completed_files,
-                "totalFiles": total_files,
-                "aggregateDownloadedBytes": downloaded_bytes,
-                "aggregateTotalBytes": total_bytes,
-                "speedBytesPerSecond": speed_bytes_per_second,
-                "progress": progress,
-            }, task_id=task_id)
-
-        emit("asset.stage", {
-            "stage": "downloading_files",
-            "progress": 0,
-            "message": "Downloading model files",
-        }, task_id=task_id)
-
-        # Where the progress numbers come from depends on what the installed pymss can tell us.
-        # Asking it directly is exact; watching the files it writes is a fallback, and how much
-        # that fallback can say depends on which downloader pymss picks.
-        progress_callback = None
-        if _pymss_reports_progress(download_model):
-            progress_callback = _make_pymss_progress_adapter(
-                skipped_bytes=sum(expected_sizes.get(key, 0) for key in already_done),
-                skipped_files=len(already_done),
-                total_bytes=sum(expected_sizes.values()) if all(size > 0 for size in expected_sizes.values()) else 0,
-                emit_progress=emit_progress,
-            )
-        else:
-            uses_aria2 = bool(getattr(pymss_model_download, "ARIA2C_PATH", None))
-            watcher = threading.Thread(
-                target=_watch_download_progress,
-                kwargs={
-                    "files": files,
-                    "expected_sizes": expected_sizes,
-                    "already_done": already_done,
-                    "stop": stop_watching,
-                    "emit_progress": emit_progress,
-                    "count_partial_bytes": not uses_aria2,
-                },
-                daemon=True,
-            )
-            watcher.start()
-
-        result = download_studio_model(
-            pymss_model_download,
-            model_name,
-            files,
-            source=source,
-            endpoint=endpoint,
-            force=force,
-            timeout=timeout,
-            progress_callback=progress_callback,
-            proxy=effective_proxy_url(),
-            task_id=task_id,
-            file_index=index,
-        )
-        settled_bytes = sum(expected_sizes.get(str(dest), 0) or dest.stat().st_size for _relpath, dest in files)
-    except KeyError as exc:
-        # An unknown model name is the caller's mistake, not a transfer failure, and the UI tells
-        # the two apart by this code.
-        return emit_error("MODEL_NOT_FOUND", str(exc), task_id=task_id)
-    except Exception as exc:
-        return emit_error("MODEL_DOWNLOAD_FAILED", str(exc), traceback.format_exc(), task_id=task_id)
-    finally:
-        stop_watching.set()
-        if watcher is not None:
-            watcher.join(timeout=2)
-
-    # A file is only known to be finished once the next one starts, so the last file of the set
-    # is still counted as in flight when the call returns. Settle the count before the UI reads
-    # it for the last time.
-    emit_progress(
-        downloaded_bytes=settled_bytes,
-        total_bytes=settled_bytes,
-        completed_files=total_files,
-        speed_bytes_per_second=0.0,
-        force=True,
-    )
-
-    downloaded = [str(item) for item in (result.get("downloaded") or [])]
-    skipped = [str(item) for item in (result.get("skipped") or [])]
-    emit("asset.stage", {
-        "stage": "verifying",
-        "progress": 97,
-        "message": "Verifying downloaded files",
-    }, task_id=task_id)
-    emit("asset.done", {
-        "model": entry.name,
-        "downloaded": downloaded,
-        "skipped": skipped,
-        "modelDir": str(model_root(model_dir)),
-        "modelInfo": model_to_dict(entry, model_dir, include_local_state=True),
-        "source": effective_source_for(entry),
-        "progress": 100,
-    }, task_id=task_id)
-    return 0
