@@ -95,9 +95,9 @@ with sync_playwright() as playwright:
         assert execution[-1]['event'] == ('execution_failed' if expected_exit else 'execution_completed')
         if expected_exit:
             assert execution[-1]['nodeId'] == '1'
-            assert not any(event['type'] == 'task.done' for event in events)
+            assert not any(event['type'] == 'task.result' for event in events)
         else:
-            done = next(event['payload'] for event in events if event['type'] == 'task.done')
+            done = next(event['payload'] for event in events if event['type'] == 'task.result')
             assert len(done['outputs']) == (2 if case == 'cuda' else 1)
             assert all(Path(item['path']).is_file() and Path(item['path']).stat().st_size > 44 for item in done['outputs'])
             if case == 'cuda':

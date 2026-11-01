@@ -271,7 +271,7 @@ impl DiagnosticContext {
                     record.event.as_str(),
                     "task.result"
                         | "editor_mix_exported"
-                        | "task.done"
+                        | "task.result"
                         | "task_finished"
                         | "runtime_installed"
                         | "runtime_core_updated"
@@ -279,7 +279,7 @@ impl DiagnosticContext {
                 )
             {
                 let batch_child_finished =
-                    matches!(record.event.as_str(), "task.done" | "task_finished")
+                    matches!(record.event.as_str(), "task.result" | "task_finished")
                         && operation["request"]["tasks"]["total"].as_u64().unwrap_or(0) > 1;
                 operation["status"] = if batch_child_finished {
                     "running"
@@ -530,7 +530,7 @@ mod tests {
             "worker",
             Some("info"),
             "worker",
-            "task.done",
+            "task.result",
             "File completed",
         );
         event.task_id = Some("child-1".into());

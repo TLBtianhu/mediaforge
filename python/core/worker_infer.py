@@ -940,7 +940,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
                 task_output = resolve_pymss_output_dir(output_root, success_files, item["input"], save_as_folder)
                 emit("task.stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
                 outputs = backend.outputs()
-                emit("task.done", {
+                emit("task.result", {
                     "files": [output["path"] for output in outputs],
                     "outputs": outputs,
                     "outputDir": str(Path(task_output).resolve()),
@@ -1040,7 +1040,7 @@ def cmd_infer(payload: dict[str, Any]) -> int:
         emit("task.stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
         task_output = resolve_pymss_output_dir(output_dir, success_files, input_path, save_as_folder)
         outputs = backend.outputs()
-        emit("task.done", {"files": [output["path"] for output in outputs], "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputRoot": output_dir, "outputFormat": output_format}, task_id=task_id)
+        emit("task.result", {"files": [output["path"] for output in outputs], "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputRoot": output_dir, "outputFormat": output_format}, task_id=task_id)
         return 0
     except ModelNotFoundError as exc:
         return emit_error("MODEL_NOT_FOUND", str(exc), traceback.format_exc(), task_id=task_id)

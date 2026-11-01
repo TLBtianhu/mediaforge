@@ -3,11 +3,15 @@ import test from 'node:test'
 import { isTaskEvent, isTaskProgress, isTaskResult } from '../src/utils/taskEvents.ts'
 
 test('every canonical task event is recognised', () => {
-  for (const type of ['task.started', 'task.stage', 'task.progress', 'task.log', 'task.result', 'task.done', 'task.cancelled']) {
+  for (const type of ['task.started', 'task.stage', 'task.progress', 'task.log', 'task.result', 'task.cancelled']) {
     assert.equal(isTaskEvent(type), true, type)
   }
   assert.equal(isTaskProgress('task.progress'), true)
   assert.equal(isTaskResult('task.result'), true)
+})
+
+test('the retired dotted terminal name is gone too', () => {
+  assert.equal(isTaskEvent('task.done'), false)
 })
 
 test('the legacy underscore spellings are gone', () => {

@@ -78,7 +78,7 @@ with tempfile.TemporaryDirectory(prefix='pymss-isolation-') as temporary, sync_p
                                    capture_output=True, text=True, encoding='utf-8', env=env, timeout=60)
         assert completed.returncode == 0, completed.stdout + completed.stderr
         events = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith('{')]
-        outputs = [output for event in events if event.get('type') == 'task.done' for output in event['payload']['outputs']]
+        outputs = [output for event in events if event.get('type') == 'task.result' for output in event['payload']['outputs']]
         for output in outputs:
             audio, rate = sf.read(output['path'], always_2d=True)
             assert rate == 44100 and audio.shape == (4410, 2)
@@ -121,9 +121,9 @@ with tempfile.TemporaryDirectory(prefix='pymss-isolation-') as temporary, sync_p
       const task = window.__stores.get('task');
       window.__stores.get('model').selectedModel = 'single-model';
       await task.startSeparation();
-      const model = task.tasks[0]; task.handleWorkerEvent({type:'task.done',taskId:model.id,payload:{files:[],outputs:[]}});
+      const model = task.tasks[0]; task.handleWorkerEvent({type:'task.result',taskId:model.id,payload:{files:[],outputs:[]}});
       const quick = await task.startWorkflowInference({...window.__stores.get('workflow').workflows.find(item => item.id === 'workbench'),id:'quick',name:'Quick Ensemble'});
-      task.handleWorkerEvent({type:'task.done',taskId:quick.tasks[0].id,payload:{files:[],outputs:[]}});
+      task.handleWorkerEvent({type:'task.result',taskId:quick.tasks[0].id,payload:{files:[],outputs:[]}});
     }''')
     page.get_by_role('button', name=re.compile('任务队列')).click()
     expect(page.locator('.batch-queue-row')).to_have_count(2)

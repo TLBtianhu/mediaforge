@@ -150,7 +150,7 @@ with tempfile.TemporaryDirectory(prefix="pymss-separate-workflow-") as temporary
         )
         assert completed.returncode == 0, (completed.stdout + completed.stderr)[-6000:]
         events = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
-        outputs = [output for event in events if event.get("type") == "task.done" for output in event["payload"]["outputs"]]
+        outputs = [output for event in events if event.get("type") == "task.result" for output in event["payload"]["outputs"]]
         assert len(outputs) == outputs_per_task * len(payload.get("tasks", [payload])), completed.stdout[-3000:]
         for output in outputs:
             audio, rate = sf.read(output["path"], always_2d=True)

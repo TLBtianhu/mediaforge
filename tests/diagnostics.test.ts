@@ -93,6 +93,6 @@ test('issue filtering preserves terminal error events and excludes normal progre
   assert.equal(isDiagnosticIssueEvent({ type: 'task.log', payload: { level: 'info', message: 'No error detected' } }), false)
   assert.equal(isDiagnosticIssueEvent({ type: 'workflow_execution', payload: { event: 'node_completed' } }), false)
   assert.equal(isDiagnosticIssueEvent({ type: 'workflow_execution', payload: { event: 'node_skipped' } }), false)
-  assert.equal(isDiagnosticIssueEvent({ type: 'task.done' }), false)
+  assert.equal(isDiagnosticIssueEvent({ type: 'task.result' }), false)
   assert.equal(isDiagnosticIssueEvent({ type: 'task.log', payload: null }), false)
 })

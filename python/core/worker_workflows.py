@@ -1422,7 +1422,7 @@ def cmd_infer_workflow(payload: dict[str, Any]) -> int:
         result = _run_pymss(payload, task_id, input_path=input_path or None, inputs=inputs or None,
                             output_dir=output_dir, output_layout=output_layout)
         emit("task.stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
-        emit("task.done", {**result, "outputRoot": output_dir}, task_id=task_id)
+        emit("task.result", {**result, "outputRoot": output_dir}, task_id=task_id)
         return 0
     except Exception as exc:
         return _emit_workflow_failure(task_id, exc)
@@ -1484,7 +1484,7 @@ def _cmd_infer_workflow_batch(payload: dict[str, Any], raw_tasks: list[Any]) -> 
                                         output_dir=output_dir, output_layout=output_layout,
                                         **({"separator_cache": separator_cache} if separator_cache is not None else {}))
                     emit("task.stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
-                    emit("task.done", {**result, "outputRoot": output_dir}, task_id=task_id)
+                    emit("task.result", {**result, "outputRoot": output_dir}, task_id=task_id)
             except Exception as exc:
                 failed = True
                 _emit_workflow_failure(task_id, exc)

@@ -97,7 +97,7 @@ class EnsembleOutputTests(unittest.TestCase):
             code = worker_workflows.cmd_infer_workflow({**payload, "tasks": tasks})
         self.assertEqual(code, 0)
         events = [json.loads(line) for line in output.getvalue().splitlines()]
-        done = [event for event in events if event["type"] == "task.done"]
+        done = [event for event in events if event["type"] == "task.result"]
         self.assertEqual([Path(event["payload"]["files"][0]).name for event in done],
                          ["01_01_song1_Ensemble_Vocals.wav", "02_01_song2_Ensemble_Vocals.wav"])
 

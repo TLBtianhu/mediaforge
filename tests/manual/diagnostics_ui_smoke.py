@@ -389,7 +389,7 @@ with sync_playwright() as playwright:
       __app.workerEvents=[
         {type:'workflow_execution',taskId:'node_failure',timestamp:'2026-10-12T09:00:01Z',payload:{version:1,event:'node_failed',nodeId:'2',message:'Node decode failed'}},
         {type:'task.log',taskId:'recoverable_warning',timestamp:'2026-10-12T09:00:01Z',payload:{level:'warning',message:'Decoder fallback'}},
-        {type:'task.done',taskId:'recoverable_warning',timestamp:'2026-10-12T09:00:02Z',payload:{}},
+        {type:'task.result',taskId:'recoverable_warning',timestamp:'2026-10-12T09:00:02Z',payload:{}},
         {type:'task.log',taskId:'recoverable_error',timestamp:'2026-10-12T09:00:01Z',payload:{level:'error',message:'Recovered decoder error'}},
         {type:'workflow_execution',taskId:'normal_node',timestamp:'2026-10-12T09:00:02Z',payload:{version:1,event:'node_completed'}},
         {type:'task.log',taskId:'normal_log',timestamp:'2026-10-12T09:00:02Z',payload:{level:'info',message:'No error detected'}},

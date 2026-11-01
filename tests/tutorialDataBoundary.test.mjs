@@ -53,7 +53,7 @@ test('the real task lifecycle receives mock completion and usable audio data', a
   await runtime.invoke('plugin:event|listen', { event: 'pymss://worker-event', handler })
   assert.equal((await runtime.invoke('start_separation', { payload: { taskId: 'sample-run' } })).started, true)
   await new Promise(resolve => setTimeout(resolve, 1200))
-  const completed = events.find(event => event.type === 'task.done')
+  const completed = events.find(event => event.type === 'task.result')
   assert.equal(completed.taskId, 'sample-run')
   assert.equal(completed.payload.outputs.length, 2)
   const pcm = await runtime.invoke('editor_preview_chunk', { path: runtime.input, index: 0, sampleRate: 8000, channels: 1 })

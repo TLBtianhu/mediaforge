@@ -76,7 +76,7 @@ export function createDemoRuntime(config: DemoConfig) {
   function startTask(payload: any) {
     for (let index = 1; index <= 5; index++) later(() => worker('task.progress', payload.taskId,
       { stage: 'separating', done: index, total: 5, unit: 'seconds' }), index * 180)
-    later(() => worker('task.done', payload.taskId, { outputDir: output, outputRoot: output, outputs, files: outputs.map(item => item.path) }), 1100)
+    later(() => worker('task.result', payload.taskId, { outputDir: output, outputRoot: output, outputs, files: outputs.map(item => item.path) }), 1100)
     return { taskId: payload.taskId, started: true }
   }
   function projectFor(id: string) {

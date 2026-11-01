@@ -103,7 +103,7 @@ class NativeWorkflowBatchTests(unittest.TestCase):
         }
 
     def done(self):
-        return {call.kwargs["task_id"]: call.args[1] for call in self.events.call_args_list if call.args[0] == "task.done"}
+        return {call.kwargs["task_id"]: call.args[1] for call in self.events.call_args_list if call.args[0] == "task.result"}
 
     def test_same_model_is_loaded_once_across_nodes_and_files(self):
         self.assertEqual(worker_workflows.cmd_infer_workflow(self.payload()), 0)

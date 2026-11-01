@@ -1608,7 +1608,7 @@ export const useTaskStore = defineStore('task', () => {
       }
       if (!recoverable) markTaskFinished(task)
       appendTaskLogs(task, errorRecord)
-    } else if (event.type === 'task.done') {
+    } else if (event.type === 'task.result') {
       if (isTerminalTaskStatus(task.status)) return
       task.status = 'done'
       markTaskStarted(task)

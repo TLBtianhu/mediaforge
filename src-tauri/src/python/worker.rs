@@ -1469,7 +1469,7 @@ fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
             "error" | "custom_model_import_finished" | "task.cancelled"
         ),
         "infer" | "infer_workflow" => {
-            matches!(event_type, "error" | "task.done" | "task.cancelled")
+            matches!(event_type, "error" | "task.result" | "task.cancelled")
         }
         "audio_tools" | "media_tool" => {
             matches!(event_type, "error" | "task.result" | "task.cancelled")

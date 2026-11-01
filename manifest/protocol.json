@@ -388,6 +388,7 @@
   "events": {
     "_comment": [
       "流式事件的唯一词表：<域>.<动词>，域是 task（任务）或 asset（资产获取）。",
+      "终态只有一个名字 task.result（原 task.done 已收敛进来）。",
       "命令结果型事件（models / env_info / operation_result …）不在此列，它们与命令同名。",
       "emit() 只发这里有的名字；scripts/check-architecture.py 会拒绝 task_* / download_* 这类历史写法。"
     ],
@@ -397,7 +398,6 @@
       "task.progress",
       "task.log",
       "task.result",
-      "task.done",
       "task.cancelled",
       "asset.started",
       "asset.stage",
