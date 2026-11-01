@@ -3,6 +3,7 @@ import ModelSlotFields from '../components/ModelSlotFields.vue'
 import { makeModelStorage, type StorageListItem } from './models/storage'
 import { makeModelSorting } from './models/sorting'
 import { makeModelNotes } from './models/notes'
+import { makeInferenceEditor } from './models/inferenceEditor'
 import { fromWireParams, paramsFromInterface, toWireParams } from '../litegraph/inferenceParams.ts'
 import { layoutFor } from '../litegraph/layouts.ts'
 import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
@@ -114,41 +115,19 @@ const noteEditorModel = ref<ModelEntry | null>(null)
 const noteDraft = ref('')
 const showInferenceEditor = ref(false)
 const inferenceEditorModel = ref<ModelEntry | null>(null)
-const inferenceEditorMeta = computed(() => modelStore.models.find(item => item.name === inferenceEditorModel.value?.name)?.inferenceParamMeta
-  || inferenceEditorModel.value?.inferenceParamMeta)
-// 槽位接口来自后端（list_models 的 slots），布局来自前端布局档：
-// 这里只把两者合成渲染计划，不决定任何控件长什么样。
-const inferenceEditorInterface = computed<ModelInterface | null>(() => {
-  const model = inferenceEditorModel.value
-  const slots = model?.slots
-  if (!model?.name || !slots || Object.keys(slots).length === 0) return null
-  return { modelId: model.name, task: model.slotTask || 'separation', slots }
-})
-const inferenceEditorPlan = computed(() => {
-  const model = inferenceEditorInterface.value
-  return model ? buildRenderPlan(model, layoutFor(model.task)) : null
-})
 const inferenceEditorParams = ref<Record<string, unknown>>({})
-
-// 打开/切换模型时把已保存的原生参数翻回槽位值（bind 负责翻译）
-watch(inferenceEditorInterface, (current) => {
-  if (!current) {
-    inferenceEditorParams.value = {}
-    return
-  }
-  const saved = (inferenceEditorModel.value?.defaultInferenceParams || {}) as Record<string, unknown>
-  inferenceEditorParams.value = { ...paramsFromInterface(current), ...fromWireParams(current, saved) }
-}, { immediate: true })
-
-const inferenceEditorSampleStep = computed(() => inferenceEditorMeta.value?.recommendedSampleStep)
-const inferenceEditorOverlapStep = computed(() => resolveInferenceSampleStep(inferenceEditorMeta.value, 1))
-const inferenceEditorChunkStep = computed(() => resolveInferenceChunkStep(inferenceEditorMeta.value, 1024))
-const inferenceEditorChunkConstraint = computed(() => inferenceEditorMeta.value?.chunkSizeConstraint)
-const inferenceEditorChunkIssue = computed(() => inferenceChunkSizeIssue(inferenceDraft.value.chunk_size, inferenceEditorMeta.value))
-
-function updateInferenceDraftSize(key: 'overlap_size' | 'chunk_size', value: number | null) {
-  inferenceDraft.value[key] = value as number
-}
+const {
+  inferenceEditorMeta, inferenceEditorInterface, inferenceEditorPlan,
+  inferenceEditorSampleStep, inferenceEditorOverlapStep, inferenceEditorChunkStep,
+  inferenceEditorChunkConstraint, inferenceEditorChunkIssue,
+  updateInferenceDraftSize, inferenceValue, resolveInferenceDraft, syncInferenceDraft,
+  hasInferenceOverride, slotParamsChanged, hasInferenceDraftChanges, canResetInferenceDefaults,
+  saveInferenceDefaults, resetInferenceDefaults,
+  openInferenceEditor, closeInferenceEditor, handleInferenceEditorUpdate,
+} = makeInferenceEditor({
+  computed, watch, modelStore, taskStore, selectedModel, message, t, studioLog,
+  inferenceDraft, showInferenceEditor, inferenceEditorModel, inferenceEditorParams,
+})
 
 const categoryOptions = computed(() => {
   return buildModelCategoryOptionsFromPairs(categories.value, categoriesCn.value, locale.value, t('common.all'))
@@ -426,109 +405,13 @@ const modelMenuOptions = computed<DropdownOption[]>(() => {
   return options
 })
 
-function inferenceValue(model: ModelEntry | null | undefined, key: keyof typeof inferenceDraft.value, fallback: number) {
-  const value = model?.defaultInferenceParams?.[key]
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
-}
 
-function resolveInferenceDraft(model: ModelEntry | null | undefined) {
-  return {
-    batch_size: inferenceValue(model, 'batch_size', 1),
-    overlap_size: inferenceValue(model, 'overlap_size', 0),
-    chunk_size: inferenceValue(model, 'chunk_size', 0),
-  }
-}
-
-function syncInferenceDraft(model: ModelEntry | null | undefined) {
-  inferenceDraft.value = resolveInferenceDraft(model)
-}
-
-function hasInferenceOverride(model: ModelEntry | null | undefined) {
-  return Boolean(model?.name && modelStore.getModelInferenceOverrides(model.name))
-}
-
-function slotParamsChanged(model: ModelEntry | null | undefined) {
-  const current = inferenceEditorInterface.value
-  if (!current) return false
-  const base = (model?.defaultInferenceParams || {}) as Record<string, unknown>
-  return Object.entries(toWireParams(current, inferenceEditorParams.value))
-    .some(([key, value]) => base[key] !== value)
-}
-
-function hasInferenceDraftChanges(model: ModelEntry | null | undefined) {
-  const defaults = resolveInferenceDraft(model)
-  return inferenceDraft.value.batch_size !== defaults.batch_size
-    || inferenceDraft.value.overlap_size !== defaults.overlap_size
-    || inferenceDraft.value.chunk_size !== defaults.chunk_size
-    || slotParamsChanged(model)
-}
-
-function canResetInferenceDefaults(model: ModelEntry | null | undefined) {
-  return hasInferenceOverride(model) || hasInferenceDraftChanges(model)
-}
-
-async function saveInferenceDefaults() {
-  const model = inferenceEditorModel.value
-  if (!model) return
-  if (inferenceEditorChunkIssue.value) {
-    message.warning(t('inference.invalidChunkSize', inferenceEditorChunkIssue.value))
-    return
-  }
-  try {
-    const current = inferenceEditorInterface.value
-    const draft = current
-      ? { ...inferenceDraft.value, ...toWireParams(current, inferenceEditorParams.value) }
-      : inferenceDraft.value
-    await modelStore.setModelInferenceOverrides(model.name, draft)
-    if (selectedModel.value === model.name) {
-      const selected = modelStore.selectedInfo?.name === model.name ? modelStore.selectedInfo : model
-      taskStore.applySelectedModelDefaults(
-        modelStore.getModelBaseInferenceDefaults(model.name) || selected.defaultInferenceParams,
-        selected.modelType,
-        taskStore.getSavedModelState(model.name),
-        modelStore.getModelInferenceOverrides(model.name),
-        { force: true },
-      )
-    }
-    closeInferenceEditor()
-    message.success(t('models.inferenceDefaultsSaved'))
-  } catch (error) {
-    studioLog.error('Failed to persist model inference defaults', error)
-    message.error(t('models.inferenceDefaultsSaveFailed'))
-  }
-}
 
 function storageModelTypeLabel(item: StorageListItem) {
   if (item.kind === 'catalog') return item.downloaded ? t('models.downloaded') : t('models.notDownloaded')
   if (item.role === 'vad') return t('models.storageAsrVadModel')
   if (item.role === 'punctuation') return t('models.storageAsrPunctuationModel')
   return t('models.storageAsrRecognitionModel')
-}
-
-async function resetInferenceDefaults() {
-  const model = inferenceEditorModel.value
-  if (!model) return
-  try {
-    if (hasInferenceOverride(model)) {
-      await modelStore.resetModelInferenceOverrides(model.name)
-    }
-    const latest = modelStore.models.find((item) => item.name === model.name) || model
-    syncInferenceDraft(latest)
-    if (selectedModel.value === model.name) {
-      const selected = modelStore.selectedInfo?.name === model.name ? modelStore.selectedInfo : latest
-      taskStore.applySelectedModelDefaults(
-        modelStore.getModelBaseInferenceDefaults(model.name) || selected.defaultInferenceParams,
-        selected.modelType,
-        taskStore.getSavedModelState(model.name),
-        modelStore.getModelInferenceOverrides(model.name),
-        { force: true },
-      )
-    }
-    message.success(t('models.inferenceDefaultsReset'))
-  } catch (error) {
-    studioLog.error('Failed to restore model inference defaults', error)
-    message.error(t('models.inferenceDefaultsResetFailed'))
-  }
 }
 
 async function loadModels() {
@@ -562,21 +445,6 @@ function closeModelContextMenu() {
 }
 
 
-function openInferenceEditor(model: ModelEntry) {
-  inferenceEditorModel.value = model
-  syncInferenceDraft(model)
-  showInferenceEditor.value = true
-}
-
-function closeInferenceEditor() {
-  showInferenceEditor.value = false
-  inferenceEditorModel.value = null
-}
-
-function handleInferenceEditorUpdate(value: boolean) {
-  showInferenceEditor.value = value
-  if (!value) inferenceEditorModel.value = null
-}
 
 async function revealModelDirectory(model: ModelEntry) {
   if (!model.downloaded || !model.modelPath) return
