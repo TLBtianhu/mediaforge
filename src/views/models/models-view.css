@@ -1,0 +1,1045 @@
+.page--models {
+  max-width: var(--page-max-width);
+}
+
+.models-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.models-title-row h1 {
+  margin: 0;
+}
+
+/* ===== Toolbar ===== */
+.toolbar {
+  margin-bottom: 14px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--outline) 58%, transparent);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), transparent 58%),
+    color-mix(in srgb, var(--surface-1) 72%, transparent);
+}
+
+.toolbar-row {
+  display: grid;
+  /* One column per control: search | category | source | sort | actions. A missing column would
+     push the last control into an implicit one and squeeze the switch label onto two lines. */
+  grid-template-columns: minmax(240px, 1fr) minmax(150px, 200px) minmax(110px, 150px) minmax(130px, 170px) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-input {
+  max-width: none;
+  min-width: 0;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+/* ===== Category Select ===== */
+.category-select {
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* ===== View mode toggle ===== */
+.view-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 55%, transparent);
+  flex-shrink: 0;
+}
+
+.view-toggle__button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--on-surface-muted);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.view-toggle__button:hover {
+  color: var(--on-surface);
+}
+
+.view-toggle__button--active {
+  background: var(--surface-1);
+  color: var(--primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.source-select {
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.sort-select {
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* ===== Layout ===== */
+.models-body {
+  display: flex;
+  flex-direction: column;
+  container: model-library / inline-size;
+}
+
+.model-grid {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+/* One entry per row: the densest way to scan a few hundred models. */
+.model-grid--list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Columns are added as the window allows rather than at fixed breakpoints. */
+.model-grid--card {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 0;
+  color: var(--on-surface-muted);
+}
+
+/* ===== Model Card ===== */
+.model-card {
+  cursor: pointer;
+  min-height: 0;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--outline) 58%, transparent);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.018), transparent 54%),
+    color-mix(in srgb, var(--surface-1) 64%, transparent);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---- Card: a stack that ends in a bottom bar ---- */
+.model-grid--card .model-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  /* Room for the progress edge so it never sits under the action row. */
+  padding-bottom: 15px;
+}
+
+.model-grid--card .mc-bottom {
+  margin-top: auto;
+  min-height: 43px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--outline) 38%, transparent);
+}
+
+@supports (grid-template-rows: subgrid) {
+  .model-grid--card .model-card {
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 4;
+  }
+}
+.model-grid--card .mc-tags { min-height: 20px; flex-wrap: nowrap; }
+.model-grid--card .mc-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "target target" "category usage";
+  gap: 6px 12px;
+}
+.model-grid--card .mc-meta-item--target { grid-area: target; }
+.model-grid--card .mc-meta-item--category { grid-area: category; }
+.model-grid--card .mc-meta-item--usage { grid-area: usage; }
+.model-grid--card .mc-meta-item:not(.mc-meta-item--usage) {
+  display: grid;
+  grid-template-columns: minmax(4em, max-content) minmax(0, 1fr);
+}
+.mc-meta-item--usage { color: var(--on-surface-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- List: the original two-line row — the name over its details, with tags and actions
+   riding on the right. Spreading the same content across one flex line left large gaps between
+   the pieces and made long lists harder to scan. ---- */
+.model-grid--list .model-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 160px) minmax(230px, 280px) auto;
+  grid-template-areas:
+    "header tags bottom controls"
+    "meta   tags bottom controls";
+  align-items: center;
+  gap: 8px 14px;
+  padding: 14px 16px 17px;
+}
+
+.model-grid--list .mc-header { display: contents; }
+.model-grid--list .mc-title { grid-area: header; }
+.model-grid--list .mc-controls { grid-area: controls; }
+.model-grid--list .mc-meta { grid-area: meta; min-width: 0; }
+.model-grid--list .mc-tags { grid-area: tags; }
+.model-grid--list .mc-bottom { grid-area: bottom; justify-content: flex-end; gap: 12px; }
+
+/* Stack metadata in narrow windows while keeping controls beside the title. */
+@container model-library (max-width: 760px) {
+  .model-grid--list .model-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "header controls"
+      "tags tags"
+      "meta meta"
+      "bottom bottom";
+  }
+
+  .model-grid--list .mc-controls { align-self: start; }
+
+  .model-grid--list .mc-bottom {
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--outline) 38%, transparent);
+  }
+}
+
+@container (max-width: 350px) {
+  .model-grid--card .mc-speed { display: none; }
+  .model-grid--card .model-card--busy .mc-size { display: none; }
+}
+
+/* A running download is the one thing on the page that changes by itself; a tinted edge makes
+   it findable without scanning every card. */
+.model-card--busy {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--primary) 5%, transparent), transparent 46%),
+    color-mix(in srgb, var(--surface-1) 72%, transparent);
+}
+
+/* ---- Action row: one line, identical height in every state ---- */
+.mc-bottom {
+  display: flex;
+  container-type: inline-size;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 30px;
+}
+
+.mc-size {
+  font-size: 11px;
+  color: var(--on-surface-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Pushes whatever follows the size to the right edge. */
+.mc-state,
+.mc-download-button,
+.mc-bottom > .n-button {
+  margin-left: auto;
+}
+
+/* Once a state label is present it owns the middle, and the actions go right. */
+.mc-state ~ .mc-pct,
+.mc-state ~ .mc-actions,
+.mc-state ~ .n-button {
+  margin-left: 0;
+}
+
+.mc-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--on-surface-muted);
+}
+
+.mc-state__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.mc-state--downloading {
+  color: var(--primary);
+}
+
+.mc-state--preparing {
+  color: var(--primary);
+}
+
+.mc-state--preparing .mc-state__dot,
+.mc-state--downloading .mc-state__dot {
+  animation: mc-pulse 1.5s infinite;
+}
+
+.mc-state--ok {
+  color: var(--success);
+}
+
+.mc-state--warn,
+.mc-state--paused,
+.mc-state--cancelled,
+.mc-state--interrupted {
+  color: var(--warning);
+}
+
+.mc-state--error {
+  color: var(--danger);
+}
+
+@keyframes mc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.mc-speed {
+  font-size: 11px;
+  color: var(--on-surface-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mc-pct {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  flex-shrink: 0;
+}
+
+.mc-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ---- Progress drawn as the card's bottom edge ---- */
+.mc-progressbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--outline) 45%, transparent);
+}
+
+.mc-progressbar::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--mc-progress, 0%);
+  background: var(--primary);
+  transition: width 240ms ease;
+}
+
+.mc-progressbar[data-state='paused']::after,
+.mc-progressbar[data-state='cancelled']::after,
+.mc-progressbar[data-state='interrupted']::after {
+  background: var(--warning);
+}
+
+.mc-progressbar[data-state='error']::after {
+  background: var(--danger);
+}
+
+.model-card:hover {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--outline));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--primary-soft) 12%, transparent), transparent 64%),
+    color-mix(in srgb, var(--surface-1) 78%, transparent);
+}
+
+.model-card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 70%, transparent);
+  outline-offset: 2px;
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--outline));
+}
+
+.model-card--selected {
+  border-color: color-mix(in srgb, var(--outline-strong) 72%, transparent) !important;
+  background: color-mix(in srgb, var(--surface-2) 58%, var(--surface-1));
+}
+
+.model-card--unsupported {
+  opacity: 0.55;
+}
+
+.dark-theme .model-card {
+  background: var(--surface-1);
+  border-color: var(--outline);
+}
+.dark-theme .model-card:hover {
+  background: color-mix(in srgb, var(--surface-2) 50%, var(--surface-1));
+  border-color: var(--outline-strong);
+  box-shadow: none;
+}
+.dark-theme .model-card--selected {
+  border-color: var(--primary-border) !important;
+  background: color-mix(in srgb, var(--primary-soft) 45%, var(--surface-1));
+}
+.dark-theme .model-card--busy {
+  border-color: var(--primary-border);
+  background: color-mix(in srgb, var(--primary-softer) 45%, var(--surface-1));
+}
+.dark-theme .mc-name { color: var(--on-surface-heading); }
+
+/* Card header */
+.mc-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mc-title {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mc-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mc-name {
+  display: -webkit-box;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.5;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.mc-note {
+  display: -webkit-box;
+  max-width: 100%;
+  color: var(--on-surface-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.mc-favorite {
+  flex: 0 0 auto;
+  opacity: 0.62;
+}
+
+.mc-more {
+  flex: 0 0 auto;
+  opacity: 0.62;
+}
+
+.model-card:hover .mc-favorite,
+.model-card--selected .mc-favorite,
+.model-card:hover .mc-more,
+.model-card--selected .mc-more {
+  opacity: 1;
+}
+
+/* Tags row */
+.mc-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mc-tags :deep(.n-tag) {
+  max-width: 100%;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.mc-tags :deep(.n-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-size {
+  font-size: 11px;
+  color: var(--on-surface-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Meta info */
+.mc-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  /* Wraps instead of stretching: pinning the value to the far edge left a wide gap between a
+     short label and a short value, which is what made the card look hollow. */
+  gap: 4px 14px;
+  font-size: 11px;
+  min-width: 0;
+}
+
+.mc-meta-item {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mc-label {
+  color: var(--on-surface-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.mc-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-download-button {
+  min-width: 72px;
+  --n-height: 30px;
+  --n-padding: 0 10px;
+}
+
+.mc-download-button :deep(.n-button__content) {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mc-download-button :deep(.n-icon) {
+  font-size: 17px;
+}
+
+/* Download progress */
+/* 下载/删除进度块样式已迁移至 ModelProgressBlock 组件；
+   此处仅保留存储抽屉批量删除卡片仍引用的文件进度文本样式 */
+.mc-dl-files {
+  font-size: 11px;
+  color: var(--on-surface-muted);
+}
+
+/* ===== Drawer Footer ===== */
+.drawer-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-note-modal {
+  width: min(460px, calc(100vw - 48px));
+  border-radius: 18px;
+}
+
+.model-note-modal__body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.model-note-modal__body :deep(.n-input) {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.model-note-modal__name {
+  overflow: hidden;
+  color: var(--on-surface-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-note-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.model-inference-modal {
+  width: min(560px, calc(100vw - 48px));
+  border-radius: 18px;
+}
+
+.model-inference-modal__body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.model-inference-modal__name {
+  overflow: hidden;
+  color: var(--on-surface-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-inference-modal__hint {
+  margin: 0;
+  color: var(--on-surface-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.inference-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.inference-editor-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inference-editor-field > span {
+  color: var(--on-surface-muted);
+  font-size: 12px;
+}
+
+.inference-editor-field :deep(.n-input-number) {
+  width: 100%;
+}
+
+.model-inference-modal__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.model-inference-modal__footer-spacer {
+  flex: 1 1 auto;
+}
+
+
+.model-detail-modal {
+  width: var(--modal-width-sm);
+  height: min(620px, var(--modal-max-height));
+  max-height: var(--modal-max-height);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.model-detail-modal :deep(.n-card-header) {
+  flex: 0 0 auto;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--outline) 72%, transparent);
+}
+
+.model-detail-modal :deep(.n-card-content),
+.model-detail-modal :deep(.n-card__content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.model-detail-modal__body {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 20px;
+  box-sizing: border-box;
+}
+
+.model-detail-modal :deep(.n-card-footer),
+.model-detail-modal :deep(.n-card__footer) {
+  flex: 0 0 auto;
+  padding: 12px 20px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--outline) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 96%, transparent);
+}
+
+.model-detail-modal .drawer-footer {
+  flex-direction: row;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.model-detail-modal .drawer-footer :deep(.n-button) {
+  width: auto;
+  min-width: 112px;
+}
+
+/* 进度块在 modal footer 中占满整行，其后的操作按钮另起一行 */
+.model-detail-modal .drawer-footer > .mc-dl {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.drawer-footer-actions {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 100%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.model-detail-modal .drawer-footer-actions :deep(.n-button) {
+  flex: 1 1 auto;
+}
+
+/* ===== Skeleton ===== */
+.skel-card {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--outline) 58%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+}
+
+/* ===== Detail Drawer ===== */
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-name {
+  font-size: 16px;
+  font-weight: 600;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  gap: 12px;
+}
+
+.detail-label {
+  color: var(--on-surface-muted);
+  flex-shrink: 0;
+}
+
+.detail-val {
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-path {
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--on-surface-muted);
+  background: var(--surface-2);
+  padding: 8px 10px;
+  border-radius: 8px;
+  display: block;
+}
+
+.detail-path-collapse {
+  margin-top: -2px;
+}
+
+.detail-path-collapse :deep(.n-collapse-item__header) {
+  padding: 0;
+  color: var(--on-surface-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.detail-path-collapse :deep(.n-collapse-item__content-inner) {
+  padding-top: 10px;
+}
+
+.detail-path-block,
+.detail-partial-block {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-partial-block {
+  margin-top: 12px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.storage-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.storage-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.storage-stat {
+  padding: 14px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.storage-stat span {
+  display: block;
+  font-size: 12px;
+  color: var(--on-surface-muted);
+}
+
+.storage-stat strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 18px;
+}
+
+.storage-dir {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.storage-dir code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--on-surface-muted);
+}
+
+.storage-toolbar,
+.storage-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.storage-toolbar .n-input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.storage-list {
+  display: grid;
+  gap: 8px;
+  max-height: 56vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.storage-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  background: var(--surface-1);
+}
+
+.storage-row__main {
+  min-width: 0;
+}
+
+.storage-row__main strong,
+.storage-row__main span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storage-row__main span {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--on-surface-muted);
+}
+
+.storage-row__size {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.storage-empty {
+  padding: 32px 0;
+}
+
+.storage-progress-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  background: var(--surface-1);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1180px) {
+  .toolbar-row { grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 0.9fr) auto; }
+  .search-input { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+  .search-input {
+    max-width: 100%;
+  }
+
+  /* Two controls per line instead of one: the search takes the first line by itself, the three
+     selects and the actions share the next two. A 700px-wide window drops its toolbar from four
+     stacked rows (~206px) to three (~140px) without any control losing width. */
+
+  .toolbar-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .search-input {
+    grid-column: 1 / -1;
+  }
+
+  /* The card's own stacking is handled by its container query, which is correct whatever the
+     window is doing. */
+
+  .category-select,
+  .source-select,
+  .sort-select {
+    width: 100%;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .mc-tags {
+    justify-content: flex-start;
+  }
+
+  .mc-size {
+    text-align: left;
+  }
+
+  .mc-meta {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 560px) {
+  .sort-select, .toolbar-actions { grid-column: 1 / -1; }
+}
+
+@media (max-width: 720px) {
+  .inference-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .model-inference-modal__footer-spacer {
+    display: none;
+  }
+
+  .model-detail-modal {
+    width: var(--modal-width-sm);
+    height: min(620px, var(--modal-max-height));
+    max-height: var(--modal-max-height);
+  }
+
+  .model-detail-modal .drawer-footer {
+    flex-direction: column;
+  }
+
+  .model-detail-modal .drawer-footer :deep(.n-button) {
+    width: 100%;
+  }
+}
+
