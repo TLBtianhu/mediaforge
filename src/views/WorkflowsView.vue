@@ -26,6 +26,7 @@ import {
   useWorkflowStore,
   type WorkflowEntry,
 } from '@/stores/workflow'
+import { makeWorkflowListing } from './workflows/listing'
 import {
   analyzeComfyOverview,
   analyzeSimpleWorkflow,
@@ -92,112 +93,15 @@ const normalizeOptions = computed(() => [
   { label: t('workflows.inferenceDisabled'), value: 'disabled' },
 ])
 
-function normalizeMode(value: boolean | null) {
-  return value === null ? 'global' : value ? 'enabled' : 'disabled'
-}
-
-function workflowKind(item: WorkflowEntry): WorkflowKind {
-  if (isSimpleWorkflowDefinition(item.definition)) return 'simple'
-  if (isGraphWorkflowDefinition(item.definition)) return 'advanced'
-  return 'invalid'
-}
-
-const workflowTypeCounts = computed(() => ({
-  all: workflows.value.length,
-  simple: workflows.value.filter(item => workflowKind(item) === 'simple').length,
-  advanced: workflows.value.filter(item => workflowKind(item) === 'advanced').length,
-}))
-const workflowTypeFilterOptions = computed(() => [
-  { value: 'all' as const, label: t('workflows.typeAll'), count: workflowTypeCounts.value.all },
-  { value: 'simple' as const, label: t('workflows.typeSimpleShort'), count: workflowTypeCounts.value.simple },
-  { value: 'advanced' as const, label: t('workflows.typeAdvancedShort'), count: workflowTypeCounts.value.advanced },
-])
-
-const filteredWorkflows = computed(() => {
-  const value = query.value.trim().toLowerCase()
-  return workflows.value.filter(item => {
-    if (typeFilter.value !== 'all' && workflowKind(item) !== typeFilter.value) return false
-    if (!value) return true
-    return (
-      item.name.toLowerCase().includes(value)
-      || item.description.toLowerCase().includes(value)
-    )
-  })
+const {
+  normalizeMode, workflowKind, workflowTypeCounts, workflowTypeFilterOptions,
+  filteredWorkflows, workflowGroups, workflowListMetaMap, workflowListMeta,
+  workflowTypeLabel, workflowDefinitionError, workflowRunBlocked, workflowStatusMap,
+  isWorkflowBlocked, isNodeEditorOpen, isAnyEditorOpen, setWorkflowTypeFilter,
+} = makeWorkflowListing({
+  computed, t, workflows, query, typeFilter, workflow, selectedWorkflowId,
+  isSimpleWorkflowDefinition, isGraphWorkflowDefinition, analyzeComfyOverview, hydrateSimpleWorkflow, countWorkflowSaveOutputs, getWorkflowDefinitionIssue,
 })
-
-const workflowGroups = computed(() => [
-  {
-    kind: 'simple' as const,
-    label: t('workflows.typeSimple'),
-    items: filteredWorkflows.value.filter(item => workflowKind(item) === 'simple'),
-  },
-  {
-    kind: 'advanced' as const,
-    label: t('workflows.typeAdvanced'),
-    items: filteredWorkflows.value.filter(item => workflowKind(item) === 'advanced'),
-  },
-  {
-    kind: 'invalid' as const,
-    label: t('workflows.typeInvalid'),
-    items: filteredWorkflows.value.filter(item => workflowKind(item) === 'invalid'),
-  },
-].filter(group => group.items.length))
-
-const workflowListMetaMap = computed(() => Object.fromEntries(workflows.value.map((item) => {
-  if (isGraphWorkflowDefinition(item.definition)) {
-    const overview = analyzeComfyOverview(item.definition)
-    return [item.id, overview
-      ? t('workflows.listMetaAdvanced', { nodes: overview.nodeCount, outputs: overview.outputCount })
-      : t('workflows.typeAdvanced')]
-  }
-  if (isSimpleWorkflowDefinition(item.definition)) {
-    const draft = hydrateSimpleWorkflow(item.definition)
-    return [item.id, t('workflows.listMetaSimple', {
-      steps: draft.steps.length,
-      ensembles: draft.ensembles.length,
-      outputs: countWorkflowSaveOutputs(item.definition),
-    })]
-  }
-  return [item.id, t('workflows.workflowValidationTitle')]
-})))
-
-function workflowListMeta(item: WorkflowEntry) {
-  return workflowListMetaMap.value[item.id] || ''
-}
-
-function workflowTypeLabel(item: WorkflowEntry) {
-  const kind = workflowKind(item)
-  if (kind === 'simple') return t('workflows.typeSimpleShort')
-  if (kind === 'advanced') return t('workflows.typeAdvancedShort')
-  return t('workflows.typeInvalidShort')
-}
-
-function setWorkflowTypeFilter(value: WorkflowTypeFilter) {
-  typeFilter.value = value
-}
-
-const isNodeEditorOpen = computed(() => Boolean(workflow.editorFor(selectedWorkflowId.value)))
-const isAnyEditorOpen = computed(() => workflow.hasAnyEditorOpen)
-
-function workflowDefinitionError(definition: Record<string, unknown>): string {
-  const issue = getWorkflowDefinitionIssue(definition)
-  if (issue === 'steps-required') return t('workflows.stepsRequired')
-  if (issue === 'no-save-outputs') return t('workflows.workflowNoSaveOutputs')
-  if (issue === 'invalid-definition') return t('workflows.workflowFormatInvalid')
-  if (issue === 'invalid-format') return t('workflows.workflowFormatInvalid')
-  return ''
-}
-function workflowRunBlocked(definition: Record<string, unknown>) {
-  return Boolean(workflowDefinitionError(definition))
-}
-
-// ---- Per-item lightweight status (memoized) ----
-const workflowStatusMap = computed(() => Object.fromEntries(
-  workflows.value.map(item => [item.id, workflowRunBlocked(item.definition)]),
-))
-function isWorkflowBlocked(item: WorkflowEntry) {
-  return Boolean(workflowStatusMap.value[item.id])
-}
 
 function workflowMenuOptionsFor(current: WorkflowEntry | null): DropdownOption[] {
   if (!current) return []
