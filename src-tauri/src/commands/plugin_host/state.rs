@@ -1,17 +1,9 @@
 //! 项目状态持久化：状态文件路径、编码/解码、快照写入与旧格式兼容。
 
-use base64::Engine as _;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use sha2::Sha256;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
 
 use super::*;
 

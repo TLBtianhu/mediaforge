@@ -15,10 +15,9 @@ use super::app::runtime::require_windows_runtime_management;
 use crate::error::{AppError, AppResult};
 use crate::session_log::{self, DebugLogContent, DebugLogInfo, DebugLogReport};
 use crate::storage;
-use crate::python::worker::{run_worker_with_payload, spawn_worker_background};
+use crate::python::worker::run_worker_with_payload;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
 
 #[tauri::command]
 pub async fn debug_editor_playback(app: AppHandle, snapshot: Value) -> AppResult<()> {

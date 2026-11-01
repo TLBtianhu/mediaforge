@@ -1,17 +1,10 @@
 //! 宿主状态与会话：能力协商、开关、测试环境配置。
 
-use base64::Engine as _;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use std::sync::{Arc, Mutex};
 
 use super::*;
 
@@ -30,7 +23,7 @@ pub struct PluginHostState {
     pub(crate) renders: Arc<Mutex<HashMap<String, Arc<ProcessLease>>>>,
     pub(crate) scan_lock: Arc<Mutex<()>>,
     pub(crate) scan_process: Arc<ProcessLease>,
-    pub(crate) scan_control: Arc<ScanControl>,
+    pub(super) scan_control: Arc<ScanControl>,
     pub(crate) scan_storage: Arc<Mutex<()>>,
     pub(crate) scan_sequence: Arc<AtomicU64>,
     pub(crate) generation: Arc<AtomicU64>,

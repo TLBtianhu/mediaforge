@@ -1,17 +1,7 @@
 //! 插件宿主请求命令：把编辑器/项目操作转发给隔离的音频宿主进程。
 
-use base64::Engine as _;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use super::*;
 

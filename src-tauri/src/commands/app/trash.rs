@@ -2,12 +2,9 @@
 //!
 //! 从 app_cmd.rs 拆出；使用 trash crate，失败项逐个返回，不中断整批。
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use serde::Serialize;
-use std::fs;
 use std::path::Path;
-use std::process::Command;
-use tauri::AppHandle;
 
 use crate::commands::app::editor::normalize_path_key;
 

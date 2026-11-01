@@ -62,7 +62,7 @@ impl Clock {
         let replacement = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
         let _ = self
             .cursor
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |cursor| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |cursor| {
                 ((cursor >> 48) == (failed_generation & 0xffff))
                     .then_some(Self::cursor(replacement, cursor & Self::FRAME_MASK))
             });
@@ -76,7 +76,7 @@ impl Clock {
     fn commit(&self, frame: Frame) {
         let _ = self
             .cursor
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |cursor| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |cursor| {
                 ((cursor >> 48) == (frame.generation & 0xffff))
                     .then_some(Self::cursor(frame.generation, frame.position))
             });

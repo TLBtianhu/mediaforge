@@ -1,17 +1,12 @@
 //! 扫描执行器：插件包指纹、路径判定、扫描调度与结果接收。
 
-use base64::Engine as _;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use tauri::AppHandle;
 
 use super::*;
 
@@ -104,7 +99,7 @@ pub(crate) struct ScanReport {
     pub(crate) failures: Vec<ScanFailure>,
     pub(crate) scanned: usize,
     pub(crate) cached: usize,
-    pub(crate) blacklisted: Vec<BlacklistEntry>,
+    pub(super) blacklisted: Vec<BlacklistEntry>,
     pub(crate) cancelled: bool,
 }
 
@@ -291,7 +286,7 @@ pub(crate) fn selected_scan_targets(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 #[derive(Debug)]
-pub(crate) enum ScanProbeError {
+pub(super) enum ScanProbeError {
     Failure(String),
     Skipped(BlacklistReason),
     Cancelled,
@@ -371,7 +366,7 @@ pub(crate) async fn scan_plugins(
     .map_err(|error| error.to_string())?
 }
 
-pub(crate) fn receive_scan(process: &HostProcess, run: &ScanRun, ticket: ScanTicket, timeout: Duration) -> Result<Value, ScanProbeError> {
+pub(super) fn receive_scan(process: &HostProcess, run: &ScanRun, ticket: ScanTicket, timeout: Duration) -> Result<Value, ScanProbeError> {
     loop {
         match run.decision(Some(ticket)) {
             ScanDecision::Skip => return Err(ScanProbeError::Skipped(BlacklistReason::Manual)),

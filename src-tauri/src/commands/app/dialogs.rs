@@ -7,8 +7,6 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
-use crate::commands::app::scan::{AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS};
-
 #[tauri::command]
 pub async fn pick_audio_files(app: AppHandle) -> AppResult<Vec<String>> {
     let files = app

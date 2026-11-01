@@ -1,17 +1,10 @@
 //! 音频宿主进程：租约、作业对象、请求编码与响应解码。
 
-use base64::Engine as _;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
 
 use super::*;
 
@@ -256,7 +249,7 @@ pub(crate) struct HostProcess {
     pub(crate) input: Option<mpsc::SyncSender<(Vec<u8>, mpsc::SyncSender<Result<(), String>>)>>,
     pub(crate) responses: mpsc::Receiver<Result<Value, String>>,
     pub(crate) sequence: u64,
-    pub(crate) pending: Option<dialogs::Pending>,
+    pub(super) pending: Option<dialogs::Pending>,
     pub(crate) completed_session_id: Option<String>,
     pub(crate) live_closed: bool,
     #[cfg(windows)]

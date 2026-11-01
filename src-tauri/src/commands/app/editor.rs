@@ -1836,7 +1836,7 @@ mod tests {
                     .arg("-ar").arg(rate.to_string())
                     .args(["-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"]).output().unwrap();
                 let pieces: Vec<_> = (0..3).map(|index| decode_editor_preview_chunk(ffmpeg, &path, index, rate, 2).unwrap()).collect();
-                assert!(full.status.success());
+                assert!(full.status.success(), "full decode failed: {}", String::from_utf8_lossy(&full.stderr));
                 assert_eq!(pieces[0].len(), rate as usize * 4 * 2 * 4);
                 assert_eq!(pieces[2].len(), rate as usize * 2 * 4);
                 assert_eq!(pieces.concat(), full.stdout, "resampling {source_rate} to {rate} changed chunk samples");

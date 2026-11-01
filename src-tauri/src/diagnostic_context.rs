@@ -271,7 +271,6 @@ impl DiagnosticContext {
                     record.event.as_str(),
                     "task.result"
                         | "editor_mix_exported"
-                        | "task.result"
                         | "task_finished"
                         | "runtime_installed"
                         | "runtime_core_updated"

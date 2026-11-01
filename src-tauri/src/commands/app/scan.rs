@@ -2,7 +2,7 @@
 //!
 //! 从 app_cmd.rs 拆出；都是本地文件系统操作，不经过 worker。
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::storage;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
