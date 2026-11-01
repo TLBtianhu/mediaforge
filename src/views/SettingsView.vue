@@ -14,18 +14,10 @@ import packageMeta from '../../package.json'
 import appLogo from '@/assets/app-logo-symbol-canvas.png'
 import { SYSTEM_LOCALE, setLocale, type LocaleSetting } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
-import { useAppStore, type InstalledRuntime, type RuntimeBackend, type RuntimeCoreMode } from '@/stores/app'
-import {
-  detectRuntimePlatform,
-  recommendedRuntimeBackend,
-  runtimeAcceleratorReady,
-  runtimeEnvironmentForBackend,
-  runtimeManifestStatus,
-  runtimeLoadError,
-  runtimeBackendLabel as runtimeBackendName,
-  runtimeSizeHint,
-  isKnownRuntimeBackend,
-} from '@/utils/runtime'
+import { useAppStore, type RuntimeBackend } from '@/stores/app'
+import { runtimeAcceleratorReady } from '@/utils/runtime'
+import { makeRuntimeState } from './settings/runtimeState'
+import { makeRuntimeActions } from './settings/runtimeActions'
 import { useModelStore } from '@/stores/model'
 import { useTaskStore } from '@/stores/task'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
@@ -163,7 +155,6 @@ const proxyTestElapsed = ref(0)
 const proxyTestLoading = computed(() => proxyTestStatus.value === 'testing')
 const runtimeMirror = ref('auto')
 const runtimeManualChecking = ref(false)
-const runtimeDetecting = computed(() => app.runtimeInfoLoading || runtimeManualChecking.value)
 const runtimeDeleting = ref<string | null>(null)
 const runtimeActivating = ref<string | null>(null)
 const runtimeLogDialogVisible = ref(false)
@@ -180,171 +171,14 @@ watch(() => app.runtimeInstallLogs.at(-1), () => {
     })
   }
 })
-const runtimeInstalling = computed(() => app.runtimeInstallStatus === 'installing')
-// Runtime detection and install/switch/delete all access the runtime state, so only one may run at a time.
-const runtimeBusy = computed(() => runtimeDetecting.value || runtimeInstalling.value || runtimeActivating.value !== null || runtimeDeleting.value !== null)
-const runtimeCurrentError = computed(() => {
-  const error = runtimeLoadError(app.runtimeInfo, app.envInfo)
-  return error.toLowerCase().includes('winerror 1455') ? t('settings.runtimePageFileError') : error
+const {
+  runtimeInstalling, runtimeDetecting, runtimeBusy, runtimeCurrentError, runtimeCurrentBackend,
+  runtimeCurrentLabel, installedRuntimes, runtimePlatform, runtimeRecommendedBackend,
+  runtimeBackendDescription, runtimeBackendCatalog, runtimeBackendCards, runtimeCoreVersionLabel,
+  runtimeBackendLabel, runtimeDiskTotalLabel, runtimeDiskMeasuring,
+} = makeRuntimeState({
+  computed, t, app, runtimeManualChecking, runtimeActivating, runtimeDeleting,
 })
-const runtimeCurrentBackend = computed<RuntimeBackend | null>(() => {
-  const detected = String(app.runtimeInfo?.torchBackend || app.envInfo?.torchBackend || '')
-  if (detected.toLowerCase().startsWith('error:')) return null
-  const recorded = String(app.runtimeInfo?.installedBackend || app.runtimeInfo?.installState?.backend || '')
-  if (isKnownRuntimeBackend(recorded)) return recorded
-  if (app.runtimeInstalledBackend && isKnownRuntimeBackend(app.runtimeInstalledBackend)) return app.runtimeInstalledBackend
-  return isKnownRuntimeBackend(detected) ? detected : null
-})
-const runtimeCurrentLabel = computed(() => {
-  if (runtimeCurrentError.value) return t('settings.runtimeLoadFailed')
-  return runtimeCurrentBackend.value ? runtimeBackendName(runtimeCurrentBackend.value) : t('settings.envNotChecked')
-})
-const installedRuntimes = computed(() => app.runtimeInfo?.installedEnvironments || [])
-
-type BackendCardState = 'active' | 'installed' | 'not_installed'
-
-type RuntimeBackendCard = {
-  backend: RuntimeBackend
-  key: string
-  label: string
-  description: string
-  offCatalog?: boolean
-  env?: InstalledRuntime
-  state: BackendCardState
-  recommended: boolean
-  manifestOutdated: boolean
-  manifestNewer: boolean
-  workflowGraphUnavailable: boolean
-  health: string
-  leftover: boolean
-  leftoverLabel: string
-  vendorMissing: boolean
-  sizeHint: string
-  diskLabel: string
-  installing: boolean
-  pymssVersion: string
-  pymssCoreVersion: string
-}
-
-const runtimePlatform = computed(() => detectRuntimePlatform(app.runtimeInfo))
-const runtimeRecommendedBackend = computed(() => recommendedRuntimeBackend(app.runtimeInfo))
-
-const RUNTIME_BACKEND_DESC_KEYS: Record<RuntimeBackend, string> = {
-  cpu: 'onboarding.runtimeCpu',
-  cuda: 'onboarding.runtimeCuda',
-  rocm: 'onboarding.runtimeRocm',
-  mlx: 'onboarding.runtimeMlx',
-}
-
-function runtimeBackendDescription(backend: RuntimeBackend | string) {
-  if (backend === 'rocm' && app.runtimeInfo?.platform === 'linux') return t('onboarding.runtimeRocmLinux')
-  const key = RUNTIME_BACKEND_DESC_KEYS[backend as RuntimeBackend]
-  return key ? t(key) : ''
-}
-
-type BackendCardBase = { backend: RuntimeBackend; label: string; description: string; offCatalog: boolean }
-
-const runtimeBackendCatalog = computed<BackendCardBase[]>(() => {
-  const { isMac } = runtimePlatform.value
-  const backends: RuntimeBackend[] = isMac ? ['mlx'] : ['cpu']
-  if (!isMac) backends.push('cuda', 'rocm')
-  return backends.map((backend) => ({
-    backend,
-    label: runtimeBackendName(backend),
-    description: runtimeBackendDescription(backend),
-    offCatalog: false,
-  }))
-})
-
-const runtimeBackendCards = computed(() => {
-  const catalog = [...runtimeBackendCatalog.value]
-  // Keep environments that exist on disk but are not offered on this platform
-  // (e.g. left over after moving the data root between machines) reachable.
-  for (const entry of installedRuntimes.value) {
-    const backend = String(entry.backend || '')
-    if (!backend || catalog.some((item) => item.backend === backend)) continue
-    catalog.push({
-      backend: backend as RuntimeBackend,
-      label: runtimeBackendName(backend),
-      description: runtimeBackendDescription(backend),
-      offCatalog: true,
-    })
-  }
-  const cards: RuntimeBackendCard[] = []
-  for (const item of catalog) {
-    const matchingEnvs = installedRuntimes.value.filter((entry) => entry.backend === item.backend)
-    const preferredEnv = runtimeEnvironmentForBackend(app.runtimeInfo, item.backend)
-    const envs = preferredEnv
-      ? [preferredEnv, ...matchingEnvs.filter((entry) => entry !== preferredEnv)]
-      : matchingEnvs
-    const displayEnvs = envs.length ? envs : [undefined]
-
-    for (const env of displayEnvs) {
-      const isActive = Boolean(env && runtimeCurrentBackend.value === item.backend && runtimeEnvironmentForBackend(app.runtimeInfo, item.backend) === env)
-      const state: BackendCardState = isActive ? 'active' : env ? 'installed' : 'not_installed'
-      const diskBytes = app.runtimeEnvSizes[String(item.backend)]
-      const pymssVersion = env?.pymssVersion || env?.packageVersions?.pymss || ''
-      const pymssCoreVersion = env?.pymssCoreVersion || env?.packageVersions?.['pymss-core'] || ''
-      const manifestStatus = runtimeManifestStatus(env, app.runtimeInfo?.manifestVersion)
-      const manifestOutdated = manifestStatus === 'older' || manifestStatus === 'newer'
-      const manifestNewer = manifestStatus === 'newer'
-      const workflowGraphUnavailable = env?.pymssGraphAvailable === false
-      const health = String(env?.health || 'unknown')
-      // A manifest mismatch can mean that the environment was created by an
-      // older app even when PyPI already reports the same pymss/core versions.
-      // Offer the no-Torch-reinstall core sync so the environment metadata and
-      // any manifest-declared pymss extras are brought up to date.
-      const gpuBackend = item.backend === 'cuda' || item.backend === 'rocm' || item.backend === 'mlx'
-      // A cancelled or failed install leaves its venv behind without an install state, so the
-      // backend reads as not installed while still holding gigabytes. Surface it so the space
-      // can be reclaimed instead of being stranded.
-      const leftover = !env && app.runtimeIncompleteBackends.includes(String(item.backend))
-      cards.push({
-        ...item,
-        key: `${item.backend}:${env?.pythonPath || 'none'}`,
-        env,
-        state,
-        recommended: runtimeRecommendedBackend.value === item.backend,
-        manifestOutdated,
-        manifestNewer,
-        workflowGraphUnavailable,
-        health,
-        leftover,
-        leftoverLabel: leftover && diskBytes ? formatBytes(diskBytes) : '',
-        // Only warn on GPU backends: it explains why a card is there without hiding it, and
-        // detection missing a card must never stop someone installing what they need.
-        // Off-catalog cards already carry their own "not for this platform" line; a second,
-        // near-identical explanation on top of it is just noise.
-        vendorMissing: gpuBackend
-          && !item.offCatalog
-          && runtimeRecommendedBackend.value !== null
-          && runtimeRecommendedBackend.value !== item.backend,
-        sizeHint: runtimeSizeHint(item.backend),
-        // Absent means "not measured", and zero means the walk
-        // could not read anything. Neither is a usable number, and formatBytes renders both as
-        // an em dash, so only show the row when there is a real size to show.
-        diskLabel: diskBytes ? formatBytes(diskBytes) : '',
-        installing: runtimeInstalling.value && app.runtimeInstallBackend === item.backend,
-        pymssVersion,
-        pymssCoreVersion,
-      })
-    }
-  }
-  return cards
-})
-
-function runtimeCoreVersionLabel(card: { pymssVersion?: string; pymssCoreVersion?: string }) {
-  return t('settings.runtimeCoreVersion', {
-    pymss: card.pymssVersion || t('settings.runtimeCoreVersionUnknown'),
-    core: card.pymssCoreVersion || t('settings.runtimeCoreVersionUnknown'),
-  })
-}
-
-// Same naming as the cards ("NVIDIA CUDA", not "CUDA"), so a confirmation dialog never appears
-// to be talking about something other than the card that opened it.
-function runtimeBackendLabel(value: RuntimeBackend | string | null | undefined) {
-  return value ? runtimeBackendName(value) : t('settings.envNotChecked')
-}
 
 let locatedRuntimeBackend = ''
 function locateRuntimeBackend() {
@@ -364,52 +198,15 @@ watch([() => route.query.backend, activeSection, () => app.runtimeInfoLoading], 
   locateRuntimeBackend()
 }, { immediate: true, flush: 'post' })
 
-function confirmRuntimeAction(title: string, content: string, positiveText: string) {
-  return new Promise<boolean>((resolve) => {
-    dialog.warning({
-      title,
-      content,
-      positiveText,
-      negativeText: t('common.cancel'),
-      onPositiveClick: () => resolve(true),
-      onNegativeClick: () => resolve(false),
-      onClose: () => resolve(false),
-      onMaskClick: () => resolve(false),
-      onEsc: () => resolve(false),
-    })
-  })
-}
-
-async function installBackend(backend: RuntimeBackend) {
-  if (!app.runtimeManagementSupported || runtimeBusy.value) return
-  const target = runtimeBackendLabel(backend)
-  const sizeHint = t('settings.runtimeInstallSizeHint', { size: runtimeSizeHint(backend) })
-  const reinstall = installedRuntimes.value.some((entry) => entry.backend === backend)
-  // The worker writes active-runtime.json at the end of an install, so this also switches.
-  const switchHint = runtimeCurrentBackend.value === backend ? '' : ` ${t('settings.runtimeInstallActivatesHint')}`
-  const confirmed = await confirmRuntimeAction(
-    reinstall ? t('settings.runtimeReinstallTitle') : t('settings.runtimeInstallTitle'),
-    reinstall
-      ? `${t('settings.runtimeReinstallContent', { current: runtimeBackendLabel(runtimeCurrentBackend.value), target })} ${sizeHint}${switchHint}`
-      : `${t('settings.runtimeInstallContent', { backend: target })} ${sizeHint}${switchHint}`,
-    t('common.confirm'),
-  )
-  if (!confirmed) return
-  try {
-    await app.installRuntime(backend, runtimeMirror.value, currentLocale.value)
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
-
-async function retryRuntimeInstall() {
-  const backend = app.runtimeInstallBackend as RuntimeBackend | null
-  if (!backend) {
-    message.error(t('settings.runtimeRetryUnavailable'))
-    return
-  }
-  await installBackend(backend)
-}
+const {
+  confirmRuntimeAction, installBackend, retryRuntimeInstall, refreshRuntimeStatus,
+  refreshRuntimeCoreVersions, cancelRuntimeInstall, deleteRuntime, activateInstalledRuntime,
+  detectRuntime,
+} = makeRuntimeActions({
+  app, message, dialog, t, currentLocale, runtimeMirror,
+  runtimeManualChecking, runtimeDeleting, runtimeActivating,
+  runtimeBusy, runtimeCurrentBackend, installedRuntimes, runtimeBackendLabel,
+})
 
 watch(() => app.runtimeInstallStatus, (status, previous) => {
   if (previous !== 'installing') return
@@ -420,35 +217,6 @@ watch(() => app.runtimeInstallStatus, (status, previous) => {
     void app.loadRuntimeEnvSizes()
   }
 })
-
-async function refreshRuntimeStatus(showSuccess = false) {
-  if (showSuccess) runtimeManualChecking.value = true
-  const info = showSuccess ? app.checkRuntimeInfo() : app.ensureRuntimeInfo()
-  // Startup owns the detailed device probe. Page visits only refresh the overview;
-  // explicit detection still checks the active interpreter and all its devices.
-  const env = showSuccess ? app.checkEnv() : Promise.resolve()
-  // Disk usage updates separately and does not hold the detection button open.
-  void (showSuccess ? app.loadRuntimeEnvSizes() : app.ensureRuntimeEnvSizes())
-  try {
-    const results = await Promise.allSettled([info, env])
-    const failed = results.find(result => result.status === 'rejected')
-    if (failed?.status === 'rejected') throw failed.reason
-    if (showSuccess) message.success(t('settings.runtimeDetectSuccess'))
-  } catch (error) {
-    if (showSuccess) message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    if (showSuccess) runtimeManualChecking.value = false
-  }
-}
-
-async function refreshRuntimeCoreVersions(fresh = false) {
-  if (!app.runtimeCoreUpdateSupported) return
-  try {
-    await (fresh ? app.loadRuntimeCoreVersions() : app.ensureRuntimeCoreVersions())
-  } catch {
-    // Network availability is optional for the settings page; the installed version still shows.
-  }
-}
 
 // Reuse recent or in-flight reads when returning to this section.
 watch(activeSection, (section) => {
@@ -466,93 +234,6 @@ watch(
     }
   },
 )
-
-const runtimeDiskTotalLabel = computed(() => {
-  const values = Object.values(app.runtimeEnvSizes).filter((value) => value > 0)
-  // A single environment already shows its own size on the card; a total only adds
-  // information once more than one is installed.
-  if (values.length < 2) return ''
-  return formatBytes(values.reduce((sum, value) => sum + value, 0))
-})
-
-// Walking several multi-GB venvs takes visible time on a slow disk; say so rather than
-// leaving the section silently size-less.
-const runtimeDiskMeasuring = computed(() => app.runtimeEnvSizesLoading)
-
-async function cancelRuntimeInstall() {
-  try {
-    await app.cancelRuntimeInstall()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
-
-async function deleteRuntime(card: { backend: RuntimeBackend; env?: InstalledRuntime }) {
-  if (!app.runtimeManagementSupported || runtimeBusy.value) return
-  const backend = card.backend
-  const active = runtimeEnvironmentForBackend(app.runtimeInfo, backend)
-  if (card.env && active === card.env && runtimeCurrentBackend.value === backend) {
-    message.warning(t('settings.runtimeDeleteActiveError'))
-    return
-  }
-  // Cleaning up an unfinished install discards nothing usable, so it must not be described
-  // as losing an environment.
-  const leftoverOnly = app.runtimeIncompleteBackends.includes(backend)
-    && !installedRuntimes.value.some((entry) => entry.backend === backend)
-  const confirmed = await confirmRuntimeAction(
-    leftoverOnly ? t('settings.runtimeCleanLeftoverTitle') : t('settings.runtimeDeleteTitle'),
-    leftoverOnly
-      ? t('settings.runtimeCleanLeftoverContent', { backend: runtimeBackendLabel(backend) })
-      : t('settings.runtimeDeleteContent', { backend: runtimeBackendLabel(backend) }),
-    leftoverOnly ? t('settings.runtimeCleanLeftover') : t('settings.runtimeDelete'),
-  )
-  if (!confirmed) return
-  runtimeDeleting.value = backend
-  try {
-    await app.deleteRuntime(backend, {
-      pythonPath: card.env?.pythonPath,
-    })
-    await Promise.all([app.checkRuntimeInfo(), app.checkEnv(), app.loadRuntimeEnvSizes()])
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeDeleting.value = null
-  }
-}
-
-async function activateInstalledRuntime(card: { backend: RuntimeBackend; env?: InstalledRuntime }) {
-  if (!app.runtimeManagementSupported) return
-  const backend = card.backend
-  const active = runtimeEnvironmentForBackend(app.runtimeInfo, backend)
-  if (runtimeBusy.value || (runtimeCurrentBackend.value === backend && active === card.env)) return
-  const confirmed = await confirmRuntimeAction(
-    t('settings.runtimeSwitchTitle'),
-    t('settings.runtimeSwitchContent', {
-      current: runtimeBackendLabel(runtimeCurrentBackend.value),
-      target: runtimeBackendLabel(backend),
-    }),
-    t('common.confirm'),
-  )
-  if (!confirmed) return
-  runtimeActivating.value = backend
-  try {
-    await app.activateRuntime(backend, {
-      pythonPath: card.env?.pythonPath,
-    })
-    message.success(t('settings.runtimeActivateSuccess'))
-    await Promise.all([app.checkRuntimeInfo(), app.loadRuntimeCoreVersions()])
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    runtimeActivating.value = null
-  }
-}
-
-async function detectRuntime() {
-  if (runtimeBusy.value) return
-  void refreshRuntimeCoreVersions(true)
-  await refreshRuntimeStatus(true)
-}
 
 const proxyModeOptions = computed(() => [
   { value: 'none' as const, label: t('settings.proxyModeNone') },

@@ -4,6 +4,8 @@ import test from 'node:test'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { detectRuntimePlatform } from '../src/utils/runtime.ts'
+import { makeRuntimeState } from '../src/views/settings/runtimeState.ts'
+import { makeRuntimeActions } from '../src/views/settings/runtimeActions.ts'
 
 function componentFunction(file, name, scope) {
   const source = readFileSync(new URL(file, import.meta.url), 'utf8').match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
@@ -87,7 +89,15 @@ for (const [platform, machine, expected] of [
       runtimeRecommendedBackend: { value: expected[0] },
       runtimeSizeHint: () => '',
     }
-    const catalog = componentComputed('../src/views/SettingsView.vue', 'runtimeBackendCatalog', scope)
+    const { runtimeBackendCatalog } = makeRuntimeState({
+      computed: fn => ({ get value() { return fn() } }),
+      t: key => key,
+      app: { runtimeInfo: { platform, machine }, runtimeEnvSizes: {}, runtimeIncompleteBackends: [] },
+      runtimeManualChecking: { value: false },
+      runtimeActivating: { value: null },
+      runtimeDeleting: { value: null },
+    })
+    const catalog = runtimeBackendCatalog.value
     const choices = componentComputed('../src/components/StartupOnboarding.vue', 'runtimeBackendChoices', scope)
     assert.deepEqual(Array.from(catalog, item => item.backend), expected)
     assert.deepEqual(Array.from(choices, item => item.value), expected)
@@ -187,10 +197,11 @@ test('runtime notices wait for updates and reads, and close once the installed c
 test('every confirmation dismissal settles the pending runtime operation', async () => {
   for (const event of ['onMaskClick', 'onEsc', 'onClose', 'onNegativeClick', 'onPositiveClick']) {
     let options
-    const confirm = componentFunction('../src/views/SettingsView.vue', 'confirmRuntimeAction', {
-      dialog: { warning: value => { options = value } }, t: key => key,
+    const { confirmRuntimeAction } = makeRuntimeActions({
+      app: {}, message: {}, t: key => key,
+      dialog: { warning: value => { options = value } },
     })
-    const result = confirm('Update core', 'Version plan', 'Confirm')
+    const result = confirmRuntimeAction('Update core', 'Version plan', 'Confirm')
     assert.equal(typeof options[event], 'function', `${event} must settle the confirmation`)
     options[event]()
     assert.equal(await result, event === 'onPositiveClick')
