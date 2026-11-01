@@ -10,11 +10,14 @@
                   scripts/check-architecture.py 八条全绿（依赖方向 ×3、根目录白名单、
                   事件覆盖、事件命名、handler 存在性、catalog 关联）
 Python 物理分层   python/ 根只剩 worker.py、agent_bridge.py、audio_catalog.json、
-                  runtime-manifest.json；实现分布在 audio_tools / core / game /
+                  runtime-manifest.json；实现分布在 audio_tools / core / third_party /
                   media_ops / shared / surfaces
-事件词表          只有 <域>.<动词>：task.started/stage/progress/log/done/cancelled/result 与
-                  asset.started/stage/progress/log/done；emit() 里出现 task_* / download_*
-                  这类历史写法会被检查器直接拦下（三端与测试已同步改完）
+事件词表          只有 <域>.<动词>：task.started/stage/progress/log/cancelled/result 与
+                  asset.started/stage/progress/log/done；终态只有一个 task.result；
+                  emit() 里出现 task_* / download_* 这类历史写法会被检查器直接拦下
+模型元数据        一份 catalog（audio_catalog.json + media_catalog.json，含 file_hashes），
+                  infer/模型库/下载器共用；sha256 由 sync-audio-catalog-hashes.py 写回，
+                  下载完整性校验全程离线（infer 经 catalog_file_index 喂给 pymss 下载器）
 Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域模块 + mod.rs
 模型列表          core/model_hub.py 是唯一入口，合并 audio_catalog.json（326 条）
                   与 media_ops/media_catalog.json（30 条）
@@ -30,36 +33,12 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
 ## 还有两条的地方
 
 ```
-1. task.done 与 task.result 两个终态名
-   两者都是"任务成功结束"，但载荷用途不同：
-     task.done    推理/工作流的完成事件，带 files / outputs / outputDir
-     task.result  工具类任务（audio_tools、media_tool、原生分析）的结果回包
-   前端按通道分别处理，Rust 的终态表也分开列。合并需要先定"统一载荷"的形态，
-   暂时保留，且只在 protocol.json 的 events 里声明一次。
-
-2. 模型下载（元数据已统一，两份传输各就其位）
-   清单真源只有一份：worker_models 与 model_hub 都读 python/audio_catalog.json，
-   pymss registry 只是 bundled 缺失时的兜底。
-   已做（2026-11-01）：
-   - scripts/sync-audio-catalog-hashes.py 把 326 条音频模型的 sha256 写回 catalog
-     （file_hashes：权重+config+auxiliary 全文件映射，size 与 index 全部一致）。
-     catalog 更新统一走这个脚本。
-   - model_hub 的音频下载据此离线校验；ModelEntry 携带 file_hashes，主权重哈希由其推导。
-   - infer 的自动补下载改为把 catalog 的 file_hashes 经 catalog_file_index() 传给
-     pymss 下载器，完整性校验全程离线，不再联网 file index；aria2c 加速保留。
-   - 孤儿命令 cmd_download_model 及其专属事件流测试已删除。
-   结论：元数据只有一份，传输有两种（模型库走 model_hub/urllib，推理走 pymss/aria2c），
-   这是"同一 catalog、两种传输策略"，不是重复实现。
-   富进度已补回（2026-11-01）：model_hub.download_model 的 detailed_progress 做真实字节聚合，
-   model_hub_worker 的 asset.progress 带真实字节/速度/逐文件，对齐下载卡片
-   （契约见 tests/python/test_model_hub_progress.py）。
-
-3. versions.json 还没发布
+1. versions.json 还没发布
    version_check.rs 里的两个 URL（GitHub release 与魔搭）实测都是 404；
    release/ 里那份是 0.0.20 时代、还带已删除 catalog 轴的旧产物，已清掉。
    要发布的清单由 scripts/make-versions.py 生成并签名（私钥只在环境变量里）。
 
-4. 运行时更新的协商
+2. 运行时更新的协商
    已刻意不做：没有“检查最新版本”，换运行时 = 发新版应用 + 新 sha256。
    标记不匹配时提示“需要更新”，这是校验，不是协商。
 ```
