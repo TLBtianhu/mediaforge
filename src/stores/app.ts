@@ -439,7 +439,7 @@ export const useAppStore = defineStore('app', () => {
     const operation = runtimeBackgroundOperations.get(taskId)
     if (operation && !operation.dispatched) {
       operation.cancelled = true
-      handleRuntimeEvent({ type: 'task_cancelled', taskId })
+      handleRuntimeEvent({ type: 'task.cancelled', taskId })
       operation.resolveStarted()
       return true
     }
@@ -455,7 +455,7 @@ export const useAppStore = defineStore('app', () => {
     const cancelled = await invoke<boolean>(command, { taskId })
     if (cancelled && operation && !operation.completed) {
       // The acknowledged cancellation also releases the queue if its event was missed.
-      handleRuntimeEvent({ type: 'task_cancelled', taskId })
+      handleRuntimeEvent({ type: 'task.cancelled', taskId })
     }
     return cancelled
   }
@@ -764,7 +764,7 @@ export const useAppStore = defineStore('app', () => {
     const operation = runtimeBackgroundOperations.get(taskId)
     if (operation && (
       event?.type === operation.finishedEvent || event?.type === 'error'
-      || event?.type === 'task_cancelled' || event?.type === 'runtime_install_failed'
+      || event?.type === 'task.cancelled' || event?.type === 'runtime_install_failed'
     )) {
       // Release before terminal handlers enqueue their post-write refreshes.
       operation.complete()
@@ -824,7 +824,7 @@ export const useAppStore = defineStore('app', () => {
         runtimeCoreUpdateTaskId.value = null
         corePlanWaiters.delete(taskId)
         waiter?.reject(new Error(runtimeCoreUpdateMessage.value))
-      } else if (event?.type === 'task_cancelled') {
+      } else if (event?.type === 'task.cancelled') {
         runtimeCoreUpdateStatus.value = 'cancelled'
         runtimeCoreUpdateTaskId.value = null
         corePlanWaiters.delete(taskId)
@@ -861,7 +861,7 @@ export const useAppStore = defineStore('app', () => {
     } else if (event?.type === 'runtime_install_failed' || event?.type === 'error') {
       runtimeInstallStatus.value = 'error'
       runtimeInstallMessage.value = event.payload?.message || 'Runtime installation failed'
-    } else if (event?.type === 'task_cancelled') {
+    } else if (event?.type === 'task.cancelled') {
       runtimeInstallStatus.value = 'cancelled'
     }
   }

@@ -41,8 +41,8 @@ _PROTOCOL_WRITE_LOCK = RLock()
 _LOG_CONTEXT: ContextVar[dict[str, Any]] = ContextVar("worker_log_context", default={})
 _LOG_TASK_ID: ContextVar[str | None] = ContextVar("worker_log_task_id", default=None)
 _LOG_EVENTS = {
-    "task_log": ("worker", "worker.infer"),
-    "download_log": ("worker", "worker.download"),
+    "task.log": ("worker", "worker.infer"),
+    "asset.log": ("worker", "worker.download"),
     "optional_package_log": ("third_party", "pip"),
     "runtime_install_log": ("third_party", "pip"),
     "runtime_core_update_log": ("third_party", "pip"),

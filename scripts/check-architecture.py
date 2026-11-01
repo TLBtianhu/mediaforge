@@ -1,10 +1,14 @@
 """架构不变量检查（docs/architecture-blueprint.md §3）。
 
-现在守四条：
+现在守八条：
   1. 引擎层（python/media_ops）不许 import app 层、音频层或 pymss；
-  2. media_ops 里出现的事件名必须在 manifest/protocol.json 里声明；
-  3. protocol.json 声明的 handler 必须真的存在于 worker 分发里；
-  4. capabilities 引用的每个模型都在 catalog 里，且有 size / url / licenseSpdx。
+  2. shared 层不许 import core / surfaces / media_ops；
+  3. core 层不许 import surfaces；
+  4. python/ 根目录只许白名单文件；
+  5. media_ops 里出现的事件名必须在 manifest/protocol.json 里声明；
+  6. 任何 emit() 都不许再用 task_* / download_* 这类历史事件名；
+  7. protocol.json 声明的 handler 必须真的存在于 worker 分发里；
+  8. capabilities 引用的每个模型都在 catalog 里，且有 size / url / licenseSpdx。
 
 退出码非 0 即视为不变量被破坏。放进 CI 与 check-command-surface.py 并列。
 """
@@ -193,6 +197,26 @@ def check_catalog_links() -> list[str]:
     return problems
 
 
+LEGACY_EVENT_PREFIXES = ("task_", "download_")
+
+
+def check_event_names() -> list[str]:
+    """流式事件必须是 <域>.<动词>：task_* / download_* 是历史写法，出现即违规。
+
+    只扫 emit() 的第一个字符串参数，命令结果型事件（models、env_info 等）不受影响。
+    """
+    problems: list[str] = []
+    pattern = re.compile(r"""emit\(\s*["']([A-Za-z_][A-Za-z0-9_.]*)["']""")
+    for path in python_files(PY):
+        text = path.read_text(encoding="utf-8")
+        for match in pattern.finditer(text):
+            name = match.group(1)
+            if name.startswith(LEGACY_EVENT_PREFIXES):
+                line = text[: match.start()].count("\n") + 1
+                problems.append(f"{path.relative_to(ROOT)}:{line} 事件名 {name} 是历史写法，应写成 task.* / asset.*")
+    return problems
+
+
 def main() -> int:
     manifest = load_manifest()
     results = {
@@ -201,6 +225,7 @@ def main() -> int:
         "core 依赖方向": check_core_direction(),
         "根目录白名单": check_root_allowlist(),
         "事件覆盖": check_event_coverage(manifest),
+        "事件命名": check_event_names(),
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),
     }

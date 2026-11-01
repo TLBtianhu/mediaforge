@@ -106,7 +106,7 @@ function handleEvent(event: WorkerEvent) {
       if (!busy.value) return
       if (!event.taskId || !acceptedIds.has(event.taskId)) {
         if (awaitingAcknowledgement) {
-          if (event.taskId && ['plugin_manage_result', 'error', 'task_cancelled'].includes(event.type)) {
+          if (event.taskId && ['plugin_manage_result', 'error', 'task.cancelled'].includes(event.type)) {
             earlyTerminals.set(event.taskId, event)
           } else {
             earlyEvents = [...earlyEvents, event].slice(-160)
@@ -124,7 +124,7 @@ function handleEvent(event: WorkerEvent) {
         finish()
       } else if (event.type === 'error') {
         finish(String(event.payload.message || 'Plugin operation failed'))
-      } else if (event.type === 'task_cancelled') {
+      } else if (event.type === 'task.cancelled') {
         // The next refresh recovers an interrupted publication before querying plugins.
         finish('Plugin operation cancelled')
       }

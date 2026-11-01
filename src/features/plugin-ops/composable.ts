@@ -77,7 +77,7 @@ async function start() {
       } else if (workerEvent.type === 'error') {
         pendingRun = undefined
         pending.reject(new Error(String(workerEvent.payload?.message || 'Operation failed')))
-      } else if (workerEvent.type === 'task_cancelled') {
+      } else if (workerEvent.type === 'task.cancelled') {
         pendingRun = undefined
         pending.reject(new Error('cancelled'))
       } else if (workerEvent.type === 'operation_progress') {

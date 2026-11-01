@@ -103,7 +103,7 @@ class NativeWorkflowBatchTests(unittest.TestCase):
         }
 
     def done(self):
-        return {call.kwargs["task_id"]: call.args[1] for call in self.events.call_args_list if call.args[0] == "task_done"}
+        return {call.kwargs["task_id"]: call.args[1] for call in self.events.call_args_list if call.args[0] == "task.done"}
 
     def test_same_model_is_loaded_once_across_nodes_and_files(self):
         self.assertEqual(worker_workflows.cmd_infer_workflow(self.payload()), 0)
@@ -120,7 +120,7 @@ class NativeWorkflowBatchTests(unittest.TestCase):
             audio, _rate = self.load_audio(outputs[0]["path"], sr=None, mono=False)
             self.np.testing.assert_allclose(audio, amplitude, atol=1e-6)
         progress = [call for call in self.events.call_args_list
-                    if call.args[0] == "task_progress" and "Batch separator progress" in call.args[1]["message"]]
+                    if call.args[0] == "task.progress" and "Batch separator progress" in call.args[1]["message"]]
         self.assertEqual([(call.kwargs["task_id"], call.args[1]["nodeId"]) for call in progress], [
             ("simple-batch-0", "step:step0"), ("simple-batch-0", "step:step1"),
             ("simple-batch-1", "step:step0"), ("simple-batch-1", "step:step1"),

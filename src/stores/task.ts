@@ -1460,15 +1460,15 @@ export const useTaskStore = defineStore('task', () => {
     if (!taskId) return
     const task = tasks.value.find((item) => item.id === taskId)
     if (!task) return
-    if (event.type === 'task_started') {
+    if (event.type === 'task.started') {
       setTaskStatus(taskId, 'preparing', 'Task started', 6)
-    } else if (event.type === 'task_stage') {
+    } else if (event.type === 'task.stage') {
       const stage = normalizeStatus(event.payload?.stage)
       setTaskStatus(taskId, stage, event.payload?.message || STAGE_META[stage].label, event.payload?.progress)
     } else if (event.type === 'workflow_execution') {
       // Native graph execution supplies explicit lifecycle events. Do not infer
       // node completion from a progress fraction: output collection still runs
-      // after execution_completed, and task_done remains the task terminal event.
+      // after execution_completed, and task.done remains the task terminal event.
       if (isTerminalTaskStatus(task.status) || task.runConfig?.runMode !== 'workflow') return
       const payload = event.payload || {}
       const executionEvent = typeof payload.event === 'string' ? payload.event : ''
@@ -1524,7 +1524,7 @@ export const useTaskStore = defineStore('task', () => {
       }
       touch(task)
       queueProgressPersist()
-    } else if (event.type === 'task_progress') {
+    } else if (event.type === 'task.progress') {
       // Terminal states are monotonic. A worker may flush a progress line after
       // cancellation or failure has already been observed; never resurrect it.
       if (isTerminalTaskStatus(task.status)) return
@@ -1564,7 +1564,7 @@ export const useTaskStore = defineStore('task', () => {
         : Math.max(task.progress || 0, resolvedProgress)
       touch(task)
       queueProgressPersist()
-    } else if (event.type === 'task_log' || event.type === 'worker_log') {
+    } else if (event.type === 'task.log' || event.type === 'worker_log') {
       const record = workerLogRecord(event)
       if ((record.level === 'debug' || record.level === 'trace') && !useSettingsStore().developerMode) return
       appendTaskLogs(task, record)
@@ -1608,7 +1608,7 @@ export const useTaskStore = defineStore('task', () => {
       }
       if (!recoverable) markTaskFinished(task)
       appendTaskLogs(task, errorRecord)
-    } else if (event.type === 'task_done') {
+    } else if (event.type === 'task.done') {
       if (isTerminalTaskStatus(task.status)) return
       task.status = 'done'
       markTaskStarted(task)
@@ -1640,7 +1640,7 @@ export const useTaskStore = defineStore('task', () => {
       touch(task)
       markTaskFinished(task, task.updatedAt)
       queuePersist()
-    } else if (event.type === 'task_cancelled') {
+    } else if (event.type === 'task.cancelled') {
       if (isTerminalTaskStatus(task.status)) return
       if (task.currentNodeId && task.nodeStates?.[task.currentNodeId]) task.nodeStates[task.currentNodeId].status = 'cancelled'
       appendWorkflowNodeLogs(task, task.currentNodeId, localLogRecord(event.payload?.message || 'Cancelled', 'task.cancelled', 'info', { taskId: task.id, nodeId: task.currentNodeId }))

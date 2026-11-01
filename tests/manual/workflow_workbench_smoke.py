@@ -168,7 +168,7 @@ with sync_playwright() as playwright:
     events = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
     for event in events:
         page.evaluate("async(event)=>{const {useTaskStore}=await import('/src/stores/task.ts');useTaskStore().handleWorkerEvent(event)}", event)
-    assert sum(event.get('type') == 'task_done' for event in events) == 2
+    assert sum(event.get('type') == 'task.done' for event in events) == 2
     page.locator('[data-workbench-run-panel]').get_by_role('button', name='日志与结果').click()
     expect(page.locator('[data-workbench-details] .log-console')).to_be_visible()
     page.locator('.workflow-run-details-modal .n-tabs-tab').filter(has_text='节点执行').click()
@@ -269,7 +269,7 @@ with sync_playwright() as playwright:
     advanced_events = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
     for event in advanced_events:
         page.evaluate("async(event)=>{const {useTaskStore}=await import('/src/stores/task.ts');useTaskStore().handleWorkerEvent(event)}", event)
-    completed = next(event for event in advanced_events if event['type'] == 'task_done')
+    completed = next(event for event in advanced_events if event['type'] == 'task.done')
     assert len(completed['payload']['outputs']) == 3
     paths = [Path(output['path']) for output in completed['payload']['outputs']]
     assert sum(path.parent == artifacts / 'output/single' for path in paths) == 1

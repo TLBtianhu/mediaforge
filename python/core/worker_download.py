@@ -31,7 +31,7 @@ _UNFETCHED_FILE_INDEX = object()
 def _emit_download_log(task_id: str | None, level: str, message: str, **extra: Any) -> None:
     payload: dict[str, Any] = {"level": level, "message": message}
     payload.update(extra)
-    emit("download_log", payload, task_id=task_id)
+    emit("asset.log", payload, task_id=task_id)
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -465,7 +465,7 @@ def cmd_download_model(payload: dict[str, Any]) -> int:
 
         entry, files = files_for_studio_model(model_name, model_dir)
         total_files = max(1, len(files))
-        emit("download_started", {
+        emit("asset.started", {
             "model": entry.name,
             "source": source,
             "force": force,
@@ -473,7 +473,7 @@ def cmd_download_model(payload: dict[str, Any]) -> int:
             "completedFiles": 0,
             "progress": 0,
         }, task_id=task_id)
-        emit("download_stage", {"stage": "resolving_files", "progress": 0}, task_id=task_id)
+        emit("asset.stage", {"stage": "resolving_files", "progress": 0}, task_id=task_id)
 
         # Fresh downloads can fall back to file counts when index metadata is unavailable.
         # Existing cache files require a successful lookup unless a fresh download is forced.
@@ -530,7 +530,7 @@ def cmd_download_model(payload: dict[str, Any]) -> int:
             last_emitted_files = completed_files
             last_emitted_metrics = metrics
             last_emitted_at = now
-            emit("download_progress", {
+            emit("asset.progress", {
                 "model": entry.name,
                 "completedFiles": completed_files,
                 "totalFiles": total_files,
@@ -540,7 +540,7 @@ def cmd_download_model(payload: dict[str, Any]) -> int:
                 "progress": progress,
             }, task_id=task_id)
 
-        emit("download_stage", {
+        emit("asset.stage", {
             "stage": "downloading_files",
             "progress": 0,
             "message": "Downloading model files",
@@ -611,12 +611,12 @@ def cmd_download_model(payload: dict[str, Any]) -> int:
 
     downloaded = [str(item) for item in (result.get("downloaded") or [])]
     skipped = [str(item) for item in (result.get("skipped") or [])]
-    emit("download_stage", {
+    emit("asset.stage", {
         "stage": "verifying",
         "progress": 97,
         "message": "Verifying downloaded files",
     }, task_id=task_id)
-    emit("download_done", {
+    emit("asset.done", {
         "model": entry.name,
         "downloaded": downloaded,
         "skipped": skipped,

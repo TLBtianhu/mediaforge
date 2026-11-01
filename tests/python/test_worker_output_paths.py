@@ -111,7 +111,7 @@ class WorkerOutputPathTests(unittest.TestCase):
                 self.assertEqual(run.call_count, 2 if batch else 1)
                 for call in run.call_args_list:
                     self.assertEqual(Path(call.kwargs["output_dir"]), expected)
-                completed = [call for call in emit.call_args_list if call.args[0] == "task_done"]
+                completed = [call for call in emit.call_args_list if call.args[0] == "task.done"]
                 self.assertEqual(len(completed), 2 if batch else 1)
                 for call in completed:
                     self.assertEqual(Path(call.args[1]["outputRoot"]), expected)
@@ -154,7 +154,7 @@ class WorkerOutputPathTests(unittest.TestCase):
                      mock.patch.object(worker_infer, "_prepare_separator", return_value=separator), \
                      mock.patch.object(worker_infer, "emit") as emit:
                     self.assertEqual(worker_infer.cmd_infer(payload), 0)
-                completed = [call for call in emit.call_args_list if call.args[0] == "task_done"]
+                completed = [call for call in emit.call_args_list if call.args[0] == "task.done"]
                 self.assertEqual(len(completed), 1)
                 result = completed[0].args[1]
                 self.assertEqual(Path(result["outputDir"]), target.resolve())

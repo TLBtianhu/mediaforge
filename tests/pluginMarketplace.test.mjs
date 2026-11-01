@@ -127,7 +127,7 @@ test('cancel does not claim completion when a terminal event is already queued',
   globalThis.__pluginInvoke = async command => command === 'cancel_task' ? false : empty()
   await market.cancel()
   assert.equal(market.busy.value, true)
-  event('task_cancelled')
+  event('task.cancelled')
   await rejected
   assert.equal(market.busy.value, false)
 })

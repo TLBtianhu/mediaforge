@@ -264,7 +264,7 @@ onMounted(async () => {
         message.error(status.value)
         requestId.value = ''
       }
-      if (payload?.type === 'task_cancelled') {
+      if (payload?.type === 'task.cancelled') {
         busy.value = false
         status.value = 'Cancelled'
         journal('cancelled', 0, status.value)

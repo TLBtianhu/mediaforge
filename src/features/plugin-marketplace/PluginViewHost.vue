@@ -166,7 +166,7 @@ onMounted(async () => {
         if (workerEvent.type === 'operation_result') {
           runRequests.delete(requestId)
           handlers.resolve(workerEvent.payload)
-        } else if (workerEvent.type === 'error' || workerEvent.type === 'task_cancelled') {
+        } else if (workerEvent.type === 'error' || workerEvent.type === 'task.cancelled') {
           runRequests.delete(requestId)
           handlers.reject(new Error(String(workerEvent.payload?.message || workerEvent.type)))
         } else if (workerEvent.type === 'operation_progress') {

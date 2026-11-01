@@ -1951,7 +1951,7 @@ export const useEditorStore = defineStore('editor', () => {
           return
         }
 
-        if (workerEvent.type === 'task_cancelled') {
+        if (workerEvent.type === 'task.cancelled') {
           pendingExport = null
           pending.reject(new EditorExportCancelledError())
           return

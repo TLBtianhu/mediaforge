@@ -24,7 +24,7 @@ export function isDiagnosticIssueEvent(event: { type?: string; payload?: unknown
     return /(?:^|_)failed$/i.test(String(payload.event || ''))
   }
   const record = payload.logRecord && typeof payload.logRecord === 'object' ? payload.logRecord as Record<string, unknown> : payload
-  return ['task_log', 'worker_log', 'download_log', 'optional_package_log', 'runtime_install_log', 'runtime_core_update_log'].includes(String(event.type))
+  return ['task.log', 'worker_log', 'asset.log', 'optional_package_log', 'runtime_install_log', 'runtime_core_update_log'].includes(String(event.type))
     && ['warn', 'warning', 'error', 'fatal', 'critical'].includes(String(record.level || '').toLowerCase())
 }
 

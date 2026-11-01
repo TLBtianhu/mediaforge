@@ -391,7 +391,7 @@ export function createAudioToolRuntime(): AudioToolRuntime {
           }
           return
         }
-        if (workerEvent.type === 'task_cancelled') {
+        if (workerEvent.type === 'task.cancelled') {
           if (pending && eventId === pending.id) {
             pendingRequest = undefined
             pending.reject(new AudioToolCancelledError('Audio tool task cancelled'))

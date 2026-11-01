@@ -45,7 +45,7 @@ class JsonLogHandler(ProtocolLogHandler):
         task_id_provider: Any = None,
     ) -> None:
         super().__init__(
-            event_type="task_log",
+            event_type="task.log",
             task_id=task_id,
             task_id_provider=task_id_provider,
             node_id_provider=node_id_provider,
@@ -618,17 +618,17 @@ def _prepare_separator(
     )
     audio_params = normalize_audio_params(payload.get("audioParams"))
 
-    emit("task_log", {
+    emit("task.log", {
         "level": "info",
         "message": f"Runtime device: {resolved_device_label} (device_ids={device_ids})",
     }, task_id=task_id)
 
     if download:
-        emit("task_stage", {"stage": "downloading_model", "message": "Checking model files"}, task_id=task_id)
+        emit("task.stage", {"stage": "downloading_model", "message": "Checking model files"}, task_id=task_id)
     else:
-        emit("task_stage", {"stage": "ensuring_model", "message": "Checking model files"}, task_id=task_id)
+        emit("task.stage", {"stage": "ensuring_model", "message": "Checking model files"}, task_id=task_id)
     StudioMSSeparator = _studio_separator_type()
-    emit("task_stage", {"stage": "loading_model", "message": "Loading model"}, task_id=task_id)
+    emit("task.stage", {"stage": "loading_model", "message": "Loading model"}, task_id=task_id)
     try:
         resolved = _resolve_studio_model(model_name, model_dir, require_supported=True, require_exists=True)
     except Exception as resolve_exc:
@@ -637,7 +637,7 @@ def _prepare_separator(
         from pymss import model_download as pymss_model_download  # type: ignore
         from pymss.model_download import download_model  # type: ignore
         from core.worker_download import download_studio_model, effective_proxy_url, files_for_studio_model, prepare_pymss_download
-        emit("task_stage", {"stage": "downloading_model", "message": "Downloading model files"}, task_id=task_id)
+        emit("task.stage", {"stage": "downloading_model", "message": "Downloading model files"}, task_id=task_id)
         try:
             prepare_pymss_download(pymss_model_download, task_id, download_model, download_method)
             _entry, files = files_for_studio_model(model_name, model_dir)
@@ -899,7 +899,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
         for task_id in targets:
             if not task_id:
                 continue
-            emit("task_progress", {
+            emit("task.progress", {
                 "stage": "separating",
                 "message": safe_message,
                 "done": done_value,
@@ -910,8 +910,8 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
         Path(output_root).mkdir(parents=True, exist_ok=True)
         for item in batch_tasks:
             task_output = resolve_pymss_output_dir(output_root, [], item["input"], save_as_folder)
-            emit("task_started", {"model": payload.get("model"), "input": item["input"], "output": task_output}, task_id=item["taskId"])
-            emit("task_stage", {"stage": "validating_input", "message": "Validating input"}, task_id=item["taskId"])
+            emit("task.started", {"model": payload.get("model"), "input": item["input"], "output": task_output}, task_id=item["taskId"])
+            emit("task.stage", {"stage": "validating_input", "message": "Validating input"}, task_id=item["taskId"])
         logger = cleanup.enter_context(separation_logging(
             root_task_id,
             task_id_provider=current_log_task_id,
@@ -928,7 +928,7 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
             task_id = item["taskId"]
             active_task_id = task_id
             with task_logging(task_id):
-                emit("task_stage", {"stage": "separating", "message": "Separating"}, task_id=task_id)
+                emit("task.stage", {"stage": "separating", "message": "Separating"}, task_id=task_id)
                 success_files = backend.separate(item["input"], int(item.get("inputIndex") or 1))
                 if Path(item["input"]).name not in {Path(name).name for name in success_files}:
                     emit_error("INFERENCE_FAILED", f"Batch separation did not produce outputs for {Path(item['input']).name}", task_id=task_id)
@@ -936,9 +936,9 @@ def cmd_infer_batch(payload: dict[str, Any]) -> int:
                     failed = True
                     continue
                 task_output = resolve_pymss_output_dir(output_root, success_files, item["input"], save_as_folder)
-                emit("task_stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
+                emit("task.stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
                 outputs = backend.outputs()
-                emit("task_done", {
+                emit("task.done", {
                     "files": [output["path"] for output in outputs],
                     "outputs": outputs,
                     "outputDir": str(Path(task_output).resolve()),
@@ -1003,7 +1003,7 @@ def cmd_infer(payload: dict[str, Any]) -> int:
         last_reported_done = done_value
         last_reported_total = total_value
         last_progress_message = safe_message
-        emit("task_progress", {
+        emit("task.progress", {
             "stage": "separating",
             "message": safe_message,
             "done": done_value,
@@ -1013,8 +1013,8 @@ def cmd_infer(payload: dict[str, Any]) -> int:
     backend = None
     cleanup = ExitStack()
     try:
-        emit("task_started", {"model": model_name, "input": input_path, "output": task_output}, task_id=task_id)
-        emit("task_stage", {"stage": "validating_input", "message": "Validating input"}, task_id=task_id)
+        emit("task.started", {"model": model_name, "input": input_path, "output": task_output}, task_id=task_id)
+        emit("task.stage", {"stage": "validating_input", "message": "Validating input"}, task_id=task_id)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         logger = cleanup.enter_context(separation_logging(task_id))
@@ -1031,14 +1031,14 @@ def cmd_infer(payload: dict[str, Any]) -> int:
             logger=logger,
         ))
         backend.prepare()
-        emit("task_stage", {"stage": "separating", "message": "Separating"}, task_id=task_id)
+        emit("task.stage", {"stage": "separating", "message": "Separating"}, task_id=task_id)
         success_files = backend.separate(input_path, int(payload.get("inputIndex") or 1))
         if Path(input_path).name not in {Path(name).name for name in success_files}:
             return emit_error("INFERENCE_FAILED", f"Separation did not produce outputs for {Path(input_path).name}", task_id=task_id)
-        emit("task_stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
+        emit("task.stage", {"stage": "writing_output", "message": "Collecting outputs"}, task_id=task_id)
         task_output = resolve_pymss_output_dir(output_dir, success_files, input_path, save_as_folder)
         outputs = backend.outputs()
-        emit("task_done", {"files": [output["path"] for output in outputs], "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputRoot": output_dir, "outputFormat": output_format}, task_id=task_id)
+        emit("task.done", {"files": [output["path"] for output in outputs], "outputs": outputs, "outputDir": str(Path(task_output).resolve()), "outputRoot": output_dir, "outputFormat": output_format}, task_id=task_id)
         return 0
     except ModelNotFoundError as exc:
         return emit_error("MODEL_NOT_FOUND", str(exc), traceback.format_exc(), task_id=task_id)

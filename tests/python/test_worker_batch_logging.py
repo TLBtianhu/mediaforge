@@ -71,7 +71,7 @@ class BatchLogAttributionTests(unittest.TestCase):
     def assert_attribution(self, events):
         by_message = {}
         for event in events:
-            if event["type"] in {"worker_log", "task_log"}:
+            if event["type"] in {"worker_log", "task.log"}:
                 message = event["payload"]["message"]
                 self.assertNotIn(message, by_message, f"Duplicate log: {message}")
                 by_message[message] = event

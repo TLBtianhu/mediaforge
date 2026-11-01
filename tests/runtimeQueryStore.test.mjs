@@ -324,7 +324,7 @@ test('Linux dispatches runtime installation through the existing task queue', as
   assert.ok(calls.includes('start_runtime_install'))
   assert.equal(app.runtimeInstallBackend, 'rocm')
   assert.equal(app.runtimeInstallStatus, 'installing')
-  app.handleRuntimeEvent({ type: 'task_cancelled', taskId })
+  app.handleRuntimeEvent({ type: 'task.cancelled', taskId })
   app.$dispose()
 })
 
@@ -406,7 +406,7 @@ for (const action of [
       assert.equal(app.envLoading, false)
       assert.equal((await within(persisted.promise, 'saved GPU preference')).defaultDevice, 'cuda:1')
     } finally {
-      if (taskId) app.handleRuntimeEvent({ type: 'task_cancelled', taskId })
+      if (taskId) app.handleRuntimeEvent({ type: 'task.cancelled', taskId })
       stop()
       await within(persisted.promise, 'pending settings persistence')
       settings.$dispose()
@@ -432,7 +432,7 @@ for (const action of [
     assert.equal(app.envInfo.torchBackend, 'cuda')
   })
 
-  for (const terminal of [action.failed, 'task_cancelled']) {
+  for (const terminal of [action.failed, 'task.cancelled']) {
     test(`${action.label} ${terminal} restores loading state and permits a fresh probe`, async () => {
       let requestId
       const refreshed = deferred()
@@ -473,7 +473,7 @@ for (const action of [
     await app.checkEnvInBackground()
     const taskId = await within(action.start(app), `${action.label} ACK`)
     const probe = app.checkEnv()
-    app.handleRuntimeEvent({ type: 'task_cancelled', taskId })
+    app.handleRuntimeEvent({ type: 'task.cancelled', taskId })
     await within(probing.promise, 'probe after mutation cleanup')
     assert.equal(app.envLoading, true)
     app.handleWorkerEvent({ type: 'env_info', requestId, payload: { torchBackend: 'cpu' } })
@@ -897,7 +897,7 @@ test('a terminal event for another task does not release a background write', as
   app.handleRuntimeEvent({ type: 'error', taskId: 'another-task', payload: { message: 'other failed' } })
   await Promise.resolve()
   assert.equal(queried, false)
-  app.handleRuntimeEvent({ type: 'task_cancelled', taskId, payload: {} })
+  app.handleRuntimeEvent({ type: 'task.cancelled', taskId, payload: {} })
   await within(query, 'query after matching terminal event')
   assert.equal(queried, true)
 })
@@ -1027,7 +1027,7 @@ test('discarding an old plan cannot clear a newer prepared plan or an active app
   const applyId = await app.updateRuntimeCore('cpu', 'pypi', '', { planId: nextPlan.id })
   assert.equal(app.discardRuntimeCorePlan(nextPlan.id), false)
   assert.equal(app.runtimeCoreUpdateStatus, 'updating')
-  app.handleRuntimeEvent({ type: 'task_cancelled', taskId: applyId })
+  app.handleRuntimeEvent({ type: 'task.cancelled', taskId: applyId })
   await app.checkRuntimeInfo()
   app.$dispose()
 })
@@ -1046,7 +1046,7 @@ test('a core operation invalidates version comparisons that were already in flig
   oldComparison.resolve({ packages: { pymss: { currentVersion: '2.1.8', latestVersion: '2.1.9', updateAvailable: true } } })
   await old
   assert.equal(app.runtimeCoreVersions, null)
-  app.handleRuntimeEvent({ type: 'task_cancelled', taskId })
+  app.handleRuntimeEvent({ type: 'task.cancelled', taskId })
   await app.checkRuntimeInfo()
   app.$dispose()
 })
@@ -1121,7 +1121,7 @@ test('a plan completion before its start ACK settles the waiter without dispatch
   app.$dispose()
 })
 
-for (const terminal of ['error', 'task_cancelled']) {
+for (const terminal of ['error', 'task.cancelled']) {
   test(`planning ${terminal} rejects its waiter and releases following queries`, async () => {
     const started = deferred()
     const app = appStore(async command => {
@@ -1274,7 +1274,7 @@ test('background start waits for worker-event registration before dispatching', 
   registered.resolve()
   const taskId = await within(start, 'install after event registration')
   assert.deepEqual(calls, ['start_runtime_install'])
-  app.handleRuntimeEvent({ type: 'task_cancelled', taskId, payload: {} })
+  app.handleRuntimeEvent({ type: 'task.cancelled', taskId, payload: {} })
 })
 
 test('worker-event registration failure prevents dispatch and releases the queue', async () => {

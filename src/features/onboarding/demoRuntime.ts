@@ -74,9 +74,9 @@ export function createDemoRuntime(config: DemoConfig) {
   }
   const worker = (type: string, taskId: string, payload: unknown) => emit('pymss://worker-event', { type, taskId, payload })
   function startTask(payload: any) {
-    for (let index = 1; index <= 5; index++) later(() => worker('task_progress', payload.taskId,
+    for (let index = 1; index <= 5; index++) later(() => worker('task.progress', payload.taskId,
       { stage: 'separating', done: index, total: 5, unit: 'seconds' }), index * 180)
-    later(() => worker('task_done', payload.taskId, { outputDir: output, outputRoot: output, outputs, files: outputs.map(item => item.path) }), 1100)
+    later(() => worker('task.done', payload.taskId, { outputDir: output, outputRoot: output, outputs, files: outputs.map(item => item.path) }), 1100)
     return { taskId: payload.taskId, started: true }
   }
   function projectFor(id: string) {
@@ -127,7 +127,7 @@ export function createDemoRuntime(config: DemoConfig) {
     if (command === 'scan_media_paths') return { files: [input], warnings: [] }
     if (['pick_input_folder', 'pick_output_folder', 'pick_output_dir', 'pick_model_dir'].includes(command)) return output
     if (command === 'start_separation' || command === 'start_workflow_inference') return startTask(payload)
-    if (command === 'cancel_task') { worker('task_cancelled', args.taskId, {}); return true }
+    if (command === 'cancel_task') { worker('task.cancelled', args.taskId, {}); return true }
     if (command === 'get_workflow_editors') return { revision: 0, editors: [] }
     if (command === 'mutate_workflow_store') {
       const state = copy(stores.get('workflow-state') || { workflows: [], selectedWorkflowId: '' })

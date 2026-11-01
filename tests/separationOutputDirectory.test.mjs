@@ -301,7 +301,7 @@ for (const mode of ['model', 'workflow']) {
     const original = submitted.tasks[0]
     const savedDirectory = 'E:/OldWorkingDirectory/delivery/song'
     task.handleWorkerEvent({
-      type: 'task_done', taskId: original.id,
+      type: 'task.done', taskId: original.id,
       payload: { outputDir: savedDirectory, files: [], outputs: [] },
     })
     assert.equal(original.jobOutput, 'delivery')
@@ -320,7 +320,7 @@ for (const mode of ['model', 'workflow']) {
     const submitted = await submit(task, { outputDir: 'D:/OutputAlias', outputLayout: 'folders' })
     const original = submitted.tasks[0]
     task.handleWorkerEvent({
-      type: 'task_done', taskId: original.id,
+      type: 'task.done', taskId: original.id,
       payload: { outputRoot: 'E:/PhysicalOutput', outputDir: 'E:/PhysicalOutput/song', files: [], outputs: [] },
     })
     const retried = await task.retryTask(original.id)
@@ -345,7 +345,7 @@ for (const mode of ['model', 'workflow']) {
       const submitted = await submit(task, { outputDir: 'delivery', outputLayout: 'folders' })
       const original = submitted.tasks[0]
       task.handleWorkerEvent({
-        type: 'task_done', taskId: original.id,
+        type: 'task.done', taskId: original.id,
         payload: { outputDir: joined, files: [], outputs: [] },
       })
       const retried = await task.retryTask(original.id)
@@ -362,13 +362,13 @@ for (const mode of ['model', 'workflow']) {
       const original = submitted.tasks[0]
       const payload = { outputDir: 'E:/Archive/renamed-song', files: [], outputs: [] }
       if (reportRoot) payload.outputRoot = 'E:/Outputs'
-      task.handleWorkerEvent({ type: 'task_done', taskId: original.id, payload })
+      task.handleWorkerEvent({ type: 'task.done', taskId: original.id, payload })
       await waitForSave()
       const restarted = await newStore()
       const retried = await restarted.retryTask(original.id)
       assert.equal(retried.jobOutput, 'E:/Outputs')
       assert.equal(retried.output, 'E:/Outputs/song')
-      restarted.handleWorkerEvent({ type: 'task_done', taskId: retried.id, payload })
+      restarted.handleWorkerEvent({ type: 'task.done', taskId: retried.id, payload })
       assert.equal(retried.output, original.output)
     })
   }
@@ -378,7 +378,7 @@ for (const mode of ['model', 'workflow']) {
     const task = await newStore()
     const original = (await submit(task, { outputDir: 'delivery', outputLayout: 'folders' })).tasks[0]
     task.handleWorkerEvent({
-      type: 'task_done', taskId: original.id,
+      type: 'task.done', taskId: original.id,
       payload: { outputDir: 'E:/Archive/renamed-song', files: [], outputs: [] },
     })
     const count = task.tasks.length
@@ -398,7 +398,7 @@ for (const mode of ['model', 'workflow']) {
         const outputDir = outputLayout === 'folders' ? `${outputRoot}/ song ` : outputRoot
         const output = { stem: 'vocals', path: `${outputDir}/vocals.wav` }
         task.handleWorkerEvent({
-          type: 'task_done', taskId: original.id,
+          type: 'task.done', taskId: original.id,
           payload: { outputRoot, outputDir, files: [output.path], outputs: [output] },
         })
         await waitForSave()
@@ -428,7 +428,7 @@ for (const mode of ['model', 'workflow']) {
         const savedDirectory = `${root}/${stem}`
         assert.equal(original.output, savedDirectory)
         task.handleWorkerEvent({
-          type: 'task_done', taskId: original.id,
+          type: 'task.done', taskId: original.id,
           payload: { outputDir: savedDirectory, files: [], outputs: [] },
         })
         const retried = await task.retryTask(original.id)
@@ -447,7 +447,7 @@ for (const mode of ['model', 'workflow']) {
       const original = submitted.tasks[0]
       const savedDirectory = `/tmp/results/AC${separator}DC`
       task.handleWorkerEvent({
-        type: 'task_done', taskId: original.id,
+        type: 'task.done', taskId: original.id,
         payload: { outputDir: savedDirectory, files: [], outputs: [] },
       })
       await waitForSave()
@@ -611,7 +611,7 @@ test('rejected batches free Worker slots without duplicate starts or starving la
   task.scheduleQueue()
   assert.equal(calls.length, 2)
   for (const id of ['first-0', 'first-1']) {
-    task.handleWorkerEvent({ type: 'task_done', taskId: id, payload: { outputDir: 'D:/Outputs', files: [], outputs: [] } })
+    task.handleWorkerEvent({ type: 'task.done', taskId: id, payload: { outputDir: 'D:/Outputs', files: [], outputs: [] } })
   }
   assert.deepEqual(calls.map(call => call.taskId), ['first-0', 'second-0', 'third-0'])
   assert.ok(task.tasks.filter(item => item.jobId === 'third').every(item => item.status === 'preparing'))
@@ -661,7 +661,7 @@ for (const platform of ['linux', 'darwin']) {
     const root = '/tmp/results\\'
     const original = (await task.startWorkflowInference(workflow, { outputDir: root, outputLayout: 'folders' })).tasks[0]
     original.outputPrefix = undefined
-    task.handleWorkerEvent({ type: 'task_done', taskId: original.id,
+    task.handleWorkerEvent({ type: 'task.done', taskId: original.id,
       payload: { outputDir: root, outputRoot: root, files: ['vocals.wav', 'parts/voice.flac', 'tail.wav ', 'AC\\DC.wav', 'song.mix_vocals.wav', '../input.wav'], outputs: [] } })
     const expected = [`${root}/vocals.wav`, `${root}/parts/voice.flac`, `${root}/tail.wav `, `${root}/AC\\DC.wav`, `${root}/song.mix_vocals.wav`]
     assert.deepEqual(original.outputs.map(output => output.path), expected)

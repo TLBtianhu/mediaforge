@@ -180,8 +180,8 @@ python/
   media_ops/           引擎：算子、加载器、管线
 ```
 
-检查器守住七条：引擎方向、shared 方向、core 方向、根目录白名单、
-事件覆盖、handler 存在性、catalog 关联。worker 里不再有命令 if 链。
+检查器守住八条：引擎方向、shared 方向、core 方向、根目录白名单、
+事件覆盖、事件命名（拒绝 task_* / download_*）、handler 存在性、catalog 关联。worker 里不再有命令 if 链。
 
 ## 7. 巨文件拆分进度（0.0.23 之后）
 

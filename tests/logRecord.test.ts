@@ -100,7 +100,7 @@ test('operation previews keep runtime snapshots in details while exposing the se
 })
 
 test('the collector record is shared between event and node log and duplicate delivery does not append twice', () => {
-  const record = workerLogRecord({ type: 'task_log', taskId: 'task-a', payload: { level: 'warning', message: 'outer', logRecord: sample } })
+  const record = workerLogRecord({ type: 'task.log', taskId: 'task-a', payload: { level: 'warning', message: 'outer', logRecord: sample } })
   assert.equal(record.message, sample.message)
   assert.equal(record.level, 'info')
   const target = { nodeLogs: {} }

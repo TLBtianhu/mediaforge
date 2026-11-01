@@ -34,7 +34,7 @@ function setup() {
   })
   return {
     task,
-    progress: payload => handle({ type: 'task_progress', taskId: task.id, payload: { stage: 'separating', ...payload } }),
+    progress: payload => handle({ type: 'task.progress', taskId: task.id, payload: { stage: 'separating', ...payload } }),
     execution: payload => handle({ type: 'workflow_execution', taskId: task.id, payload }),
     event: (type, payload) => handle({ type, taskId: task.id, payload }),
   }
@@ -100,11 +100,11 @@ test('only explicit node ids route logs, even while another node is active', () 
   progress({ nodeId: 'first', nodeProgress: 0, message: 'Loading audio' })
   progress({ nodeId: 'first', nodeProgress: .2, message: 'Loading audio' })
   assert.equal(task.nodeLogs.first.length, 1)
-  event('task_log', { message: 'Unattributed stderr', level: 'warning' })
+  event('task.log', { message: 'Unattributed stderr', level: 'warning' })
   assert.equal(task.nodeLogs.first.length, 1)
   assert.equal(task.logs[0].message, 'Unattributed stderr')
   assert.equal(task.logs[0].level, 'warn')
-  event('task_log', { nodeId: 'second', message: 'Model log', level: 'info' })
+  event('task.log', { nodeId: 'second', message: 'Model log', level: 'info' })
   assert.equal(task.nodeLogs.second[0].message, 'Model log')
   assert.equal(task.nodeLogs.second[0].level, 'info')
 })
@@ -121,7 +121,7 @@ test('failed nodes retain their progress, diagnostics and tracebacks', () => {
 test('node cancellation is recorded and late progress cannot overwrite it', () => {
   const { task, progress, event } = setup()
   progress({ nodeId: 'first', nodeProgress: .4, message: 'Processing audio' })
-  event('task_cancelled', { message: 'Cancelled by user' })
+  event('task.cancelled', { message: 'Cancelled by user' })
   progress({ nodeId: 'first', nodeProgress: 1, message: 'Completed' })
   assert.equal(task.nodeStates.first.status, 'cancelled')
   assert.equal(task.nodeLogs.first.at(-1).message, 'Cancelled by user')
@@ -176,7 +176,7 @@ test('workflow execution ignores non-second counters and late events after cance
   execution({ version: 1, event: 'node_progress', nodeId: 'split', nodeProgress: .5, overallFraction: .5, done: 2, total: 5, unit: 'seconds' })
   assert.equal(task.progressCurrent, 2)
   assert.equal(task.progressTotal, 5)
-  event('task_cancelled', { message: 'Cancelled' })
+  event('task.cancelled', { message: 'Cancelled' })
   execution({ version: 1, event: 'node_completed', nodeId: 'split', overallFraction: 1, message: 'Late success' })
   assert.equal(task.status, 'cancelled')
   assert.equal(task.nodeStates.split.status, 'cancelled')

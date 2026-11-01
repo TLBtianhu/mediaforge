@@ -66,7 +66,7 @@ function environment({ startGate, cancelAccepted = true, nativeRenderGate } = {}
         if (command === 'cancel_editor_mix_export') {
           if (cancelAccepted) {
             dispatch('pymss://worker-event', {
-              type: 'task_cancelled', taskId: args.taskId, payload: { message: 'Cancelled' },
+              type: 'task.cancelled', taskId: args.taskId, payload: { message: 'Cancelled' },
             })
           }
           return cancelAccepted

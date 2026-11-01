@@ -68,31 +68,31 @@ test('issue filtering recognizes workflow failures while cancellation remains in
 
 test('issue filtering recognizes Python logging severity even when the task succeeds', () => {
   for (const level of ['warning', 'warn', 'error', 'critical', 'fatal', 'ERROR']) {
-    assert.equal(isDiagnosticIssueEvent({ type: 'task_log', payload: { level, message: 'Decoder fallback' } }), true, level)
+    assert.equal(isDiagnosticIssueEvent({ type: 'task.log', payload: { level, message: 'Decoder fallback' } }), true, level)
   }
 })
 
 test('download warnings remain visible after a successful fallback', () => {
   const events = [
-    { type: 'download_log', payload: { level: 'warning', message: 'aria2c failed; retrying with urllib' } },
-    { type: 'download_done', payload: { model: 'voice.ckpt', downloaded: ['D:/models/voice.ckpt'] } },
+    { type: 'asset.log', payload: { level: 'warning', message: 'aria2c failed; retrying with urllib' } },
+    { type: 'asset.done', payload: { model: 'voice.ckpt', downloaded: ['D:/models/voice.ckpt'] } },
   ]
   assert.equal(isDiagnosticIssueEvent(events[0]), true)
   assert.equal(events.some(isDiagnosticIssueEvent), true)
 })
 
 test('download log severity excludes normal messages and retains errors', () => {
-  assert.equal(isDiagnosticIssueEvent({ type: 'download_log', payload: { level: 'error', message: 'Download failed' } }), true)
-  assert.equal(isDiagnosticIssueEvent({ type: 'download_log', payload: { level: 'info', message: 'No error detected' } }), false)
-  assert.equal(isDiagnosticIssueEvent({ type: 'download_log', payload: { level: 'debug', message: 'Retry state' } }), false)
+  assert.equal(isDiagnosticIssueEvent({ type: 'asset.log', payload: { level: 'error', message: 'Download failed' } }), true)
+  assert.equal(isDiagnosticIssueEvent({ type: 'asset.log', payload: { level: 'info', message: 'No error detected' } }), false)
+  assert.equal(isDiagnosticIssueEvent({ type: 'asset.log', payload: { level: 'debug', message: 'Retry state' } }), false)
 })
 
 test('issue filtering preserves terminal error events and excludes normal progress', () => {
   assert.equal(isDiagnosticIssueEvent({ type: 'error', payload: { code: 'INVALID_INPUT' } }), true)
-  assert.equal(isDiagnosticIssueEvent({ type: 'task_cancelled' }), false)
-  assert.equal(isDiagnosticIssueEvent({ type: 'task_log', payload: { level: 'info', message: 'No error detected' } }), false)
+  assert.equal(isDiagnosticIssueEvent({ type: 'task.cancelled' }), false)
+  assert.equal(isDiagnosticIssueEvent({ type: 'task.log', payload: { level: 'info', message: 'No error detected' } }), false)
   assert.equal(isDiagnosticIssueEvent({ type: 'workflow_execution', payload: { event: 'node_completed' } }), false)
   assert.equal(isDiagnosticIssueEvent({ type: 'workflow_execution', payload: { event: 'node_skipped' } }), false)
-  assert.equal(isDiagnosticIssueEvent({ type: 'task_done' }), false)
-  assert.equal(isDiagnosticIssueEvent({ type: 'task_log', payload: null }), false)
+  assert.equal(isDiagnosticIssueEvent({ type: 'task.done' }), false)
+  assert.equal(isDiagnosticIssueEvent({ type: 'task.log', payload: null }), false)
 })

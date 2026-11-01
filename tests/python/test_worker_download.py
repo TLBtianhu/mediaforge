@@ -310,7 +310,7 @@ class DownloadCacheIntegrityTest(unittest.TestCase):
         self.fetch.assert_called_once_with(timeout=30, proxy="")
         self.assertEqual(self.download_calls, [])
         self.assertEqual(self.dest.read_bytes(), b"truncated")
-        self.assertFalse(any(call.args[0] == "download_done" for call in self.events.call_args_list))
+        self.assertFalse(any(call.args[0] == "asset.done" for call in self.events.call_args_list))
         self.model_info.assert_not_called()
         self.assertIn("cached", self.failures.call_args.args[1].lower())
 
@@ -331,7 +331,7 @@ class DownloadCacheIntegrityTest(unittest.TestCase):
 
         self.assertEqual(self.download_calls, [self.dest])
         self.assertEqual(self.dest.read_bytes(), self.payload)
-        self.assertTrue(any(call.args[0] == "download_done" for call in self.events.call_args_list))
+        self.assertTrue(any(call.args[0] == "asset.done" for call in self.events.call_args_list))
 
     def test_explicit_unverified_modes_keep_existing_cache_semantics(self):
         self.dest.write_bytes(self.payload)
@@ -451,7 +451,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
 
         def emit(event, payload, **kwargs):
             self.events.append((event, dict(payload), kwargs.get("task_id"), self.now))
-            if event == "download_progress":
+            if event == "asset.progress":
                 self.progress_updates.put(dict(payload))
 
         self.enterContext(mock.patch("core.worker_download.emit", side_effect=emit))
@@ -476,8 +476,8 @@ class DownloadCommandProgressTest(unittest.TestCase):
         progress = [payload["progress"] for _, payload, _, _ in self.events if "progress" in payload]
         self.assertEqual(progress, sorted(progress), "preparation and transfer must not move backwards")
         self.assertEqual(progress[-3:], [95, 97, 100])
-        self.assertTrue(all(payload["progress"] <= 95 for event, payload, _, _ in self.events if event == "download_progress"))
-        self.assertEqual(self.events[-1][0], "download_done")
+        self.assertTrue(all(payload["progress"] <= 95 for event, payload, _, _ in self.events if event == "asset.progress"))
+        self.assertEqual(self.events[-1][0], "asset.done")
 
     def test_known_size_command_starts_at_zero_and_reserves_completion_stages(self):
         self.sizes = {"model.bin": 1000}
@@ -488,7 +488,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
             dest.write_bytes(b"x" * 1000)
 
         self.run_command([("model.bin", self.root / "model.bin")], download)
-        stages = [payload["progress"] for event, payload, _, _ in self.events if event == "download_stage"]
+        stages = [payload["progress"] for event, payload, _, _ in self.events if event == "asset.stage"]
         self.assertEqual(stages, [0, 0, 97])
         self.assert_completion_stages()
 
@@ -505,13 +505,13 @@ class DownloadCommandProgressTest(unittest.TestCase):
 
         self.run_command([("model.bin", self.root / "model.bin")], download)
         sampled = [(payload, at) for event, payload, _, at in self.events
-                   if event == "download_progress" and payload["completedFiles"] == 0]
+                   if event == "asset.progress" and payload["completedFiles"] == 0]
         self.assertEqual([payload["aggregateDownloadedBytes"] for payload, _ in sampled], [0, 300, 500, 500])
         self.assertTrue(all(payload["progress"] == 0 and payload["aggregateTotalBytes"] == 0 for payload, _ in sampled))
         self.assertTrue(all(right[1] - left[1] >= 1 for left, right in zip(sampled, sampled[1:])))
         self.assertGreater(sampled[1][0]["speedBytesPerSecond"], 0)
         self.assertEqual(sampled[-1][0]["speedBytesPerSecond"], 0)
-        settled = [payload for event, payload, _, _ in self.events if event == "download_progress"][-1]
+        settled = [payload for event, payload, _, _ in self.events if event == "asset.progress"][-1]
         self.assertEqual((settled["aggregateDownloadedBytes"], settled["aggregateTotalBytes"]), (500, 500))
         self.assert_completion_stages()
 
@@ -528,7 +528,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
             dest.write_bytes(b"x" * amount)
 
         self.run_command([(name, self.root / name) for name in ("known.bin", "unknown.bin", "skipped.bin")], download)
-        updates = [payload for event, payload, _, _ in self.events if event == "download_progress"]
+        updates = [payload for event, payload, _, _ in self.events if event == "asset.progress"]
         self.assertEqual(updates[0]["aggregateDownloadedBytes"], 60)
         self.assertTrue(all(payload["aggregateTotalBytes"] == 0 for payload in updates[:-1]))
         self.assertEqual([payload["progress"] for payload in updates], [31, 63, 95])
@@ -560,7 +560,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
             self.assertEqual((completed["completedFiles"], completed["aggregateTotalBytes"]), (2, 0))
 
         self.run_command([("cached.bin", cached), ("model.bin", dest)], download, legacy=True)
-        settled = [payload for event, payload, _, _ in self.events if event == "download_progress"][-1]
+        settled = [payload for event, payload, _, _ in self.events if event == "asset.progress"][-1]
         self.assertEqual((settled["aggregateDownloadedBytes"], settled["aggregateTotalBytes"]), (164, 164))
         self.assert_completion_stages()
 
@@ -575,9 +575,9 @@ class DownloadCommandProgressTest(unittest.TestCase):
 
         self.run_command([("model.bin", self.root / "model.bin")], download)
         self.module.fetch_modelscope_file_index.assert_called_once_with(timeout=30, proxy="")
-        self.assertTrue(any(event == "download_log" and payload["level"] == "warning"
+        self.assertTrue(any(event == "asset.log" and payload["level"] == "warning"
                             and "index" in payload["message"].lower() for event, payload, _, _ in self.events))
-        settled = [payload for event, payload, _, _ in self.events if event == "download_progress"][-1]
+        settled = [payload for event, payload, _, _ in self.events if event == "asset.progress"][-1]
         self.assertEqual((settled["aggregateDownloadedBytes"], settled["aggregateTotalBytes"]), (64, 64))
         self.assert_completion_stages()
 
@@ -618,7 +618,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
         self.failures.assert_called_once()
         self.assertEqual(self.failures.call_args.args[0], "MODEL_DOWNLOAD_FAILED")
         self.assertIn("file transfer failed", self.failures.call_args.args[1])
-        self.assertFalse(any(event == "download_done" for event, _, _, _ in self.events))
+        self.assertFalse(any(event == "asset.done" for event, _, _, _ in self.events))
 
     def test_same_file_retry_does_not_count_as_a_new_file_or_duplicate_bytes(self):
         for known in (True, False):
@@ -638,7 +638,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
                             raise RuntimeError("aria2c transfer failed")
                         for done in (0, 20, 100):
                             progress_callback(done, 100, "")
-                        weight_updates.extend(payload for event, payload, _, _ in self.events if event == "download_progress")
+                        weight_updates.extend(payload for event, payload, _, _ in self.events if event == "asset.progress")
                         dest.write_bytes(b"w" * 100)
                     else:
                         # A downloader need not emit its own initial zero; Studio knows
@@ -650,7 +650,7 @@ class DownloadCommandProgressTest(unittest.TestCase):
                 self.run_command([(name, self.root / name) for name in ("weights.bin", "config.bin")], download)
                 self.assertEqual(attempts, {"weights.bin": 2, "config.bin": 1})
                 self.assertTrue(all(payload["completedFiles"] == 0 for payload in weight_updates))
-                updates = [payload for event, payload, _, _ in self.events if event == "download_progress"]
+                updates = [payload for event, payload, _, _ in self.events if event == "asset.progress"]
                 byte_counts = [payload["aggregateDownloadedBytes"] for payload in updates]
                 self.assertEqual(byte_counts, sorted(byte_counts))
                 self.assertLessEqual(max(byte_counts), 120)

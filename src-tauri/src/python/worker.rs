@@ -1119,7 +1119,7 @@ fn emit_batch_stderr(app: &AppHandle, task_ids: &[String], line: String) {
         let _ = app.emit(
             "pymss://worker-event",
             serde_json::json!({
-                "type": "task_log", "taskId": task_id,
+                "type": "task.log", "taskId": task_id,
                 "payload": { "level": record.level, "message": record.message, "logRecord": record }
             }),
         );
@@ -1184,8 +1184,8 @@ fn is_log_envelope(envelope: &WorkerEnvelope) -> bool {
     matches!(
         envelope.event_type.as_str(),
         "worker_log"
-            | "task_log"
-            | "download_log"
+            | "task.log"
+            | "asset.log"
             | "optional_package_log"
             | "runtime_install_log"
             | "runtime_core_update_log"
@@ -1268,7 +1268,7 @@ fn log_worker_event_with_scope(
         .unwrap_or_default();
     let level = if envelope.event_type == "error" || envelope.event_type.ends_with("_failed") {
         "ERROR"
-    } else if matches!(envelope.event_type.as_str(), "task.result" | "task.result")
+    } else if envelope.event_type == "task.result"
         && envelope.payload.get("failed").and_then(Value::as_array).is_some_and(|items| !items.is_empty()) {
         "WARN"
     } else if envelope.event_type == "workflow_execution" && !execution.ends_with("progress") {
@@ -1384,7 +1384,7 @@ fn is_significant_worker_event(event_type: &str) -> bool {
     ["started", "finished", "done", "failed", "cancelled"]
         .iter()
         .any(|suffix| event_type.ends_with(suffix))
-        || matches!(event_type, "task_start" | "task.result" | "task.result" | "editor_mix_exported")
+        || matches!(event_type, "task.result" | "editor_mix_exported")
 }
 
 fn worker_lifecycle_level(command: &str) -> &'static str {
@@ -1446,42 +1446,42 @@ fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
         ),
             "install_runtime" => matches!(
             event_type,
-            "error" | "runtime_install_finished" | "task_cancelled"
+            "error" | "runtime_install_finished" | "task.cancelled"
         ),
         "update_runtime_core" => matches!(
             event_type,
             "error"
                 | "runtime_core_update_finished"
                 | "runtime_core_update_plan"
-                | "task_cancelled"
+                | "task.cancelled"
         ),
         "manage_optional_package" => {
             matches!(
                 event_type,
-                "error" | "optional_package_status" | "task_cancelled"
+                "error" | "optional_package_status" | "task.cancelled"
             )
         }
         "manage_plugin" => {
-            matches!(event_type, "error" | "plugin_manage_result" | "task_cancelled")
+            matches!(event_type, "error" | "plugin_manage_result" | "task.cancelled")
         }
         "import_custom_model" => matches!(
             event_type,
-            "error" | "custom_model_import_finished" | "task_cancelled"
+            "error" | "custom_model_import_finished" | "task.cancelled"
         ),
         "infer" | "infer_workflow" => {
-            matches!(event_type, "error" | "task_done" | "task_cancelled")
+            matches!(event_type, "error" | "task.done" | "task.cancelled")
         }
         "audio_tools" | "media_tool" => {
-            matches!(event_type, "error" | "task.result" | "task.result" | "task_cancelled")
+            matches!(event_type, "error" | "task.result" | "task.cancelled")
         }
         "run_operation" => {
-            matches!(event_type, "error" | "operation_result" | "task_cancelled")
+            matches!(event_type, "error" | "operation_result" | "task.cancelled")
         }
         "list_nodes" => matches!(event_type, "error" | "nodes_list"),
         "export_editor_mix" => {
             matches!(
                 event_type,
-                "error" | "editor_mix_exported" | "task_cancelled"
+                "error" | "editor_mix_exported" | "task.cancelled"
             )
         }
         _ => matches!(event_type, "error"),
@@ -2019,7 +2019,7 @@ fn spawn_worker_background_inner(
                     terminal_task_ids.insert(registered_task_id.clone());
                     if command_name == "manage_plugin" {
                         let _ = app.emit("pymss://worker-event", serde_json::json!({
-                            "type": "task_cancelled", "taskId": registered_task_id,
+                            "type": "task.cancelled", "taskId": registered_task_id,
                             "payload": { "message": "Cancelled" }
                         }));
                     }
@@ -2181,7 +2181,7 @@ mod tests {
     fn plugin_management_result_is_terminal_but_logs_are_not() {
         assert!(is_background_terminal_event("manage_plugin", "plugin_manage_result"));
         assert!(is_background_terminal_event("manage_plugin", "error"));
-        assert!(is_background_terminal_event("manage_plugin", "task_cancelled"));
+        assert!(is_background_terminal_event("manage_plugin", "task.cancelled"));
         assert!(!is_background_terminal_event("manage_plugin", "plugin_stage"));
         assert!(!is_background_terminal_event("manage_plugin", "plugin_log"));
     }
@@ -2811,7 +2811,7 @@ mod tests {
     fn operation_result_is_a_background_terminal_event() {
         assert!(is_background_terminal_event("run_operation", "operation_result"));
         assert!(is_background_terminal_event("run_operation", "error"));
-        assert!(is_background_terminal_event("run_operation", "task_cancelled"));
+        assert!(is_background_terminal_event("run_operation", "task.cancelled"));
         assert!(!is_background_terminal_event(
             "run_operation",
             "operation_progress"
@@ -3070,8 +3070,8 @@ mod tests {
     fn logging_envelopes_never_replace_command_results() {
         for event_type in [
             "worker_log",
-            "task_log",
-            "download_log",
+            "task.log",
+            "asset.log",
             "optional_package_log",
             "runtime_install_log",
             "runtime_core_update_log",
@@ -3206,7 +3206,7 @@ mod tests {
         let mut record = super::LogRecord::new("pymss", Some("info"), "pymss", "log", "Preparing shared model");
         record.context.insert("taskScope".into(), "operation".into());
         let mut envelope: super::WorkerEnvelope = serde_json::from_value(serde_json::json!({
-            "type": "task_log", "taskId": "first-file", "payload": {}
+            "type": "task.log", "taskId": "first-file", "payload": {}
         })).unwrap();
         super::bind_log_envelope_scope(&mut record, &envelope);
         super::bind_operation_scope(&mut record, Some("batch-operation"), Some("first-file"));

@@ -1,7 +1,7 @@
 //! BPM & key analysis tool, run in-process with the vendored `rba` engine.
 //!
 //! Events follow the canonical task protocol (`task.progress`, `task.result`,
-//! `error`, `task_cancelled`) so the frontend runtime
+//! `error`, `task.cancelled`) so the frontend runtime
 //! treats this tool like any other.
 
 use crate::error::{AppError, AppResult};
@@ -204,7 +204,7 @@ fn start_native_analysis(app: &AppHandle, state: &AppState, payload: Value) -> A
                     "recoverable": true, "operation": if bpm_only { "midi" } else { OPERATION },
                 }))
             }
-            None => emit(&handle, "task_cancelled", &task_id, json!({ "message": "Cancelled" })),
+            None => emit(&handle, "task.cancelled", &task_id, json!({ "message": "Cancelled" })),
         }
         tasks.remove(&task_id);
     });

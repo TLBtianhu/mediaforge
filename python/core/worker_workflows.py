@@ -214,7 +214,7 @@ def _emit_progress(task_id: str, log_scope: Any = None) -> Any:
                 payload[target] = event[source]
         if event.get("unit") == "seconds" and event.get("done") is not None and event.get("total") is not None:
             payload.update(done=event["done"], total=event["total"])
-        emit("task_progress", payload, task_id=task_id)
+        emit("task.progress", payload, task_id=task_id)
 
     return cb
 
@@ -1409,20 +1409,20 @@ def cmd_infer_workflow(payload: dict[str, Any]) -> int:
 
     try:
         source_path = Path(input_path) if input_path else (Path(next(iter(inputs.values()))) if inputs else None)
-        emit("task_started", {
+        emit("task.started", {
             "workflow": payload.get("workflowName"),
             "input": str(source_path) if source_path else "(graph inputs)",
             "output": str(_workflow_task_output_dir(output_dir, str(source_path) if source_path else "workflow", output_layout)),
         }, task_id=task_id)
-        emit("task_stage", {"stage": "validating_input", "message": "Validating workflow input", "progress": 12}, task_id=task_id)
+        emit("task.stage", {"stage": "validating_input", "message": "Validating workflow input", "progress": 12}, task_id=task_id)
         if source_path and not source_path.exists():
             return emit_error("INPUT_NOT_FOUND", f"Input not found: {source_path}", task_id=task_id)
 
-        emit("task_stage", {"stage": "separating", "message": "Running workflow", "progress": 35}, task_id=task_id)
+        emit("task.stage", {"stage": "separating", "message": "Running workflow", "progress": 35}, task_id=task_id)
         result = _run_pymss(payload, task_id, input_path=input_path or None, inputs=inputs or None,
                             output_dir=output_dir, output_layout=output_layout)
-        emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
-        emit("task_done", {**result, "outputRoot": output_dir}, task_id=task_id)
+        emit("task.stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
+        emit("task.done", {**result, "outputRoot": output_dir}, task_id=task_id)
         return 0
     except Exception as exc:
         return _emit_workflow_failure(task_id, exc)
@@ -1468,12 +1468,12 @@ def _cmd_infer_workflow_batch(payload: dict[str, Any], raw_tasks: list[Any]) -> 
             # input/inputs optional when the graph carries its own paths; pymss
             # raises a precise DAGError if a load node ends up unresolved.
             source_name = input_path or (next(iter(item_inputs.values())) if item_inputs else "")
-            emit("task_started", {
+            emit("task.started", {
                 "workflow": payload.get("workflowName"),
                 "input": source_name,
                 "output": str(_workflow_task_output_dir(output_dir, source_name or "workflow", output_layout)),
             }, task_id=task_id)
-            emit("task_stage", {"stage": "validating_input", "message": "Validating workflow input", "progress": 12}, task_id=task_id)
+            emit("task.stage", {"stage": "validating_input", "message": "Validating workflow input", "progress": 12}, task_id=task_id)
             try:
                 with task_logging(task_id):
                     result = _run_pymss({**payload, "taskId": task_id, "inputIndex": item.get("inputIndex", input_index),
@@ -1483,8 +1483,8 @@ def _cmd_infer_workflow_batch(payload: dict[str, Any], raw_tasks: list[Any]) -> 
                                         inputs=item_inputs or None,
                                         output_dir=output_dir, output_layout=output_layout,
                                         **({"separator_cache": separator_cache} if separator_cache is not None else {}))
-                    emit("task_stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
-                    emit("task_done", {**result, "outputRoot": output_dir}, task_id=task_id)
+                    emit("task.stage", {"stage": "writing_output", "message": "Collecting workflow outputs", "progress": 92}, task_id=task_id)
+                    emit("task.done", {**result, "outputRoot": output_dir}, task_id=task_id)
             except Exception as exc:
                 failed = True
                 _emit_workflow_failure(task_id, exc)

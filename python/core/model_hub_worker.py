@@ -34,13 +34,13 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
     if not model_id:
         return emit_error("MODEL_DOWNLOAD_INVALID", "Missing modelId", request_id=request_id)
     try:
-        emit("download_started", {"modelId": model_id, "model": model_id}, request_id=request_id)
+        emit("asset.started", {"modelId": model_id, "model": model_id}, request_id=request_id)
 
         def report(fraction: float, message: str) -> None:
-            # 统一事件通道：与 worker_download 保持同一套 download_* 语义，
+            # 统一事件通道：与 worker_download 保持同一套 asset.* 语义，
             # 这样共享 store 不需要认识"音频专属"的事件。
             emit(
-                "download_progress",
+                "asset.progress",
                 {
                     "model": model_id,
                     "modelId": model_id,
@@ -72,7 +72,7 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
             progress=report,
         )
         emit(
-            "download_done",
+            "asset.done",
             {
                 "model": model_id,
                 "modelId": model_id,

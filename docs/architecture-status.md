@@ -7,12 +7,14 @@
 
 ```
 命令面            manifest/protocol.json：8 个域 / 48 条命令 / handler 为 module:function
-                  scripts/check-architecture.py 七条全绿（依赖方向 ×3、根目录白名单、
-                  事件覆盖、handler 存在性、catalog 关联）
+                  scripts/check-architecture.py 八条全绿（依赖方向 ×3、根目录白名单、
+                  事件覆盖、事件命名、handler 存在性、catalog 关联）
 Python 物理分层   python/ 根只剩 worker.py、agent_bridge.py、audio_catalog.json、
                   runtime-manifest.json；实现分布在 audio_tools / core / game /
                   media_ops / shared / surfaces
-引擎事件          media_ops 只能发 events.canonical 里的名字（由检查器强制）
+事件词表          只有 <域>.<动词>：task.started/stage/progress/log/done/cancelled/result 与
+                  asset.started/stage/progress/log/done；emit() 里出现 task_* / download_*
+                  这类历史写法会被检查器直接拦下（三端与测试已同步改完）
 Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域模块 + mod.rs
 模型列表          core/model_hub.py 是唯一入口，合并 audio_catalog.json（326 条）
                   与 media_ops/media_catalog.json（30 条）
@@ -28,15 +30,12 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
 ## 还有两条的地方
 
 ```
-1. 事件词表（当前最脏的一处）
-   声明层 events.canonical 是 12 个点号名；实现层同时存在：
-     task.progress（25 处）、task.result（已用点号名）
-     task_started（4）／task_stage（15）／task_progress（3）／task_log（3）／
-     task_done（4）／task_cancelled（1）
-     download_started／stage／progress／done／log（下载族，10 处）
-   检查器的事件覆盖只扫 media_ops，所以这两种写法能长期并存。
-   收敛方向：任务族统一 task.*，下载族统一 asset.*，三端（worker → Rust → 前端）
-   与测试一次改完；命名定型后才动，避免改一半。
+1. task.done 与 task.result 两个终态名
+   两者都是"任务成功结束"，但载荷用途不同：
+     task.done    推理/工作流的完成事件，带 files / outputs / outputDir
+     task.result  工具类任务（audio_tools、media_tool、原生分析）的结果回包
+   前端按通道分别处理，Rust 的终态表也分开列。合并需要先定"统一载荷"的形态，
+   暂时保留，且只在 protocol.json 的 events 里声明一次。
 
 2. versions.json 还没发布
    version_check.rs 里的两个 URL（GitHub release 与魔搭）实测都是 404；

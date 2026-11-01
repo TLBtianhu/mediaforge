@@ -578,7 +578,7 @@ class EditorEffectTests(unittest.TestCase):
                  mock.patch("core.worker_audio.emit", side_effect=lambda kind, _value, **_kwargs: events.append(kind)):
                 self.assertEqual(cmd_export_editor_mix(payload), 0)
 
-            self.assertIn("task_cancelled", events)
+            self.assertIn("task.cancelled", events)
             self.assertFalse((output_dir / "cancelled_mix.wav").exists())
             self.assertEqual(list(output_dir.glob(".pymss-export-*.part")), [])
             self.assertFalse(cancel_path.exists())

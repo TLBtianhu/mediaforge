@@ -388,11 +388,11 @@ with sync_playwright() as playwright:
     page.evaluate("""() => {
       __app.workerEvents=[
         {type:'workflow_execution',taskId:'node_failure',timestamp:'2026-10-12T09:00:01Z',payload:{version:1,event:'node_failed',nodeId:'2',message:'Node decode failed'}},
-        {type:'task_log',taskId:'recoverable_warning',timestamp:'2026-10-12T09:00:01Z',payload:{level:'warning',message:'Decoder fallback'}},
-        {type:'task_done',taskId:'recoverable_warning',timestamp:'2026-10-12T09:00:02Z',payload:{}},
-        {type:'task_log',taskId:'recoverable_error',timestamp:'2026-10-12T09:00:01Z',payload:{level:'error',message:'Recovered decoder error'}},
+        {type:'task.log',taskId:'recoverable_warning',timestamp:'2026-10-12T09:00:01Z',payload:{level:'warning',message:'Decoder fallback'}},
+        {type:'task.done',taskId:'recoverable_warning',timestamp:'2026-10-12T09:00:02Z',payload:{}},
+        {type:'task.log',taskId:'recoverable_error',timestamp:'2026-10-12T09:00:01Z',payload:{level:'error',message:'Recovered decoder error'}},
         {type:'workflow_execution',taskId:'normal_node',timestamp:'2026-10-12T09:00:02Z',payload:{version:1,event:'node_completed'}},
-        {type:'task_log',taskId:'normal_log',timestamp:'2026-10-12T09:00:02Z',payload:{level:'info',message:'No error detected'}},
+        {type:'task.log',taskId:'normal_log',timestamp:'2026-10-12T09:00:02Z',payload:{level:'info',message:'No error detected'}},
       ];
     }""")
     expect(page.locator('.worker-event-row')).to_have_count(3)
@@ -408,16 +408,16 @@ with sync_playwright() as playwright:
     page.locator('.debug-event-toolbar input').fill('')
     page.evaluate("""() => {
       __app.workerEvents=[
-        {type:'download_done',taskId:'download_fallback',timestamp:'2026-10-12T09:00:02Z',payload:{model:'voice.ckpt',downloaded:['D:/models/voice.ckpt'],progress:100}},
-        {type:'download_log',taskId:'download_fallback',timestamp:'2026-10-12T09:00:01Z',payload:{level:'warning',message:'aria2c failed; retrying with urllib'}},
-        {type:'download_log',taskId:'normal_download',timestamp:'2026-10-12T09:00:01Z',payload:{level:'info',message:'Download complete'}},
+        {type:'asset.done',taskId:'download_fallback',timestamp:'2026-10-12T09:00:02Z',payload:{model:'voice.ckpt',downloaded:['D:/models/voice.ckpt'],progress:100}},
+        {type:'asset.log',taskId:'download_fallback',timestamp:'2026-10-12T09:00:01Z',payload:{level:'warning',message:'aria2c failed; retrying with urllib'}},
+        {type:'asset.log',taskId:'normal_download',timestamp:'2026-10-12T09:00:01Z',payload:{level:'info',message:'Download complete'}},
       ];
     }""")
     expect(page.locator('.worker-event-row')).to_have_count(1)
     expect(page.locator('.worker-event-row')).to_contain_text('download_fallback')
     page.locator('.worker-event-row').click()
     expect(page.locator('.worker-event-modal-payload')).to_contain_text('aria2c failed; retrying with urllib')
-    expect(page.locator('.worker-event-modal-payload')).to_contain_text('download_done')
+    expect(page.locator('.worker-event-modal-payload')).to_contain_text('asset.done')
     page.keyboard.press('Escape')
 
     main_tab('环境与路径')

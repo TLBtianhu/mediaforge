@@ -817,7 +817,7 @@ def cmd_export_editor_mix(payload: dict[str, Any]) -> int:
         }, task_id=task_id)
         return 0
     except _EditorExportCancelled:
-        emit("task_cancelled", {"message": "Cancelled"}, task_id=task_id)
+        emit("task.cancelled", {"message": "Cancelled"}, task_id=task_id)
         return 0
     except Exception as exc:
         return fail("EDITOR_EXPORT_FAILED", str(exc), traceback.format_exc())

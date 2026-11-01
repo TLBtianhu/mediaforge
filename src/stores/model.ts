@@ -885,7 +885,7 @@ export const useModelStore = defineStore('model', () => {
           status: 'error',
           message: payload.message || 'Import failed',
         }
-      } else if (event.type === 'task_cancelled') {
+      } else if (event.type === 'task.cancelled') {
         customImportState.value = { ...customImportState.value, status: 'cancelled' }
       }
       return
@@ -908,26 +908,20 @@ export const useModelStore = defineStore('model', () => {
       }
       if (downloadTasks.value[modelName] && downloadTasks.value[modelName]!.taskId !== taskId) return
       if (previous.status === 'cancelled' || previous.status === 'paused') {
-        if (event.type !== 'task_cancelled') return
+        if (event.type !== 'task.cancelled') return
       }
       const next: DownloadTask = { ...previous, taskId, updatedAt: Date.now(), logs: previous.logs || [] }
-      if (event.type === 'download_started') {
+      if (event.type === 'asset.started') {
         next.status = 'downloading'
         next.progress = payload.progress ?? 0
         next.message = 'Started'
         next.totalFiles = payload.totalFiles || next.totalFiles
         downloadStates.value = { ...downloadStates.value, [modelName]: 'downloading' }
-      } else if (event.type === 'download_stage') {
+      } else if (event.type === 'asset.stage') {
         next.status = 'downloading'
         next.progress = payload.progress ?? Math.max(next.progress, 5)
         next.message = payload.message || payload.stage || 'Downloading'
-      } else if (event.type === 'download_file') {
-        next.status = 'downloading'
-        next.progress = payload.progress ?? next.progress
-        next.completedFiles = payload.completedFiles || next.completedFiles
-        next.totalFiles = payload.totalFiles || next.totalFiles
-        next.message = payload.status || 'Downloading'
-      } else if (event.type === 'download_progress') {
+      } else if (event.type === 'asset.progress') {
         next.status = 'downloading'
         next.progress = payload.progress ?? next.progress
         next.completedFiles = payload.completedFiles || next.completedFiles
@@ -938,7 +932,7 @@ export const useModelStore = defineStore('model', () => {
         next.downloadedBytes = payload.aggregateDownloadedBytes ?? next.downloadedBytes
         next.totalBytes = payload.aggregateTotalBytes ?? next.totalBytes
         next.speedBytesPerSecond = payload.speedBytesPerSecond ?? next.speedBytesPerSecond
-      } else if (event.type === 'download_done') {
+      } else if (event.type === 'asset.done') {
         next.status = 'done'
         next.progress = 100
         next.speedBytesPerSecond = 0
@@ -963,7 +957,7 @@ export const useModelStore = defineStore('model', () => {
           downloadTaskIndex.value = restIndex
           return
         }
-      } else if (event.type === 'task_cancelled') {
+      } else if (event.type === 'task.cancelled') {
         next.status = 'cancelled'
         next.message = 'Cancelled'
         downloadStates.value = { ...downloadStates.value, [modelName]: 'idle' }
@@ -985,7 +979,7 @@ export const useModelStore = defineStore('model', () => {
             message: payload.message,
           })
         }
-      } else if (event.type === 'download_log') {
+      } else if (event.type === 'asset.log') {
         const record = workerLogRecord(event)
         const level = (record.level === 'warn' ? 'warn' : record.level === 'error' || record.level === 'fatal' ? 'error' : 'info') as DownloadLogLevel
         const message = String(payload.message || '')

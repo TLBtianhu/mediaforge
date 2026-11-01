@@ -290,7 +290,7 @@ pub async fn cancel_task(
             let _ = app.emit(
                 "pymss://worker-event",
                 serde_json::json!({
-                    "type": "task_cancelled",
+                    "type": "task.cancelled",
                     "taskId": cancelled_task_id,
                     "payload": { "message": "Cancelled" }
                 }),

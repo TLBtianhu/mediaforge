@@ -60,7 +60,7 @@ class InferenceLifecycleTests(unittest.TestCase):
         self.separator.del_cache.assert_not_called()
         self.assert_handler_released()
         self.emit_error.assert_not_called()
-        self.emit.assert_any_call("task_done", {
+        self.emit.assert_any_call("task.done", {
             "files": [str(self.output / "vocals.wav")],
             "outputs": self.separator.studio_outputs.return_value,
             "outputDir": str(self.output.resolve()), "outputRoot": str(self.output.resolve()), "outputFormat": "wav",
@@ -184,9 +184,9 @@ class BatchInferenceLifecycleTests(unittest.TestCase):
                 self.assertEqual(worker_infer.cmd_infer_batch(payload), 1)
 
             self.assertIn(("first-task", "error"), emitted)
-            self.assertIn(("second-task", "task_done"), emitted)
+            self.assertIn(("second-task", "task.done"), emitted)
 
-    def test_later_failure_does_not_send_an_error_after_an_earlier_task_done(self) -> None:
+    def test_later_failure_does_not_send_an_error_after_an_earlier_task_done_event(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             first = root / "first.wav"
@@ -230,7 +230,7 @@ class BatchInferenceLifecycleTests(unittest.TestCase):
 
             first_events = [kind for task_id, kind in emitted if task_id == "first-task"]
             second_events = [kind for task_id, kind in emitted if task_id == "second-task"]
-            self.assertIn("task_done", first_events)
+            self.assertIn("task.done", first_events)
             self.assertNotIn("error", first_events)
             self.assertIn("error", second_events)
 

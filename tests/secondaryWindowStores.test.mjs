@@ -257,7 +257,7 @@ test('secondary-window download progress cannot overwrite newer main-window pref
   assert.equal(env.state['model-state'].modelPreferences.Model.favorite, true)
   const baseline = clone(env.state['model-state'])
   child.activate()
-  child.models.handleWorkerEvent({ type: 'download_progress', taskId: 'download_a', payload: { model: 'Model', progress: 51 } })
+  child.models.handleWorkerEvent({ type: 'asset.progress', taskId: 'download_a', payload: { model: 'Model', progress: 51 } })
   await waitForSave()
   assert.equal(child.models.downloadTasks.Model.progress, 51)
   assert.deepEqual(env.state['model-state'], baseline)
@@ -276,13 +276,13 @@ test('a hub download reports progress on its task and completes into the model l
   await waitForSave()
 
   const taskId = 'download_test-1'
-  main.models.handleWorkerEvent({ type: 'download_started', taskId, payload: { model: 'Model' } })
-  main.models.handleWorkerEvent({ type: 'download_progress', taskId, payload: { model: 'Model', progress: 42 } })
+  main.models.handleWorkerEvent({ type: 'asset.started', taskId, payload: { model: 'Model' } })
+  main.models.handleWorkerEvent({ type: 'asset.progress', taskId, payload: { model: 'Model', progress: 42 } })
   assert.equal(main.models.downloadTasks.Model.progress, 42)
   assert.equal(main.models.downloadTasks.Model.status, 'downloading')
 
   main.models.handleWorkerEvent({
-    type: 'download_done',
+    type: 'asset.done',
     taskId,
     payload: { model: 'Model', downloaded: ['Model.th'], skipped: [], modelDir: 'D:/models', modelInfo: { name: 'Model', downloaded: true } },
   })
@@ -297,9 +297,9 @@ test('cancelling a hub download returns the task to a non-downloading state', as
   await waitForSave()
 
   const taskId = 'download_test-2'
-  main.models.handleWorkerEvent({ type: 'download_started', taskId, payload: { model: 'Model' } })
-  main.models.handleWorkerEvent({ type: 'download_progress', taskId, payload: { model: 'Model', progress: 10 } })
-  main.models.handleWorkerEvent({ type: 'task_cancelled', taskId, payload: { model: 'Model' } })
+  main.models.handleWorkerEvent({ type: 'asset.started', taskId, payload: { model: 'Model' } })
+  main.models.handleWorkerEvent({ type: 'asset.progress', taskId, payload: { model: 'Model', progress: 10 } })
+  main.models.handleWorkerEvent({ type: 'task.cancelled', taskId, payload: { model: 'Model' } })
   assert.notEqual(main.models.downloadTasks.Model?.status, 'downloading')
   assert.notEqual(main.models.downloadTasks.Model?.status, 'done')
 })

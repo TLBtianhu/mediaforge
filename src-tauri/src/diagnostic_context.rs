@@ -271,7 +271,7 @@ impl DiagnosticContext {
                     record.event.as_str(),
                     "task.result"
                         | "editor_mix_exported"
-                        | "task_done"
+                        | "task.done"
                         | "task_finished"
                         | "runtime_installed"
                         | "runtime_core_updated"
@@ -279,7 +279,7 @@ impl DiagnosticContext {
                 )
             {
                 let batch_child_finished =
-                    matches!(record.event.as_str(), "task_done" | "task_finished")
+                    matches!(record.event.as_str(), "task.done" | "task_finished")
                         && operation["request"]["tasks"]["total"].as_u64().unwrap_or(0) > 1;
                 operation["status"] = if batch_child_finished {
                     "running"
@@ -438,7 +438,7 @@ mod tests {
             "worker",
             Some("info"),
             "worker",
-            "task_cancelled",
+            "task.cancelled",
             "Cancelled",
         );
         cancelled.task_id = Some(format!("task-{}", OPERATION_LIMIT + 4));
@@ -473,7 +473,7 @@ mod tests {
             .insert("python".into(), "runtime/cuda/python.exe".into());
         context.observe(&prepared);
         let mut progress = prepared.clone();
-        progress.event = "task_progress".into();
+        progress.event = "task.progress".into();
         context.observe(&progress);
         let mut unrelated =
             LogRecord::new("worker", Some("error"), "worker", "error", "Probe failed");
@@ -530,7 +530,7 @@ mod tests {
             "worker",
             Some("info"),
             "worker",
-            "task_done",
+            "task.done",
             "File completed",
         );
         event.task_id = Some("child-1".into());

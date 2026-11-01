@@ -124,7 +124,7 @@ function createOptionalRuntimePackage(packageName: string): OptionalRuntimePacka
           void refresh()
           return
         }
-        if (workerEvent.type === 'task_cancelled') {
+        if (workerEvent.type === 'task.cancelled') {
           const completion = pending
           finishOperation()
           completion?.reject(new OptionalPackageCancelledError())
