@@ -1,6 +1,7 @@
 """Worker commands for the unified model hub."""
 from __future__ import annotations
 
+import time
 import traceback
 from typing import Any
 
@@ -35,18 +36,26 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
         return emit_error("MODEL_DOWNLOAD_INVALID", "Missing modelId", request_id=request_id)
     try:
         emit("asset.started", {"modelId": model_id, "model": model_id}, request_id=request_id)
+        last = [time.monotonic(), 0]  # (时刻, 已下字节) —— 速度滑动窗口
 
-        def report(fraction: float, message: str) -> None:
-            # 统一事件通道：与 worker_download 保持同一套 asset.* 语义，
-            # 这样共享 store 不需要认识"音频专属"的事件。
+        def report(done_bytes: int, total_bytes: int, completed_files: int, total_files: int, message: str) -> None:
+            # 富进度：真实字节/速度/逐文件，与前端下载卡片的字段对齐。
+            # 统一事件通道：与 worker_download 保持同一套 asset.* 语义。
+            now = time.monotonic()
+            prev_t, prev_b = last
+            speed = int((done_bytes - prev_b) / (now - prev_t)) if now > prev_t else 0
+            last[:] = [now, done_bytes]
             emit(
                 "asset.progress",
                 {
                     "model": model_id,
                     "modelId": model_id,
-                    "progress": round(max(0.0, min(1.0, fraction)) * 100, 2),
-                    "completedFiles": 0,
-                    "totalFiles": 1,
+                    "progress": round(done_bytes / total_bytes * 100, 2) if total_bytes else 0,
+                    "completedFiles": completed_files,
+                    "totalFiles": total_files,
+                    "aggregateDownloadedBytes": done_bytes,
+                    "aggregateTotalBytes": total_bytes,
+                    "speedBytesPerSecond": max(0, speed),
                     "message": message,
                 },
                 request_id=request_id,
@@ -56,7 +65,7 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
             model_id,
             payload.get("modelDir"),
             source=str(payload.get("source") or "modelscope"),
-            progress=report,
+            detailed_progress=report,
         )
         emit(
             "asset.done",

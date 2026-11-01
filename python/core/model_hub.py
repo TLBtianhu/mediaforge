@@ -292,6 +292,7 @@ def download_model(
     *,
     source: str = "modelscope",
     progress: Progress | None = None,
+    detailed_progress: Callable[[int, int, int, int, str], None] | None = None,
 ) -> dict:
     data = list_models(source=source, root=root)
     record = next((item for item in data["models"] if item["id"] == model_id), None)
@@ -302,11 +303,19 @@ def download_model(
     if not files:
         raise RuntimeError(f"model has no downloadable files: {model_id}")
     total = max(1, len(files))
+    total_bytes = sum(int(file.get("size") or 0) for file in files) or 1
     results = []
     for index, file in enumerate(files):
         def report(fraction: float, message: str, _index=index) -> None:
+            frac = max(0.0, min(1.0, fraction))
+            if detailed_progress is not None:
+                # 真实字节聚合：已完成文件 + 当前文件已下字节。
+                # 不能按文件数估算——主权重占绝大部分字节，按文件数会严重失真。
+                prior = sum(int(f.get("size") or 0) for f in files[:_index])
+                current = int(frac * int(file.get("size") or 0))
+                detailed_progress(prior + current, total_bytes, _index, total, message)
             if progress:
-                progress((_index + max(0.0, min(1.0, fraction))) / total, message)
+                progress((_index + frac) / total, message)
         results.append(
             _download_file(
                 file["url"],

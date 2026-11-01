@@ -49,8 +49,10 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
      pymss 下载器，完整性校验全程离线，不再联网 file index；aria2c 加速保留。
    - 孤儿命令 cmd_download_model 及其专属事件流测试已删除。
    结论：元数据只有一份，传输有两种（模型库走 model_hub/urllib，推理走 pymss/aria2c），
-   这是"同一 catalog、两种传输策略"，不是重复实现。富进度（字节/速度/逐文件）
-   是否补回 model_hub_worker 的模型库下载卡片，是另一个待定点。
+   这是"同一 catalog、两种传输策略"，不是重复实现。
+   富进度已补回（2026-11-01）：model_hub.download_model 的 detailed_progress 做真实字节聚合，
+   model_hub_worker 的 asset.progress 带真实字节/速度/逐文件，对齐下载卡片
+   （契约见 tests/python/test_model_hub_progress.py）。
 
 3. versions.json 还没发布
    version_check.rs 里的两个 URL（GitHub release 与魔搭）实测都是 404；
