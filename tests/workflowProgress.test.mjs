@@ -1,34 +1,18 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import vm from 'node:vm'
-import ts from 'typescript'
 import { appendWorkflowNodeLogs } from '../src/workflows/nodeLogs.ts'
 import { normalizeLogRecord, workerLogRecord, formatLogRecord, localLogRecord } from '../src/utils/logRecord.ts'
-
-// normalizeStatus 与 STAGE_META 已移到 stores/taskNormalize.ts；clamp/resolveStageProgress/handleWorkerEvent 仍在 task.ts。
-const sources = [
-  ts.createSourceFile('task.ts', readFileSync(new URL('../src/stores/task.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true),
-  ts.createSourceFile('taskNormalize.ts', readFileSync(new URL('../src/stores/taskNormalize.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true),
-]
-const names = new Set(['normalizeStatus', 'clamp', 'resolveStageProgress', 'handleWorkerEvent'])
-const selected = []
-for (const source of sources) {
-  const collect = (node) => {
-    if (ts.isFunctionDeclaration(node) && names.has(node.name?.text)) selected.push(node.getText(source))
-    if (ts.isVariableStatement(node) && node.declarationList.declarations.some(item => item.name.getText(source) === 'STAGE_META')) selected.push(node.getText(source))
-    ts.forEachChild(node, collect)
-  }
-  collect(source)
-}
-assert.equal(selected.length, names.size + 1)
-const code = ts.transpileModule(selected.join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
+import { STAGE_META, normalizeStatus } from '../src/stores/taskNormalize.ts'
+import { makeTaskWorkerEventHandler } from '../src/stores/taskWorkerEvents.ts'
 
 function setup() {
   const task = { id: 'workflow', status: 'separating', progress: 35, createdAt: 1, logs: [], runConfig: {} }
   const terminal = ['done', 'failed', 'cancelled']
-  const handle = vm.runInNewContext(`${code}\nhandleWorkerEvent`, {
+  const handle = makeTaskWorkerEventHandler({
     tasks: { value: [task] },
+    normalizeStatus,
+    STAGE_META,
+    setTaskStatus: () => {},
     TERMINAL_STATUSES: terminal,
     isTerminalTaskStatus: status => terminal.includes(status),
     markTaskStarted: () => {}, touch: () => {}, queueProgressPersist: () => {},
