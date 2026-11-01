@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { STEM_NAME_KEYS, LEGACY_STEM_NAMES, EXACT_STEM_KEYS, stemKeyFromOutput, normalizedDefaultName, recordingTrackIndex, isLegacyAutoTrackName, trackColor, duplicatedTrackColor, fileName, stripExt, COLOR_BY_STEM } from '@/stores/editorStems'
+import { makeId, clamp, cloneLegacyTrackEffects, cloneTracks, normalizeSource, normalizeClip, normalizeTrack, normalizeSession, toPersistedSession } from '@/stores/editorNormalize'
 import { masterLimiterRenderRate, normalizeMasterLimiter } from '@/utils/masterLimiter'
 import { createLogger } from '@/utils/logger'
 import { clonePluginChain, hasEditorPlugins, neutralPluginRenderProject, normalizePluginChain, pluginProcessingProject, projectPluginSlots, pluginProjectVersion } from '@/utils/editorPlugins'
@@ -157,31 +158,17 @@ export class EditorExportCancelledError extends Error {
   }
 }
 
-type PersistedSession = EditorSession & { version?: number }
+export type PersistedSession = EditorSession & { version?: number }
 
 const HISTORY_LIMIT = 80
 const AUTO_SAVE_DELAY = 420
 const NATIVE_RENDER_PROGRESS_WEIGHT = 75
 const WAVEFORM_FULL_RESOLUTION = 2200
 
-function makeId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
 
 
 
 function safeProjectToken(value: string) {
-  const normalized = String(value || '')
-    .split('')
-    .map((ch) => (/^[a-zA-Z0-9._-]$/.test(ch) ? ch : '_'))
-    .join('')
-    .replace(/^_+|_+$/g, '')
-  const trimmed = normalized || 'project'
-  return trimmed.slice(0, 96)
 }
 
 function projectIdForTaskId(taskId: string) {
@@ -232,46 +219,6 @@ function localizedAutoTrackName(
 }
 
 
-function cloneLegacyTrackEffects(effects: unknown): EditorTrack['effects'] {
-  return effects && typeof effects === 'object' && !Array.isArray(effects)
-    ? JSON.parse(JSON.stringify(effects)) as Record<string, unknown>
-    : undefined
-}
-
-function cloneTracks(tracks: EditorTrack[]) {
-  return tracks.map((track) => ({
-    ...track,
-    effects: cloneLegacyTrackEffects(track.effects),
-    pluginChain: clonePluginChain(track.pluginChain),
-    clips: track.clips?.map((clip) => ({ ...clip })),
-  }))
-}
-
-function normalizeSource(source: Partial<EditorSource>): EditorSource {
-  const channelPeaks = Array.isArray(source.channelPeaks)
-    ? source.channelPeaks
-        .filter((channel) => Array.isArray(channel))
-        .map((channel) => channel.map((value) => Number(value || 0)))
-    : []
-  const channelCount = Math.max(Number(source.channels || 0), channelPeaks.length)
-  return {
-    id: String(source.id || makeId('source')),
-    role: source.role === 'reference' || source.role === 'recording' ? source.role : 'stem',
-    stemKey: source.stemKey ? String(source.stemKey) : null,
-    path: String(source.path || ''),
-    name: String(source.name || fileName(String(source.path || '')) || 'Untitled'),
-    duration: Number(source.duration || 0),
-    sampleRate: Number(source.sampleRate || 0),
-    channels: channelCount,
-    peaksPath: source.peaksPath ? String(source.peaksPath) : null,
-    peaks: Array.isArray(source.peaks) ? source.peaks.map((value) => Number(value || 0)) : [],
-    channelPeaks,
-    originKind: source.originKind ? String(source.originKind) : undefined,
-    originRoot: source.originRoot ? String(source.originRoot) : null,
-    relativePath: source.relativePath ? String(source.relativePath) : null,
-    missing: Boolean(source.missing),
-  }
-}
 
 function normalizePathKey(value: string) {
   return value.replace(/\\/g, '/').toLowerCase()
@@ -318,128 +265,9 @@ async function loadPeaksFromCache(path?: string | null, sourcePath?: string | nu
   }
 }
 
-function normalizeClip(clip: Partial<EditorClip>, source?: EditorSource): EditorClip {
-  const offset = clamp(Number(clip.offset || 0), 0, Math.max(0, Number(source?.duration || Infinity)))
-  const availableDuration = Math.max(0, Number(source?.duration || 0) - offset)
-  const requestedDuration = Math.max(0, Number(clip.duration ?? availableDuration))
-  const duration = availableDuration > 0 ? Math.min(requestedDuration, availableDuration) : requestedDuration
-  return {
-    id: String(clip.id || makeId('clip')),
-    assetId: String(clip.assetId || source?.id || ''),
-    start: Math.max(0, Number(clip.start || 0)),
-    offset,
-    duration,
-    volume: clamp(Number(clip.volume ?? 1), 0, 2),
-    fadeIn: clamp(Number(clip.fadeIn || 0), 0, duration),
-    fadeOut: clamp(Number(clip.fadeOut || 0), 0, duration),
-    muted: Boolean(clip.muted),
-    locked: Boolean(clip.locked),
-  }
-}
 
-function normalizeTrack(
-  track: Partial<EditorTrack>,
-  sources: Map<string, EditorSource>,
-  clipFadesCanonical: boolean,
-): EditorTrack {
-  const source = sources.get(String(track.sourceId || ''))
-  const role = track.role === 'reference' || track.role === 'recording'
-    ? track.role
-    : (source?.role || 'stem')
-  const stemKey = source?.stemKey || null
-  const storedName = String(track.name || source?.name || 'Track')
-  const autoName = typeof track.autoName === 'boolean'
-    ? track.autoName
-    : isLegacyAutoTrackName(storedName, role, stemKey)
-  const clips = Array.isArray(track.clips)
-    ? track.clips
-        .map((clip) => normalizeClip(clip, sources.get(String(clip.assetId || track.sourceId || ''))))
-        .filter((clip) => clip.assetId && clip.duration > 0)
-    : []
-  if (!clips.length && source && source.duration > 0) {
-    clips.push(normalizeClip({
-      id: `clip_${String(track.id || source.id)}`,
-      assetId: source.id,
-      duration: source.duration,
-      fadeIn: Number(track.fadeIn || 0),
-      fadeOut: Number(track.fadeOut || 0),
-    }, source))
-  }
-  let fadeIn = Math.max(0, Number(track.fadeIn || 0))
-  let fadeOut = Math.max(0, Number(track.fadeOut || 0))
-  if (clips.length === 1) {
-    const clip = clips[0]
-    if (clipFadesCanonical) {
-      fadeIn = clip.fadeIn
-      fadeOut = clip.fadeOut
-    } else {
-      clip.fadeIn = clamp(fadeIn, 0, clip.duration)
-      clip.fadeOut = clamp(fadeOut, 0, clip.duration)
-      fadeIn = clip.fadeIn
-      fadeOut = clip.fadeOut
-    }
-  }
-  return {
-    id: String(track.id || makeId('track')),
-    sourceId: String(track.sourceId || source?.id || ''),
-    role,
-    name: autoName ? localizedAutoTrackName(storedName, role, stemKey) : storedName,
-    autoName,
-    color: String(track.color || trackColor(role, stemKey)),
-    volume: clamp(Number(track.volume ?? 1), 0, 2),
-    pan: clamp(Number(track.pan ?? 0), -1, 1),
-    muted: Boolean(track.muted),
-    solo: Boolean(track.solo),
-    fadeIn,
-    fadeOut,
-    effects: cloneLegacyTrackEffects(track.effects),
-    pluginChain: normalizePluginChain(track.pluginChain),
-    type: track.type === 'recording' || role === 'recording'
-      ? 'recording'
-      : (track.type === 'audio' ? 'audio' : role),
-    clips,
-  }
-}
 
-function normalizeSession(session: PersistedSession): EditorSession {
-  const sources = Array.isArray(session.sources)
-    ? session.sources.map(normalizeSource)
-    : []
-  const sourceMap = new Map(sources.map((source) => [source.id, source]))
-  const clipFadesCanonical = Number(session.version || 0) >= 3
-  const tracks = Array.isArray(session.tracks)
-    ? session.tracks.map((track) => normalizeTrack(track, sourceMap, clipFadesCanonical))
-    : []
 
-  return {
-    id: String(session.id || makeId('session')),
-    name: String(session.name || 'Untitled Session'),
-    sourceTaskId: session.sourceTaskId ? String(session.sourceTaskId) : undefined,
-    sourceResultDir: session.sourceResultDir ? String(session.sourceResultDir) : undefined,
-    masterVolume: clamp(Number(session.masterVolume ?? 1), 0, 2),
-    masterPan: clamp(Number(session.masterPan ?? 0), -1, 1),
-    masterLimiter: session.masterLimiter ? normalizeMasterLimiter(session.masterLimiter) : undefined,
-    pluginChain: normalizePluginChain(session.pluginChain),
-    sources,
-    tracks,
-    createdAt: Number(session.createdAt || Date.now()),
-    updatedAt: Number(session.updatedAt || Date.now()),
-  }
-}
-
-function toPersistedSession(session: EditorSession) {
-  return {
-    ...session,
-    version: pluginProjectVersion(session),
-    pluginChain: clonePluginChain(session.pluginChain),
-    tracks: cloneTracks(session.tracks),
-    sources: session.sources.map((source) => ({
-      ...source,
-      peaks: [],
-      channelPeaks: [],
-    })),
-  }
-}
 
 const hasPeaks = (p?: number[]) => p !== undefined && p.length > 0 && !(p.length === 1 && p[0] === -1)
 
@@ -938,7 +766,7 @@ export const useEditorStore = defineStore('editor', () => {
     lastError.value = null
     try {
       const result = await requestProjectFromTask(task)
-      session.value = normalizeSession(result)
+      session.value = normalizeSession(result, localizedAutoTrackName)
       selectTrack(session.value.tracks[0]?.id || null)
       await hydratePeaksFromCache(session.value.id)
       const metadataChanged = await hydrateSourceMetadataState(session.value.id)
@@ -972,7 +800,7 @@ export const useEditorStore = defineStore('editor', () => {
     }
     if (!loadIntoSession) {
       const result = await requestProjectFromTask(task)
-      const normalized = normalizeSession(result)
+      const normalized = normalizeSession(result, localizedAutoTrackName)
       return { id: normalized.id }
     }
     return createFromTask(task)
@@ -998,7 +826,7 @@ export const useEditorStore = defineStore('editor', () => {
         locale,
       },
     })
-    const normalized = normalizeSession(result)
+    const normalized = normalizeSession(result, localizedAutoTrackName)
     const summary: EditorProjectSummary = {
       id: normalized.id,
       name: normalized.name,
@@ -1143,7 +971,7 @@ export const useEditorStore = defineStore('editor', () => {
     lastError.value = null
     try {
       const result = await invoke<PersistedSession>('load_editor_project', { projectId })
-      session.value = normalizeSession(result)
+      session.value = normalizeSession(result, localizedAutoTrackName)
       await hydratePeaksFromCache(session.value.id)
       const metadataChanged = await hydrateSourceMetadataState(session.value.id)
       selectTrack(session.value.tracks[0]?.id || null)
@@ -1632,7 +1460,7 @@ export const useEditorStore = defineStore('editor', () => {
         pickedPath: resolvedPath,
       },
     })
-    session.value = normalizeSession(result.project)
+    session.value = normalizeSession(result.project, localizedAutoTrackName)
     await hydratePeaksFromCache(session.value.id)
     hydrateSessionSourcesInBackground(session.value.id)
     return result
