@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { STEM_NAME_KEYS, LEGACY_STEM_NAMES, EXACT_STEM_KEYS, stemKeyFromOutput, normalizedDefaultName, recordingTrackIndex, isLegacyAutoTrackName, trackColor, duplicatedTrackColor, fileName, stripExt, COLOR_BY_STEM } from '@/stores/editorStems'
 import { masterLimiterRenderRate, normalizeMasterLimiter } from '@/utils/masterLimiter'
 import { createLogger } from '@/utils/logger'
 import { clonePluginChain, hasEditorPlugins, neutralPluginRenderProject, normalizePluginChain, pluginProcessingProject, projectPluginSlots, pluginProjectVersion } from '@/utils/editorPlugins'
@@ -162,18 +163,6 @@ const HISTORY_LIMIT = 80
 const AUTO_SAVE_DELAY = 420
 const NATIVE_RENDER_PROGRESS_WEIGHT = 75
 const WAVEFORM_FULL_RESOLUTION = 2200
-const COLOR_BY_STEM: Record<string, string> = {
-  vocals: '#ff6b7c',
-  vocal: '#ff6b7c',
-  voice: '#ff6b7c',
-  accompaniment: '#5d8dff',
-  instrumental: '#5d8dff',
-  instruments: '#5d8dff',
-  drums: '#f2b45a',
-  drum: '#f2b45a',
-  bass: '#4fc58f',
-  other: '#b08cff',
-}
 
 function makeId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -183,13 +172,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-function fileName(path: string) {
-  return path.split(/[/\\]/).pop() || path
-}
 
-function stripExt(name: string) {
-  return name.replace(/\.[^/.\\]+$/, '')
-}
 
 function safeProjectToken(value: string) {
   const normalized = String(value || '')
@@ -219,44 +202,8 @@ export function isDefaultBlankProjectName(name: string) {
     || normalized === 'Untitled Blank Project'
 }
 
-function stemKeyFromOutput(output: StemOutput | { stem?: string; path?: string }) {
-  const raw = String(output.stem || stripExt(fileName(output.path || ''))).trim().toLowerCase()
-  if (!raw) return 'other'
-  if (raw.includes('vocal') || raw.includes('voice')) return 'vocals'
-  if (raw.includes('instrument') || raw.includes('accompaniment') || raw.includes('karaoke')) return 'accompaniment'
-  if (raw.includes('drum')) return 'drums'
-  if (raw.includes('bass')) return 'bass'
-  if (raw.includes('other')) return 'other'
-  return raw
-}
 
-const STEM_NAME_KEYS: Record<string, string> = {
-  vocals: 'editor.stemVocals',
-  accompaniment: 'editor.stemAccompaniment',
-  drums: 'editor.stemDrums',
-  bass: 'editor.stemBass',
-  other: 'editor.stemOther',
-}
 
-const LEGACY_STEM_NAMES: Record<string, string[]> = {
-  vocals: ['vocals', 'vocal', 'voice', '人声'],
-  accompaniment: ['instrumental', 'instrument', 'accompaniment', 'karaoke', '伴奏'],
-  drums: ['drums', 'drum', '鼓组'],
-  bass: ['bass', '贝斯'],
-  other: ['other', '其他'],
-}
-
-const EXACT_STEM_KEYS = new Map(
-  Object.entries(LEGACY_STEM_NAMES).flatMap(([stemKey, names]) => (
-    names
-      .filter(name => /^[a-z]+$/i.test(name))
-      .map(name => [normalizedDefaultName(name), stemKey] as const)
-  )),
-)
-
-function normalizedDefaultName(value: string | null | undefined) {
-  return String(value || '').trim().toLowerCase().replace(/[\s_-]+/g, ' ')
-}
 
 function localizedStemName(stemKey: string | null | undefined, fallback: string) {
   if (!stemKey) return fallback
@@ -269,19 +216,7 @@ function localizedStemName(stemKey: string | null | undefined, fallback: string)
   return translationKey ? String(i18n.global.t(translationKey)) : fallback
 }
 
-function recordingTrackIndex(name: string) {
-  const match = name.trim().match(/^(?:recording|录音)\s*(\d+)$/i)
-  return match ? Math.max(1, Number(match[1])) : null
-}
 
-function isLegacyAutoTrackName(name: string, role: EditorSourceRole, stemKey?: string | null) {
-  if (role === 'recording') return recordingTrackIndex(name) !== null
-  if (role !== 'stem' || !stemKey) return false
-  const canonicalKey = stemKeyFromOutput({ stem: stemKey || '' })
-  const candidates = [stemKey || '', ...(LEGACY_STEM_NAMES[canonicalKey] || [])]
-  const normalizedName = normalizedDefaultName(name)
-  return candidates.some((candidate) => normalizedDefaultName(candidate) === normalizedName)
-}
 
 function localizedAutoTrackName(
   name: string,
@@ -296,16 +231,6 @@ function localizedAutoTrackName(
   return name
 }
 
-function trackColor(role: EditorSourceRole, stemKey?: string | null) {
-  if (role === 'recording') return '#e76f91'
-  if (role === 'reference') return '#93a1b6'
-  return COLOR_BY_STEM[String(stemKey || '').toLowerCase()] || '#7aa2ff'
-}
-
-function duplicatedTrackColor(source: EditorSource) {
-  if (source.role === 'stem') return trackColor('stem', source.stemKey)
-  return trackColor(source.role, source.stemKey)
-}
 
 function cloneLegacyTrackEffects(effects: unknown): EditorTrack['effects'] {
   return effects && typeof effects === 'object' && !Array.isArray(effects)
