@@ -7,7 +7,9 @@ const path = new URL('../src/views/ResultsView.vue', import.meta.url)
 const { descriptor } = parse(readFileSync(path, 'utf8'))
 const template = descriptor.template?.content || ''
 const script = descriptor.scriptSetup?.content || ''
-const style = descriptor.styles.map(item => item.content).join('\n')
+const style = descriptor.styles.map(item =>
+  item.src ? readFileSync(new URL(item.src, path), 'utf8') : item.content
+).join('\n')
 
 test('result selection uses the page header without inserting another toolbar', () => {
   assert.ok(template.includes("'results-page__header-actions--selecting': selecting"))
