@@ -10,10 +10,10 @@ import numpy as np
 import torch
 import torch.nn.functional as torch_functional
 
-from game.config import load_model_bundle
-from game.inference.me_infer import SegmentationEstimationInferenceModel
+from third_party.vocal_midi.config import load_model_bundle
+from third_party.vocal_midi.inference.me_infer import SegmentationEstimationInferenceModel
 from audio_tools.slicer_core import Slicer
-from game.midi import Note, build_midi_file
+from third_party.vocal_midi.midi import Note, build_midi_file
 
 
 MAX_INFERENCE_CHUNK_SECONDS = 60.0

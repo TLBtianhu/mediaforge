@@ -39,7 +39,7 @@ def _vocal_to_midi(payload: dict[str, Any]) -> dict[str, Any]:
     # The worker reserves stdout for JSON envelopes. Redirect incidental output
     # from Torch and vendored model code to stderr so it cannot corrupt the protocol.
     with isolate_protocol_stdout():
-        from game.infer import infer  # type: ignore
+        from third_party.vocal_midi.infer import infer  # type: ignore
 
         inference_result = infer(
             model_path=model_path,

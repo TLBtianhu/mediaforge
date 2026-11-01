@@ -14,8 +14,8 @@ if __package__:
 else:
     import _bootstrap as _worker_test_bootstrap
 
-from game.config import ConfigNode, load_model_bundle
-from game.infer import (
+from third_party.vocal_midi.config import ConfigNode, load_model_bundle
+from third_party.vocal_midi.infer import (
     WARNING_NO_NOTES_DETECTED,
     WARNING_STEREO_DOWNMIX_FALLBACK,
     _normalize_notes,
@@ -24,7 +24,7 @@ from game.infer import (
     _prepare_mono_waveform,
     infer,
 )
-from game.midi import Note
+from third_party.vocal_midi.midi import Note
 
 
 class GameInferenceTests(unittest.TestCase):
@@ -146,20 +146,20 @@ inference:
 
             with (
                 mock.patch(
-                    "game.infer.load_model_bundle",
+                    "third_party.vocal_midi.infer.load_model_bundle",
                     return_value=(model_config, inference_config, None),
                 ),
-                mock.patch("game.infer._load_state_dict", return_value={"weight": object()}),
+                mock.patch("third_party.vocal_midi.infer._load_state_dict", return_value={"weight": object()}),
                 mock.patch(
-                    "game.infer.SegmentationEstimationInferenceModel",
+                    "third_party.vocal_midi.infer.SegmentationEstimationInferenceModel",
                     return_value=inference_model,
                 ),
-                mock.patch("game.infer._select_device", return_value=torch.device("cpu")),
+                mock.patch("third_party.vocal_midi.infer._select_device", return_value=torch.device("cpu")),
                 mock.patch(
-                    "game.infer.librosa.load",
+                    "third_party.vocal_midi.infer.librosa.load",
                     return_value=(np.ones(3000, dtype=np.float32), 1000),
                 ),
-                mock.patch("game.infer._decode_chunk", side_effect=stochastic_decode),
+                mock.patch("third_party.vocal_midi.infer._decode_chunk", side_effect=stochastic_decode),
             ):
                 first = infer(model_path, audio_path, root / "first", tempo=120)
                 second = infer(model_path, audio_path, root / "second", tempo=120)
@@ -184,17 +184,17 @@ inference:
             inference_model = mock.Mock()
             with (
                 mock.patch(
-                    "game.infer.load_model_bundle",
+                    "third_party.vocal_midi.infer.load_model_bundle",
                     return_value=(model_config, inference_config, None),
                 ),
-                mock.patch("game.infer._load_state_dict", return_value={"weight": object()}),
+                mock.patch("third_party.vocal_midi.infer._load_state_dict", return_value={"weight": object()}),
                 mock.patch(
-                    "game.infer.SegmentationEstimationInferenceModel",
+                    "third_party.vocal_midi.infer.SegmentationEstimationInferenceModel",
                     return_value=inference_model,
                 ),
-                mock.patch("game.infer._select_device", return_value=torch.device("cpu")),
+                mock.patch("third_party.vocal_midi.infer._select_device", return_value=torch.device("cpu")),
                 mock.patch(
-                    "game.infer.librosa.load",
+                    "third_party.vocal_midi.infer.librosa.load",
                     return_value=(np.zeros(3000, dtype=np.float32), 1000),
                 ),
             ):

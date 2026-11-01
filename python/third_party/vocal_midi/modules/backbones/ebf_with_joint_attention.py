@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from game.modules.backbones.EBF import CgMLP, GLUFFN, FFN, LayScale
-from game.modules.backbones.eglu import HalfCacheGLUFFN
+from third_party.vocal_midi.modules.backbones.EBF import CgMLP, GLUFFN, FFN, LayScale
+from third_party.vocal_midi.modules.backbones.eglu import HalfCacheGLUFFN
 
 
 def _to_heads(value, num_heads):

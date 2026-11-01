@@ -20,8 +20,8 @@ from audio_tools import convert as tool_convert
 from audio_tools import merge as tool_merge
 from audio_tools import midi as tool_midi
 from audio_tools import sdr as tool_sdr
-from game.infer import MidiInferenceResult
-from game.midi import Note, build_midi_file
+from third_party.vocal_midi.infer import MidiInferenceResult
+from third_party.vocal_midi.midi import Note, build_midi_file
 from core import worker_tools
 
 
@@ -198,7 +198,7 @@ class WorkerToolsTests(unittest.TestCase):
             root = Path(temp_value)
             output = root / "vocal.mid"
             with (
-                mock.patch("game.midi.os.replace", side_effect=OSError("replace failed")),
+                mock.patch("third_party.vocal_midi.midi.os.replace", side_effect=OSError("replace failed")),
                 self.assertRaisesRegex(OSError, "replace failed"),
             ):
                 midi.save(output)
@@ -235,7 +235,7 @@ class WorkerToolsTests(unittest.TestCase):
             stdout = io.StringIO()
             stderr = io.StringIO()
             with (
-                mock.patch("game.infer.infer", side_effect=fake_infer) as game_infer,
+                mock.patch("third_party.vocal_midi.infer.infer", side_effect=fake_infer) as game_infer,
                 mock.patch.object(tool_midi, "emit") as worker_emit,
                 redirect_stdout(stdout),
                 redirect_stderr(stderr),

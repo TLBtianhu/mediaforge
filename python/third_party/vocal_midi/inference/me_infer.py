@@ -5,21 +5,21 @@ from typing import Any
 import torch
 from torch import nn, Tensor
 
-from game.lib.feature.mel import StretchableMelSpectrogram
-from game.modules.d3pm import (
+from third_party.vocal_midi.lib.feature.mel import StretchableMelSpectrogram
+from third_party.vocal_midi.modules.d3pm import (
     d3pm_time_schedule,
     remove_mutable_boundaries,
 )
-from game.modules.decoding import (
+from third_party.vocal_midi.modules.decoding import (
     decode_soft_boundaries,
     decode_gaussian_blurred_probs,
 )
-from game.modules.functional import (
+from third_party.vocal_midi.modules.functional import (
     format_boundaries,
     boundaries_to_regions,
     regions_to_durations,
 )
-from game.modules.midi_extraction import SegmentationEstimationModel
+from third_party.vocal_midi.modules.midi_extraction import SegmentationEstimationModel
 
 
 class SegmentationEstimationInferenceModel(nn.Module):

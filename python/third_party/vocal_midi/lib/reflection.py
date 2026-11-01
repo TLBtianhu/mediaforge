@@ -7,7 +7,7 @@ from typing import Any
 
 def _game_module_path(path: str) -> str:
     if path.startswith("modules."):
-        return f"game.{path}"
+        return f"third_party.vocal_midi.{path}"
     return path
 
 

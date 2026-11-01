@@ -4,9 +4,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from game.deployment.context import is_export_mode
-from game.modules.backbones.RoPosEmb_s2 import SingleRoPosEmb
-from game.modules.backbones.eglu import HalfCacheGLUFFN
+from third_party.vocal_midi.deployment.context import is_export_mode
+from third_party.vocal_midi.modules.backbones.RoPosEmb_s2 import SingleRoPosEmb
+from third_party.vocal_midi.modules.backbones.eglu import HalfCacheGLUFFN
 
 
 def _to_heads(value, num_heads):

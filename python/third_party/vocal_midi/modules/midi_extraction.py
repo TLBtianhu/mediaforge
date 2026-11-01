@@ -3,8 +3,8 @@ from typing import Any
 import torch
 from torch import nn
 
-from game.lib.reflection import build_object_from_class_name
-from game.modules.commons.common_layers import CyclicRegionEmbedding
+from third_party.vocal_midi.lib.reflection import build_object_from_class_name
+from third_party.vocal_midi.modules.commons.common_layers import CyclicRegionEmbedding
 
 
 class SegmentationEstimationModel(nn.Module):
