@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ModelSlotFields from '../components/ModelSlotFields.vue'
+import { makeModelStorage, type StorageListItem } from './models/storage'
 import { fromWireParams, paramsFromInterface, toWireParams } from '../litegraph/inferenceParams.ts'
 import { layoutFor } from '../litegraph/layouts.ts'
 import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
@@ -260,80 +261,13 @@ const pagedModels = computed(() => {
   return sortedModels.value.slice(start, start + pageSize.value)
 })
 
-type StorageListItem = ModelStorageDeleteTarget & {
-  selectionKey: string
-  downloaded: boolean
-  sizeBytes: number
-  expectedSizeBytes: number
-  fileCount: number
-  role?: ToolModelStorageItem['role']
-}
-
-const allStorageModels = computed<StorageListItem[]>(() => {
-  const catalogModels: StorageListItem[] = (modelStorageSummary.value?.models || []).map(item => ({
-    kind: 'catalog',
-    id: item.name,
-    name: item.name,
-    selectionKey: `catalog:${item.name}`,
-    downloaded: item.downloaded,
-    sizeBytes: item.sizeBytes,
-    expectedSizeBytes: item.expectedSizeBytes,
-    fileCount: item.files.filter(file => file.exists).length,
-  }))
-  const toolModels: StorageListItem[] = (modelStorageSummary.value?.toolModels || []).map(item => ({
-    kind: 'tool',
-    id: item.id,
-    name: item.name,
-    tool: item.tool,
-    role: item.role,
-    selectionKey: `tool:${item.tool}:${item.id}`,
-    downloaded: true,
-    sizeBytes: item.sizeBytes,
-    expectedSizeBytes: item.sizeBytes,
-    fileCount: item.fileCount,
-  }))
-  return [...catalogModels, ...toolModels]
+const {
+  allStorageModels, storageModels, allStorageModelsByKey, selectedStorageBytes,
+  hasDeletingSelectedStorageModels, batchDeleteProgress, setStorageSelected,
+} = makeModelStorage({
+  computed, modelStorageSummary, storageSearch, storageSort, storageDownloadedOnly,
+  selectedStorageModels, collator, isDeletingModel, batchDeleteState, deleteTasks,
 })
-
-const storageModels = computed<StorageListItem[]>(() => {
-  const q = storageSearch.value.trim().toLowerCase()
-  return [...allStorageModels.value]
-    .filter((item) => (!storageDownloadedOnly.value || item.downloaded)
-      && (!q || item.name.toLowerCase().includes(q) || item.tool?.includes(q)))
-    .sort((a, b) => {
-      if (storageSort.value === 'size-desc') return b.sizeBytes - a.sizeBytes
-      if (storageSort.value === 'size-asc') return a.sizeBytes - b.sizeBytes
-      if (storageSort.value === 'name-desc') return collator.value.compare(b.name, a.name)
-      return collator.value.compare(a.name, b.name)
-    })
-})
-
-const allStorageModelsByKey = computed(() => new Map(allStorageModels.value.map(item => [item.selectionKey, item])))
-
-const selectedStorageBytes = computed(() => selectedStorageModels.value
-  .map(key => allStorageModelsByKey.value.get(key))
-  .filter((item): item is NonNullable<typeof item> => Boolean(item))
-  .reduce((sum, item) => sum + item.sizeBytes, 0))
-
-const hasDeletingSelectedStorageModels = computed(() => selectedStorageModels.value.some((key) => {
-  const item = allStorageModelsByKey.value.get(key)
-  return item?.kind === 'catalog' && isDeletingModel(item.id)
-}))
-
-const batchDeleteProgress = computed(() => {
-  if (!batchDeleteState.value.totalModels) return 0
-  const currentTask = batchDeleteState.value.currentModel ? deleteTasks.value[batchDeleteState.value.currentModel] : null
-  const currentFraction = currentTask && currentTask.totalFiles > 0
-    ? currentTask.completedFiles / currentTask.totalFiles
-    : 0
-  return Math.max(0, Math.min(100, Math.round(((batchDeleteState.value.completedModels + currentFraction) / batchDeleteState.value.totalModels) * 100)))
-})
-
-function setStorageSelected(name: string, checked: boolean) {
-  selectedStorageModels.value = checked
-    ? Array.from(new Set([...selectedStorageModels.value, name]))
-    : selectedStorageModels.value.filter((item) => item !== name)
-}
 
 watch([search, category, modelSource, downloadedOnly, pageSize, modelSort], () => {
   page.value = 1
