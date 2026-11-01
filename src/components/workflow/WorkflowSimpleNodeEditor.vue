@@ -55,6 +55,13 @@ import {
   simpleStepInputTarget,
   updateSimpleEnsembleOutputStem,
 } from '@/utils/simpleWorkflowEditor'
+import { stepHeight, ensembleHeight, nodesOverlap, outputPortKey, ensembleInputPortKey, savePortKey, computeAutoLayout } from './simpleLayout'
+
+function autoLayout() {
+  draft.value.ui = { ...draft.value.ui, nodes: computeAutoLayout(draft.value, simpleSourceStepId, isSimpleAudioOperation), viewport: { x: 0, y: 0, zoom: 1 } }
+  recordHistory()
+  void nextTick(() => fitView(false))
+}
 
 const draft = defineModel<SimpleDraft>('draft', { required: true })
 const name = defineModel<string>('name', { required: true })
@@ -168,20 +175,6 @@ const NODE_HEIGHT_BASE = 166
 const PORT_GAP = 26
 const SAVE_ROW_GAP = 84
 
-function nodesOverlap(
-  first: SimpleEditorPoint,
-  firstWidth: number,
-  firstHeight: number,
-  second: SimpleEditorPoint,
-  secondWidth: number,
-  secondHeight: number,
-  gap = 20,
-) {
-  return first.x < second.x + secondWidth + gap
-    && first.x + firstWidth + gap > second.x
-    && first.y < second.y + secondHeight + gap
-    && first.y + firstHeight + gap > second.y
-}
 
 const modelOptions = computed(() => [...props.models]
   .sort((a, b) => a.name.localeCompare(b.name, locale.value === 'zh-CN' ? 'zh-CN' : 'en'))
@@ -545,30 +538,12 @@ function portPoint(key: string): SimpleEditorPoint | null {
   }
 }
 
-function outputPortKey(stepId: string, stem: string) {
-  return `output:${simpleOutputRef(stepId, stem)}`
-}
-
-function ensembleInputPortKey(ensembleId: string, index: number) {
-  return `ensemble-input:${ensembleId}:${index}`
-}
-
-function savePortKey(stepId: string, stem: string) {
-  return `save:${simpleOutputRef(stepId, stem)}`
-}
 
 function nodeStyle(id: string) {
   const point = nodePoint(id)
   return { left: `${point.x}px`, top: `${point.y}px` }
 }
 
-function stepHeight(step: SimpleStepDraft) {
-  return NODE_HEIGHT_BASE + Math.max(0, step.stems.length - 2) * PORT_GAP
-}
-
-function ensembleHeight(ensemble: SimpleEnsembleDraft) {
-  return (isSimpleAudioOperation(ensemble.algorithm) ? 174 : 206) + ensemble.inputs.length * 42
-}
 
 type SaveEntry = {
   source: string
@@ -622,7 +597,7 @@ function saveHeight() {
 }
 
 function outputPoint(step: SimpleStepDraft, stem: string) {
-  const measured = portPoint(outputPortKey(step.id, stem))
+  const measured = portPoint(outputPortKey(step.id, stem, simpleOutputRef))
   if (measured) return measured
   const index = Math.max(0, step.stems.findIndex(item => item.toLowerCase() === stem.toLowerCase()))
   const point = nodePoint(step.id)
@@ -637,10 +612,10 @@ function ensembleInputPoint(ensemble: SimpleEnsembleDraft, index: number) {
 }
 
 function ensembleOutputPoint(ensemble: SimpleEnsembleDraft) {
-  const measured = portPoint(outputPortKey(ensemble.id, ensemble.outputStem.trim()))
+  const measured = portPoint(outputPortKey(ensemble.id, ensemble.outputStem.trim(), simpleOutputRef))
   if (measured) return measured
   const point = nodePoint(ensemble.id)
-  return { x: point.x + ENSEMBLE_WIDTH, y: point.y + ensembleHeight(ensemble) - 34 }
+  return { x: point.x + ENSEMBLE_WIDTH, y: point.y + ensembleHeight(ensemble, isSimpleAudioOperation) - 34 }
 }
 
 function inputPoint(step: SimpleStepDraft) {
@@ -658,7 +633,7 @@ function inputOutputPoint() {
 }
 
 function saveInputPoint(sourceId: string, stem: string) {
-  const measured = portPoint(savePortKey(sourceId, stem))
+  const measured = portPoint(savePortKey(sourceId, stem, simpleOutputRef))
   if (measured) return measured
   const point = nodePoint('save')
   const source = simpleOutputRef(sourceId, stem)
@@ -1203,9 +1178,9 @@ function addEnsemble(at?: SimpleEditorPoint, operation?: SimpleAudioOperation) {
     ? { x: Math.max(24, at.x - ENSEMBLE_WIDTH / 2), y: Math.max(24, at.y - 70) }
     : { x: previousPoint.x + 350, y: previousPoint.y }
   const savePoint = nodePoint('save')
-  const moveSave = nodesOverlap(point, ENSEMBLE_WIDTH, ensembleHeight(ensemble), savePoint, SAVE_WIDTH, saveHeight())
+  const moveSave = nodesOverlap(point, ENSEMBLE_WIDTH, ensembleHeight(ensemble, isSimpleAudioOperation), savePoint, SAVE_WIDTH, saveHeight())
   const nextSavePoint = at
-    ? { x: savePoint.x, y: point.y + ensembleHeight(ensemble) + 30 }
+    ? { x: savePoint.x, y: point.y + ensembleHeight(ensemble, isSimpleAudioOperation) + 30 }
     : { x: point.x + ENSEMBLE_WIDTH + 30, y: savePoint.y }
   draft.value.ui.nodes = {
     ...draft.value.ui.nodes,
@@ -1275,50 +1250,6 @@ function removeEnsemble(ensemble: SimpleEnsembleDraft) {
   )
 }
 
-function autoLayout() {
-  const nodes: Record<string, SimpleEditorPoint> = {
-    input: { x: 64, y: 250 },
-  }
-  const stepById = new Map(draft.value.steps.map(step => [step.id, step]))
-  const ensembleById = new Map(draft.value.ensembles.map(ensemble => [ensemble.id, ensemble]))
-  const depths = new Map<string, number>()
-  const visiting = new Set<string>()
-  const sourceDepth = (source: string): number => {
-    if (!source.trim() || source === 'input') return 0
-    const sourceId = simpleSourceStepId(source)
-    const step = stepById.get(sourceId)
-    if (step) return nodeDepth(step.id, 'step')
-    const ensemble = ensembleById.get(sourceId)
-    return ensemble ? nodeDepth(ensemble.id, 'ensemble') : 0
-  }
-  const nodeDepth = (id: string, kind: 'step' | 'ensemble'): number => {
-    const cached = depths.get(id)
-    if (cached !== undefined) return cached
-    if (visiting.has(id)) return 1
-    visiting.add(id)
-    const depth = kind === 'step'
-      ? sourceDepth(stepById.get(id)?.input || 'input') + 1
-      : Math.max(0, ...(ensembleById.get(id)?.inputs || []).map(input => sourceDepth(input.source))) + 1
-    visiting.delete(id)
-    depths.set(id, depth)
-    return depth
-  }
-  draft.value.steps.forEach(step => nodeDepth(step.id, 'step'))
-  draft.value.ensembles.forEach(ensemble => nodeDepth(ensemble.id, 'ensemble'))
-  const nextY = new Map<number, number>()
-  const place = (id: string, depth: number, height: number) => {
-    const y = nextY.get(depth) ?? 120
-    nodes[id] = { x: 360 + Math.max(0, depth - 1) * 360, y }
-    nextY.set(depth, y + height + 36)
-  }
-  draft.value.steps.forEach(step => place(step.id, depths.get(step.id) || 1, stepHeight(step)))
-  draft.value.ensembles.forEach(ensemble => place(ensemble.id, depths.get(ensemble.id) || 1, ensembleHeight(ensemble)))
-  const maxDepth = Math.max(1, ...depths.values())
-  nodes.save = { x: 360 + maxDepth * 360, y: 220 }
-  draft.value.ui = { ...draft.value.ui, nodes, viewport: { x: 0, y: 0, zoom: 1 } }
-  recordHistory()
-  void nextTick(() => fitView(false))
-}
 
 function fitView(remember = true) {
   const canvas = canvasRef.value
@@ -1504,7 +1435,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="simple-node__outputs">
             <div v-for="stem in step.stems" :key="stem" class="simple-output-row">
-              <button :ref="el => setPortElement(outputPortKey(step.id, stem), el)" class="simple-port simple-port--output" :class="{ 'simple-port--source-target': pendingConnection?.direction === 'output' && hoverTarget === `output:${simpleOutputRef(step.id, stem)}` }" :data-simple-source="simpleOutputRef(step.id, stem)" type="button" @pointerdown.stop="beginConnection(simpleOutputRef(step.id, stem), $event)" @pointerup.stop="finishOutputConnection(simpleOutputRef(step.id, stem), $event)"><span>{{ stem }}</span><i /></button>
+              <button :ref="el => setPortElement(outputPortKey(step.id, stem, simpleOutputRef), el)" class="simple-port simple-port--output" :class="{ 'simple-port--source-target': pendingConnection?.direction === 'output' && hoverTarget === `output:${simpleOutputRef(step.id, stem)}` }" :data-simple-source="simpleOutputRef(step.id, stem)" type="button" @pointerdown.stop="beginConnection(simpleOutputRef(step.id, stem), $event)" @pointerup.stop="finishOutputConnection(simpleOutputRef(step.id, stem), $event)"><span>{{ stem }}</span><i /></button>
               <n-button size="tiny" :type="step.save[stem] ? 'primary' : 'default'" secondary @pointerdown.stop @click.stop="toggleSave(step, stem)">{{ step.save[stem] ? t('workflows.savedOutput') : t('workflows.saveStems') }}</n-button>
             </div>
             <span v-if="!step.stems.length" class="simple-node__empty">{{ t('workflows.noStemPorts') }}</span>
@@ -1512,7 +1443,7 @@ onBeforeUnmount(() => {
           <WorkflowNodeLog :node-id="step.id" :node-label="t('workflows.separationNode') + ' ' + (index + 1)" :state="nodeStates?.[step.id]" :logs="nodeLogs?.[step.id]" :pending="executionVisible" />
         </article>
 
-        <article v-for="(ensemble, index) in draft.ensembles" :key="ensemble.id" class="simple-node simple-node--ensemble" :class="{ 'simple-node--selected': selectedNodeId === ensemble.id, 'simple-node--audio-operation': isSimpleAudioOperation(ensemble.algorithm) }" :style="{ ...nodeStyle(ensemble.id), width: `${ENSEMBLE_WIDTH}px`, minHeight: `${ensembleHeight(ensemble)}px` }" :data-simple-node="ensemble.id" :data-node-status="nodeStates?.[ensemble.id]?.status" :data-audio-operation="isSimpleAudioOperation(ensemble.algorithm) ? ensemble.algorithm : undefined" @pointerdown.stop="beginNodeDrag(ensemble.id, $event)">
+        <article v-for="(ensemble, index) in draft.ensembles" :key="ensemble.id" class="simple-node simple-node--ensemble" :class="{ 'simple-node--selected': selectedNodeId === ensemble.id, 'simple-node--audio-operation': isSimpleAudioOperation(ensemble.algorithm) }" :style="{ ...nodeStyle(ensemble.id), width: `${ENSEMBLE_WIDTH}px`, minHeight: `${ensembleHeight(ensemble, isSimpleAudioOperation)}px` }" :data-simple-node="ensemble.id" :data-node-status="nodeStates?.[ensemble.id]?.status" :data-audio-operation="isSimpleAudioOperation(ensemble.algorithm) ? ensemble.algorithm : undefined" @pointerdown.stop="beginNodeDrag(ensemble.id, $event)">
           <header><div><span>{{ processingNodeLabel(ensemble) }} {{ index + 1 }}</span><strong>{{ ensemble.outputStem || t('workflows.ensembleStemPlaceholder') }}</strong></div><button type="button" class="simple-icon-button" :title="isSimpleAudioOperation(ensemble.algorithm) ? t('workflows.removeAudioOperation') : t('workflows.removeEnsemble')" @pointerdown.stop @click.stop="removeEnsemble(ensemble)"><n-icon :component="CloseOutline" /></button></header>
           <span v-if="nodeStates?.[ensemble.id]" class="simple-execution-state" :data-node-status="nodeStates[ensemble.id].status" :title="t(WORKFLOW_NODE_STATUS_KEYS[nodeStates[ensemble.id].status]) + ' · ' + Math.round(nodeStates[ensemble.id].progress) + '%'"><template v-if="nodeStates[ensemble.id].status === 'running'">{{ t('workbench.running') }}</template></span>
           <div class="simple-node__body" @pointerdown.stop>
@@ -1532,7 +1463,7 @@ onBeforeUnmount(() => {
           <div class="simple-ensemble-output-row">
             <span class="simple-ensemble-output-row__label">{{ ensemble.outputStem || t('workflows.ensembleOutput') }}</span>
             <n-button size="tiny" :type="ensemble.save ? 'primary' : 'default'" secondary @pointerdown.stop @click.stop="toggleEnsembleSave(ensemble)">{{ ensemble.save ? t('workflows.savedOutput') : t('workflows.saveStems') }}</n-button>
-            <button :ref="el => setPortElement(outputPortKey(ensemble.id, ensemble.outputStem.trim()), el)" class="simple-ensemble-output-port" :class="{ 'simple-ensemble-output-port--target': pendingConnection?.direction === 'output' && hoverTarget === `output:${simpleOutputRef(ensemble.id, ensemble.outputStem.trim())}` }" :aria-label="ensemble.outputStem || t('workflows.ensembleOutput')" :data-simple-source="simpleOutputRef(ensemble.id, ensemble.outputStem.trim())" type="button" @pointerdown.stop="beginConnection(simpleOutputRef(ensemble.id, ensemble.outputStem.trim()), $event)" @pointerup.stop="finishOutputConnection(simpleOutputRef(ensemble.id, ensemble.outputStem.trim()), $event)"><i /></button>
+            <button :ref="el => setPortElement(outputPortKey(ensemble.id, ensemble.outputStem.trim(), simpleOutputRef), el)" class="simple-ensemble-output-port" :class="{ 'simple-ensemble-output-port--target': pendingConnection?.direction === 'output' && hoverTarget === `output:${simpleOutputRef(ensemble.id, ensemble.outputStem.trim())}` }" :aria-label="ensemble.outputStem || t('workflows.ensembleOutput')" :data-simple-source="simpleOutputRef(ensemble.id, ensemble.outputStem.trim())" type="button" @pointerdown.stop="beginConnection(simpleOutputRef(ensemble.id, ensemble.outputStem.trim()), $event)" @pointerup.stop="finishOutputConnection(simpleOutputRef(ensemble.id, ensemble.outputStem.trim()), $event)"><i /></button>
           </div>
           <WorkflowNodeLog :node-id="ensemble.id" :node-label="processingNodeLabel(ensemble) + ' ' + (index + 1)" :state="nodeStates?.[ensemble.id]" :logs="nodeLogs?.[ensemble.id]" :pending="executionVisible" />
         </article>
@@ -1542,7 +1473,7 @@ onBeforeUnmount(() => {
           <span v-if="nodeStates?.['save']" class="simple-execution-state" :data-node-status="nodeStates['save'].status" :title="t(WORKFLOW_NODE_STATUS_KEYS[nodeStates['save'].status]) + ' · ' + Math.round(nodeStates['save'].progress) + '%'"><template v-if="nodeStates['save'].status === 'running'">{{ t('workbench.running') }}</template></span>
           <button class="simple-save-drop-target" :class="{ 'simple-save-drop-target--active': pendingConnection && hoverTarget === 'save' }" type="button" data-simple-target="save" @pointerdown.stop @pointerup="finishConnection('save', $event)">{{ t('workflows.dropStemToSave') }}</button>
           <div v-for="(entry, index) in saveEntries()" :key="entry.source" class="simple-save-row">
-            <i :ref="el => setPortElement(savePortKey(simpleSourceStepId(entry.source), entry.stem), el)" class="simple-save-row__port" :class="{ 'simple-save-row__port--active': pendingConnection?.direction === 'output' && pendingConnection.target === simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem), 'simple-save-row__port--target': pendingConnection?.direction === 'input' && hoverTarget === simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem) }" :data-simple-target="simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem)" @pointerdown.stop="beginSaveConnection(entry.source, `${entry.sourceLabel} · ${entry.stem}`, $event)" @pointerup.stop="finishConnection(simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem), $event)" />
+            <i :ref="el => setPortElement(savePortKey(simpleSourceStepId(entry.source), entry.stem, simpleOutputRef), el)" class="simple-save-row__port" :class="{ 'simple-save-row__port--active': pendingConnection?.direction === 'output' && pendingConnection.target === simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem), 'simple-save-row__port--target': pendingConnection?.direction === 'input' && hoverTarget === simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem) }" :data-simple-target="simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem)" @pointerdown.stop="beginSaveConnection(entry.source, `${entry.sourceLabel} · ${entry.stem}`, $event)" @pointerup.stop="finishConnection(simpleSaveTarget(simpleSourceStepId(entry.source), entry.stem), $event)" />
             <div class="simple-save-row__details">
               <div class="simple-save-row__source">
                 <span class="simple-save-row__source-model" :title="entry.sourceLabel">{{ entry.sourceLabel }}</span>
