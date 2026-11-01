@@ -51,19 +51,6 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
                 },
                 request_id=request_id,
             )
-            # 兼容：旧的前端仍监听 audio_tool_*，统一完成后删掉这一段。
-            emit(
-                "task.progress",
-                {
-                    "operation": "model_download",
-                    "phase": "downloading",
-                    "fraction": round(max(0.0, min(1.0, fraction)), 4),
-                    "completed": 0,
-                    "total": 1,
-                    "current": message,
-                },
-                request_id=request_id,
-            )
 
         result = model_hub.download_model(
             model_id,
@@ -80,18 +67,6 @@ def cmd_model_download(payload: dict[str, Any]) -> int:
                 "skipped": [],
                 "modelDir": result.get("modelDir"),
                 "modelInfo": result.get("model"),
-            },
-            request_id=request_id,
-        )
-        # 结果用规范事件 task.result 收尾。
-        emit(
-            "task.result",
-            {
-                "operation": "model_download",
-                "outputs": [{"path": file["path"], "size": file["size"], "skipped": file["skipped"]} for file in result["files"]],
-                "failed": [],
-                "skipped": [],
-                "warnings": [],
             },
             request_id=request_id,
         )

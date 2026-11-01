@@ -18,7 +18,6 @@ import {
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useModelStore } from '@/stores/model'
-import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 defineOptions({ name: 'ModelHubView' })
 
@@ -192,19 +191,19 @@ onMounted(async () => {
       const payload = event.payload
       const id = payload?.requestId || payload?.taskId
       if (!requestId.value || id !== requestId.value) return
-      if (isTaskProgress(payload?.type) && payload.payload) {
+      if (payload?.type === 'asset.progress' && payload.payload) {
         if (downloadingId.value) {
-          progress.value = { ...progress.value, [downloadingId.value]: Math.round(Number(payload.payload.fraction || 0) * 100) }
+          const percent = Number((payload.payload as { progress?: number }).progress || 0)
+          progress.value = { ...progress.value, [downloadingId.value]: Math.round(percent) }
         }
         return
       }
-      if (isTaskResult(payload?.type)) {
+      if (payload?.type === 'asset.done') {
         downloadingId.value = ''
         requestId.value = ''
         message.success(t('modelHub.downloaded'))
         void load()
-        // 音频模型走 task.result 通道，共享 model store 收不到 asset.done，
-        // 必须在这里主动刷新，否则音频处理页仍认为"未下载"。
+        // 共享 store 也消费 asset.done；这里再刷新一次本页与共享列表，保证两处一致。
         void modelStore.loadModels()
         return
       }

@@ -37,12 +37,19 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
    前端按通道分别处理，Rust 的终态表也分开列。合并需要先定"统一载荷"的形态，
    暂时保留，且只在 protocol.json 的 events 里声明一次。
 
-2. versions.json 还没发布
+2. 模型下载有两份实现
+   活的命令是 model.download → core/model_hub_worker.cmd_model_download（走 model_hub 库）。
+   但 core/worker_download.cmd_download_model 是孤儿：不在 protocol.json、dispatch 够不到，
+   只有它的库函数 download_studio_model 被 worker_infer 的自动补下载调用。
+   即"model_hub 下载"与"worker_download 下载"两套并存；test_worker_download.py 直接测的是孤儿命令。
+   收敛方向：infer 的自动补下载也走 model_hub，删掉孤儿命令并把测试迁到库函数。
+
+3. versions.json 还没发布
    version_check.rs 里的两个 URL（GitHub release 与魔搭）实测都是 404；
    release/ 里那份是 0.0.20 时代、还带已删除 catalog 轴的旧产物，已清掉。
    要发布的清单由 scripts/make-versions.py 生成并签名（私钥只在环境变量里）。
 
-3. 运行时更新的协商
+4. 运行时更新的协商
    已刻意不做：没有“检查最新版本”，换运行时 = 发新版应用 + 新 sha256。
    标记不匹配时提示“需要更新”，这是校验，不是协商。
 ```
