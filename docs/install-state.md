@@ -155,6 +155,15 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integratio
 3. 数据根：缺失时自动创建（需在代码里确认每层都 `mkdir`）
 4. 开发态防呆：开发构建若数据根落到 `~/.mediaforge` 就警告并退出
 5. 去掉一切 junction 用法（已清除现场的链接）
+6. **首装"下载运行时"端到端冒烟（唯一没闭环的用户路径）**：
+   正确做法是给应用加一个 dev-only CLI 入口（例如 `MediaForge.exe --smoke-install-runtime`），
+   由真实进程**主线程**跑 `runtime_assets::install_blocking`，配一个
+   `scripts/smoke-first-install.ps1`（本地 HTTP 服务托管 versions.json+sig+runtime zip，
+   隔离数据根，断言解包 + active-runtime.json + .asset-id + worker health，并含 sha256 不符的负例）。
+   为什么不能走别的路：① headless Chromium + mock `__TAURI_INTERNALS__`（diagnostics_ui_smoke 的方式）
+   只能测前端，测不到真实 Rust 下载；② 在 `#[test]` 里 `Builder::build` 起 AppHandle 会 panic——
+   Windows 的 Tao 事件循环要求主线程，而 Rust 测试跑在独立线程（2026-11-01 探针实证）。
+   所以唯一干净的端到端入口是 dev-only CLI 子命令，而不是测试内 build 或前端 mock。
 
 ## 6. 升级策略：只发安装包
 
