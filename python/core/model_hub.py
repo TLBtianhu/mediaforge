@@ -47,6 +47,7 @@ def model_dir(override: str | None = None) -> Path:
 
 def _audio_files(item: dict, source: str) -> list[dict]:
     base = AUDIO_SOURCES.get(source, AUDIO_SOURCES["modelscope"])
+    hashes = item.get("sha256") or {}
     paths: list[tuple[str, int]] = []
     primary = str(item.get("relpath") or "")
     if primary:
@@ -62,6 +63,8 @@ def _audio_files(item: dict, source: str) -> list[dict]:
             "path": relpath,
             "size": size,
             "url": f"{base}/{urllib.parse.quote(relpath, safe='/')}",
+            # catalog 自带的 sha256：音频下载因此可以离线校验，不再需要联网 file index。
+            "sha256": str(hashes.get(relpath) or ""),
         }
         for relpath, size in paths
     ]

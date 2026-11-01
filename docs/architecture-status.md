@@ -37,12 +37,16 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
    前端按通道分别处理，Rust 的终态表也分开列。合并需要先定"统一载荷"的形态，
    暂时保留，且只在 protocol.json 的 events 里声明一次。
 
-2. 模型下载有两份实现
-   活的命令是 model.download → core/model_hub_worker.cmd_model_download（走 model_hub 库）。
-   但 core/worker_download.cmd_download_model 是孤儿：不在 protocol.json、dispatch 够不到，
-   只有它的库函数 download_studio_model 被 worker_infer 的自动补下载调用。
-   即"model_hub 下载"与"worker_download 下载"两套并存；test_worker_download.py 直接测的是孤儿命令。
-   收敛方向：infer 的自动补下载也走 model_hub，删掉孤儿命令并把测试迁到库函数。
+2. 模型下载有两份实现（元数据已统一，下载器待收敛）
+   清单真源其实只有一份：worker_models 与 model_hub 都读 python/audio_catalog.json，
+   pymss registry 只是 bundled 缺失时的兜底。真正的分裂点是"音频缺 sha256，
+   只能靠 pymss 联网 file index 校验"。
+   已做（2026-11-01）：scripts/sync-audio-catalog-hashes.py 把 326 条音频模型的
+   sha256 全部写回 catalog（权重+config+auxiliary），model_hub 的音频下载因此
+   可以离线校验。catalog 更新统一走这个脚本。
+   剩余：infer 的自动补下载仍走 pymss 下载器；core/worker_download.cmd_download_model
+   是孤儿命令（不在 protocol.json、dispatch 够不到）。下一步 = infer 改走统一下载器，
+   删孤儿命令并把 test_worker_download.py 的进度用例迁到 model_hub_worker。
 
 3. versions.json 还没发布
    version_check.rs 里的两个 URL（GitHub release 与魔搭）实测都是 404；
