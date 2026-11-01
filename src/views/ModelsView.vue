@@ -2,6 +2,7 @@
 import ModelSlotFields from '../components/ModelSlotFields.vue'
 import { makeModelStorage, type StorageListItem } from './models/storage'
 import { makeModelSorting } from './models/sorting'
+import { makeModelNotes } from './models/notes'
 import { fromWireParams, paramsFromInterface, toWireParams } from '../litegraph/inferenceParams.ts'
 import { layoutFor } from '../litegraph/layouts.ts'
 import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
@@ -192,25 +193,12 @@ const {
   modelPreferences, categoryLabel,
 })
 
-function modelNote(modelOrName: ModelEntry | string | null | undefined) {
-  const name = typeof modelOrName === 'string' ? modelOrName : modelOrName?.name
-  return name ? modelPreferences.value[name]?.note || '' : ''
-}
-
-function modelUseCount(modelOrName: ModelEntry | string | null | undefined) {
-  const name = typeof modelOrName === 'string' ? modelOrName : modelOrName?.name
-  return name ? modelStore.getModelUseCount(name) : 0
-}
-
-function modelNameParts(name: string) {
-  return name.split(/(?<=[_-])/u)
-}
-
-function toggleFavorite(model: ModelEntry, event?: MouseEvent) {
-  event?.stopPropagation()
-  modelStore.toggleModelFavorite(model.name)
-}
-
+const {
+  modelNote, modelUseCount, modelNameParts, toggleFavorite,
+  openModelNoteEditor, closeModelNoteEditor, handleNoteEditorUpdate, saveModelNote,
+} = makeModelNotes({
+  modelPreferences, modelStore, noteEditorModel, noteDraft, showNoteEditor, message, t,
+})
 
 const {
   allStorageModels, storageModels, allStorageModelsByKey, selectedStorageBytes,
@@ -573,29 +561,6 @@ function closeModelContextMenu() {
   contextModel.value = null
 }
 
-function openModelNoteEditor(model: ModelEntry) {
-  noteEditorModel.value = model
-  noteDraft.value = modelNote(model)
-  showNoteEditor.value = true
-}
-
-function closeModelNoteEditor() {
-  showNoteEditor.value = false
-  noteEditorModel.value = null
-}
-
-function handleNoteEditorUpdate(value: boolean) {
-  showNoteEditor.value = value
-  if (!value) noteEditorModel.value = null
-}
-
-function saveModelNote() {
-  const model = noteEditorModel.value
-  if (!model) return
-  modelStore.setModelNote(model.name, noteDraft.value)
-  closeModelNoteEditor()
-  message.success(t('models.noteSaved'))
-}
 
 function openInferenceEditor(model: ModelEntry) {
   inferenceEditorModel.value = model

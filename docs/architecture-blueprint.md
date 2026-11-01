@@ -191,7 +191,7 @@ python/
 | `commands/plugin_host.rs` | 2955 | 142（模块根） | 同目录 18 个子模块：process / session / state / live / request / scan_engine / scan / scan_pipeline / scan_control / render / blacklist / dialogs …，测试拆到 `tests.rs`（1220）与四个 `*_tests.rs` |
 | `views/SeparateView.vue` | 4824 | 2479 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList,inferenceDefaults,playback,stemSelection,queue,outputDirectory}.ts` |
 | `views/DebugView.vue` | 3457 | 1736 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint,executionLog,runtimeDebugFiles}.ts` |
-| `views/ModelsView.vue` | 2838 | 2722 | `models/{storage,sorting}.ts`（存储管理 / 排序分页），测试见 `tests/models{Storage,Sorting}.test.mjs` |
+| `views/ModelsView.vue` | 2838 | 2687 | `models/{storage,sorting,notes}.ts`，测试见 `tests/models{Storage,Sorting,Notes}.test.mjs` |
 | `views/SettingsView.vue` | 3765 | 3189 | `settings/{runtimeState,runtimeActions,proxyTest,appearance,modelDirMigration}.ts`，测试见 `tests/settings{Runtime,Appearance,ModelDir}.test.mjs` |
 | `python/core/worker_bootstrap.py` | 2430 | 337（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（589/555/509/1059），跨符号调用走门面 |
 
