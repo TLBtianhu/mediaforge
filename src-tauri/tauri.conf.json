@@ -51,9 +51,10 @@
       "../python/audio_tools/LICENSE.audio-slicer",
       "../python/media_ops/**/*.py",
       "../python/media_ops/**/*.json",
-      "../python/game/**/*.py",
-      "../python/game/**/*.txt",
-      "../python/game/LICENSE"
+      "../python/third_party/__init__.py",
+      "../python/third_party/vocal_midi/**/*.py",
+      "../python/third_party/vocal_midi/**/*.txt",
+      "../python/third_party/vocal_midi/LICENSE"
     ],
     "icon": [
       "icons/32x32.png",
