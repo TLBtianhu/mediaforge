@@ -1,5 +1,10 @@
 # 模型系统统一（未完成，设计已定）
 
+> 事后注记（2026-11-01）：本文写于事件词表收敛之前，文中出现的
+> `download_progress / download_done / download_log` 现已统一为
+> `asset.progress / asset.done / asset.log`；`task_progress` 等价于 `task.progress`。
+> 当前词表以 `manifest/protocol.json` 的 `events.canonical` 为唯一真源。
+
 现状：**两套模型系统并存**，症状是"模型库里已下载，音频处理页却显示没有可用模型"。
 0.0.15 只补了一根线（下载完成后刷新共享 store），根因还在。
 
