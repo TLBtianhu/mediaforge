@@ -32,6 +32,7 @@ import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunI
 import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, TERMINAL_STATUSES, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
 import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
+import { makeTaskQueue } from '@/stores/taskQueue'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
@@ -695,76 +696,12 @@ export const useTaskStore = defineStore('task', () => {
     normalizeOutputNaming, CURRENT_INFERENCE_PARAMS_VERSION,
     detectWorkflowFormat, resolveWorkflowRuntimeDefaults, prepareWorkflowDefinitionForRun,
   })
-  function resolveTaskOutputPath(jobOutput: string, input: string, resultId: string, outputLayout: OutputLayout) {
-    return outputLayout === 'flat'
-      ? jobOutput
-      : joinOutputPath(jobOutput, inputStemSegment(input, resultId, windowsPaths.value), windowsPaths.value)
-  }
-
-  function createQueuedTask(input: string, model: string, inferenceParams: Record<string, unknown>, modelType?: string | null, jobId?: string, jobOutput?: string, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig, batchIndex?: number) {
-    const settings = useSettingsStore()
-    const id = createRunId('sep')
-    const resultId = createRunId('result')
-    const resolvedJobOutput = jobOutput || resolveOutputDirectory(settings.outputDir, undefined, windowsPaths.value)
-    const task: SeparationTask = {
-      id,
-      jobId,
-      resultId,
-      ...(typeof batchIndex === 'number' && Number.isSafeInteger(batchIndex) && batchIndex >= 0 ? { batchIndex } : {}),
-      model,
-      input,
-      jobOutput: resolvedJobOutput,
-      output: resolveTaskOutputPath(resolvedJobOutput, input, resultId, outputLayout),
-      status: 'queued',
-      message: 'Queued',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      progress: STAGE_META.queued.progress,
-      stageLabel: STAGE_META.queued.label,
-      files: [],
-      outputs: [],
-      logs: [localLogRecord('Queued', 'task.queued', 'info', { taskId: id })],
-      runConfig: buildRunConfig(inferenceParams, modelType, outputLayout, outputNaming),
-    }
-    tasks.value.unshift(task)
-    rememberSessionTasks([task])
-    activeTaskId.value = id
-    queuePersist()
-    return task
-  }
-
-  function createQueuedWorkflowTask(input: string, workflow: WorkflowEntry, jobId?: string, jobOutput?: string, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig, batchIndex?: number) {
-    const settings = useSettingsStore()
-    const id = createRunId('wf')
-    const resultId = createRunId('result')
-    const resolvedJobOutput = jobOutput || resolveOutputDirectory(settings.outputDir, undefined, windowsPaths.value)
-    const task: SeparationTask = {
-      id,
-      jobId,
-      resultId,
-      ...(typeof batchIndex === 'number' && Number.isSafeInteger(batchIndex) && batchIndex >= 0 ? { batchIndex } : {}),
-      model: workflow.name,
-      input,
-      jobOutput: resolvedJobOutput,
-      output: resolveTaskOutputPath(resolvedJobOutput, input, resultId, outputLayout),
-      status: 'queued',
-      message: 'Queued',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      progress: STAGE_META.queued.progress,
-      stageLabel: STAGE_META.queued.label,
-      files: [],
-      outputs: [],
-      logs: [localLogRecord(`Queued workflow: ${workflow.name}`, 'task.queued', 'info', { taskId: id })],
-      runConfig: buildWorkflowRunConfig(workflow, outputLayout, outputNaming),
-    }
-    tasks.value.unshift(task)
-    rememberSessionTasks([task])
-    activeTaskId.value = id
-    queuePersist()
-    return task
-  }
-
+  const { resolveTaskOutputPath, createQueuedTask, createQueuedWorkflowTask } = makeTaskQueue({
+    useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath,
+    inputStemSegment, createRunId, STAGE_META, localLogRecord,
+    buildRunConfig, buildWorkflowRunConfig, tasks, rememberSessionTasks,
+    activeTaskId, queuePersist,
+  })
   async function startQueuedTask(taskId: string) {
     const task = tasks.value.find((item) => item.id === taskId)
     if (!task || task.status !== 'queued') return false
