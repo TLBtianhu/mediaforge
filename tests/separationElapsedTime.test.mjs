@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { computed, effectScope, nextTick, ref, watch } from 'vue'
 import { parse } from 'vue/compiler-sfc'
+import { isTerminalTaskStatus } from '../src/features/tasks/lifecycle.ts'
 
 const { descriptor } = parse(readFileSync(new URL('../src/views/SeparateView.vue', import.meta.url), 'utf8'))
 const source = ts.createSourceFile('SeparateView.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true)
@@ -34,7 +35,7 @@ function setup(t, item) {
   const currentTask = ref(item)
   const scope = effectScope()
   const state = scope.run(() => vm.runInNewContext(`${code}\n({ currentTaskDuration, taskClockNow })`, {
-    ref, computed, watch, currentTask,
+    ref, computed, watch, currentTask, isTerminalTaskStatus,
     Date: { now: () => now },
     setInterval: (callback, interval) => {
       intervals.push(interval)
