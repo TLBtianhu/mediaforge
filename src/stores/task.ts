@@ -31,6 +31,7 @@ import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/uti
 import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment, outputsFromFiles, cleanupPath, parentDir, pathKey, samePath, cleanupDirChain } from '@/stores/taskOutputPaths'
 import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, TERMINAL_STATUSES, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
 import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
+import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
@@ -689,104 +690,11 @@ export const useTaskStore = defineStore('task', () => {
     return normalizeConcurrentSeparations(settings.maxConcurrentSeparations)
   }
 
-  function buildRunConfig(inferenceParams: Record<string, unknown>, modelType?: string | null, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig): SeparationRunConfig {
-    const settings = useSettingsStore()
-    const app = useAppStore()
-    const runtimeDevice = settings.getRuntimeDeviceConfig(app.envInfo)
-    return {
-      runMode: 'model',
-      modelDir: settings.modelDir || null,
-      downloadSource: settings.downloadSource,
-      downloadMethod: settings.downloadMethod,
-      modelType: modelType ?? null,
-      outputLayout,
-      outputNaming: normalizeOutputNaming(outputNaming),
-      device: runtimeDevice.device,
-      deviceIds: runtimeDevice.deviceIds,
-      outputFormat: settings.defaultFormat,
-      selectedStems: [...selectedStems.value],
-      useTta: useTta.value,
-      debug: settings.developerMode,
-      audioParams: settings.getAudioParams(),
-      inferenceParamsVersion: CURRENT_INFERENCE_PARAMS_VERSION,
-      inferenceParams,
-    }
-  }
-
-  function workflowModelInferenceParams(definition: Record<string, unknown>) {
-    if (detectWorkflowFormat(definition) !== 'simple' || !Array.isArray(definition.steps)) {
-      return {} as Record<string, Record<string, unknown>>
-    }
-    const modelStore = useModelStore()
-    const result: Record<string, Record<string, unknown>> = {}
-    for (const value of definition.steps) {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
-      const step = value as Record<string, unknown>
-      const modelName = String(step.model || '').trim()
-      if (!modelName || result[modelName]) continue
-      const entry = modelStore.models.find(item => (
-        item.name.localeCompare(modelName, undefined, { sensitivity: 'accent' }) === 0
-        || item.aliases?.some(alias => alias.localeCompare(modelName, undefined, { sensitivity: 'accent' }) === 0)
-      ))
-      const overrides = modelStore.getModelInferenceOverrides(entry?.name || modelName)
-      if (!overrides) continue
-      const stepModelType = typeof step.model_type === 'string' ? step.model_type.trim() : ''
-      const modelType = String(stepModelType || entry?.modelType || '').trim().toLowerCase()
-      const allowed = new Set<keyof ModelDefaultInferenceParams>(modelType === 'vr'
-        ? ['batch_size', 'window_size', 'aggression', 'enable_post_process', 'post_process_threshold', 'high_end_process', 'normalize']
-        : ['batch_size', 'overlap_size', 'chunk_size', 'standardize', 'normalize'])
-      const compatible = Object.fromEntries(
-        Object.entries(overrides).filter(([key, value]) => {
-          if (!allowed.has(key as keyof ModelDefaultInferenceParams)) return false
-          if (['batch_size', 'overlap_size', 'chunk_size', 'window_size'].includes(key)) {
-            return typeof value === 'number' && Number.isFinite(value) && value > 0
-          }
-          return true
-        }),
-      )
-      if (Object.keys(compatible).length) result[modelName] = compatible
-    }
-    return result
-  }
-
-  function buildWorkflowRunConfig(workflow: WorkflowEntry, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig): SeparationRunConfig {
-    const settings = useSettingsStore()
-    const app = useAppStore()
-    const runtimeDevice = settings.getRuntimeDeviceConfig(app.envInfo)
-    const defaults = resolveWorkflowRuntimeDefaults(workflow.definition, {
-      device: runtimeDevice.device,
-      outputFormat: settings.defaultFormat || 'wav',
-      modelDir: settings.modelDir || null,
-    })
-    return {
-      runMode: 'workflow',
-      modelDir: defaults.modelDir,
-      downloadSource: settings.downloadSource,
-      downloadMethod: settings.downloadMethod,
-      workflowId: workflow.id,
-      workflowName: workflow.name,
-      workflowDefinition: prepareWorkflowDefinitionForRun(
-        workflow.definition,
-        {
-          device: defaults.device,
-          outputFormat: defaults.outputFormat,
-          modelInferenceParams: workflowModelInferenceParams(workflow.definition),
-        },
-      ),
-      outputLayout,
-      outputNaming: normalizeOutputNaming(outputNaming),
-      device: defaults.device,
-      deviceIds: defaults.device === runtimeDevice.device || defaults.device === 'auto' ? runtimeDevice.deviceIds : [0],
-      outputFormat: defaults.outputFormat,
-      selectedStems: [],
-      useTta: useTta.value,
-      debug: settings.developerMode,
-      audioParams: settings.getAudioParams(),
-      inferenceParamsVersion: CURRENT_INFERENCE_PARAMS_VERSION,
-      inferenceParams: {},
-    }
-  }
-
+  const { buildRunConfig, workflowModelInferenceParams, buildWorkflowRunConfig } = makeTaskRunConfig({
+    useSettingsStore, useAppStore, useModelStore, selectedStems, useTta,
+    normalizeOutputNaming, CURRENT_INFERENCE_PARAMS_VERSION,
+    detectWorkflowFormat, resolveWorkflowRuntimeDefaults, prepareWorkflowDefinitionForRun,
+  })
   function resolveTaskOutputPath(jobOutput: string, input: string, resultId: string, outputLayout: OutputLayout) {
     return outputLayout === 'flat'
       ? jobOutput
