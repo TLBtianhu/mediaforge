@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ModelSlotFields from '../components/ModelSlotFields.vue'
 import { makeModelStorage, type StorageListItem } from './models/storage'
+import { makeModelSorting } from './models/sorting'
 import { fromWireParams, paramsFromInterface, toWireParams } from '../litegraph/inferenceParams.ts'
 import { layoutFor } from '../litegraph/layouts.ts'
 import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
@@ -184,15 +185,12 @@ const modelSortOptions = computed(() => [
 const hasActiveFilter = computed(() =>
   Boolean(search.value || category.value || downloadedOnly.value || modelSource.value !== 'all'))
 
-const collator = computed(() => new Intl.Collator(locale.value === 'zh-CN' ? 'zh-CN' : 'en', { numeric: true, sensitivity: 'base' }))
-
-function compareModelName(a: ModelEntry, b: ModelEntry) {
-  return collator.value.compare(a.name, b.name)
-}
-
-function isFavoriteModel(model: ModelEntry | null | undefined) {
-  return Boolean(model?.name && modelPreferences.value[model.name]?.favorite)
-}
+const {
+  collator, compareModelName, isFavoriteModel, sortedModels, pagedModels,
+} = makeModelSorting({
+  computed, locale, filteredModels, downloadedOnly, modelSort, page, pageSize,
+  modelPreferences, categoryLabel,
+})
 
 function modelNote(modelOrName: ModelEntry | string | null | undefined) {
   const name = typeof modelOrName === 'string' ? modelOrName : modelOrName?.name
@@ -213,53 +211,6 @@ function toggleFavorite(model: ModelEntry, event?: MouseEvent) {
   modelStore.toggleModelFavorite(model.name)
 }
 
-const sortedModels = computed(() => {
-  const list = downloadedOnly.value
-    ? filteredModels.value.filter((m) => m.downloaded)
-    : filteredModels.value
-  const sort = modelSort.value
-  // 收藏置顶仅在默认/收藏排序下生效，其余排序纯按维度排列
-  const pinFavorite = sort === 'default' || sort === 'favorite'
-  // 预计算排序键，避免比较器内重复调用 isFavoriteModel/categoryLabel（O(n log n) 放大）
-  const decorated = list.map((model) => ({
-    model,
-    favorite: isFavoriteModel(model),
-    categoryKey: sort === 'category' ? categoryLabel(model) : '',
-    typeKey: sort === 'type' ? String(model.modelType || '') : '',
-  }))
-  decorated.sort((a, b) => {
-    if (pinFavorite) {
-      const favoriteDelta = Number(b.favorite) - Number(a.favorite)
-      if (favoriteDelta) return favoriteDelta
-    }
-    switch (sort) {
-      case 'name-desc':
-        return compareModelName(b.model, a.model)
-      case 'size-desc':
-        return b.model.sizeBytes - a.model.sizeBytes || compareModelName(a.model, b.model)
-      case 'size-asc':
-        return a.model.sizeBytes - b.model.sizeBytes || compareModelName(a.model, b.model)
-      case 'category':
-        return collator.value.compare(a.categoryKey, b.categoryKey) || compareModelName(a.model, b.model)
-      case 'type':
-        return collator.value.compare(a.typeKey, b.typeKey) || compareModelName(a.model, b.model)
-      case 'downloaded':
-        if (a.model.downloaded !== b.model.downloaded) return a.model.downloaded ? -1 : 1
-        return compareModelName(a.model, b.model)
-      case 'favorite':
-      case 'name-asc':
-        return compareModelName(a.model, b.model)
-      default:
-        if (a.model.downloaded !== b.model.downloaded) return a.model.downloaded ? -1 : 1
-        return compareModelName(a.model, b.model)
-    }
-  })
-  return decorated.map((d) => d.model)
-})
-const pagedModels = computed(() => {
-  const start = (page.value - 1) * pageSize.value
-  return sortedModels.value.slice(start, start + pageSize.value)
-})
 
 const {
   allStorageModels, storageModels, allStorageModelsByKey, selectedStorageBytes,
