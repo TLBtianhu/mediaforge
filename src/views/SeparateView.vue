@@ -45,7 +45,7 @@ import { makeQueue } from './separate/queue'
 import { makeOutputDirectory } from './separate/outputDirectory'
 import { useOutputNaming } from './separate/useOutputNaming'
 import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
-import { resolveJobStatus } from '@/features/tasks/lifecycle'
+import { isTerminalTaskStatus, resolveJobStatus } from '@/features/tasks/lifecycle'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
 import type { WorkflowEntry } from '@/stores/workflow'
 import { WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
@@ -560,7 +560,7 @@ const hasQueueEntries = computed(() => queueJobs.value.length > 0 || noResultSep
 const focusedBatchTasks = computed<SeparationTask[]>(() => currentJob.value?.tasks || [])
 const activeFocusedBatchTask = computed<SeparationTask | null>(() => {
   return [...focusedBatchTasks.value]
-    .filter((item: SeparationTask) => !['done', 'failed', 'cancelled'].includes(item.status))
+    .filter((item: SeparationTask) => !isTerminalTaskStatus(item.status))
     .sort((a: SeparationTask, b: SeparationTask) => {
       const aQueued = a.status === 'queued' ? 1 : 0
       const bQueued = b.status === 'queued' ? 1 : 0
@@ -588,12 +588,12 @@ const taskPanelState = computed<'ready' | 'running' | 'done' | 'failed' | 'cance
   const items = currentBatchTasks.value
   if (!items.length) return 'ready'
   const status = resolveJobStatus(items)
-  return ['done', 'failed', 'cancelled'].includes(status)
+  return isTerminalTaskStatus(status)
     ? status as 'done' | 'failed' | 'cancelled'
     : 'running'
 })
 const isConfigCompact = computed(() => taskPanelState.value !== 'ready')
-const isTerminalState = computed(() => ['done', 'failed', 'cancelled'].includes(taskPanelState.value))
+const isTerminalState = computed(() => currentBatchTasks.value.length > 0 && currentBatchTasks.value.every(item => isTerminalTaskStatus(item.status)))
 const isRunModeLocked = computed(() => taskPanelState.value === 'running')
 const inputCompactLine = computed(() => {
   if (currentBatchIsMulti.value && currentBatchTotal.value) return t('separate.batchInputCompact', { count: currentBatchTotal.value })
@@ -670,7 +670,7 @@ const currentBatchProgress = computed(() => {
   const items = currentBatchTasks.value
   if (!items.length) return 0
   const total = items.reduce((sum, item) => {
-    if (item.status === 'done' || item.status === 'failed' || item.status === 'cancelled') return sum + 100
+    if (isTerminalTaskStatus(item.status)) return sum + 100
     if (item.status === 'queued') return sum
     return sum + Math.max(0, Math.min(99, Number(item.progress || 0)))
   }, 0)
@@ -942,7 +942,7 @@ function taskSubMessage(item: SeparationTask) {
 }
 
 function taskDuration(item: SeparationTask, now: number) {
-  const terminal = ['done', 'failed', 'cancelled'].includes(item.status)
+  const terminal = isTerminalTaskStatus(item.status)
   const startedAt = item.startedAt ?? item.createdAt
   const durationMs = terminal
     ? (typeof item.durationMs === 'number' && Number.isFinite(item.durationMs) && item.durationMs >= 0
@@ -1431,7 +1431,7 @@ function handleCompletedAction(key: string | number) {
 }
 
 function handleCancelCurrentTask() {
-  const targets = currentBatchTasks.value.filter(item => !['done', 'failed', 'cancelled'].includes(item.status))
+  const targets = currentBatchTasks.value.filter(item => !isTerminalTaskStatus(item.status))
   if (!targets.length) return
   dialog.warning({
     title: t('tasks.cancelConfirmTitle'),
@@ -2431,7 +2431,7 @@ const audioSteps = computed(() => [
             <div class="batch-queue-row__meta">
               <span>{{ job.inputCount }} {{ t('separate.queueFileUnit') }}</span>
               <div class="batch-queue-row__actions">
-                <template v-if="['done', 'failed', 'cancelled'].includes(job.status)">
+                <template v-if="isTerminalTaskStatus(job.status)">
                   <n-button size="small" secondary @click="job.status === 'failed' ? viewQueueJobLogs(job) : focusQueueJob(job)">
                     {{ job.status === 'failed' ? t('tasks.logs') : t('separate.viewTaskDetails') }}
                   </n-button>

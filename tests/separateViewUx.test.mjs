@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { parse } from 'vue/compiler-sfc'
 import { getSeparateWorkflowInputIssue } from '../src/utils/workflowInputs.ts'
+import { makeQueue } from '../src/views/separate/queue.ts'
 
 const path = new URL('../src/views/SeparateView.vue', import.meta.url)
 const { descriptor } = parse(readFileSync(path, 'utf8'))
@@ -265,11 +266,7 @@ test('separation task views and queue actions exclude editor workflows while ret
   const focusedSeparationJobId = ref('editor')
   const composingNewJob = ref(false)
   const queueScope = ref('session')
-  const queueModuleSource = readFileSync(new URL('../src/views/separate/queue.ts', import.meta.url), 'utf8')
-const logic = ts.transpileModule(readFileSync(new URL('../src/views/separate/queue.ts', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
-  const result = vm.runInNewContext(`${logic}\nmakeQueue`, {
-    computed, task, focusedSeparationJobId, composingNewJob, queueScope, showQueueModal: ref(true), cancellingQueueJobId: ref(null),
-  })({ computed, task, focusedSeparationJobId, composingNewJob, queueScope, showQueueModal: ref(true), cancellingQueueJobId: ref(null) })
+  const result = makeQueue({ computed, task, focusedSeparationJobId, composingNewJob, queueScope, showQueueModal: ref(true), cancellingQueueJobId: ref(null) })
   assert.equal(result.currentJob.value.id, 'model')
   assert.deepEqual(Array.from(result.queueJobs.value, item => item.id), ['model', 'ensemble'])
   queueScope.value = 'no-results'

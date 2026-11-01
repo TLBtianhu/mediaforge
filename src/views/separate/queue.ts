@@ -1,4 +1,5 @@
 // SeparateView 的任务队列：分离任务筛选、各状态列表、聚焦与取消。
+import { isTerminalTaskStatus } from '../../features/tasks/lifecycle.ts'
 import type { SeparationJob } from '@/stores/task'
 
 type Deps = Record<string, any>
@@ -8,7 +9,7 @@ export function makeQueue(deps: Deps) {
     return !job.primary.runConfig?.workbench
   }
   function isNoResultSeparationJob(job: SeparationJob) {
-    return isSeparationJob(job) && job.tasks.every(item => ['done', 'failed', 'cancelled'].includes(item.status))
+    return isSeparationJob(job) && job.tasks.every(item => isTerminalTaskStatus(item.status))
       && !job.tasks.some((item: SeparationJob['tasks'][number]) => item.status === 'done' && !item.resultHidden && (item.outputs.length || item.files.length))
   }
   const separationJobs = deps.computed(() => deps.task.allJobs.filter(isSeparationJob))
@@ -17,7 +18,7 @@ export function makeQueue(deps: Deps) {
     .sort((left: SeparationJob, right: SeparationJob) => right.updatedAt - left.updatedAt))
   const newestRunningJob = deps.computed(() => {
     return [...separationJobs.value]
-      .filter((job: SeparationJob) => job.tasks.some((item: SeparationJob['tasks'][number]) => !['done', 'failed', 'cancelled'].includes(item.status)))
+      .filter((job: SeparationJob) => job.tasks.some((item: SeparationJob['tasks'][number]) => !isTerminalTaskStatus(item.status)))
       .sort((a, b) => b.createdAt - a.createdAt)[0] || null
   })
   const backgroundRunningJobs = deps.computed(() => separationSessionJobs.value
@@ -62,7 +63,7 @@ export function makeQueue(deps: Deps) {
   }
   async function cancelQueueJob(job: SeparationJob) {
     if (!isSeparationJob(job) || deps.cancellingQueueJobId.value) return false
-    const targets = job.tasks.filter((item: SeparationJob['tasks'][number]) => !['done', 'failed', 'cancelled'].includes(item.status))
+    const targets = job.tasks.filter((item: SeparationJob['tasks'][number]) => !isTerminalTaskStatus(item.status))
     if (!targets.length) return false
     deps.cancellingQueueJobId.value = job.id
     try {
@@ -71,7 +72,7 @@ export function makeQueue(deps: Deps) {
         // eslint-disable-next-line no-await-in-loop
         if (await deps.task.cancelTask(item.id)) cancelled += 1
       }
-      return cancelled > 0 || targets.every(item => ['done', 'failed', 'cancelled'].includes(item.status))
+      return cancelled > 0 || targets.every(item => isTerminalTaskStatus(item.status))
     } finally {
       deps.cancellingQueueJobId.value = null
     }

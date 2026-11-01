@@ -8,6 +8,7 @@ import { useTaskStore } from '@/stores/task'
 import { useSettingsStore } from '@/stores/settings'
 import type { WorkflowEntry } from '@/stores/workflow'
 import { isMainTaskOwner } from '@/utils/taskOwner'
+import { isTerminalTaskStatus } from '@/features/tasks/lifecycle'
 import { detectWorkflowFormat } from '@/workflows/formats'
 import { initializeWorkbenchBridge, requestWorkbenchAction } from '@/utils/workbenchBridge'
 import { cloneWorkflow, prepareWorkbenchRun, visibleWorkflowNodeStates, workbenchOutputDirectory, workflowBindingsEqual, workflowExecutionSignature, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
@@ -51,7 +52,7 @@ export function useWorkflowWorkbench(options: {
     summary.save = [...new Set(Object.values(snapshot.outputs))].join(' | ')
     return summary
   })
-  const running = computed(() => Boolean(focusedJob.value?.tasks.some(task => !['done', 'failed', 'cancelled'].includes(task.status))))
+  const running = computed(() => Boolean(focusedJob.value?.tasks.some(task => !isTerminalTaskStatus(task.status))))
   const nodeSummaries = computed(() => Object.fromEntries([
     ...workflowInputNodes(options.definition()).map(node => {
       const files = session.value.bindings.inputs[node.id]?.files || (node.embeddedPath ? [node.embeddedPath] : [])

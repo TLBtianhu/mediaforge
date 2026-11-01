@@ -938,7 +938,7 @@ export const useTaskStore = defineStore('task', () => {
     }
     const nextProgress = progress ?? meta.progress
     const normalizedProgress = Math.min(99, Math.max(0, nextProgress))
-    task.progress = status === 'done' || status === 'failed' || status === 'cancelled'
+    task.progress = isTerminalTaskStatus(status)
       ? 100
       : status === 'separating'
         ? normalizedProgress
