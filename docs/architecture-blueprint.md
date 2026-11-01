@@ -193,7 +193,7 @@ python/
 | `views/DebugView.vue` | 3457 | 1736 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint,executionLog,runtimeDebugFiles}.ts` |
 | `views/ModelsView.vue` | 2838 | 2548 | `models/{storage,sorting,notes,inferenceEditor}.ts`，测试见 `tests/models{Storage,Sorting,Notes,InferenceEditor}.test.mjs` |
 | `views/SettingsView.vue` | 3765 | 3189 | `settings/{runtimeState,runtimeActions,proxyTest,appearance,modelDirMigration}.ts`，测试见 `tests/settings{Runtime,Appearance,ModelDir}.test.mjs` |
-| `stores/task.ts` | 2433 | 2190 | `stores/{taskOutputPaths,taskNormalize}.ts`，测试见 `tests/task{OutputPaths,Normalize}.test.mjs` |
+| `stores/task.ts` | 2433 | 2103 | `stores/{taskOutputPaths,taskNormalize,taskInference}.ts`，测试见 `tests/task{OutputPaths,Normalize,Inference}.test.mjs` |
 | `python/core/worker_bootstrap.py` | 2430 | 337（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（589/555/509/1059），跨符号调用走门面 |
 
 拆分边界由测试契约决定：早期测试按名字从 SFC 里取声明，被取用的声明只能留在顶层；

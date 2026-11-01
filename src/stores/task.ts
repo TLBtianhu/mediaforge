@@ -30,6 +30,7 @@ import {
 import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
 import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment, outputsFromFiles, cleanupPath, parentDir, pathKey, samePath, cleanupDirChain } from '@/stores/taskOutputPaths'
 import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, TERMINAL_STATUSES, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
+import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { getSeparateWorkflowInputIssue } from '@/utils/workflowInputs'
@@ -251,93 +252,6 @@ function resolveStageProgress(status: TaskStatus, current?: number, total?: numb
 }
 
 
-
-function isVrModelType(modelType?: string | null) {
-  return String(modelType || '').trim().toLowerCase() === 'vr'
-}
-
-function isApolloModelType(modelType?: string | null) {
-  return String(modelType || '').trim().toLowerCase() === 'apollo'
-}
-
-type InferenceNumberField =
-  | 'batch_size'
-  | 'overlap_size'
-  | 'num_overlap'
-  | 'chunk_size'
-  | 'window_size'
-  | 'aggression'
-  | 'post_process_threshold'
-
-const ZERO_AS_UNSET_FIELDS = new Set<InferenceNumberField>([
-  'batch_size',
-  'overlap_size',
-  'num_overlap',
-  'chunk_size',
-  'window_size',
-])
-
-function normalizeEditableNumberValue(
-  current: number | null | undefined,
-  options: { zeroMeansUnset: boolean },
-) {
-  const { zeroMeansUnset } = options
-  if (typeof current !== 'number' || !Number.isFinite(current)) return null
-  if (zeroMeansUnset && current <= 0) return null
-  return current
-}
-
-function resolveNumberOverride(
-  defaults: ModelDefaultInferenceParams | undefined,
-  key: keyof ModelDefaultInferenceParams,
-  current: number | null | undefined,
-  options?: { zeroMeansUnset?: boolean },
-) {
-  const zeroMeansUnset = options?.zeroMeansUnset ?? false
-  const normalizedCurrent = normalizeEditableNumberValue(current, { zeroMeansUnset })
-  if (normalizedCurrent === null) return null
-  const defaultValue = defaults?.[key]
-  if (typeof defaultValue === 'number') return normalizedCurrent === defaultValue ? null : normalizedCurrent
-  return normalizedCurrent
-}
-
-function resolveBooleanOverride(defaults: ModelDefaultInferenceParams | undefined, key: keyof ModelDefaultInferenceParams, current: boolean) {
-  const defaultValue = defaults?.[key]
-  if (typeof defaultValue === 'boolean') return current === defaultValue ? null : current
-  return current ? true : null
-}
-
-function preferCurrentOverride<T>(
-  currentOverride: T | null,
-  modelOverrides: ModelDefaultInferenceParams,
-  key: keyof ModelDefaultInferenceParams,
-  useModelOverrideFallback: boolean,
-) {
-  if (currentOverride !== null) return currentOverride
-  if (!useModelOverrideFallback) return null
-  return Object.prototype.hasOwnProperty.call(modelOverrides, key) ? modelOverrides[key] as T : null
-}
-
-function applyModelDefaultsToUi(
-  defaults: ModelDefaultInferenceParams | undefined,
-  modelType?: string | null,
-) {
-  const vrModel = isVrModelType(modelType)
-  const apolloModel = isApolloModelType(modelType)
-  return {
-    batch_size: defaults?.batch_size ?? (vrModel ? 2 : 1),
-    overlap_size: vrModel ? 0 : (defaults?.overlap_size ?? 0),
-    num_overlap: (vrModel || apolloModel) ? 0 : (defaults?.num_overlap ?? 0),
-    chunk_size: vrModel ? 0 : (defaults?.chunk_size ?? 0),
-    standardize: false,
-    normalize: false,
-    window_size: vrModel ? (defaults?.window_size ?? 512) : 0,
-    aggression: vrModel ? (defaults?.aggression ?? 5) : 0,
-    enable_post_process: vrModel ? (defaults?.enable_post_process ?? false) : false,
-    post_process_threshold: vrModel ? (defaults?.post_process_threshold ?? 0.2) : 0,
-    high_end_process: vrModel ? (defaults?.high_end_process ?? false) : false,
-  }
-}
 
 function resolveTaskErrorMessage(code: unknown, message: unknown, input?: string) {
   const detail = typeof message === 'string' ? message : ''
