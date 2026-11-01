@@ -191,6 +191,7 @@ python/
 | `commands/plugin_host.rs` | 2955 | 142（模块根） | 同目录 18 个子模块：process / session / state / live / request / scan_engine / scan / scan_pipeline / scan_control / render / blacklist / dialogs …，测试拆到 `tests.rs`（1220）与四个 `*_tests.rs` |
 | `views/SeparateView.vue` | 4824 | 2479 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList,inferenceDefaults,playback,stemSelection,queue,outputDirectory}.ts` |
 | `views/DebugView.vue` | 3457 | 1736 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint,executionLog,runtimeDebugFiles}.ts` |
+| `views/ResultsView.vue` | 1239 | 1343 | `results/listing.ts`（结果分组/筛选/排序），测试见 `tests/resultsListing.test.mjs` |
 | `views/WorkflowsView.vue` | 1630 | 1718 | `workflows/listing.ts`（列表派生与筛选），测试见 `tests/workflowsListing.test.mjs` |
 | `views/ModelsView.vue` | 2838 | 2548 | `models/{storage,sorting,notes,inferenceEditor}.ts`，测试见 `tests/models{Storage,Sorting,Notes,InferenceEditor}.test.mjs` |
 | `views/SettingsView.vue` | 3765 | 3189 | `settings/{runtimeState,runtimeActions,proxyTest,appearance,modelDirMigration}.ts`，测试见 `tests/settings{Runtime,Appearance,ModelDir}.test.mjs` |

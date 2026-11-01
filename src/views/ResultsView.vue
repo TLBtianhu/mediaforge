@@ -17,10 +17,10 @@ import { useTaskStore, type SeparationJob, type SeparationTask } from '@/stores/
 import { useEditorStore, type OrphanedEditorProject } from '@/stores/editor'
 import { usePagedSelection } from '@/composables/usePagedSelection'
 import { resultType, RESULT_TYPE_KEYS, type ResultType } from '@/utils/resultType'
+import { makeResultListing, type ResultGroup } from './results/listing'
 import { NCheckbox, useDialog, useMessage } from 'naive-ui'
 
 type ResultSort = 'time_desc' | 'time_asc' | 'name_asc' | 'name_desc'
-type ResultGroup = SeparationJob & { items: SeparationTask[]; resultType: ResultType }
 
 const { t } = useI18n()
 const task = useTaskStore()
@@ -48,39 +48,8 @@ const sortOptions = [
   { label: t('results.sortNameDesc'), value: 'name_desc' },
 ]
 
-const resultGroups = computed<ResultGroup[]>(() => {
-  return task.resultJobs.map((job) => ({ ...job, items: job.tasks, resultType: resultType(job.primary) }))
-})
-const filteredResults = computed(() => {
-  const keyword = search.value.trim().toLowerCase()
-  const list = resultGroups.value.filter((group) => {
-    if (typeFilter.value !== 'all' && group.resultType !== typeFilter.value) return false
-    if (!keyword) return true
-    const haystack = [
-      group.id,
-      group.model,
-      group.output,
-      ...group.items.map(item => getFileName(item.input)),
-      ...group.items.map(item => item.output),
-      ...group.items.flatMap(item => item.outputs.map((output) => output.stem)),
-      ...group.items.flatMap(item => item.outputs.map((output) => output.path)),
-    ].join(' ').toLowerCase()
-    return haystack.includes(keyword)
-  })
-
-  return [...list].sort((a, b) => {
-    switch (sortBy.value) {
-      case 'time_asc':
-        return a.updatedAt - b.updatedAt
-      case 'name_asc':
-        return getGroupTitle(a).localeCompare(getGroupTitle(b), 'zh-CN')
-      case 'name_desc':
-        return getGroupTitle(b).localeCompare(getGroupTitle(a), 'zh-CN')
-      case 'time_desc':
-      default:
-        return b.updatedAt - a.updatedAt
-    }
-  })
+const { resultGroups, filteredResults, getFileName, getGroupTitle } = makeResultListing({
+  computed, t, task, search, typeFilter, sortBy, resultType,
 })
 const pagedSelection = usePagedSelection(filteredResults, {
   initialPageSize: 24,
@@ -123,15 +92,6 @@ watch([search, sortBy, typeFilter, pageSize], () => {
 watch(selecting, (value) => {
   if (!value) finishResultDragSelection()
 })
-
-function getFileName(path: string) {
-  return path.split(/[/\\]/).pop() || path
-}
-
-function getGroupTitle(group: ResultGroup) {
-  if (group.inputCount === 1) return getFileName(group.primary.input) || group.model
-  return t('results.groupTitle', { count: group.inputCount, name: getFileName(group.primary.input) })
-}
 
 function resultCardId(item: Pick<ResultGroup, 'id'>) {
   return `result-card-${item.id}`
