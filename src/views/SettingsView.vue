@@ -19,6 +19,8 @@ import { runtimeAcceleratorReady } from '@/utils/runtime'
 import { makeRuntimeState } from './settings/runtimeState'
 import { makeRuntimeActions } from './settings/runtimeActions'
 import { makeProxyTest } from './settings/proxyTest'
+import { makeAppearance, dirName } from './settings/appearance'
+import { makeModelDirMigration } from './settings/modelDirMigration'
 import { useModelStore } from '@/stores/model'
 import { useTaskStore } from '@/stores/task'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
@@ -338,36 +340,17 @@ async function loadBuildInfo() {
   }
 }
 
-const SCALE_FACTOR_PRESET_VALUES = [0.75, 0.9, 1, 1.1, 1.25, 1.5] as const
-const scaleFactorPercent = computed(() => formatScaleFactorLabel(scaleFactor.value))
-const scaleSliderIndex = computed({
-  get: () => {
-    const current = normalizeScaleFactor(scaleFactor.value)
-    const exact = SCALE_FACTOR_PRESET_VALUES.findIndex((value) => isSameScaleFactor(value, current))
-    if (exact !== -1) return exact
-    let nearest = 0
-    let minDiff = Number.POSITIVE_INFINITY
-    SCALE_FACTOR_PRESET_VALUES.forEach((value, index) => {
-      const diff = Math.abs(value - current)
-      if (diff < minDiff) {
-        minDiff = diff
-        nearest = index
-      }
-    })
-    return nearest
-  },
-  set: (index: number) => {
-    const value = SCALE_FACTOR_PRESET_VALUES[index]
-    if (value !== undefined) updateScaleFactor(value)
-  },
+const languageSelectWrap = ref<HTMLElement | null>(null)
+const {
+  scaleFactorPercent, scaleSliderIndex, scaleSliderMarks, isDefaultScaleFactor,
+  currentResolvedLanguageLabel, appearanceThemeAccentLabel,
+  formatScaleFactorLabel, isSameScaleFactor, updateScaleFactor, resetScaleFactorToDefault,
+  getEventOrigin, getElementOrigin, selectThemeMode, selectThemeAccent, selectLocale,
+} = makeAppearance({
+  computed, t, scaleFactor, themeMode, themeAccent, locale, currentLocale, animationsEnabled,
+  languageSelectWrap, normalizeScaleFactor, DEFAULT_SCALE_FACTOR,
+  applyTheme, setLocale, runRippleViewTransition,
 })
-const scaleSliderMarks = computed<Record<number, string>>(() =>
-  SCALE_FACTOR_PRESET_VALUES.reduce<Record<number, string>>((marks, value, index) => {
-    marks[index] = formatScaleFactorLabel(value)
-    return marks
-  }, {}),
-)
-const isDefaultScaleFactor = computed(() => isSameScaleFactor(scaleFactor.value, DEFAULT_SCALE_FACTOR))
 const maxConcurrentSeparationsInput = computed({
   get: () => normalizeConcurrentSeparations(maxConcurrentSeparations.value),
   set: (value) => {
@@ -384,100 +367,16 @@ const hasActiveModelDirUsage = computed(() => {
   const hasDownloadingModel = Object.values(downloadTasks.value).some((item) => ['preparing', 'downloading'].includes(item.status))
   return hasRunningWorkerTask || hasDownloadingModel || isModelDirMigrating.value
 })
-const currentResolvedLanguageLabel = computed(() =>
-  currentLocale.value === 'en'
-    ? t('settings.languageEnglish')
-    : t('settings.languageSimplifiedChinese'),
-)
-const appearanceThemeAccentLabel = computed(() =>
-  t(`settings.themeAccent${themeAccent.value[0].toUpperCase()}${themeAccent.value.slice(1)}`),
-)
-const modelDirMigrationVisible = computed(() => modelDirMigrationState.value.status !== 'idle' && modelDirMigrationState.value.status !== 'confirm')
-const modelDirMigrationProgress = computed(() => {
-  const state = modelDirMigrationState.value
-  if (['ready_to_switch', 'finalizing_cleanup', 'success'].includes(state.status)) return 100
-  if (state.totalBytes > 0) return Math.max(0, Math.min(99, Math.round((state.copiedBytes / state.totalBytes) * 100)))
-  if (state.totalFiles > 0) return Math.max(0, Math.min(99, Math.round((state.completedFiles / state.totalFiles) * 100)))
-  return 0
-})
-const modelDirMigrationHasConflict = computed(() => modelDirMigrationState.value.status === 'conflict' && !!modelDirMigrationState.value.conflict)
-const modelDirMigrationHasResult = computed(() => ['success', 'failed', 'aborted'].includes(modelDirMigrationState.value.status))
 const isCheckingModelDir = ref(false)
-const languageSelectWrap = ref<HTMLElement | null>(null)
+const {
+  modelDirMigrationVisible, modelDirMigrationProgress, modelDirMigrationHasConflict,
+  modelDirMigrationHasResult, changeModelDir, changeOutputDir,
+  closeModelDirMigrationDialog, confirmModelDirMigration, resolveModelDirConflict,
+} = makeModelDirMigration({
+  computed, t, settings, message, modelDirMigrationState,
+  hasActiveModelDirUsage, isCheckingModelDir,
+})
 
-function dirName(path: string, fallback: string) {
-  const normalized = (path || '').trim().replace(/[\\/]+$/, '')
-  if (!normalized) return fallback
-  const segments = normalized.split(/[\\/]+/).filter(Boolean)
-  return segments.at(-1) || fallback
-}
-
-function getEventOrigin(event: MouseEvent) {
-  const target = event.currentTarget as HTMLElement | null
-  if (!target) return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
-  const rect = target.getBoundingClientRect()
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  }
-}
-
-function getElementOrigin(element: HTMLElement | null) {
-  if (!element) return null
-  const rect = element.getBoundingClientRect()
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  }
-}
-
-function formatScaleFactorLabel(value: number) {
-  return `${Math.round(normalizeScaleFactor(value) * 100)}%`
-}
-
-function isSameScaleFactor(left: unknown, right: unknown) {
-  return Math.abs(normalizeScaleFactor(left) - normalizeScaleFactor(right)) < 0.001
-}
-
-function updateScaleFactor(value: number) {
-  scaleFactor.value = normalizeScaleFactor(value)
-}
-
-function resetScaleFactorToDefault() {
-  updateScaleFactor(DEFAULT_SCALE_FACTOR)
-}
-
-async function selectThemeMode(mode: ThemeMode, event: MouseEvent) {
-  if (themeMode.value === mode) return
-  const origin = animationsEnabled.value ? getEventOrigin(event) : undefined
-  await runRippleViewTransition(() => {
-    themeMode.value = mode
-    applyTheme(mode, themeAccent.value)
-  }, origin)
-}
-
-async function selectThemeAccent(accent: ThemeAccent, event: MouseEvent) {
-  if (themeAccent.value === accent) return
-  const origin = animationsEnabled.value ? getEventOrigin(event) : undefined
-  await runRippleViewTransition(() => {
-    themeAccent.value = accent
-    applyTheme(themeMode.value, accent)
-  }, origin)
-}
-
-async function selectLocale(code: LocaleSetting) {
-  if (locale.value === code) return
-  const origin = animationsEnabled.value
-    ? (getElementOrigin(languageSelectWrap.value) || {
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
-      })
-    : undefined
-  await runRippleViewTransition(() => {
-    locale.value = code
-    setLocale(code)
-  }, origin)
-}
 
 async function revealPath(path: string) {
   try {
@@ -487,37 +386,6 @@ async function revealPath(path: string) {
   }
 }
 
-async function changeModelDir() {
-  if (hasActiveModelDirUsage.value) {
-    message.warning(t('settings.modelDirChangeBlocked'))
-    return
-  }
-  const folder = await settings.pickModelDir()
-  if (!folder) return
-  isCheckingModelDir.value = true
-  try {
-    const result = await settings.prepareModelDirChange(folder)
-    if (result.outcome === 'noop') {
-      message.info(t('settings.modelDirSamePath'))
-      return
-    }
-    if (result.outcome === 'switched') {
-      message.success(t('settings.modelDirChanged'))
-    }
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    isCheckingModelDir.value = false
-  }
-}
-
-async function changeOutputDir() {
-  try {
-    await settings.pickOutputDir()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
 
 async function openExternalUrl(url: string) {
   try {
@@ -528,31 +396,6 @@ async function openExternalUrl(url: string) {
 }
 
 
-function closeModelDirMigrationDialog() {
-  if (modelDirMigrationState.value.status === 'confirm') {
-    settings.cancelModelDirChangeConfirmation()
-    return
-  }
-  if (modelDirMigrationHasResult.value) {
-    settings.clearModelDirMigrationState()
-  }
-}
-
-async function confirmModelDirMigration() {
-  try {
-    await settings.confirmModelDirMigration()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
-
-async function resolveModelDirConflict(action: 'overwrite' | 'skip' | 'abort') {
-  try {
-    await settings.resolveModelDirConflict(action)
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
 
 onMounted(async () => {
   await loadBuildInfo()
