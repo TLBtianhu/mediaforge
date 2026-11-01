@@ -8,16 +8,23 @@ import { specFor, widgetValue } from '../src/litegraph/paramCodec.ts'
 import { normalizeStemOutputs } from '../src/utils/stemOutputs.ts'
 import { workflowInputNodes } from '../src/workflows/workbench.ts'
 
-const source = ts.createSourceFile('task.ts', readFileSync(new URL('../src/stores/task.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true)
+// 路径纯函数已抽到 stores/taskOutputPaths.ts；trash 相关仍在 stores/task.ts。
+// 两个模块各取所需，合并成同一份可执行代码（与真实 import 关系一致）。
+const sources = [
+  ts.createSourceFile('task.ts', readFileSync(new URL('../src/stores/task.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true),
+  ts.createSourceFile('taskOutputPaths.ts', readFileSync(new URL('../src/stores/taskOutputPaths.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true),
+]
 const names = new Set(['cleanupPath', 'pathKey', 'parentDir', 'samePath', 'cleanupDirChain', 'resultTrashTargets', 'resultTrashEmptyDirs', 'resultTrashTargetsForTasks', 'getRemovalTasks'])
 const selected = []
-function collect(node) {
-  if (ts.isFunctionDeclaration(node) && names.has(node.name?.text)) selected.push(node.getText(source))
-  ts.forEachChild(node, collect)
+for (const source of sources) {
+  const collect = (node) => {
+    if (ts.isFunctionDeclaration(node) && names.has(node.name?.text)) selected.push(node.getText(source))
+    ts.forEachChild(node, collect)
+  }
+  collect(source)
 }
-collect(source)
 assert.equal(selected.length, names.size)
-const code = ts.transpileModule(selected.join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+const code = ts.transpileModule(selected.join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
 const plain = value => Array.from(value)
 
 function task(id, root = '/tmp/results', directory = `${root}/song`, output = `${directory}/vocals.wav`) {
