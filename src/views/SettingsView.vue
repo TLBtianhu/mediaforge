@@ -18,6 +18,7 @@ import { useAppStore, type RuntimeBackend } from '@/stores/app'
 import { runtimeAcceleratorReady } from '@/utils/runtime'
 import { makeRuntimeState } from './settings/runtimeState'
 import { makeRuntimeActions } from './settings/runtimeActions'
+import { makeProxyTest } from './settings/proxyTest'
 import { useModelStore } from '@/stores/model'
 import { useTaskStore } from '@/stores/task'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
@@ -245,111 +246,10 @@ const downloadMethodOptions = computed(() => [
   { value: 'urllib' as const, label: t('settings.downloadMethodUrllib') },
 ])
 
-function buildProxyTestSuggestion(error: string, mode: string): string {
-  const lower = error.toLowerCase()
-  if (lower.includes('invalid_proxy_url')) {
-    return t('settings.proxySuggestionBadScheme')
-  }
-  if (lower.includes('invalid_proxy_port')) {
-    return t('settings.proxySuggestionBadScheme')
-  }
-  if (lower.includes('unsupported_proxy_scheme')) {
-    return t('settings.proxySuggestionBadScheme')
-  }
-  if (lower.includes('unsupported proxy scheme')) {
-    return t('settings.proxySuggestionBadScheme')
-  }
-  if (lower.includes('pysocks')) {
-    return t('settings.proxySuggestionPySocks')
-  }
-  if (lower.includes('getaddrinfo') || lower.includes('name or service not known') || lower.includes('nodename nor servname')) {
-    if (mode === 'none') {
-      return t('settings.proxySuggestionDnsNone')
-    }
-    if (mode === 'system') {
-      return t('settings.proxySuggestionDnsSystem')
-    }
-    return t('settings.proxySuggestionDnsCustom')
-  }
-  if (lower.includes('timed out') || lower.includes('timeout')) {
-    return t('settings.proxySuggestionTimeout')
-  }
-  if (lower.includes('proxyerror') || lower.includes('407') || lower.includes('proxy')) {
-    return t('settings.proxySuggestionProxyError')
-  }
-  if (lower.includes('connection refused') || lower.includes('connection reset')) {
-    return mode === 'custom'
-      ? t('settings.proxySuggestionRefusedCustom')
-      : t('settings.proxySuggestionRefused')
-  }
-  return ''
-}
-
-async function testProxyConnection() {
-  proxyTestStatus.value = 'testing'
-  proxyTestMessage.value = t('settings.proxyTesting')
-  proxyTestSuggestion.value = ''
-  proxyTestElapsed.value = 0
-  try {
-    const result = await invoke<{
-      ok: boolean
-      status?: number
-      ip?: string
-      filesCount?: number
-      error?: string
-      elapsedMs: number
-      mode: string
-      proxy?: string
-    }>('test_proxy_connection', {
-      payload: {
-        mode: proxyMode.value,
-        url: proxyUrl.value,
-        bypass: proxyBypass.value,
-        source: downloadSource.value,
-        timeout: 15,
-      },
-    })
-    proxyTestElapsed.value = result.elapsedMs
-    if (result.ok) {
-      proxyTestStatus.value = 'success'
-      proxyTestMessage.value = formatConnectionInfo(result)
-      proxyTestSuggestion.value = ''
-    } else {
-      proxyTestStatus.value = 'error'
-      const error = result.error || t('settings.proxyTestUnknownError')
-      proxyTestMessage.value = error
-      proxyTestSuggestion.value = buildProxyTestSuggestion(error, result.mode || proxyMode.value)
-    }
-  } catch (err) {
-    proxyTestStatus.value = 'error'
-    const error = err instanceof Error ? err.message : String(err)
-    proxyTestMessage.value = error
-    proxyTestSuggestion.value = buildProxyTestSuggestion(error, proxyMode.value)
-  }
-}
-
-function formatConnectionInfo(info: {
-  status?: number
-  ip?: string
-  filesCount?: number
-  elapsedMs?: number
-}): string {
-  const parts: string[] = []
-  if (info.status) parts.push(`HTTP ${info.status}`)
-  if (info.ip) parts.push(info.ip)
-  if (typeof info.filesCount === 'number' && info.filesCount > 0) {
-    parts.push(t('settings.proxyTestFiles', { count: info.filesCount }))
-  }
-  if (info.elapsedMs) parts.push(`${info.elapsedMs}ms`)
-  return parts.join('  ·  ')
-}
-
-function resetProxyTest() {
-  proxyTestStatus.value = 'idle'
-  proxyTestMessage.value = ''
-  proxyTestSuggestion.value = ''
-  proxyTestElapsed.value = 0
-}
+const { buildProxyTestSuggestion, testProxyConnection, formatConnectionInfo, resetProxyTest } = makeProxyTest({
+  t, invoke, proxyMode, proxyUrl, proxyBypass, downloadSource,
+  proxyTestStatus, proxyTestMessage, proxyTestSuggestion, proxyTestElapsed,
+})
 const settingsSections = computed(() => [
   { key: 'appearance' as const, label: t('settings.appearance'), icon: ColorPaletteOutline, hint: t('settings.appearanceNavHint') },
   { key: 'runtime' as const, label: t('settings.runtime'), icon: TerminalOutline, hint: t('settings.runtimeDesc') },

@@ -191,13 +191,13 @@ python/
 | `commands/plugin_host.rs` | 2955 | 142（模块根） | 同目录 18 个子模块：process / session / state / live / request / scan_engine / scan / scan_pipeline / scan_control / render / blacklist / dialogs …，测试拆到 `tests.rs`（1220）与四个 `*_tests.rs` |
 | `views/SeparateView.vue` | 4824 | 2479 | `SeparateView.css`、`separate/{format,useOutputNaming,useModelList,inferenceDefaults,playback,stemSelection,queue,outputDirectory}.ts` |
 | `views/DebugView.vue` | 3457 | 1736 | `DebugView.css`、`debug_types.ts`、`debug/{useCatalogEditor,workerEvents,useUpdateEndpoint,executionLog,runtimeDebugFiles}.ts` |
-| `views/SettingsView.vue` | 3765 | 3446 | `settings/{runtimeState,runtimeActions}.ts`（派生状态 222 / 动作 171），测试见 `tests/settingsRuntime.test.mjs` |
+| `views/SettingsView.vue` | 3765 | 3346 | `settings/{runtimeState,runtimeActions,proxyTest}.ts`（派生状态 222 / 动作 171 / 代理测试 130），测试见 `tests/settingsRuntime.test.mjs` |
 | `python/core/worker_bootstrap.py` | 2430 | 337（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（589/555/509/1059），跨符号调用走门面 |
 
 拆分边界由测试契约决定：早期测试按名字从 SFC 里取声明，被取用的声明只能留在顶层；
 现在输出目录、队列、播放、词干选择、推理默认值、执行日志、运行时调试文件、设置页的
 运行时派生状态与动作都已搬进 `makeX(deps)` 工厂，测试直接实例化工厂并注入桩依赖，
-SFC 只剩装配与模板。设置页还留着三块没搬：代理连通性测试、外观/缩放、数据目录迁移。
+SFC 只剩装配与模板。设置页还留着两块没搬：外观/缩放（主题、缩放、语言）与数据目录迁移。
 
 ## 8. 验收清单（每批次都跑）
 

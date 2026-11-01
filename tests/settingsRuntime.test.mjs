@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { makeRuntimeState } from '../src/views/settings/runtimeState.ts'
 import { makeRuntimeActions } from '../src/views/settings/runtimeActions.ts'
+import { makeProxyTest } from '../src/views/settings/proxyTest.ts'
 
 const computed = source => ({ get value() { return source() } })
 const t = (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key)
@@ -167,4 +168,78 @@ test('a leftover cleanup is described as cleanup, not as losing an environment',
   assert.equal(dialogs[0].title, 'settings.runtimeCleanLeftoverTitle')
   assert.equal(dialogs[0].positiveText, 'settings.runtimeCleanLeftover')
   assert.deepEqual(deleted, [['cuda', { pythonPath: undefined }]])
+})
+
+function proxyHarness(reply) {
+  const state = {
+    proxyTestStatus: { value: 'idle' },
+    proxyTestMessage: { value: '' },
+    proxyTestSuggestion: { value: '' },
+    proxyTestElapsed: { value: 0 },
+  }
+  const calls = []
+  const { buildProxyTestSuggestion, testProxyConnection, formatConnectionInfo, resetProxyTest } = makeProxyTest({
+    t, proxyMode: { value: 'custom' }, proxyUrl: { value: '' }, proxyBypass: { value: '' },
+    downloadSource: { value: 'modelscope' },
+    invoke: async (command, args) => { calls.push([command, args]); return reply },
+    ...state,
+  })
+  return { ...state, calls, buildProxyTestSuggestion, testProxyConnection, formatConnectionInfo, resetProxyTest }
+}
+
+test('proxy failures are translated into the next actionable step', () => {
+  const proxy = proxyHarness(null)
+  assert.equal(proxy.buildProxyTestSuggestion('Invalid_Proxy_Url', 'custom'), 'settings.proxySuggestionBadScheme')
+  assert.equal(proxy.buildProxyTestSuggestion('getaddrinfo failed', 'none'), 'settings.proxySuggestionDnsNone')
+  assert.equal(proxy.buildProxyTestSuggestion('getaddrinfo failed', 'system'), 'settings.proxySuggestionDnsSystem')
+  assert.equal(proxy.buildProxyTestSuggestion('getaddrinfo failed', 'custom'), 'settings.proxySuggestionDnsCustom')
+  assert.equal(proxy.buildProxyTestSuggestion('PySocks is missing', 'custom'), 'settings.proxySuggestionPySocks')
+  assert.equal(proxy.buildProxyTestSuggestion('read timed out', 'custom'), 'settings.proxySuggestionTimeout')
+  assert.equal(proxy.buildProxyTestSuggestion('ProxyError: 407', 'custom'), 'settings.proxySuggestionProxyError')
+  assert.equal(proxy.buildProxyTestSuggestion('Connection refused', 'custom'), 'settings.proxySuggestionRefusedCustom')
+  assert.equal(proxy.buildProxyTestSuggestion('Connection refused', 'none'), 'settings.proxySuggestionRefused')
+  assert.equal(proxy.buildProxyTestSuggestion('something else entirely', 'custom'), '')
+})
+
+test('a successful probe reports what was measured and clears the suggestion', async () => {
+  const proxy = proxyHarness({ ok: true, status: 200, ip: '1.2.3.4', filesCount: 12, elapsedMs: 340, mode: 'custom' })
+  await proxy.testProxyConnection()
+  assert.equal(proxy.proxyTestStatus.value, 'success')
+  assert.equal(proxy.proxyTestMessage.value, 'HTTP 200  ·  1.2.3.4  ·  settings.proxyTestFiles:{"count":12}  ·  340ms')
+  assert.equal(proxy.proxyTestElapsed.value, 340)
+  assert.equal(proxy.proxyTestSuggestion.value, '')
+  assert.equal(proxy.calls.length, 1)
+  assert.equal(proxy.calls[0][0], 'test_proxy_connection')
+  assert.deepEqual(JSON.parse(JSON.stringify(proxy.calls[0][1].payload)), {
+    mode: 'custom', url: '', bypass: '', source: 'modelscope', timeout: 15,
+  })
+})
+
+test('a failed probe keeps the raw error and offers a suggestion', async () => {
+  const proxy = proxyHarness({ ok: false, error: 'getaddrinfo failed', elapsedMs: 20, mode: 'system' })
+  await proxy.testProxyConnection()
+  assert.equal(proxy.proxyTestStatus.value, 'error')
+  assert.equal(proxy.proxyTestMessage.value, 'getaddrinfo failed')
+  assert.equal(proxy.proxyTestSuggestion.value, 'settings.proxySuggestionDnsSystem')
+})
+
+test('a thrown probe is reported like a failed one, and reset clears the panel', async () => {
+  const proxyTestStatus = { value: 'idle' }
+  const proxyTestMessage = { value: '' }
+  const proxyTestSuggestion = { value: '' }
+  const proxyTestElapsed = { value: 0 }
+  const { testProxyConnection, resetProxyTest } = makeProxyTest({
+    t,
+    proxyMode: { value: 'none' }, proxyUrl: { value: '' }, proxyBypass: { value: '' },
+    downloadSource: { value: 'huggingface' },
+    invoke: async () => { throw new Error('bridge unavailable') },
+    proxyTestStatus, proxyTestMessage, proxyTestSuggestion, proxyTestElapsed,
+  })
+  await testProxyConnection()
+  assert.equal(proxyTestStatus.value, 'error')
+  assert.equal(proxyTestMessage.value, 'bridge unavailable')
+  assert.equal(proxyTestSuggestion.value, '')
+  resetProxyTest()
+  assert.equal(proxyTestStatus.value, 'idle')
+  assert.equal(proxyTestMessage.value, '')
 })
