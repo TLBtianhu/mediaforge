@@ -24,12 +24,11 @@ import {
   selectQueuedJobGroups,
   sortJobTasks,
   taskJobId,
-  TERMINAL_TASK_STATUSES,
   type TaskStatus,
 } from '@/features/tasks/lifecycle'
 import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
 import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment, outputsFromFiles, cleanupPath, parentDir, pathKey, samePath, cleanupDirChain } from '@/stores/taskOutputPaths'
-import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, TERMINAL_STATUSES, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
+import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
 import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
@@ -304,8 +303,8 @@ export const useTaskStore = defineStore('task', () => {
   const inputPath = computed(() => inputFiles.value[0] || '')
   const activeTask = computed(() => tasks.value.find((task) => task.id === activeTaskId.value) || null)
   const completedTasks = computed(() => tasks.value.filter((task) => task.status === 'done'))
-  const runningTasks = computed(() => tasks.value.filter((task) => !TERMINAL_STATUSES.includes(task.status)))
-  const activeWorkerTasks = computed(() => tasks.value.filter((task) => !TERMINAL_STATUSES.includes(task.status) && task.status !== 'queued'))
+  const runningTasks = computed(() => tasks.value.filter((task) => !isTerminalTaskStatus(task.status)))
+  const activeWorkerTasks = computed(() => tasks.value.filter((task) => !isTerminalTaskStatus(task.status) && task.status !== 'queued'))
   // 任务页可见任务：排除已在任务页隐藏的记录（结果页隐藏不影响任务页）
   const taskBoardTasks = computed(() => tasks.value.filter((task) => !task.taskHidden))
   // 结果页可见结果：仅含有输出且未在结果页隐藏的任务（任务页隐藏不影响结果页）
@@ -385,7 +384,7 @@ export const useTaskStore = defineStore('task', () => {
       const primary = sorted[0]
       const output = primary.jobOutput || primary.output
       const progressTotal = sorted.reduce((sum, item) => {
-        if (TERMINAL_STATUSES.includes(item.status)) return sum + 100
+        if (isTerminalTaskStatus(item.status)) return sum + 100
         if (item.status === 'queued') return sum
         return sum + Math.max(0, Math.min(99, Number(item.progress || 0)))
       }, 0)
@@ -393,7 +392,7 @@ export const useTaskStore = defineStore('task', () => {
       const startedValues = sorted.map(item => item.startedAt || item.createdAt).filter((value): value is number => typeof value === 'number')
       const finishedValues = sorted.map(item => item.finishedAt || item.updatedAt).filter((value): value is number => typeof value === 'number')
       const startedAt = startedValues.length ? Math.min(...startedValues) : undefined
-      const finishedAt = TERMINAL_STATUSES.includes(status) && finishedValues.length ? Math.max(...finishedValues) : undefined
+      const finishedAt = isTerminalTaskStatus(status) && finishedValues.length ? Math.max(...finishedValues) : undefined
       return {
         id,
         output,
@@ -926,7 +925,7 @@ export const useTaskStore = defineStore('task', () => {
     const settings = useSettingsStore()
     const task = tasks.value.find((item) => item.id === id)
     if (!task) return
-    if (TERMINAL_STATUSES.includes(task.status) && !TERMINAL_STATUSES.includes(status)) return
+    if (isTerminalTaskStatus(task.status) && !isTerminalTaskStatus(status)) return
     const meta = STAGE_META[status]
     if (status !== 'queued') markTaskStarted(task)
     task.status = status
@@ -947,12 +946,12 @@ export const useTaskStore = defineStore('task', () => {
     task.logs.push(localLogRecord(task.message, `task.${status}`, status === 'failed' ? 'error' : 'info', { taskId: task.id }))
     task.logs = task.logs.slice(-getLogLimit(settings.developerMode))
     touch(task)
-    if (TERMINAL_STATUSES.includes(status)) markTaskFinished(task, task.updatedAt)
+    if (isTerminalTaskStatus(status)) markTaskFinished(task, task.updatedAt)
     queuePersist()
   }
 
   const handleWorkerEvent = makeTaskWorkerEventHandler({
-    tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus, TERMINAL_STATUSES,
+    tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus,
     markTaskStarted, markTaskFinished, touch, queueProgressPersist, queuePersist, scheduleQueue,
     appendWorkflowNodeLogs, localLogRecord, workerLogRecord, normalizeLogRecord, appendTaskLogs,
     useSettingsStore, normalizeStemOutputs, outputsFromFiles, windowsPaths, resolveTaskErrorMessage,
@@ -1238,7 +1237,7 @@ export const useTaskStore = defineStore('task', () => {
   function clearHistory() {
     // 仅清空任务页的历史记录（标记 taskHidden），保留结果页数据
     tasks.value.forEach((task) => {
-      if (TERMINAL_STATUSES.includes(task.status)) task.taskHidden = true
+      if (isTerminalTaskStatus(task.status)) task.taskHidden = true
     })
     reclaimHiddenTasks()
     queuePersist()

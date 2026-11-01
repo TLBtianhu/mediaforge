@@ -5,7 +5,7 @@
  */
 import type { OutputLayout, OutputNamingConfig, SeparationRunConfig, SeparationTask } from './task.ts'
 import type { TaskStatus } from '../features/tasks/lifecycle.ts'
-import { isInterruptedTaskStatus, TERMINAL_TASK_STATUSES } from '../features/tasks/lifecycle.ts'
+import { isInterruptedTaskStatus, isTerminalTaskStatus } from '../features/tasks/lifecycle.ts'
 import { normalizeStemOutputs } from '../utils/stemOutputs.ts'
 import { normalizeOutputPath, outputsFromFiles } from './taskOutputPaths.ts'
 
@@ -71,9 +71,6 @@ export function normalizeRunConfig(runConfig?: SeparationRunConfig): SeparationR
   next.inferenceParamsVersion = CURRENT_INFERENCE_PARAMS_VERSION
   return next
 }
-
-
-export const TERMINAL_STATUSES: TaskStatus[] = [...TERMINAL_TASK_STATUSES]
 
 export const STAGE_META: Record<TaskStatus, { progress: number; label: string }> = {
   queued: { progress: 2, label: 'Queued' },
@@ -144,7 +141,7 @@ export function normalizeTask(task: Partial<SeparationTask>, windows = /^[A-Za-z
     startedAt,
     finishedAt,
     durationMs,
-    progress: TERMINAL_STATUSES.includes(status) ? 100 : progress,
+    progress: isTerminalTaskStatus(status) ? 100 : progress,
     stageLabel: interrupted ? '已中断' : (task.stageLabel || meta.label),
     progressCurrent: typeof task.progressCurrent === 'number' ? task.progressCurrent : undefined,
     progressTotal: typeof task.progressTotal === 'number' ? task.progressTotal : undefined,

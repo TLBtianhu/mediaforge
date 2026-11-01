@@ -13,7 +13,6 @@ function setup() {
     normalizeStatus,
     STAGE_META,
     setTaskStatus: () => {},
-    TERMINAL_STATUSES: terminal,
     isTerminalTaskStatus: status => terminal.includes(status),
     markTaskStarted: () => {}, touch: () => {}, queueProgressPersist: () => {},
     appendWorkflowNodeLogs, normalizeLogRecord, workerLogRecord, localLogRecord, useSettingsStore: () => ({ developerMode: false }),

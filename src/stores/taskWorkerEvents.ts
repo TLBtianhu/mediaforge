@@ -14,7 +14,7 @@ function clamp(value: number, minimum: number, maximum: number) {
 }
 
 export function makeTaskWorkerEventHandler(deps: Deps) {
-  const { tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus, TERMINAL_STATUSES,
+  const { tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus,
     markTaskStarted, markTaskFinished, touch, queueProgressPersist, queuePersist, scheduleQueue,
     appendWorkflowNodeLogs, localLogRecord, workerLogRecord, normalizeLogRecord, appendTaskLogs,
     useSettingsStore, normalizeStemOutputs, outputsFromFiles, windowsPaths, resolveTaskErrorMessage, } = deps
@@ -235,7 +235,7 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
       markTaskFinished(task, task.updatedAt)
       queuePersist()
     }
-    if (TERMINAL_STATUSES.includes(task.status)) scheduleQueue()
+    if (isTerminalTaskStatus(task.status)) scheduleQueue()
   }
 
   return handleWorkerEvent
