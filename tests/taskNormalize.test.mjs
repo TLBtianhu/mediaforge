@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, CURRENT_INFERENCE_PARAMS_VERSION } from '../src/stores/taskNormalize.ts'
+import { normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTask, CURRENT_INFERENCE_PARAMS_VERSION } from '../src/stores/taskNormalize.ts'
 
 test('output layout and naming normalize their shapes', () => {
   assert.equal(normalizeOutputLayout('flat'), 'flat')
@@ -43,4 +43,36 @@ test('current-version configs are not migrated again', () => {
   const config = normalizeRunConfig({ inferenceParamsVersion: CURRENT_INFERENCE_PARAMS_VERSION, inferenceParams: { standardize: false } })
   assert.equal(config.inferenceParams.standardize, false)
   assert.equal(config.inferenceParams.normalize, undefined)
+})
+
+
+test('normalizeStatus maps unknown and non-string statuses', () => {
+  assert.equal(normalizeStatus('done'), 'done')
+  assert.equal(normalizeStatus('nonsense'), 'preparing')
+  assert.equal(normalizeStatus(undefined), 'queued')
+  assert.equal(normalizeStatus(42), 'queued')
+})
+
+test('normalizeTask fills defaults and marks interrupted runs as failed', () => {
+  const fresh = normalizeTask({})
+  assert.equal(fresh.status, 'queued')
+  assert.equal(fresh.progress, 2)
+  assert.equal(fresh.output, 'outputs')
+
+  const interrupted = normalizeTask({ status: 'separating' })
+  assert.equal(interrupted.status, 'failed')
+  assert.equal(interrupted.stageLabel, '已中断')
+  assert.equal(interrupted.message, '上次运行未完成')
+  assert.ok(interrupted.logs.some(line => line.includes('中断')))
+  assert.equal(interrupted.progress, 100)
+
+  const done = normalizeTask({ status: 'done' })
+  assert.equal(done.status, 'done')
+  assert.equal(done.progress, 100)
+})
+
+test('normalizeTask infers outputs from files when the worker sent none', () => {
+  const task = normalizeTask({ output: 'D:/out', files: ['vocals.wav'], outputs: [] }, true)
+  assert.equal(task.outputs.length, 1)
+  assert.equal(task.outputs[0].path, 'D:/out/vocals.wav')
 })
