@@ -5,7 +5,7 @@
 
 产物：
     release/versions.json
-    release/versions.json.sig     ← tauri signer（与 app 更新同一把 minisign key）
+    release/versions.json.sig     ← minisign 原文（tauri signer 的 base64 产物已解码）
 
 设计约束：
   * 版本信息必须签名，未签名的版本信息一律不采信（Rust 侧 versions_check 会校验）；
@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -49,6 +50,22 @@ def build() -> dict:
     }
 
 
+def decode_tauri_signature(envelope: str) -> str:
+    """tauri signer 输出整个 minisign 文件的 base64；versions_check 读取其原文。"""
+    try:
+        decoded = base64.b64decode(envelope.strip(), validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as error:
+        raise SystemExit(f"tauri signer 的签名产物不是合法 base64/UTF-8：{error}") from error
+    lines = decoded.splitlines()
+    if (
+        len(lines) != 4
+        or not lines[0].startswith("untrusted comment: ")
+        or not lines[2].startswith("trusted comment: ")
+    ):
+        raise SystemExit("tauri signer 的签名产物不是完整的 minisign 签名")
+    return decoded
+
+
 def sign(path: Path) -> Path:
     signer = ROOT / "node_modules" / ".bin" / "tauri.cmd"
     if not signer.is_file():
@@ -75,6 +92,11 @@ def sign(path: Path) -> Path:
     signature = path.with_name(path.name + ".sig")
     if not signature.is_file():
         raise SystemExit(f"签名已执行但找不到产物：{signature}")
+    signature.write_text(
+        decode_tauri_signature(signature.read_text(encoding="utf-8")),
+        encoding="utf-8",
+        newline="\n",
+    )
     return signature
 
 

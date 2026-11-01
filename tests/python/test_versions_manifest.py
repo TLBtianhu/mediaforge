@@ -1,6 +1,7 @@
 """versions.json 的形状与"运行时描述符来自唯一真源"的契约。"""
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import sys
@@ -41,6 +42,19 @@ class VersionsManifestTests(unittest.TestCase):
         self.assertEqual(len(runtime["sha256"]), 64)
         self.assertGreater(runtime["size"], 0)
         self.assertTrue(all(url.startswith("https://") for url in runtime["urls"]))
+    def test_tauri_signature_envelope_becomes_minisign_text(self) -> None:
+        signature = (
+            "untrusted comment: signature from tauri secret key\n"
+            "c2lnbmF0dXJl\n"
+            "trusted comment: timestamp:1\tfile:versions.json\n"
+            "Z2xvYmFsLXNpZ25hdHVyZQ==\n"
+        )
+        envelope = base64.b64encode(signature.encode("utf-8")).decode("ascii")
+        self.assertEqual(load_script().decode_tauri_signature(envelope), signature)
+
+    def test_invalid_signature_envelope_is_rejected(self) -> None:
+        with self.assertRaises(SystemExit):
+            load_script().decode_tauri_signature("not-base64")
 
 
 if __name__ == "__main__":
