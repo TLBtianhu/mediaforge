@@ -47,8 +47,8 @@ data/
 .dev-data/
 .dev-webview/
 preview/
-results/
-outputs/
+/results/
+/outputs/
 *.tmp
 
 # Model weights (download with download_models.py)
