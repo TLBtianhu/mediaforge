@@ -29,6 +29,7 @@ import {
 } from '@/features/tasks/lifecycle'
 import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
 import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment, outputsFromFiles, cleanupPath, parentDir, pathKey, samePath, cleanupDirChain } from '@/stores/taskOutputPaths'
+import { CURRENT_INFERENCE_PARAMS_VERSION, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig } from '@/stores/taskNormalize'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { getSeparateWorkflowInputIssue } from '@/utils/workflowInputs'
@@ -179,7 +180,6 @@ type ModelInferenceUiDefaults = {
 
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus']
 const VIDEO_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv']
-const CURRENT_INFERENCE_PARAMS_VERSION = 3
 const TERMINAL_STATUSES: TaskStatus[] = [...TERMINAL_TASK_STATUSES]
 const NORMAL_LOG_LIMIT = 300
 const DEVELOPER_LOG_LIMIT = 1200
@@ -209,9 +209,6 @@ function normalizeStatus(status: unknown): TaskStatus {
   return 'preparing'
 }
 
-function normalizeOutputLayout(value: unknown): OutputLayout {
-  return value === 'flat' ? 'flat' : 'folders'
-}
 
 function normalizePersistedModelState(value: unknown): PersistedSeparateModelState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -235,20 +232,6 @@ function normalizePersistedModelState(value: unknown): PersistedSeparateModelSta
   return next
 }
 
-function normalizeOutputNaming(value: unknown): OutputNamingConfig | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  const raw = value as Partial<OutputNamingConfig>
-  const template = typeof raw.template === 'string' ? raw.template.trim() : ''
-  const stemOrder = Array.isArray(raw.stemOrder)
-    ? raw.stemOrder.map(item => String(item || '').trim()).filter(Boolean)
-    : []
-  return {
-    enabled: raw.enabled === true,
-    template,
-    stemOrder,
-  }
-
-}
 
 function normalizeTimestamp(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
@@ -355,48 +338,6 @@ function normalizeTask(task: Partial<SeparationTask>, windows = /^[A-Za-z]:|^\\\
   }
 }
 
-function normalizeRunConfig(runConfig?: SeparationRunConfig): SeparationRunConfig | undefined {
-  if (!runConfig) return undefined
-  const next: SeparationRunConfig = {
-    ...runConfig,
-    downloadMethod: runConfig.downloadMethod || 'aria2c',
-    outputLayout: normalizeOutputLayout(runConfig.outputLayout),
-    outputNaming: normalizeOutputNaming(runConfig.outputNaming),
-    selectedStems: Array.isArray(runConfig.selectedStems)
-      ? runConfig.selectedStems.map(item => String(item || '').trim()).filter(Boolean)
-      : [],
-    audioParams: { ...(runConfig.audioParams || {}) },
-    inferenceParams: { ...(runConfig.inferenceParams || {}) },
-  }
-  const version = next.inferenceParamsVersion || 0
-  if (version >= CURRENT_INFERENCE_PARAMS_VERSION) {
-    next.inferenceParamsVersion = CURRENT_INFERENCE_PARAMS_VERSION
-    return next
-  }
-
-  const params = { ...(next.inferenceParams || {}) }
-  const hasStandardize = Object.prototype.hasOwnProperty.call(params, 'standardize')
-  const hasNormalize = Object.prototype.hasOwnProperty.call(params, 'normalize')
-
-  if (!hasStandardize && !hasNormalize) {
-    // Legacy desktop only omitted `normalize` when the old input-standardize
-    // checkbox was enabled. Preserve that behavior on retry/history restore.
-    params.standardize = true
-    params.normalize = false
-  } else if (!hasStandardize && hasNormalize) {
-    // Legacy desktop used `normalize` to mean input standardization.
-    params.standardize = Boolean(params.normalize)
-    params.normalize = false
-  } else if (hasStandardize && !hasNormalize) {
-    // First compatibility pass already switched to `standardize`, but output
-    // normalize had not been made explicit yet.
-    params.normalize = false
-  }
-
-  next.inferenceParams = params
-  next.inferenceParamsVersion = CURRENT_INFERENCE_PARAMS_VERSION
-  return next
-}
 
 function isVrModelType(modelType?: string | null) {
   return String(modelType || '').trim().toLowerCase() === 'vr'
