@@ -1,4 +1,4 @@
-﻿absl-py==2.5.1
+absl-py==2.5.1
 addict==2.4.0
 annotated-doc==0.0.5
 anyio==4.15.1
@@ -61,6 +61,7 @@ platformdirs==4.14.0
 polars==2.1.0
 polars-runtime-32==2.1.0
 pooch==1.9.0
+propainter==0.0.4
 protobuf==7.36.2
 psutil==7.2.2
 pycparser==3.12
@@ -70,6 +71,7 @@ pymss-core==0.1.14
 pyparsing==3.3.3
 PySocks==1.7.1
 python-dateutil==3.0.0
+pytorchcv==0.0.74
 PyYAML==6.0.3
 regex==2026.9.29
 requests==2.34.2

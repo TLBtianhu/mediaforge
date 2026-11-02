@@ -9774,7 +9774,7 @@
         "neighbor_frames",
         "fp16"
       ],
-      "notes": "catalog 标记为未实现"
+      "notes": "catalog 与 PyPI 流式适配器已接入"
     },
     {
       "id": "hf:akhaliq/RealBasicVSR_x4",
@@ -9821,7 +9821,7 @@
         "scale",
         "tile"
       ],
-      "notes": "catalog 标记为未实现"
+      "notes": "catalog 与适配器已接入"
     },
     {
       "id": "media:real-cugan-x4",

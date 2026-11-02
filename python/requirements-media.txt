@@ -30,6 +30,9 @@ kornia==0.9.0
 basicsr==1.4.2
 facexlib==0.3.0
 gfpgan==1.3.8
+# ProPainter 使用 PyPI 流式适配器；三份权重仍从官方 Release 下载。
+propainter==0.0.4
+pytorchcv==0.0.74
 
 # basicsr 1.4.2 仍会 import torchvision.transforms.functional_tensor，
 # 而 torchvision 0.22 已删除该模块。运行时代码在导入 basicsr 前补了一个

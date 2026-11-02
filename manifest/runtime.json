@@ -21,7 +21,8 @@
         "depth",
         "object_detection",
         "frame_interpolation",
-        "video_super_resolution"
+        "video_super_resolution",
+        "video_inpainting"
       ],
       "notes": "当前唯一发布版本；视频/图像与音频共用同一套解释器，按任务起独立进程。",
       "sha256": "7a1040eb6ed5510e1ede30ef90314a6a5993f94eee409c1ef224fb5d6559784d",

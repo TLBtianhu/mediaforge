@@ -26,11 +26,9 @@ from media_ops import capabilities  # noqa: E402
 
 # 已经声明、还没适配器的能力。这个集合只能变小（做完一条删一条）——
 # 变大的意思是"又画了一张饼"，那是产品决定，不该由代码悄悄接受。
-PLANNED_CAPABILITIES = {
-    "video_inpainting",
-}
+PLANNED_CAPABILITIES = set()
 
-ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth", "matting", "frame_interpolation", "face_restoration", "video_super_resolution"}
+ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth", "matting", "frame_interpolation", "face_restoration", "video_super_resolution", "video_inpainting"}
 
 
 class CapabilityManifestTests(unittest.TestCase):
@@ -97,12 +95,10 @@ class CapabilityManifestTests(unittest.TestCase):
             audit = capabilities.audit_capabilities()
         self.assertIn("media:does-not-exist", audit["declared_model_missing"])
 
-    def test_normalize_steps_rejects_a_planned_capability(self) -> None:
-        with self.assertRaises(ValueError) as caught:
-            capabilities.normalize_steps(
-                [{"capability": "video_inpainting", "bindings": {"primary": "media:propainter"}}]
-            )
-        self.assertIn("not implemented", str(caught.exception))
+    def test_normalize_steps_rejects_an_unknown_capability(self) -> None:
+        with self.assertRaises(KeyError) as caught:
+            capabilities.normalize_steps([{"capability": "not_implemented_yet"}])
+        self.assertIn("unknown", str(caught.exception))
 
     def test_normalize_steps_accepts_the_live_capabilities(self) -> None:
         steps = capabilities.steps_from_mode("watermark_upscale")

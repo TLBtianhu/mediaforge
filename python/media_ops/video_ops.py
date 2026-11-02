@@ -517,6 +517,160 @@ def interpolate_video(
         }
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def _propainter_model_paths(model_dir: str | Path) -> dict[str, str]:
+    root = Path(model_dir)
+    names = {
+        "propainter": "ProPainter.pth",
+        "flow": "recurrent_flow_completion.pth",
+        "raft": "raft-things.pth",
+    }
+    paths = {}
+    for key, name in names.items():
+        path = root / name
+        if not path.is_file():
+            raise FileNotFoundError(f"ProPainter model file not found: {path}")
+        paths[key] = str(path)
+    return paths
+
+
+def inpaint_video(
+    model_dir: str | Path,
+    source: str | Path,
+    output_dir: str | Path,
+    *,
+    mask_path: str | Path | None = None,
+    detector_path: str | Path | None = None,
+    conf: float = 0.25,
+    expand: int = 8,
+    preview_seconds: float = 0.0,
+    crf: int = 18,
+    preset: str = "fast",
+    progress=None,
+) -> dict:
+    """ProPainter 固定 mask 视频修复；优先使用显式 mask，否则检测首帧水印。"""
+    from PIL import Image
+    from . import image_ops
+
+    src = Path(source)
+    if not src.is_file():
+        raise FileNotFoundError(f"video not found: {src}")
+    models = _propainter_model_paths(model_dir)
+    if mask_path is not None and not Path(mask_path).is_file():
+        raise FileNotFoundError(f"mask not found: {mask_path}")
+    if mask_path is None and (detector_path is None or not Path(detector_path).is_file()):
+        raise FileNotFoundError(f"watermark detector not found: {detector_path}")
+
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    meta = ffmpeg.probe(src)
+    fps = float((meta.get("video") or {}).get("fps") or meta.get("fps") or 0) or 30.0
+    work = Path(tempfile.mkdtemp(prefix="mf-video-inpaint-"))
+    frames_dir = work / "frames"
+    masks_dir = work / "masks"
+    out_frames = work / "out"
+    frames_dir.mkdir()
+    masks_dir.mkdir()
+    out_frames.mkdir()
+    started = time.perf_counter()
+    try:
+        if progress:
+            progress(0.05, "解出视频帧…")
+        command = [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+        if preview_seconds > 0:
+            command.extend(["-t", str(float(preview_seconds))])
+        command.extend(["-i", str(src), "-vsync", "0", str(frames_dir / "f_%06d.png")])
+        subprocess.run(command, check=True, capture_output=True)
+        frames = sorted(frames_dir.glob("f_*.png"))
+        if not frames:
+            raise ValueError("视频没有可处理的帧")
+
+        first = image_ops.read_image(frames[0])
+        if mask_path is not None:
+            with Image.open(mask_path) as mask_image:
+                mask = (np.asarray(mask_image.convert("L")) > 0).astype(np.uint8)
+        else:
+            detector = image_ops.WatermarkDetector(str(detector_path), device=image_ops.pick_device())
+            boxes, _scores, detected = detector.detect(first, conf=conf, expand=expand)
+            if int(detected.max()) == 0:
+                raise ValueError("没有在首帧检测到水印；请提供 maskPath 或降低阈值")
+            mask = (image_ops.boxes_to_mask(first.shape[:2], boxes, expand=expand) > 0).astype(np.uint8)
+        if mask.shape != first.shape[:2]:
+            raise ValueError(f"mask size {mask.shape[::-1]} does not match video {first.shape[1::-1]}")
+        if not np.any(mask):
+            raise ValueError("mask is empty")
+        for index in range(1, len(frames) + 1):
+            Image.fromarray(mask).save(masks_dir / f"m_{index:06d}.png")
+
+        if progress:
+            progress(0.25, f"ProPainter 流式修复 {len(frames)} 帧…")
+        from propainter.propainter_video import (
+            FilePathDirSequencer,
+            RawFrameSequencer,
+            RawMaskSequencer,
+            ScaledProPainterIterator,
+        )
+
+        raw_frames = RawFrameSequencer(data=FilePathDirSequencer(str(frames_dir)))
+        raw_masks = RawMaskSequencer(data=FilePathDirSequencer(str(masks_dir)))
+        use_cuda = image_ops.pick_device() == "cuda"
+        from .propainter_adapter import load_flow_completion, load_propainter, load_raft
+
+        iterator = ScaledProPainterIterator(
+            raw_frames,
+            raw_masks,
+            image_resize_ratio=1.0,
+            mask_dilation=1,
+            post_raw_mask_dilation=2,
+            raft_model=load_raft(models["raft"], use_cuda=use_cuda),
+            pprfc_model=load_flow_completion(models["flow"], use_cuda=use_cuda),
+            pp_model=load_propainter(models["propainter"], use_cuda=use_cuda),
+            use_cuda=use_cuda,
+            pp_window_size=80,
+            pp_stride=5,
+            step=10,
+        )
+        # 上游 ScaledProPainterIterator 漏传 use_cuda 给帧/mask 序列器，CPU 必须显式同步。
+        iterator.frames.use_cuda = use_cuda
+        iterator.masks.use_cuda = use_cuda
+        count = 0
+        for chunk in iterator:
+            for frame in chunk:
+                count += 1
+                image_ops.write_image(out_frames / f"o_{count:06d}.png", frame)
+            if progress:
+                progress(0.25 + 0.65 * count / len(frames), f"ProPainter 修复 {count}/{len(frames)} 帧")
+        if count != len(frames):
+            raise RuntimeError(f"ProPainter returned {count} frames for {len(frames)} input frames")
+
+        destination = output_root / f"{src.stem}_video_clean.mp4"
+        if progress:
+            progress(0.95, "回封视频与原始音轨…")
+        command = [
+            ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-framerate", f"{fps:.6f}", "-i", str(out_frames / "o_%06d.png"),
+            "-i", str(src), "-map", "0:v:0", "-map", "1:a:0?",
+            "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
+            "-c:a", "copy", "-shortest", str(destination),
+        ]
+        subprocess.run(command, check=True, capture_output=True)
+        if progress:
+            progress(1.0, "完成")
+        return {
+            "path": str(destination),
+            "source": str(src),
+            "size": destination.stat().st_size,
+            "fps": round(fps, 3),
+            "frames": count,
+            "input_size": [int(first.shape[1]), int(first.shape[0])],
+            "output_size": [int(first.shape[1]), int(first.shape[0])],
+            "elapsed": round(time.perf_counter() - started, 2),
+        }
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def upscale_video(
     model_path: str | Path,
     source: str | Path,

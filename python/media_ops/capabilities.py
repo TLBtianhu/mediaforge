@@ -357,6 +357,8 @@ def default_model_by_scale(capability_id: str, scale: int) -> str:
 def steps_from_mode(mode: str) -> list[dict[str, Any]]:
     """Compatibility bridge for existing UI modes."""
     steps: list[dict[str, Any]] = []
+    if mode in {"video_inpaint", "video_inpainting"}:
+        steps.append({"capability": "video_inpainting", "bindings": default_bindings("video_inpainting"), "params": {}})
     if mode in {"video_sr", "video_super_resolution"}:
         steps.append({"capability": "video_super_resolution", "bindings": default_bindings("video_super_resolution"), "params": {}})
     if mode in {"face", "face_restoration"}:
@@ -425,4 +427,6 @@ def mode_for_steps(steps: list[dict[str, Any]]) -> str:
         return "face"
     if ids == {"video_super_resolution"}:
         return "video_super_resolution"
+    if ids == {"video_inpainting"}:
+        return "video_inpainting"
     raise ValueError("mixed pipeline steps are not supported by the current frame adapter")

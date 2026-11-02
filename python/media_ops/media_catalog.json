@@ -169,21 +169,42 @@
       "modalities": [
         "video"
       ],
-      "implemented": false,
+      "implemented": true,
       "task": "video_inpainting",
-      "size": 0,
+      "size": 199237191,
       "license": "S-Lab License 1.0",
-      "description": "Native video inpainting for moving watermarks and objects. Adapter is next.",
-      "url": "",
+      "description": "Native video inpainting for moving watermarks and objects.",
+      "url": "https://github.com/sczhou/ProPainter/releases/tag/v0.1.0",
+      "files": [
+        {
+          "path": "ProPainter.pth",
+          "size": 157780510,
+          "url": "https://github.com/sczhou/ProPainter/releases/download/v0.1.0/ProPainter.pth"
+        },
+        {
+          "path": "raft-things.pth",
+          "size": 21108000,
+          "url": "https://github.com/sczhou/ProPainter/releases/download/v0.1.0/raft-things.pth"
+        },
+        {
+          "path": "recurrent_flow_completion.pth",
+          "size": 20348681,
+          "url": "https://github.com/sczhou/ProPainter/releases/download/v0.1.0/recurrent_flow_completion.pth"
+        }
+      ],
       "capabilities": [
         "video_inpainting"
       ],
       "roles": [
         "primary"
       ],
-      "status": "planned",
-      "blockedReason": "缺少权重地址与加载代码，尚不可下载",
-      "licenseSpdx": null
+      "status": "available",
+      "licenseSpdx": "LicenseRef-S-Lab-1.0",
+      "file_hashes": {
+        "ProPainter.pth": "12c070c4b48f374c91d8a2a17851140b85c159621080989f9e191bbc18bd6591",
+        "raft-things.pth": "fcfa4125d6418f4de95d84aec20a3c5f4e205101715a79f193243c186ac9a7e1",
+        "recurrent_flow_completion.pth": "22939a1a7900da878dbe1ccd011d646b1bfb30b8290039d8ff0e0c2fefbfd283"
+      }
     },
     {
       "id": "basicvsrpp",
