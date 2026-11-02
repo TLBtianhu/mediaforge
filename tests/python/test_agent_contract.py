@@ -119,6 +119,16 @@ class ResultContractTests(unittest.TestCase):
             self.assertEqual(
                 outcome["result"]["type"], tool["resultEvent"], f"{name} 的输出契约与实际不一致"
             )
+    def test_metadata_schema_matches_media_probe_dispatch(self) -> None:
+        tool = agent_contract.find_tool("media.metadata")
+        self.assertEqual(tool["command"], "media_tool")
+        self.assertEqual(tool["operation"], "media_probe")
+        self.assertEqual(tool["resultEvent"], "task.result")
+        with mock.patch("worker.run_command", return_value=0) as run_command:
+            agent_contract.dispatch("media.metadata", {"inputs": ["x.png"]})
+        self.assertEqual(run_command.call_args.args[0], "media_tool")
+        self.assertEqual(run_command.call_args.args[1]["operation"], "media_probe")
+        self.assertEqual(run_command.call_args.args[1]["inputs"], ["x.png"])
 
 
 class SlotVocabularyTests(unittest.TestCase):

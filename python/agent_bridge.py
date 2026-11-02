@@ -480,7 +480,7 @@ class Bridge:
                 [str(value) for value in arguments.get("inputs") or []],
                 str(arguments.get("reference") or "").strip() or None,
             )
-        if name == "probe" or name == "media.metadata":
+        if name == "probe":
             return self.probe([str(value) for value in arguments.get("inputs") or []])
         if name == "convert":
             return self.convert(

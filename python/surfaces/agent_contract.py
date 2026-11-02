@@ -400,8 +400,8 @@ def _native_tools() -> list[dict[str, Any]]:
               produces="file"),
         _tool("editor.peaks", "波形峰值", "计算波形显示用峰值。", "editor", "waveform_peaks",
               input_schema=_schema({"inputs": inputs_array}, ["inputs"])),
-        _tool("media.metadata", "媒体元数据", "Read media metadata with ffprobe. Returns a compact probe summary.", "media", "audio_metadata",
-              input_schema=_schema({"inputs": inputs_array}, ["inputs"])),
+        _tool("media.metadata", "媒体元数据", "Read media metadata with ffprobe. Returns a compact probe summary.", "media", "media_tool",
+              operation="media_probe", input_schema=_schema({"inputs": inputs_array}, ["inputs"]), produces="json"),
         _tool("media.library", "媒体库", "列出/刷新媒体库。", "media", "media_library"),
         # 自评价
         # 多步编排：worker 侧 media_image/media_video 只接受单步，多步必须走 media_workflow

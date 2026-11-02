@@ -216,10 +216,11 @@ class BridgeContractSurfaceTests(unittest.TestCase):
         """别名只是"不重复上表"；规范名与 probe 必须走同一个媒体探测实现。"""
         from unittest import mock
 
-        with mock.patch.object(self.bridge, "probe", return_value={"ok": True}) as probe:
+        outcome = {"ok": True, "result": {"type": "task.result", "payload": {"probes": []}}}
+        with mock.patch("surfaces.agent_contract.dispatch", return_value=outcome) as dispatch:
             result = self.bridge.call("media.metadata", {"inputs": ["x.png"]})
         self.assertTrue(result["ok"])
-        probe.assert_called_once_with(["x.png"])
+        dispatch.assert_called_once_with("media.metadata", {"inputs": ["x.png"], "operation": "media_probe"})
 
 
 if __name__ == "__main__":
