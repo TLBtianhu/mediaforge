@@ -17,6 +17,14 @@ import re
 import sys
 from pathlib import Path
 
+# Windows CI 默认 cp1252；中文对账输出不应让检查器在真正结果之前崩溃。
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+
 ROOT = Path(__file__).resolve().parents[1]
 RUST_DIR = ROOT / "src-tauri" / "src"
 PROTOCOL = ROOT / "manifest" / "protocol.json"

@@ -27,6 +27,10 @@ class CommandSurfaceTests(unittest.TestCase):
         self.assertIn("media_tool", used)
         self.assertIn("model_hub", used)
 
+    def test_checker_forces_utf8_output_on_windows(self) -> None:
+        source = (ROOT / "scripts/check-command-surface.py").read_text(encoding="utf-8")
+        self.assertIn('stream.reconfigure(encoding="utf-8", errors="replace")', source)
+
     def test_strict_mode_is_a_ci_gate(self) -> None:
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("python scripts/check-command-surface.py --strict", workflow)
