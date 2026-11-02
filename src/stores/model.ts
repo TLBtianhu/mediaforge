@@ -12,6 +12,8 @@ import { useAppStore } from '@/stores/app'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import { inferenceChunkSizeIssue, normalizeInferenceParamMeta, type InferenceParamMeta } from '@/features/inference/sampleStep'
 import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus } from '@/features/downloads/lifecycle'
+import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
+import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
 
 /** How the model library lays its entries out. */
 export type ModelViewMode = 'card' | 'list'
@@ -1151,7 +1153,7 @@ export const useModelStore = defineStore('model', () => {
       // 统一到模型库下载：requestId 同时充当 taskId，事件里带回同一个 id，
       // 这样 store 的事件处理器不用改判定逻辑（仍按 taskId 关联）。
       const modelId = String((models.value.find((item) => item.name === name) as { id?: string })?.id || name)
-      await invoke<{ taskId: string; started: boolean }>('start_model_hub_download', {
+      await startModelHubDownload({
         requestId: taskId,
         modelId,
         modelDir: settings.modelDir || null,
@@ -1320,29 +1322,7 @@ export const useModelStore = defineStore('model', () => {
   }
 
   async function waitForDeleteTask(name: string, taskId: string) {
-    return new Promise<DeleteTask>((resolve, reject) => {
-      let timer: ReturnType<typeof setTimeout> | null = null
-      const stop = watch(
-        () => deleteTasks.value[name],
-        (task) => {
-          if (!task) return
-          if (task.taskId !== taskId) return
-          if (!isTerminalDeleteTaskStatus(task)) return
-          if (timer) clearTimeout(timer)
-          stop()
-          if (task.status === 'done') {
-            resolve(task)
-          } else {
-            reject(new Error(task.message || (task.status === 'cancelled' ? 'Delete cancelled' : 'Delete failed')))
-          }
-        },
-        { deep: true, immediate: true },
-      )
-      timer = setTimeout(() => {
-        stop()
-        reject(new Error('Delete task timed out'))
-      }, DELETE_TASK_TIMEOUT_MS)
-    })
+    return waitForDeleteTaskCompletion(() => deleteTasks.value[name], taskId, DELETE_TASK_TIMEOUT_MS)
   }
 
   async function deleteToolModel(target: ModelStorageDeleteTarget) {

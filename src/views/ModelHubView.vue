@@ -18,6 +18,7 @@ import {
 } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useModelStore } from '@/stores/model'
+import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
 
 defineOptions({ name: 'ModelHubView' })
 
@@ -172,7 +173,7 @@ async function download(item: ModelRecord) {
   progress.value = { ...progress.value, [item.id]: 0 }
   requestId.value = `model-${Date.now()}`
   try {
-    await invoke('start_model_hub_download', {
+    await startModelHubDownload({
       requestId: requestId.value,
       modelId: item.id,
       modelDir: modelDir.value,
