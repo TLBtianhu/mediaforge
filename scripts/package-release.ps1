@@ -17,6 +17,8 @@
 param(
     [switch]$SkipBuild,
     [switch]$SkipZip,
+    [switch]$SkipSign,
+    [switch]$SkipDownloadCopy,
     [string]$Version = ''
 )
 
@@ -206,8 +208,8 @@ if (Test-Path $updateZip) { Remove-Item $updateZip -Force }
 Compress-Folder -Source $updateRoot -Destination $updateZip -Label "update.zip"
 Remove-Item $updateRoot -Recurse -Force
 $keyPath = Join-Path $env:USERPROFILE '.mediaforge-keys\mediaforge.key'
-$signingPassword = Get-SigningPassword
-if ($signingPassword -and (Test-Path $keyPath)) {
+$signingPassword = if ($SkipSign) { '' } else { Get-SigningPassword }
+if (-not $SkipSign -and $signingPassword -and (Test-Path $keyPath)) {
     $signer = "$root\node_modules\.bin\tauri.cmd"
     Push-Location $root
     # tauri CLI 会把 TAURI_SIGNING_PRIVATE_KEY 环境变量也算作"已提供 key"，
@@ -228,7 +230,11 @@ if ($signingPassword -and (Test-Path $keyPath)) {
         Write-Host "  已签名；清单 signature 字段用 $updateZip.sig 的内容"
     }
 } else {
-    Write-Host "  跳过签名：设置 TAURI_SIGNING_PRIVATE_KEY_PASSWORD 后重跑即可（或单独跑 scripts\sign-update.ps1）"
+    if ($SkipSign) {
+        Write-Host '  跳过签名（-SkipSign，隔离验证不读取签名凭据）'
+    } else {
+        Write-Host "  跳过签名：设置 TAURI_SIGNING_PRIVATE_KEY_PASSWORD 后重跑即可（或单独跑 scripts\sign-update.ps1）"
+    }
 }
 
 Write-Host "[5/6] 安装包"
@@ -243,9 +249,14 @@ $env:MEDIAFORGE_PORTABLE_DIR = $stage
 $env:MEDIAFORGE_INSTALLER_OUTPUT = $out
 Invoke-Native 'ISCC' { & $iscc $localIss }
 
-Write-Host "[6/6] 复制到 Downloads"
+Write-Host "[6/6] 安装包输出"
 $setup = "$out\MediaForge-$Version-windows-x64-cuda-setup.exe"
 if (-not (Test-Path $setup)) { throw "没有找到安装包: $setup" }
-Copy-Item $setup "$env:USERPROFILE\Downloads\$(Split-Path $setup -Leaf)" -Force
-Get-Item $setup | ForEach-Object { Write-Host ("  installer: {0} MB -> Downloads" -f [Math]::Round($_.Length/1MB,1)) }
+if ($SkipDownloadCopy) {
+    Write-Host '  跳过复制到 Downloads（-SkipDownloadCopy）'
+} else {
+    Copy-Item $setup "$env:USERPROFILE\Downloads\$(Split-Path $setup -Leaf)" -Force
+    Write-Host "  已复制到 Downloads"
+}
+Get-Item $setup | ForEach-Object { Write-Host ("  installer: {0} MB" -f [Math]::Round($_.Length/1MB,1)) }
 Write-Host "DONE"

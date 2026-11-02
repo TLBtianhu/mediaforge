@@ -15,6 +15,8 @@
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1
+# 只做隔离验证时：不读取签名凭据、不复制到 Downloads，也不执行安装
+powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -SkipDownloadCopy
 ```
 
 ```

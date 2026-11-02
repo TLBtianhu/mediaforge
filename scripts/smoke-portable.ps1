@@ -8,7 +8,7 @@
 # 用来验证"标记 → 便携数据根"这条链路，而不依赖某个已发布的包。
 param(
     [Parameter(Mandatory = $true)][string]$Zip,
-    [int]$LaunchSeconds = 8
+    [int]$LaunchSeconds = 30
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,14 +58,29 @@ $app = $exeItem.Directory.FullName
 $exe = $exeItem.FullName
 Check '标记随包' (Test-Path (Join-Path $app 'mediaforge.portable'))
 
-# 3) 启动，确认数据落在程序旁的 data\，而不是用户的 .mediaforge
+# 3) 启动，确认数据落在程序旁的 data\，而不是用户的 .mediaforge。
+# CI 首次启动可能超过 8 秒：在明确上限内等待条件，而不是用固定 sleep 猜测启动完成。
 $installedSettings = Join-Path $env:USERPROFILE '.mediaforge\settings'
 $installedBefore = if (Test-Path $installedSettings) { (Get-Item $installedSettings).LastWriteTimeUtc } else { $null }
-$process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru
-Start-Sleep -Seconds $LaunchSeconds
-Check '应用启动后保持运行' (-not $process.HasExited)
+$stdout = Join-Path $work 'portable.stdout.log'
+$stderr = Join-Path $work 'portable.stderr.log'
+$process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru `
+    -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 $portableSettings = Join-Path $app 'data\settings'
+$deadline = [DateTime]::UtcNow.AddSeconds($LaunchSeconds)
+do {
+    Start-Sleep -Seconds 1
+    if ($process.HasExited) { break }
+} until ((Test-Path $portableSettings) -or [DateTime]::UtcNow -ge $deadline)
+Check '应用启动后保持运行' (-not $process.HasExited)
 Check '数据根在程序旁 data\' (Test-Path $portableSettings)
+if ($failures.Count -gt 0) {
+    foreach ($log in @($stdout, $stderr)) {
+        if (-not (Test-Path $log)) { continue }
+        $content = Get-Content $log -Raw
+        if ($null -ne $content -and $content.Trim()) { Write-Host "  $(Split-Path -Leaf $log):`n$($content.Trim())" }
+    }
+}
 if (Test-Path $installedSettings) {
     $installedAfter = (Get-Item $installedSettings).LastWriteTimeUtc
     Check '安装版数据根未被写入' ($installedBefore -eq $installedAfter)
@@ -75,12 +90,14 @@ if (Test-Path $installedSettings) {
 if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
 Start-Sleep -Seconds 1
 
-Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 if ($failures.Count -gt 0) {
-    Write-Host ("FAILED: {0} 项" -f $failures.Count)
+    Write-Host ("FAILED: {0} 项；现场保留在 {1}" -f $failures.Count, $work)
     $failures | ForEach-Object { Write-Host ("  - {0}" -f $_) }
     exit 1
 }
+. (Join-Path $PSScriptRoot 'temp-work-guard.ps1')
+$resolvedWork = Assert-TempWorkDir -Work $work -Prefix 'mediaforge-portable-smoke-'
+Remove-Item -LiteralPath $resolvedWork -Recurse -Force
 Write-Host 'PASS: 便携版使用程序旁数据根'
 exit 0
