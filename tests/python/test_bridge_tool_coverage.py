@@ -22,13 +22,9 @@ SOURCE = (PYTHON_DIR / "agent_bridge.py").read_text(encoding="utf-8")
 
 
 def declared_tools() -> set[str]:
-    """手写工具表（`_bridge_tools`）；契约生成的那部分由 BridgeContractSurfaceTests 覆盖。"""
-    tree = ast.parse(SOURCE)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_bridge_tools":
-            source = ast.unparse(node)
-            return set(re.findall(r"'name': '([a-z_]+)'", source))
-    raise AssertionError("Bridge._bridge_tools() not found")
+    """实际渲染的历史名称与桥接专属工具；schema 必须来自契约。"""
+    bridge = agent_bridge.Bridge.__new__(agent_bridge.Bridge)
+    return {tool["name"] for tool in bridge._bridge_tools()}
 
 
 def dispatched_tools() -> set[str]:
@@ -80,7 +76,7 @@ class BridgeToolCoverageTests(unittest.TestCase):
 
 
 class BridgeContractSurfaceTests(unittest.TestCase):
-    """bridge 的工具表 = 手写历史工具 + 契约里尚未上表的功能。"""
+    """bridge 的完整工具面与契约条目一一对应，历史名称不重复上表。"""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -96,6 +92,40 @@ class BridgeContractSurfaceTests(unittest.TestCase):
         import shutil
 
         shutil.rmtree(cls.root, ignore_errors=True)
+
+    def test_bridge_schemas_are_rendered_from_the_contract(self) -> None:
+        from surfaces import agent_contract
+
+        expected = {
+            tool["bridgeTool"]: tool
+            for tool in agent_contract.build_contract()["tools"]
+            if tool.get("bridgeTool")
+        }
+        exposed = {tool["name"]: tool for tool in self.bridge._bridge_tools()}
+        self.assertEqual(set(exposed), set(expected))
+        for name, tool in exposed.items():
+            with self.subTest(tool=name):
+                self.assertEqual(tool["inputSchema"], expected[name]["inputSchema"])
+
+    def test_full_surface_has_exactly_one_name_per_contract_tool(self) -> None:
+        from surfaces import agent_contract
+
+        contract_tools = agent_contract.build_contract()["tools"]
+        expected = {tool.get("bridgeTool") or tool["name"] for tool in contract_tools}
+        exposed = {tool["name"] for tool in self.bridge.tools()}
+        self.assertEqual(exposed, expected)
+        self.assertEqual(len(exposed), len(contract_tools))
+
+    def test_alias_schema_constraints_are_not_lost(self) -> None:
+        exposed = {tool["name"]: tool for tool in self.bridge._bridge_tools()}
+        modality = exposed["models_list"]["inputSchema"]["properties"]["modality"]
+        self.assertEqual(modality["enum"], ["all", "audio", "image", "video"])
+        self.assertEqual(modality["default"], "all")
+        source = exposed["models_download"]["inputSchema"]["properties"]["source"]
+        self.assertEqual(source["enum"], ["modelscope", "huggingface", "hf-mirror"])
+        self.assertEqual(source["default"], "modelscope")
+        reference = exposed["evaluate_media"]["inputSchema"]["properties"]["reference"]
+        self.assertIn("compare", reference["description"])
 
     def test_tool_names_are_unique(self) -> None:
         names = [tool["name"] for tool in self.bridge.tools()]

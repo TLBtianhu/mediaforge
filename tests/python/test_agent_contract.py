@@ -23,6 +23,7 @@ REQUIRED_FIELDS = {
     "description",
     "category",
     "command",
+    "executor",
     "approval",
     "cost",
     "longRunning",
@@ -55,10 +56,29 @@ class ContractShapeTests(unittest.TestCase):
         names = [tool["name"] for tool in self.tools]
         self.assertEqual(len(names), len(set(names)))
 
-    def test_every_tool_points_at_a_real_worker_command(self) -> None:
+    def test_every_worker_tool_points_at_a_real_worker_command(self) -> None:
         commands = set(agent_contract.worker_commands())
         for tool in self.tools:
+            if tool["executor"] == "bridge":
+                self.assertIsNone(tool["command"], tool["name"])
+                continue
             self.assertIn(tool["command"], commands, f"{tool['name']} 指向了不存在的命令")
+
+    def test_bridge_only_tools_are_explicit_and_have_no_worker_command(self) -> None:
+        expected = {
+            "capabilities_list", "convert", "feedback_submit", "job_status", "job_cancel",
+            "job_retry", "mediaforge_status", "pipeline_plan", "pipeline_start", "workflow_start",
+        }
+        bridge = {tool["name"]: tool for tool in self.tools if tool["executor"] == "bridge"}
+        self.assertEqual(set(bridge), expected)
+        for name, tool in bridge.items():
+            with self.subTest(tool=name):
+                self.assertIsNone(tool["command"])
+                self.assertEqual(tool["bridgeTool"], name)
+
+    def test_bridge_only_tool_cannot_enter_worker_dispatch(self) -> None:
+        with self.assertRaisesRegex(ValueError, "agent_bridge"):
+            agent_contract.dispatch("job_status", {"jobId": "job_test"})
 
 
 class CoverageTests(unittest.TestCase):

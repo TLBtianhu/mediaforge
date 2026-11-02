@@ -1,13 +1,15 @@
 """Agent 契约：MediaForge 每一个可执行功能，一份机器可读的描述。
 
-为什么需要它：这个应用有**三套执行面**——45 个 worker 命令、8 个音频 operation、
-以及 `agent_bridge` 里手写的 12 个 MCP 工具。三套各说各话：
-新增一个功能，bridge 不知道、agent 用不上；改掉一个参数名，schema 还停在旧处。
+为什么需要它：这个应用有 worker 命令、音频 operation、以及 MCP 桥接专属工具。
+如果三套执行面各说各话，新增一个功能时 bridge 不知道、agent 用不上；
+改掉一个参数名，schema 还可能停在旧处。这里同时登记 worker 与 bridge 两种执行面，
+让工具名称、分发方式和输入 schema 只有一份真源。
 
 这份契约把它们收成一张表，每条描述：
 
 * `name`        稳定 id（agent 用它调用；改名等于破坏契约，要升 version）
-* `command` + `operation`  真正落到 worker 的哪个命令（执行器只需要这两件事）
+* `command` + `operation`  worker 工具真正落到哪个命令；桥接专属工具则为 `command=None`
+* `executor`     `worker` 走统一 dispatch，`bridge` 由 MCP 桥直接执行
 * `inputSchema` 输入（JSON Schema 的子集，够 MCP 用）
 * `approval`    需要什么级别的确认：`none` 只读 / `confirm` 会写文件或耗时 / `explicit` 下载·安装·删除
 * `cost`        预期耗时档位，供 agent 决定"直接等"还是"提交作业再轮询"
@@ -71,7 +73,7 @@ RESULT_EVENTS: dict[str, str] = {
 }
 
 
-def _result_event(name: str, command: str, operation: str | None) -> str | None:
+def _result_event(name: str, command: str | None, operation: str | None) -> str | None:
     explicit = RESULT_EVENTS.get(name)
     if explicit:
         return explicit
@@ -97,9 +99,10 @@ def _tool(
     title: str,
     description: str,
     category: str,
-    command: str,
+    command: str | None,
     *,
     operation: str | None = None,
+    bridge_only: bool = False,
     approval: str = "none",
     cost: str = "instant",
     long_running: bool = False,
@@ -114,12 +117,15 @@ def _tool(
         raise ValueError(f"unknown approval level {approval!r} for {name}")
     if cost not in COST_LEVELS:
         raise ValueError(f"unknown cost level {cost!r} for {name}")
+    if bridge_only != (command is None):
+        raise ValueError(f"bridge_only must match command=None for {name}")
     return {
         "name": name,
         "title": title,
         "description": description,
         "category": category,
         "command": command,
+        "executor": "bridge" if bridge_only else "worker",
         "operation": operation,
         "approval": approval,
         "cost": cost,
@@ -133,8 +139,9 @@ def _tool(
         "models": list(models or []),
         "resultEvent": _result_event(name, command, operation),
         "available": bool(available),
-        # 已经在桥接里以别的名字暴露过的话，这里记下来（避免重复上表）
-        "bridgeTool": BRIDGE_ALIASES.get(name),
+        # 已经在桥接里以别的名字暴露过的话，这里记下来（避免重复上表）。
+        # 桥接专属工具使用自身名字，且 command=None，不进入 worker dispatch。
+        "bridgeTool": name if bridge_only else BRIDGE_ALIASES.get(name),
     }
 
 
@@ -318,15 +325,21 @@ def _native_tools() -> list[dict[str, Any]]:
     inputs_array = {"type": "array", "items": {"type": "string"}, "minItems": 1}
     tools = [
         # 模型库
-        _tool("model.list", "列出模型", "统一模型库（音频 + 图像 + 视频）及下载状态。", "model", "list_models",
-              input_schema=_schema({"query": {"type": "string"}, "modality": {"type": "string"}})),
+        _tool("model.list", "列出模型", "List the unified MediaForge model catalog with download status.", "model", "list_models",
+              input_schema=_schema({
+                  "query": {"type": "string", "description": "Optional name/category search."},
+                  "modality": {"type": "string", "enum": ["all", "audio", "image", "video"], "default": "all"},
+              })),
         _tool("model.interface", "模型槽位接口", "返回一个模型支持的槽位（范围/默认/派生约束），不含任何布局信息。", "model",
               "model_interface", input_schema=_schema({"model": {"type": "string"}}, ["model"])),
         _tool("model.inspect", "模型详情", "单个模型的元数据与本地状态。", "model", "model_info",
               input_schema=_schema({"model": {"type": "string"}}, ["model"])),
-        _tool("model.download", "下载模型", "下载一个模型（可能几百 MB 到数 GB）。", "model", "model_download",
+        _tool("model.download", "下载模型", "Download one model from the unified catalog. Starts an asynchronous job; poll job_status. Ask the user before downloading a large model.", "model", "model_download",
               approval="explicit", cost="download", long_running=True,
-              input_schema=_schema({"modelId": {"type": "string"}, "source": {"type": "string"}}, ["modelId"]),
+              input_schema=_schema({
+                  "modelId": {"type": "string", "description": "Exact id from models_list, for example media:lama."},
+                  "source": {"type": "string", "enum": ["modelscope", "huggingface", "hf-mirror"], "default": "modelscope"},
+              }, ["modelId"]),
               produces="file"),
         _tool("model.delete", "删除模型", "删除本地权重文件。", "model", "delete_model",
               approval="explicit", input_schema=_schema({"model": {"type": "string"}}, ["model"])),
@@ -387,7 +400,7 @@ def _native_tools() -> list[dict[str, Any]]:
               produces="file"),
         _tool("editor.peaks", "波形峰值", "计算波形显示用峰值。", "editor", "waveform_peaks",
               input_schema=_schema({"inputs": inputs_array}, ["inputs"])),
-        _tool("media.metadata", "媒体元数据", "读取音频/视频/图片的元数据。", "media", "audio_metadata",
+        _tool("media.metadata", "媒体元数据", "Read media metadata with ffprobe. Returns a compact probe summary.", "media", "audio_metadata",
               input_schema=_schema({"inputs": inputs_array}, ["inputs"])),
         _tool("media.library", "媒体库", "列出/刷新媒体库。", "media", "media_library"),
         # 自评价
@@ -405,17 +418,127 @@ def _native_tools() -> list[dict[str, Any]]:
                    "inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
                   ["steps", "inputs"],
               )),
-        _tool("media.evaluate", "评估产物质量", "对产物做客观评估（尺寸/锐度/是否真的变化），供 agent 自检与重试。",
+        _tool("media.evaluate", "评估产物质量", "Evaluate produced media objectively: dimensions, duration, frame count, sharpness, clipping. Pass the original as `reference` to get change and sharpness comparisons. Read-only; use it to self-check a pipeline result before reporting success.",
               "media", "evaluate_media", approval="none", cost="seconds",
-              input_schema=_schema({"inputs": inputs_array, "reference": {"type": "string"}}, ["inputs"])),
+              input_schema=_schema({
+                  "inputs": inputs_array,
+                  "reference": {"type": "string", "description": "Optional original file to compare against."},
+              }, ["inputs"])),
         # 诊断
         _tool("system.env", "环境信息", "解释器/torch/CUDA/运行时与产品声明的版本对账。", "system", "env_info"),
-        _tool("system.contract", "Agent 契约", "本契约全文（工具、批准等级、覆盖率审计）。", "system", "agent_contract"),
+        _tool("system.contract", "Agent 契约", "The machine-readable contract for every MediaForge operation: tool names, input schemas, approval levels, cost class, outputs and evaluation hooks, plus the worker-command coverage audit. Prefer this over guessing tool shapes.", "system", "agent_contract"),
         _tool("system.failure_stats", "失败模式统计", "按可恢复性归类作业台账里的失败，给出先修哪个。", "system",
               "failure_stats"),
         _tool("system.health", "健康检查", "worker 版本探活。", "system", "health"),
     ]
     return tools
+
+
+# ── MCP 桥接专属：由 agent_bridge 直接执行，没有对应 worker 命令 ─────────────────
+def _bridge_only_tools() -> list[dict[str, Any]]:
+    inputs_array = {"type": "array", "items": {"type": "string"}, "minItems": 1}
+    return [
+        _tool(
+            "mediaforge_status", "MediaForge 状态", "Show MediaForge bridge and model-library status. Read-only.",
+            "system", None, bridge_only=True, produces="json",
+        ),
+        _tool(
+            "capabilities_list", "能力列表", "List MediaForge capabilities, their roles, parameter schemas, and compatible models. Use this to build a pipeline instead of hardcoding modes.",
+            "media", None, bridge_only=True, produces="json",
+        ),
+        _tool(
+            "convert", "格式转换", "Start an asynchronous FFmpeg conversion and return a jobId. Poll job_status for completion.",
+            "media", None, bridge_only=True, approval="confirm", cost="seconds", long_running=True,
+            input_schema=_schema({
+                "inputs": inputs_array,
+                "outputDir": {"type": "string"},
+                "format": {"type": "string", "default": "mp4"},
+                "crf": {"type": "integer", "default": 20},
+                "preset": {"type": "string", "default": "medium"},
+            }, ["inputs", "outputDir"]),
+            produces="file", evaluate="media.evaluate",
+        ),
+        _tool(
+            "pipeline_plan", "管线预检", "Validate a requested media pipeline and report model availability without running it.",
+            "media", None, bridge_only=True,
+            input_schema=_schema({
+                "input": {"type": "string", "description": "Absolute path to a media file."},
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "capability": {"type": "string"},
+                            "bindings": {"type": "object", "additionalProperties": {"type": "string"}},
+                            "params": {"type": "object"},
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "video.remove_watermark", "video.upscale",
+                                    "image.remove_watermark", "image.upscale", "convert",
+                                ],
+                            },
+                            "model": {"type": "string"},
+                            "format": {"type": "string"},
+                        },
+                    },
+                },
+            }, ["input", "steps"]),
+            produces="json",
+        ),
+        _tool(
+            "pipeline_start", "启动管线", "Start an asynchronous capability pipeline for an image or video. The input must use steps from capabilities_list; returns a jobId.",
+            "media", None, bridge_only=True, approval="confirm", cost="minutes", long_running=True,
+            input_schema=_schema({
+                "input": {"type": "string", "description": "Absolute path to an image or video."},
+                "outputDir": {"type": "string"},
+                "modality": {"type": "string", "enum": ["image", "video"]},
+                "steps": {"type": "array", "items": {"type": "object"}},
+                "options": {"type": "object"},
+            }, ["input", "outputDir", "modality", "steps"]),
+            produces="file", evaluate="media.evaluate",
+        ),
+        _tool(
+            "workflow_start", "启动工作流", "Start a multi-step image/video workflow. Each step is one capability plus one primary model; outputs are passed to the next step. Use pipeline_start for a single task.",
+            "media", None, bridge_only=True, approval="confirm", cost="minutes", long_running=True,
+            input_schema=_schema({
+                "input": {"type": "string", "description": "Absolute path to an image or video."},
+                "outputDir": {"type": "string"},
+                "modality": {"type": "string", "enum": ["image", "video"]},
+                "steps": {"type": "array", "items": {"type": "object"}},
+                "options": {"type": "object"},
+            }, ["input", "outputDir", "modality", "steps"]),
+            produces="file", evaluate="media.evaluate",
+        ),
+        _tool(
+            "job_status", "作业状态", "Read an asynchronous MediaForge job's status and result.",
+            "system", None, bridge_only=True,
+            input_schema=_schema({"jobId": {"type": "string"}}, ["jobId"]), produces="json",
+        ),
+        _tool(
+            "job_cancel", "取消作业", "Request cancellation of an asynchronous MediaForge job.",
+            "system", None, bridge_only=True, approval="confirm",
+            input_schema=_schema({"jobId": {"type": "string"}}, ["jobId"]), produces="json",
+        ),
+        _tool(
+            "job_retry", "重试作业", "Resubmit a failed job with the corrected parameters its recovery hint suggests (smaller tile, lower scale, CPU). Refuses when the failure is not recoverable, needs user consent, or the retry budget is spent.",
+            "system", None, bridge_only=True, approval="confirm", cost="minutes", long_running=True,
+            input_schema=_schema({"jobId": {"type": "string"}}, ["jobId"]), produces="json",
+        ),
+        _tool(
+            "feedback_submit", "提交反馈", "Record structured harness feedback from the agent. Local-only; never changes code or permissions.",
+            "system", None, bridge_only=True, approval="confirm",
+            input_schema=_schema({
+                "build": {"type": "string"},
+                "taskId": {"type": "string"},
+                "blockers": {"type": "array", "items": {"type": "object"}},
+                "friction": {"type": "array", "items": {"type": "object"}},
+                "proposals": {"type": "array", "items": {"type": "object"}},
+                "notes": {"type": "string"},
+            }),
+            produces="json",
+        ),
+    ]
 
 
 # 明确不暴露给 agent 的命令（内部/调试用）。每一条都要写清理由。
@@ -487,7 +610,7 @@ def _ensure_mcp_compatible() -> int:
 
 def build_contract() -> dict[str, Any]:
     schema_version = _ensure_mcp_compatible()
-    tools = _native_tools() + _media_tools() + _audio_tool_tools()
+    tools = _native_tools() + _media_tools() + _audio_tool_tools() + _bridge_only_tools()
     names = [tool["name"] for tool in tools]
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
@@ -513,15 +636,16 @@ def build_contract() -> dict[str, Any]:
 
 def audit_contract(tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """覆盖率审计：worker 的每个命令要么被某个工具执行，要么在 INTERNAL_COMMANDS 里说明理由。"""
-    tools = tools if tools is not None else (_native_tools() + _media_tools() + _audio_tool_tools())
+    tools = tools if tools is not None else (_native_tools() + _media_tools() + _audio_tool_tools() + _bridge_only_tools())
     commands = worker_commands()
-    covered = {tool["command"] for tool in tools}
+    covered = {tool["command"] for tool in tools if tool["command"] is not None}
     internal = set(INTERNAL_COMMANDS)
     missing = [command for command in commands if command not in covered and command not in internal]
     unknown_internal = sorted(internal - set(commands))
     return {
         "workerCommands": len(commands),
         "tools": len(tools),
+        "bridgeOnly": sum(1 for tool in tools if tool["executor"] == "bridge"),
         "available": sum(1 for tool in tools if tool["available"]),
         "missing": missing,
         "internal": {name: INTERNAL_COMMANDS[name] for name in sorted(internal)},
@@ -542,7 +666,7 @@ def cmd_agent_contract(payload: dict[str, Any]) -> int:
 
 def find_tool(tool_name: str) -> dict[str, Any]:
     _ensure_mcp_compatible()
-    for tool in _native_tools() + _media_tools() + _audio_tool_tools():
+    for tool in _native_tools() + _media_tools() + _audio_tool_tools() + _bridge_only_tools():
         if tool["name"] == tool_name:
             return tool
     raise KeyError(f"unknown tool: {tool_name}")
@@ -643,6 +767,8 @@ def dispatch(
     外部 agent 走 MCP 时也能受益：`bridge.call()` 会复用同一个 dispatch。
     """
     tool = find_tool(tool_name)
+    if tool["executor"] == "bridge":
+        raise ValueError(f"{tool_name} is executed directly by agent_bridge, not by worker dispatch()")
     if tool["longRunning"]:
         raise ValueError(
             f"{tool_name} is long-running; submit it through the job ledger instead of dispatch()"

@@ -404,34 +404,38 @@ class Bridge:
     # ---- MCP tool registry ---------------------------------------------------
 
     def tools(self) -> list[dict[str, Any]]:
-        """手写的历史工具 + 契约里尚未上表的功能。
+        """契约渲染的完整工具面，或仅历史名称与桥接专属工具。
 
-        契约是工具面的真源：`agent_contract` 里登记的功能，这里自动出现，
-        bridge 只保留那些**没有对应 worker 命令**的桥接专属工具
-        （`mediaforge_status` / `job_*` / `capabilities_list` / `pipeline_*` / `convert` …）。
-
-        工具面一共 60 个，对上下文紧张的调用方偏多：设 `MEDIAFORGE_MCP_SURFACE=legacy`
-        只暴露历史那 14 个（功能仍可用，只是需要按契约名直接调）。
+        `MEDIAFORGE_MCP_SURFACE=legacy` 只改变广告出来的名字，不改变可调用功能。
         """
-        legacy = self._bridge_tools()
-        if os.environ.get("MEDIAFORGE_MCP_SURFACE", "").strip().lower() == "legacy":
-            return legacy
-        return legacy + self._contract_tools()
-
-    def _contract_tools(self) -> list[dict[str, Any]]:
-        tools: list[dict[str, Any]] = []
         try:
             contract = agent_contract.build_contract()
         except agent_contract.ContractMismatchError as error:
-            # 工具面协议对不上时，保留一条可读诊断：调用方知道该升级，而不是看到空列表。
-            return [{
-                "name": "agent_contract",
-                "description": f"工具面协议不匹配（{error.code}）：{error}",
-                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-            }]
+            return [self._contract_mismatch_tool(error)]
+        legacy = self._bridge_tools(contract)
+        if os.environ.get("MEDIAFORGE_MCP_SURFACE", "").strip().lower() == "legacy":
+            return legacy
+        return legacy + self._contract_tools(contract)
+
+    @staticmethod
+    def _contract_mismatch_tool(error: agent_contract.ContractMismatchError) -> dict[str, Any]:
+        return {
+            "name": "agent_contract",
+            "description": f"工具面协议不匹配（{error.code}）：{error}",
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        }
+
+    def _contract_tools(self, contract: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        if contract is None:
+            try:
+                contract = agent_contract.build_contract()
+            except agent_contract.ContractMismatchError as error:
+                # 工具面协议对不上时保留一条可读诊断，而不是返回空列表。
+                return [self._contract_mismatch_tool(error)]
+        tools: list[dict[str, Any]] = []
         for tool in contract["tools"]:
             if tool.get("bridgeTool"):
-                continue  # 已经以历史名字暴露过了
+                continue  # 历史别名与桥接专属工具已由 _bridge_tools 渲染
             description = f"{tool['title']} — {tool['description']}"
             if not tool["available"]:
                 description += "（当前不可用：适配器尚未实现）"
@@ -445,200 +449,16 @@ class Bridge:
             )
         return tools
 
-    def _bridge_tools(self) -> list[dict[str, Any]]:
+    def _bridge_tools(self, contract: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        contract = contract or agent_contract.build_contract()
         return [
             {
-                "name": "mediaforge_status",
-                "description": "Show MediaForge bridge and model-library status. Read-only.",
-                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-            },
-            {
-                "name": "models_list",
-                "description": "List the unified MediaForge model catalog with download status.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "Optional name/category search."},
-                        "modality": {"type": "string", "enum": ["all", "audio", "image", "video"], "default": "all"},
-                    },
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "models_download",
-                "description": "Download one model from the unified catalog. Starts an asynchronous job; poll job_status. Ask the user before downloading a large model.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "modelId": {"type": "string", "description": "Exact id from models_list, for example media:lama."},
-                        "source": {"type": "string", "enum": ["modelscope", "huggingface", "hf-mirror"], "default": "modelscope"},
-                    },
-                    "required": ["modelId"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "capabilities_list",
-                "description": "List MediaForge capabilities, their roles, parameter schemas, and compatible models. Use this to build a pipeline instead of hardcoding modes.",
-                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-            },
-            {
-                "name": "probe",
-                "description": "Read media metadata with ffprobe. Returns a compact probe summary.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-                    "required": ["inputs"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "convert",
-                "description": "Start an asynchronous FFmpeg conversion and return a jobId. Poll job_status for completion.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                        "outputDir": {"type": "string"},
-                        "format": {"type": "string", "default": "mp4"},
-                        "crf": {"type": "integer", "default": 20},
-                        "preset": {"type": "string", "default": "medium"},
-                    },
-                    "required": ["inputs", "outputDir"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "pipeline_plan",
-                "description": "Validate a requested media pipeline and report model availability without running it.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "input": {"type": "string", "description": "Absolute path to a media file."},
-                        "steps": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "capability": {"type": "string"},
-                                    "bindings": {"type": "object", "additionalProperties": {"type": "string"}},
-                                    "params": {"type": "object"},
-                                    "type": {
-                                        "type": "string",
-                                        "enum": [
-                                            "video.remove_watermark",
-                                            "video.upscale",
-                                            "image.remove_watermark",
-                                            "image.upscale",
-                                            "convert",
-                                        ],
-                                    },
-                                    "model": {"type": "string"},
-                                    "format": {"type": "string"},
-                                },
-                            },
-                        },
-                    },
-                    "required": ["input", "steps"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "pipeline_start",
-                "description": "Start an asynchronous capability pipeline for an image or video. The input must use steps from capabilities_list; returns a jobId.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "input": {"type": "string", "description": "Absolute path to an image or video."},
-                        "outputDir": {"type": "string"},
-                        "modality": {"type": "string", "enum": ["image", "video"]},
-                        "steps": {"type": "array", "items": {"type": "object"}},
-                        "options": {"type": "object"},
-                    },
-                    "required": ["input", "outputDir", "modality", "steps"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "workflow_start",
-                "description": "Start a multi-step image/video workflow. Each step is one capability plus one primary model; outputs are passed to the next step. Use pipeline_start for a single task.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "input": {"type": "string", "description": "Absolute path to an image or video."},
-                        "outputDir": {"type": "string"},
-                        "modality": {"type": "string", "enum": ["image", "video"]},
-                        "steps": {"type": "array", "items": {"type": "object"}},
-                        "options": {"type": "object"},
-                    },
-                    "required": ["input", "outputDir", "modality", "steps"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "job_status",
-                "description": "Read an asynchronous MediaForge job's status and result.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"jobId": {"type": "string"}},
-                    "required": ["jobId"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "job_cancel",
-                "description": "Request cancellation of an asynchronous MediaForge job.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"jobId": {"type": "string"}},
-                    "required": ["jobId"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "job_retry",
-                "description": "Resubmit a failed job with the corrected parameters its recovery hint suggests (smaller tile, lower scale, CPU). Refuses when the failure is not recoverable, needs user consent, or the retry budget is spent.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"jobId": {"type": "string"}},
-                    "required": ["jobId"],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "feedback_submit",
-                "description": "Record structured harness feedback from the agent. Local-only; never changes code or permissions.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "build": {"type": "string"},
-                        "taskId": {"type": "string"},
-                        "blockers": {"type": "array", "items": {"type": "object"}},
-                        "friction": {"type": "array", "items": {"type": "object"}},
-                        "proposals": {"type": "array", "items": {"type": "object"}},
-                        "notes": {"type": "string"},
-                    },
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "agent_contract",
-                "description": "The machine-readable contract for every MediaForge operation: tool names, input schemas, approval levels, cost class, outputs and evaluation hooks, plus the worker-command coverage audit. Prefer this over guessing tool shapes.",
-                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-            },
-            {
-                "name": "evaluate_media",
-                "description": "Evaluate produced media objectively: dimensions, duration, frame count, sharpness, clipping. Pass the original as `reference` to get change and sharpness comparisons. Read-only; use it to self-check a pipeline result before reporting success.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                        "reference": {"type": "string", "description": "Optional original file to compare against."},
-                    },
-                    "required": ["inputs"],
-                    "additionalProperties": False,
-                },
-            },
+                "name": tool["bridgeTool"],
+                "description": tool["description"],
+                "inputSchema": tool["inputSchema"],
+            }
+            for tool in contract["tools"]
+            if tool.get("bridgeTool")
         ]
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
