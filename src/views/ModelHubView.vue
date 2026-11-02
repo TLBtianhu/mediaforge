@@ -173,7 +173,10 @@ async function download(item: ModelRecord) {
   requestId.value = `model-${Date.now()}`
   try {
     await invoke('start_model_hub_download', {
-      payload: { operation: 'model_download', requestId: requestId.value, modelId: item.id, modelDir: modelDir.value, source: 'modelscope' },
+      requestId: requestId.value,
+      modelId: item.id,
+      modelDir: modelDir.value,
+      source: 'modelscope',
     })
   } catch (error) {
     downloadingId.value = ''

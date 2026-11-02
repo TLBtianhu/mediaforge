@@ -1436,6 +1436,7 @@ fn log_worker_parse_error(
 
 fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
     match command {
+        "model_download" => matches!(event_type, "error" | "asset.done" | "task.cancelled"),
         "delete_model" => matches!(
             event_type,
             "error" | "model_delete_done" | "model_delete_failed"
@@ -2792,6 +2793,14 @@ mod tests {
             super::prepend_path(Some("existing-path".into()), dirs),
             Some(format!("{joined};existing-path"))
         );
+    }
+
+    #[test]
+    fn model_download_result_and_cancellation_are_background_terminal_events() {
+        assert!(is_background_terminal_event("model_download", "asset.done"));
+        assert!(is_background_terminal_event("model_download", "error"));
+        assert!(is_background_terminal_event("model_download", "task.cancelled"));
+        assert!(!is_background_terminal_event("model_download", "asset.progress"));
     }
 
     #[test]

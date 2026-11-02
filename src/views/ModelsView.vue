@@ -9,6 +9,7 @@ import { layoutFor } from '../litegraph/layouts.ts'
 import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
 import { createLogger } from '@/utils/logger'
 import { isTutorialFrame } from '@/features/onboarding/demoContext'
+import { isActiveDownloadStatus } from '@/features/downloads/lifecycle'
 
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -345,7 +346,7 @@ function cardProgressState(model: ModelEntry) {
 function isModelBusy(model: ModelEntry) {
   if (isDeletingModel(model.name)) return true
   const task = downloadTasks.value[model.name]
-  return Boolean(task && task.status !== 'done')
+  return Boolean(task && isActiveDownloadStatus(task.status))
 }
 
 const modelMenuOptions = computed<DropdownOption[]>(() => {

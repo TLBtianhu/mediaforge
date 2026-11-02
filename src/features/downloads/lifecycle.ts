@@ -8,6 +8,11 @@ export type DownloadStatus = 'idle' | 'preparing' | 'downloading' | 'done' | 'er
 export type DeleteTaskStatus = 'deleting' | 'done' | 'error' | 'cancelled'
 
 export const TERMINAL_DOWNLOAD_STATUSES = ['done', 'error', 'cancelled'] as const satisfies readonly DownloadStatus[]
+export const ACTIVE_DOWNLOAD_STATUSES = ['preparing', 'downloading'] as const satisfies readonly DownloadStatus[]
+
+export function isActiveDownloadStatus(status: DownloadStatus): boolean {
+  return (ACTIVE_DOWNLOAD_STATUSES as readonly string[]).includes(status)
+}
 
 export function isTerminalOperationStatus(status: DownloadStatus | DeleteTaskStatus): boolean {
   return (TERMINAL_DOWNLOAD_STATUSES as readonly string[]).includes(status)

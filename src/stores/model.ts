@@ -1327,14 +1327,13 @@ export const useModelStore = defineStore('model', () => {
         (task) => {
           if (!task) return
           if (task.taskId !== taskId) return
+          if (!isTerminalDeleteTaskStatus(task)) return
+          if (timer) clearTimeout(timer)
+          stop()
           if (task.status === 'done') {
-            if (timer) clearTimeout(timer)
-            stop()
             resolve(task)
-          } else if (task.status === 'error') {
-            if (timer) clearTimeout(timer)
-            stop()
-            reject(new Error(task.message || 'Delete failed'))
+          } else {
+            reject(new Error(task.message || (task.status === 'cancelled' ? 'Delete cancelled' : 'Delete failed')))
           }
         },
         { deep: true, immediate: true },

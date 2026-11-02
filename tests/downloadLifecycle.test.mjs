@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  ACTIVE_DOWNLOAD_STATUSES,
   TERMINAL_DOWNLOAD_STATUSES,
+  isActiveDownloadStatus,
   isTerminalDeleteTaskStatus,
   isTerminalDownloadStatus,
   isTerminalOperationStatus,
@@ -20,6 +22,14 @@ test('paused, interrupted and deleting remain resumable non-terminal states', ()
     assert.equal(isTerminalDownloadStatus(status), false)
   }
   assert.equal(isTerminalOperationStatus('deleting'), false)
+})
+
+test('only preparing and downloading are active; paused, interrupted and terminal states can be resumed', () => {
+  assert.deepEqual(Array.from(ACTIVE_DOWNLOAD_STATUSES), ['preparing', 'downloading'])
+  for (const status of ACTIVE_DOWNLOAD_STATUSES) assert.equal(isActiveDownloadStatus(status), true)
+  for (const status of ['idle', 'paused', 'interrupted', 'done', 'error', 'cancelled']) {
+    assert.equal(isActiveDownloadStatus(status), false)
+  }
 })
 
 test('delete tasks share the terminal vocabulary and reject a missing task', () => {
