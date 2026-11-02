@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 
 from shared import worker_paths
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 PYMSS_REPO = "baicai1145/pymss"
@@ -71,6 +71,23 @@ def _audio_files(item: dict, source: str) -> list[dict]:
 
 
 def _media_files(item: dict) -> list[dict]:
+    declared = item.get("files")
+    if declared:
+        base = worker_paths.media_model_relpath(item.get("name") or "")
+        hashes = item.get("file_hashes") or {}
+        files = []
+        for file in declared:
+            relative = str(file.get("path") or "").replace("\\", "/")
+            parts = PurePosixPath(relative).parts
+            if not relative or relative.startswith("/") or ".." in parts:
+                raise ValueError(f"invalid media model file path: {relative!r}")
+            files.append({
+                "path": f"{base}/{relative}",
+                "size": int(file.get("size") or 0),
+                "url": str(file.get("url") or ""),
+                "sha256": str(file.get("sha256") or hashes.get(relative) or ""),
+            })
+        return files
     return [{
         "path": worker_paths.media_model_relpath(item.get("name") or ""),
         "size": int(item.get("size") or 0),

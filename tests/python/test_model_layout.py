@@ -39,6 +39,21 @@ class MediaRelpathTests(unittest.TestCase):
     def test_media_files_use_the_subdirectory(self) -> None:
         files = model_hub._media_files({"name": "big-lama.pt", "size": 1, "url": "http://x/y"})
         self.assertEqual(files[0]["path"], "media/big-lama.pt")
+    def test_directory_model_files_keep_the_model_directory_and_propagate_hashes(self) -> None:
+        files = model_hub._media_files({
+            "name": "depth-demo",
+            "files": [
+                {"path": "config.json", "size": 10, "url": "https://example.invalid/config"},
+                {"path": "model.safetensors", "size": 20, "url": "https://example.invalid/model"},
+            ],
+            "file_hashes": {"config.json": "abc123", "model.safetensors": "def456"},
+        })
+        self.assertEqual([item["path"] for item in files], ["media/depth-demo/config.json", "media/depth-demo/model.safetensors"])
+        self.assertEqual([item["sha256"] for item in files], ["abc123", "def456"])
+
+    def test_directory_model_file_paths_cannot_escape(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid media model file path"):
+            model_hub._media_files({"name": "depth-demo", "files": [{"path": "../secret"}]})
 
 
 class MigrationTests(unittest.TestCase):

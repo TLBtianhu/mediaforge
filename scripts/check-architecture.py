@@ -1,6 +1,6 @@
 """架构不变量检查（docs/architecture-blueprint.md §3）。
 
-现在守九条：
+现在守十条：
   1. 引擎层（python/media_ops）不许 import app 层、音频层或 pymss；
   2. shared 层不许 import core / surfaces / media_ops；
   3. core 层不许 import surfaces；
@@ -9,13 +9,15 @@
   6. 任何 emit() 都不许再用 task_* / download_* 这类历史事件名；
   7. protocol.json 声明的 handler 必须真的存在于 worker 分发里；
   8. capabilities 引用的每个模型都在 catalog 里，且有 size / url / licenseSpdx；
-  9. model_registry.json 的音频接口投影必须能由 audio_catalog.json 无损重建。
+  9. model_registry.json 的音频接口投影必须能由 audio_catalog.json 无损重建；
+  10. 每个可下载媒体模型都必须声明有效 SHA-256。
 
 退出码非 0 即视为不变量被破坏。放进 CI 与 check-command-surface.py 并列。
 """
 from __future__ import annotations
 
 import ast
+import importlib.util
 import sys
 
 # GitHub 的 Windows runner 控制台默认是 cp1252；直接打印 ✓/中文会抛
@@ -208,6 +210,15 @@ def check_registry_projection() -> list[str]:
     if generated != registry:
         return ["model_registry.json 音频投影已漂移：运行 python scripts/sync_model_registry.py 重建"]
     return []
+def check_media_hashes() -> list[str]:
+    path = ROOT / "scripts" / "sync-media-catalog-hashes.py"
+    spec = importlib.util.spec_from_file_location("sync_media_catalog_hashes", path)
+    if spec is None or spec.loader is None:
+        return [f"无法加载媒体哈希检查器：{path}"]
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    catalog = json.loads((ROOT / "python" / "media_ops" / "media_catalog.json").read_text(encoding="utf-8"))
+    return module.hash_problems(catalog)
 
 
 LEGACY_EVENT_PREFIXES = ("task_", "download_")
@@ -242,6 +253,7 @@ def main() -> int:
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),
         "接口投影": check_registry_projection(),
+        "媒体哈希": check_media_hashes(),
     }
     failed = False
     for label, problems in results.items():

@@ -139,7 +139,7 @@
       ],
       "implemented": true,
       "task": "frame_interpolation",
-      "size": 49272602,
+      "size": 22869906,
       "license": "以 hzwer/RIFE 仓库 LICENSE 为准",
       "description": "两帧之间插中间帧；输入宽高需为 32 的倍数。",
       "url": "https://hf-mirror.com/hzwer/RIFE/resolve/main/RIFEv4.26_0921.zip",
@@ -158,7 +158,8 @@
           "default": 0.5
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "1fa9b9cda3d9b8c3e301359e2595960902f97bf926c08598b0e9957a3f3f760e"
     },
     {
       "id": "propainter",
@@ -378,7 +379,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "42bd8fcdae37c12c5b25ed59625266bfa65780071a8d38192d83756cb85e98dd"
     },
     {
       "id": "scunet-color-real",
@@ -404,7 +406,8 @@
       "status": "available",
       "video_mode": "frame",
       "params": {},
-      "licenseSpdx": "Apache-2.0"
+      "licenseSpdx": "Apache-2.0",
+      "sha256": "fa78899ba2caec9d235a900e91d96c689da71c42029230c2028b00f09f809c2e"
     },
     {
       "id": "swinir-m-x2",
@@ -437,7 +440,8 @@
           "maximum": 2
         }
       },
-      "licenseSpdx": "Apache-2.0"
+      "licenseSpdx": "Apache-2.0",
+      "sha256": "f397408977a3e07eb06afb7238d453a12ef35ebab7328a54241f307860dbe342"
     },
     {
       "id": "real-esrgan-anime-x4",
@@ -471,7 +475,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "BSD-3-Clause"
+      "licenseSpdx": "BSD-3-Clause",
+      "sha256": "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da"
     },
     {
       "id": "yolo11n",
@@ -503,7 +508,8 @@
           "default": 0.25
         }
       },
-      "licenseSpdx": "AGPL-3.0"
+      "licenseSpdx": "AGPL-3.0",
+      "sha256": "0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1"
     },
     {
       "id": "depth-anything-v2-small",
@@ -525,11 +531,33 @@
       "license": "Apache-2.0",
       "description": "单目深度估计，输出归一化的灰度深度图（近白远黑）。",
       "url": "https://hf-mirror.com/depth-anything/Depth-Anything-V2-Small-hf",
+      "files": [
+        {
+          "path": "config.json",
+          "size": 950,
+          "url": "https://hf-mirror.com/depth-anything/Depth-Anything-V2-Small-hf/resolve/main/config.json"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 99173660,
+          "url": "https://hf-mirror.com/depth-anything/Depth-Anything-V2-Small-hf/resolve/main/model.safetensors"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 775,
+          "url": "https://hf-mirror.com/depth-anything/Depth-Anything-V2-Small-hf/resolve/main/preprocessor_config.json"
+        }
+      ],
       "implemented": true,
       "status": "available",
       "video_mode": "frame",
       "params": {},
-      "licenseSpdx": "Apache-2.0"
+      "licenseSpdx": "Apache-2.0",
+      "file_hashes": {
+        "config.json": "c56698d3643dde1f83ea2212759e6b31a22b8f827246a36dd007ee8a22b3ff75",
+        "model.safetensors": "3152477ce0d8d6978d76b995120de97cb5b928701fd0f817769f59e249a16b70",
+        "preprocessor_config.json": "d41175c0d889477ca8fc67191e540faef14baf6275157b3fdecf78469e6bbf84"
+      }
     },
     {
       "id": "rmbg-1.4",
@@ -547,15 +575,55 @@
       "roles": [
         "background_remover"
       ],
-      "size": 176735708,
+      "size": 176397284,
       "license": "BRIA RMBG-1.4（非商业许可，商用需向 BRIA 申请）",
       "description": "通用背景移除，输出 RGBA（alpha 即前景概率）。",
       "url": "https://hf-mirror.com/briaai/RMBG-1.4",
+      "files": [
+        {
+          "path": "MyConfig.py",
+          "size": 326,
+          "url": "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/MyConfig.py"
+        },
+        {
+          "path": "briarmbg.py",
+          "size": 13101,
+          "url": "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/briarmbg.py"
+        },
+        {
+          "path": "config.json",
+          "size": 548,
+          "url": "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/config.json"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 176381984,
+          "url": "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/model.safetensors"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 345,
+          "url": "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/preprocessor_config.json"
+        },
+        {
+          "path": "utilities.py",
+          "size": 980,
+          "url": "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/utilities.py"
+        }
+      ],
       "implemented": true,
       "status": "available",
       "video_mode": "frame",
       "params": {},
-      "licenseSpdx": "BRIA-1.4-NC"
+      "licenseSpdx": "BRIA-1.4-NC",
+      "file_hashes": {
+        "MyConfig.py": "6ed4bf30d736b4fac18ca044e719a8cfc76bee7e71f022aa6f9e8853aa580d0b",
+        "briarmbg.py": "1dbefbca5c1a3ec1afde2a2164b05274e7f62c861fa62e62a84525ff603a955d",
+        "config.json": "d774e7d35151efb2479a83f132a57048334adf722e6e354309e30c56e3b35fbe",
+        "model.safetensors": "46ef7fe46f2ae284d8f1aaa24bfa5fca5ef25a34e2c7caa890a0029eb100e87f",
+        "preprocessor_config.json": "6f9c2cfdb87edd9b83c1314629657d5b320a6a89f8481c872a36253132e33afa",
+        "utilities.py": "c9e358b02d6687a752e45cb71730e3a6b8a251a50c66e8cc17ba25e3d7b0603f"
+      }
     },
     {
       "id": "real-cugan-x2",
@@ -588,7 +656,8 @@
           "maximum": 2
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "0a14739f3f5fcbd74ec3ce2806d13a47916c916b20afe4a39d95f6df4ca6abd8"
     },
     {
       "id": "esrgan-ultrasharp-x4",
@@ -621,7 +690,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "a5812231fc936b42af08a5edba784195495d303d5b3248c24489ef0c4021fe01"
     },
     {
       "id": "esrgan-remacri-x4",
@@ -654,7 +724,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "e1a73bd89c2da1ae494774746398689048b5a892bd9653e146713f9df8bca86a"
     },
     {
       "id": "esrgan-1x-denoise-realplksr",
@@ -680,7 +751,8 @@
       "status": "available",
       "video_mode": "frame",
       "params": {},
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "f4774fbe13ceaa9df390343c2baaa980061458ef27292fa6aca6740d87608a8e"
     },
     {
       "id": "esrgan-superscale-sp-x4",
@@ -713,7 +785,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "1d1b0078fe71446e0469d8d4df59e96baa80d83cda600d68237d655830821bcc"
     },
     {
       "id": "esrgan-nomos8kdat-x4",
@@ -746,7 +819,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "c1c87b04c261251264cd83e2bc90f49c9d5280bf18309e7b9919f1a8b27f53c6"
     },
     {
       "id": "esrgan-valar-x4",
@@ -779,7 +853,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "90c3192bef43e4baaa095c04751868065f23c52d98c1b42e6d0916bfeda75646"
     },
     {
       "id": "esrgan-comix-x4",
@@ -812,7 +887,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "3d3ebdc1abcd24b02556a64d9c65adc3c31ec2f55d731f70370ddc49067ecbb8"
     },
     {
       "id": "esrgan-yandereneoxl-x4",
@@ -845,7 +921,8 @@
           "maximum": 4
         }
       },
-      "licenseSpdx": "MIT"
+      "licenseSpdx": "MIT",
+      "sha256": "ddcb5856b948654b6298fd50ed90a461eff8442d298779c23724a8c0e7bbbab1"
     }
   ]
 }

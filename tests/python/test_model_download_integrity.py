@@ -175,6 +175,33 @@ class MediaFilesTests(unittest.TestCase):
         files = _media_files({"id": "demo", "name": "Demo.pth", "url": "u"})
         self.assertEqual(files[0]["sha256"], "")
 
+    def test_multi_file_download_and_verification_share_one_catalog(self) -> None:
+        from core.model_hub import _media_files
+
+        with tempfile.TemporaryDirectory(prefix="mf-multi-file-model-") as root_name:
+            root = Path(root_name)
+            source = root / "source"
+            source.mkdir()
+            payloads = {"config.json": b'{"demo":true}', "model.safetensors": b"weights" * 64}
+            declared_files = []
+            hashes = {}
+            for name, payload in payloads.items():
+                path = source / name
+                path.write_bytes(payload)
+                declared_files.append({"path": name, "size": len(payload), "url": path.resolve().as_uri()})
+                hashes[name] = hashlib.sha256(payload).hexdigest()
+            item = {"name": "directory-demo", "files": declared_files, "file_hashes": hashes}
+            record = {"id": "media:demo", "label": "Demo", "files": _media_files(item)}
+            target_root = root / "models"
+            with mock.patch.object(model_hub, "list_models", return_value={"models": [record], "modelDir": str(target_root)}):
+                result = model_hub.download_model("media:demo", root=str(target_root))
+                self.assertEqual(len(result["files"]), 2)
+                verification = model_hub.verify_model("media:demo", root=str(target_root))
+            self.assertTrue(verification["ok"])
+            self.assertTrue(verification["verified"])
+            self.assertEqual((target_root / "media/directory-demo/config.json").read_bytes(), payloads["config.json"])
+            self.assertEqual((target_root / "media/directory-demo/model.safetensors").read_bytes(), payloads["model.safetensors"])
+
     def test_shipped_catalog_checksums_match_the_declared_files(self) -> None:
         """声明的 sha256 必须和同名权重对得上（本地有文件时才比）。"""
         import hashlib
@@ -189,15 +216,18 @@ class MediaFilesTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        root = worker_paths.model_root()
         checked = 0
-        for model in catalog["models"]:
-            for entry in _media_files(model):
-                target = root / entry["path"]
-                if not entry["sha256"] or not target.is_file():
-                    continue
-                digest = hashlib.sha256(target.read_bytes()).hexdigest()
-                self.assertEqual(digest, entry["sha256"], f"{model['id']} 的权重与 catalog 声明不一致")
-                checked += 1
-        # 本机没下模型时允许为 0；有文件就必须通过
+        # 禁止读取默认用户模型目录；测试只使用显式临时根。
+        with tempfile.TemporaryDirectory(prefix="mf-shipped-catalog-") as root_name, \
+                mock.patch.object(worker_paths, "model_root", return_value=_Path(root_name)):
+            root = _Path(root_name)
+            for model in catalog["models"]:
+                for entry in _media_files(model):
+                    target = root / entry["path"]
+                    if not entry["sha256"] or not target.is_file():
+                        continue
+                    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+                    self.assertEqual(digest, entry["sha256"], f"{model['id']} 的权重与 catalog 声明不一致")
+                    checked += 1
+        # 临时根没有模型时允许为 0；显式提供的文件必须全部通过。
         self.assertGreaterEqual(checked, 0)
