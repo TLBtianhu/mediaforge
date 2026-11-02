@@ -25,6 +25,13 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         self.assertIn("回滚后 B 仍保留", script)
         self.assertIn("http://127.0.0.1:$Port", script)
 
+    def test_script_captures_child_process_output_for_ci_failures(self) -> None:
+        script = (ROOT / "scripts/smoke-runtime-rollback.ps1").read_text(encoding="utf-8")
+        self.assertIn("-RedirectStandardOutput $stdout", script)
+        self.assertIn("-RedirectStandardError $stderr", script)
+        self.assertIn("$($Descriptor.assetId)-$($Mode.TrimStart('-'))", script)
+        self.assertIn("Get-Content $log -Raw", script)
+
     def test_ci_builds_the_real_cli_and_runs_the_rollback_smoke(self) -> None:
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("cargo build --release --manifest-path src-tauri/Cargo.toml", workflow)

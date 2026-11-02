@@ -14,7 +14,17 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
 function Invoke-RuntimeSmoke([string]$Mode, [string]$DataRoot, [hashtable]$Descriptor) {
     $env:MEDIAFORGE_DATA_ROOT = $DataRoot
     $env:MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR = ($Descriptor | ConvertTo-Json -Compress)
-    $process = Start-Process -FilePath $script:exe -ArgumentList $Mode -Wait -PassThru -WindowStyle Hidden
+    $logBase = Join-Path $script:work "$($Descriptor.assetId)-$($Mode.TrimStart('-'))"
+    $stdout = "$logBase.stdout.log"
+    $stderr = "$logBase.stderr.log"
+    $process = Start-Process -FilePath $script:exe -ArgumentList $Mode -Wait -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    foreach ($log in @($stdout, $stderr)) {
+        if (-not (Test-Path $log)) { continue }
+        $content = Get-Content $log -Raw
+        if ($null -ne $content) { $content = $content.Trim() }
+        if ($content) { Write-Host "  $(Split-Path -Leaf $log):`n$content" }
+    }
     return $process.ExitCode
 }
 function Read-ActiveAsset([string]$DataRoot) {
