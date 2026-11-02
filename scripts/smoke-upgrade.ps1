@@ -104,8 +104,13 @@ foreach ($backend in 'cpu', 'cuda', 'rocm') {
 }
 
 function Build-Installer([string]$Stage, [string]$Version) {
+    # 本机 Inno 不认 SetupArchitecture；部分 CI 镜像的 Inno 不带简体中文语言文件。
+    # 只对冒烟副本做兼容处理，仓库里的 .iss 保持原样。
+    $hasChinese = Test-Path (Join-Path (Split-Path -Parent $iscc) 'Languages\ChineseSimplified.isl')
     Get-Content (Join-Path $root 'installer\mediaforge.iss') |
-        Where-Object { $_ -notmatch '^SetupArchitecture=' } |
+        Where-Object {
+            $_ -notmatch '^SetupArchitecture=' -and ($hasChinese -or $_ -notmatch 'ChineseSimplified\.isl')
+        } |
         Set-Content $localIss -Encoding UTF8
     $env:MEDIAFORGE_PORTABLE_DIR = $Stage
     $env:MEDIAFORGE_VERSION = $Version
