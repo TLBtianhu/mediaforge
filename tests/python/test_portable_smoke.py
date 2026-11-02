@@ -16,6 +16,12 @@ class PortableSmokeTests(unittest.TestCase):
         self.assertNotIn("Start-Sleep -Seconds $LaunchSeconds", script)
         self.assertIn("Assert-TempWorkDir", script)
 
+    def test_portable_smoke_isolates_and_restores_webview_profile(self) -> None:
+        script = (ROOT / "scripts/smoke-portable.ps1").read_text(encoding="utf-8")
+        self.assertIn("$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $work 'webview2'", script)
+        self.assertIn("$previousWebView = [Environment]::GetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER')", script)
+        self.assertIn("Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER", script)
+
 
 if __name__ == "__main__":
     unittest.main()

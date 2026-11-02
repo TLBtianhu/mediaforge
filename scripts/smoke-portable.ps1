@@ -64,6 +64,8 @@ $installedSettings = Join-Path $env:USERPROFILE '.mediaforge\settings'
 $installedBefore = if (Test-Path $installedSettings) { (Get-Item $installedSettings).LastWriteTimeUtc } else { $null }
 $stdout = Join-Path $work 'portable.stdout.log'
 $stderr = Join-Path $work 'portable.stderr.log'
+$previousWebView = [Environment]::GetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER')
+$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $work 'webview2'
 $process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 $portableSettings = Join-Path $app 'data\settings'
@@ -89,6 +91,8 @@ if (Test-Path $installedSettings) {
 }
 if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
 Start-Sleep -Seconds 1
+if ($null -eq $previousWebView) { Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER -ErrorAction SilentlyContinue }
+else { Set-Item Env:WEBVIEW2_USER_DATA_FOLDER $previousWebView }
 
 Write-Host ''
 if ($failures.Count -gt 0) {
