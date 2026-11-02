@@ -10,7 +10,8 @@
 param(
     [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.23\MediaForge.exe",
     [string]$RuntimeZip = "$PSScriptRoot\..\release\runtime\runtime-cuda-2026.10.2.zip",
-    [int]$Port = 8765
+    [int]$Port = 8765,
+    [string]$HttpPython = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,8 +38,8 @@ New-Item -ItemType Directory -Force -Path $httpRoot | Out-Null
 Copy-Item $zip (Join-Path $httpRoot (Split-Path $zip -Leaf))
 Set-Content (Join-Path $httpRoot 'corrupted.zip') 'not-a-runtime' -Encoding ASCII
 
-$python = "$env:USERPROFILE\.mediaforge\runtime-envs\cuda\Scripts\python.exe"
-if (-not (Test-Path $python)) { $python = 'python' }
+# HTTP 服务只用显式解释器或系统 Python；绝不默认读取真实用户运行时。
+$python = if ($HttpPython) { (Resolve-Path -LiteralPath $HttpPython).Path } else { 'python' }
 $server = Start-Process -FilePath $python -ArgumentList @('-m','http.server',"$Port",'--bind','127.0.0.1','--directory',$httpRoot) -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 2
 
