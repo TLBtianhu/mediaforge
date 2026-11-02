@@ -141,6 +141,22 @@ jobs:
           Copy-Item 'src-tauri\target\release\pymss-studio.exe' "$stage\MediaForge.exe" -Force
           ./scripts/fetch-third-party.ps1 -ToolName aria2 -Destination "$stage\bin"
           ./scripts/smoke-runtime-rollback.ps1 -AppExe "$stage\MediaForge.exe"
+      - name: Verify first install downloads, verifies and activates a runtime
+        shell: pwsh
+        run: |
+          ./scripts/make-fixture-runtime.ps1 -OutZip "$env:RUNNER_TEMP\runtime-fixture.zip" -AssetId 'runtime-fixture'
+          ./scripts/smoke-first-install.ps1 -AppExe "$env:RUNNER_TEMP\mediaforge-runtime-smoke\MediaForge.exe" -RuntimeZip "$env:RUNNER_TEMP\runtime-fixture.zip"
+      - name: Verify the portable layout keeps its data root beside the executable
+        shell: pwsh
+        run: |
+          $pkg = Join-Path $env:RUNNER_TEMP 'mediaforge-portable-pkg'
+          New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+          Copy-Item 'src-tauri\target\release\pymss-studio.exe' "$pkg\MediaForge.exe" -Force
+          Set-Content "$pkg\mediaforge.portable" 'portable' -Encoding ASCII
+          $zip = Join-Path $env:RUNNER_TEMP 'mediaforge-portable.zip'
+          & 'C:\Program Files\7-Zip\7z.exe' a -tzip -bso0 -bsp0 $zip "$pkg\*" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "便携包压缩失败：$LASTEXITCODE" }
+          ./scripts/smoke-portable.ps1 -Zip $zip
 
   installer-upgrade:
     runs-on: windows-latest

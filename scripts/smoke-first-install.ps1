@@ -45,10 +45,18 @@ Start-Sleep -Seconds 2
 try {
     $baseUrl = "http://127.0.0.1:$Port"
     $env:MEDIAFORGE_DATA_ROOT = $dataRoot
-    $env:MEDIAFORGE_SMOKE_RUNTIME_URL = "$baseUrl/$(Split-Path $zip -Leaf)"
+    # 描述符按实际 zip 计算 sha256/size：只设 URL 的话，应用仍会拿内嵌描述符的哈希来校验，
+    # 夹具资产必然对不上。这里把本地下载源和真实哈希一起交给应用，夹具与真包都能跑。
+    $descriptor = @{
+        assetId = $assetId
+        backend = 'fixture'
+        sha256 = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        size = (Get-Item $zip).Length
+        urls = @("$baseUrl/$(Split-Path $zip -Leaf)")
+    }
 
     Write-Host "  [1/2] 正例：本地源下载真运行时"
-    $env:MEDIAFORGE_SMOKE_RUNTIME_URL = "$baseUrl/$(Split-Path $zip -Leaf)"
+    $env:MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR = ($descriptor | ConvertTo-Json -Compress)
     $install = Start-Process -FilePath $exe -ArgumentList '--smoke-install-runtime' -Wait -PassThru -WindowStyle Hidden
     Check '安装进程退出码为 0' ($install.ExitCode -eq 0) "exit=$($install.ExitCode)"
     $envDir = Join-Path $dataRoot "runtime-envs\$assetId"
@@ -67,7 +75,8 @@ try {
     Write-Host "  [2/2] 负例：sha256 不符必须拒绝"
     $badData = Join-Path $work 'data-corrupt'
     $env:MEDIAFORGE_DATA_ROOT = $badData
-    $env:MEDIAFORGE_SMOKE_RUNTIME_URL = "$baseUrl/corrupted.zip"
+    $descriptor.urls = @("$baseUrl/corrupted.zip")
+    $env:MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR = ($descriptor | ConvertTo-Json -Compress)
     $bad = Start-Process -FilePath $exe -ArgumentList '--smoke-install-runtime' -Wait -PassThru -WindowStyle Hidden
     Check '坏包退出码非 0' ($bad.ExitCode -ne 0) "exit=$($bad.ExitCode)"
     Check '坏包不写 active-runtime.json' (-not (Test-Path (Join-Path $badData 'runtime-envs\active-runtime.json')))
@@ -78,6 +87,7 @@ try {
 } finally {
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
     $env:MEDIAFORGE_DATA_ROOT = $null
+    $env:MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR = $null
     $env:MEDIAFORGE_SMOKE_RUNTIME_URL = $null
 }
 

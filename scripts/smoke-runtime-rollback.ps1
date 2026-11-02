@@ -32,23 +32,10 @@ Write-Host "运行时回滚冒烟（小资产，本地 HTTP）"
 Write-Host "  exe: $script:exe"
 Write-Host "  work: $work"
 
-# 解释器自检只要求可执行文件成功退出。现场编译一个微型 python.exe，
-# 避免把 3.6 GB 真运行时或用户现有环境带进测试。
-$fixtureSource = Join-Path $work 'fake-python.rs'
-Set-Content $fixtureSource 'fn main() { std::process::exit(0); }' -Encoding ASCII
-$fakePython = Join-Path $work 'python.exe'
-& rustc --edition 2021 -C opt-level=1 -o $fakePython $fixtureSource
-if ($LASTEXITCODE -ne 0) { throw '无法编译小资产解释器' }
-
 $assets = @{}
 foreach ($name in @('runtime-a', 'runtime-b')) {
-    $stage = Join-Path $work "stage-$name"
-    $scripts = Join-Path $stage 'Scripts'
-    New-Item -ItemType Directory -Force -Path $scripts | Out-Null
-    Copy-Item $fakePython (Join-Path $scripts 'python.exe')
-    Set-Content (Join-Path $stage 'asset.txt') $name -Encoding ASCII
     $zip = Join-Path $httpRoot "$name.zip"
-    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+    & (Join-Path $PSScriptRoot 'make-fixture-runtime.ps1') -OutZip $zip -AssetId $name
     $assets[$name] = @{
         assetId = $name
         backend = 'fixture'
