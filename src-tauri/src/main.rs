@@ -237,6 +237,21 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building Pymss Studio");
 
+    // 开发数据根冒烟：在真实进程里输出解析结果，不创建或改写用户数据。
+    if std::env::args().any(|arg| arg == "--smoke-print-data-root") {
+        match storage::data_root_dir(&app.handle()) {
+            Ok(root) => {
+                println!("SMOKE_DATA_ROOT={}", root.display());
+                println!("SMOKE_DEVELOPMENT={}", storage::is_development_executable());
+                std::process::exit(0);
+            }
+            Err(error) => {
+                eprintln!("smoke-print-data-root: FAILED: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // dev-only 首装冒烟：`MediaForge.exe --smoke-install-runtime` 在真实进程主线程里
     // 跑完整运行时安装（下载→校验→解包→激活），由 scripts/smoke-first-install.ps1 驱动。
     // 必须在 .run() 之前分支，否则就进入 GUI 事件循环了。

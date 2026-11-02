@@ -136,6 +136,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build the real release executable
         run: cargo build --release --manifest-path src-tauri/Cargo.toml
+      - name: Verify the development executable keeps its data in the repository
+        shell: pwsh
+        run: ./scripts/smoke-dev-data-root.ps1 -AppExe 'src-tauri\target\release\pymss-studio.exe'
       - name: Verify runtime install, reuse and rollback end to end
         shell: pwsh
         run: |

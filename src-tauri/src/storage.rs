@@ -17,6 +17,7 @@ use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
 const DATA_ROOT_ENV: &str = "PYMSS_STUDIO_DATA_ROOT";
 const MEDIAFORGE_DATA_ROOT_ENV: &str = "MEDIAFORGE_DATA_ROOT";
 const DATA_ROOT_DIR_NAME: &str = ".mediaforge";
+const DEVELOPMENT_DATA_ROOT_DIR_NAME: &str = ".dev-data";
 const LOCAL_DATA_ROOT_DIR_NAME: &str = "data";
 static JSON_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // Multiple WebView windows can autosave the same store at once. Serialize the temporary-file
@@ -51,7 +52,7 @@ fn development_data_root_dir() -> AppResult<PathBuf> {
     let project_root = manifest_dir
         .parent()
         .ok_or_else(|| AppError::Worker("failed to resolve project root".into()))?;
-    Ok(project_root.join(LOCAL_DATA_ROOT_DIR_NAME))
+    Ok(project_root.join(DEVELOPMENT_DATA_ROOT_DIR_NAME))
 }
 
 /// 便携版判定：程序同目录存在标记文件时，数据放在 `<exe 目录>\\data`。
@@ -1345,6 +1346,13 @@ mod tests {
         );
 
         assert_eq!(root, path("env-data"));
+    }
+
+    #[test]
+    fn development_root_matches_the_dev_script() {
+        assert!(super::development_data_root_dir()
+            .unwrap()
+            .ends_with(".dev-data"));
     }
 
     #[test]
