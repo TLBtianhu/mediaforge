@@ -74,46 +74,6 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-var
-  FreshInstallKnown: Boolean;
-  FreshInstallResult: Boolean;
-
-function IsVCRedistX64Installed(): Boolean;
-var
-  Installed: Cardinal;
-begin
-  Result :=
-    RegQueryDWordValue(HKLM64, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed)
-    and (Installed = 1);
-end;
-
-function IsFreshInstall(): Boolean;
-begin
-  Result := not FileExists(ExpandConstant('{app}\mediaforge.inno-install'));
-end;
-
-function CachedFreshInstall(): Boolean;
-begin
-  if not FreshInstallKnown then
-  begin
-    FreshInstallResult := IsFreshInstall();
-    FreshInstallKnown := True;
-  end;
-  Result := FreshInstallResult;
-end;
-
-function BundledBackend(): string;
-begin
-  if Pos('cpu', LowerCase('{#PackageSuffix}')) > 0 then
-    Result := 'cpu'
-  else if Pos('cuda', LowerCase('{#PackageSuffix}')) > 0 then
-    Result := 'cuda'
-  else if Pos('rocm', LowerCase('{#PackageSuffix}')) > 0 then
-    Result := 'rocm'
-  else
-    Result := '';
-end;
-
 function DataRoot(): string;
 var
   EnvRoot: string;
@@ -125,26 +85,6 @@ begin
     Result := EnvRoot
   else
     Result := ExpandConstant('{userprofile}\.mediaforge');
-end;
-
-function ExistingBundledBackendPython(): Boolean;
-var
-  Backend: string;
-begin
-  Backend := BundledBackend();
-  if Backend = '' then
-  begin
-    Result := False;
-    Exit;
-  end;
-  Result := FileExists(DataRoot() + '\runtime-envs\' + Backend + '\Scripts\python.exe');
-end;
-
-function ShouldInstallBundledRuntimeEnvs(): Boolean;
-begin
-  { Fresh installs and upgrades from layouts without the current backend receive the package env.
-    A valid current backend is preserved so an upgrade does not replace a user-managed env. }
-  Result := CachedFreshInstall() or not ExistingBundledBackendPython();
 end;
 
 procedure RemoveIfExists(Path: string);
@@ -218,11 +158,6 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssInstall then
-  begin
-    FreshInstallResult := IsFreshInstall();
-    FreshInstallKnown := True;
-  end;
   if CurStep = ssPostInstall then
   begin
     RepairBundledRuntimeEnvs();
