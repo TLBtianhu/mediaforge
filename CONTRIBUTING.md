@@ -58,6 +58,9 @@ python scripts/smoke-media-models.py                  # 每个 available 模型�
 5. 跑 `python scripts/smoke-media-models.py`。**只有它通过，才把 `status` 改成 `available`**
 6. `python scripts/generate-model-guide.py` 重新生成选型指南
 
+音频模型只修改 `python/audio_catalog.json`，然后运行 `python scripts/sync_model_registry.py` 重建接口投影；
+不要手改 `model_registry.json` 里的音频条目。`python scripts/check-architecture.py` 会拒绝过期投影。
+
 架构在 spandrel 里已支持的（ESRGAN / SwinIR / SCUNet / RealCUGAN…）不需要写加载代码；不在里面的（Depth Anything、RMBG、RIFE）需要写适配函数，并在 `IMAGE_CAPABILITIES` 里登记。两种情况都必须有一次**真实素材**跑通的记录，不能只加 catalog 条目。
 
 ## 代码约定

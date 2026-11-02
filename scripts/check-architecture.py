@@ -1,6 +1,6 @@
 """架构不变量检查（docs/architecture-blueprint.md §3）。
 
-现在守八条：
+现在守九条：
   1. 引擎层（python/media_ops）不许 import app 层、音频层或 pymss；
   2. shared 层不许 import core / surfaces / media_ops；
   3. core 层不许 import surfaces；
@@ -8,7 +8,8 @@
   5. media_ops 里出现的事件名必须在 manifest/protocol.json 里声明；
   6. 任何 emit() 都不许再用 task_* / download_* 这类历史事件名；
   7. protocol.json 声明的 handler 必须真的存在于 worker 分发里；
-  8. capabilities 引用的每个模型都在 catalog 里，且有 size / url / licenseSpdx。
+  8. capabilities 引用的每个模型都在 catalog 里，且有 size / url / licenseSpdx；
+  9. model_registry.json 的音频接口投影必须能由 audio_catalog.json 无损重建。
 
 退出码非 0 即视为不变量被破坏。放进 CI 与 check-command-surface.py 并列。
 """
@@ -29,6 +30,8 @@ import json
 import re
 import sys
 from pathlib import Path
+
+from sync_model_registry import generate_registry
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / "python"
@@ -195,6 +198,16 @@ def check_catalog_links() -> list[str]:
             elif not item.get("blockedReason"):
                 problems.append(f"{short} 未可用但没有 blockedReason（要么写明卡点，要么删掉）")
     return problems
+def check_registry_projection() -> list[str]:
+    registry = json.loads((ROOT / "python" / "media_ops" / "model_registry.json").read_text(encoding="utf-8"))
+    catalog = json.loads((ROOT / "python" / "audio_catalog.json").read_text(encoding="utf-8"))["models"]
+    try:
+        generated = generate_registry(registry, catalog)
+    except ValueError as error:
+        return [str(error)]
+    if generated != registry:
+        return ["model_registry.json 音频投影已漂移：运行 python scripts/sync_model_registry.py 重建"]
+    return []
 
 
 LEGACY_EVENT_PREFIXES = ("task_", "download_")
@@ -228,6 +241,7 @@ def main() -> int:
         "事件命名": check_event_names(),
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),
+        "接口投影": check_registry_projection(),
     }
     failed = False
     for label, problems in results.items():

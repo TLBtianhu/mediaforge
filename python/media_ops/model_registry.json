@@ -3,7 +3,8 @@
   "generatedFrom": [
     "spandrel 0.4.2 (architecture classes)",
     "huggingface /api/models + siblings",
-    "media_ops/media_catalog.json"
+    "media_ops/media_catalog.json",
+    "audio_catalog.json"
   ],
   "taxonomy": {
     "tasks": {
