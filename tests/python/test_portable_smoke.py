@@ -18,9 +18,16 @@ class PortableSmokeTests(unittest.TestCase):
 
     def test_portable_smoke_isolates_and_restores_webview_profile(self) -> None:
         script = (ROOT / "scripts/smoke-portable.ps1").read_text(encoding="utf-8")
-        self.assertIn("$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $work 'webview2'", script)
+        self.assertIn("$webviewRoot = Join-Path $work 'webview2'", script)
+        self.assertIn("$env:WEBVIEW2_USER_DATA_FOLDER = $webviewRoot", script)
         self.assertIn("$previousWebView = [Environment]::GetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER')", script)
         self.assertIn("Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER", script)
+
+    def test_portable_smoke_stops_only_its_webview_children_before_cleanup(self) -> None:
+        script = (ROOT / "scripts/smoke-portable.ps1").read_text(encoding="utf-8")
+        self.assertIn("Name = 'msedgewebview2.exe'", script)
+        self.assertIn("$_.CommandLine.Contains($webviewRoot)", script)
+        self.assertIn("WebView2 child processes did not exit within 10 seconds", script)
 
 
 if __name__ == "__main__":

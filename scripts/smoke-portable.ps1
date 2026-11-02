@@ -65,7 +65,8 @@ $installedBefore = if (Test-Path $installedSettings) { (Get-Item $installedSetti
 $stdout = Join-Path $work 'portable.stdout.log'
 $stderr = Join-Path $work 'portable.stderr.log'
 $previousWebView = [Environment]::GetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER')
-$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $work 'webview2'
+$webviewRoot = Join-Path $work 'webview2'
+$env:WEBVIEW2_USER_DATA_FOLDER = $webviewRoot
 $process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 $portableSettings = Join-Path $app 'data\settings'
@@ -90,7 +91,19 @@ if (Test-Path $installedSettings) {
     Write-Host '  [skip] 本机没有安装版数据根，跳过"未被写入"检查'
 }
 if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
-Start-Sleep -Seconds 1
+# WebView2 子进程可能在主进程退出后仍持有 profile 文件；只处理这次临时 profile。
+$webviewChildren = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object {
+    $_.CommandLine -and $_.CommandLine.Contains($webviewRoot)
+})
+foreach ($child in $webviewChildren) { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue }
+$deadline = (Get-Date).AddSeconds(10)
+do {
+    Start-Sleep -Milliseconds 500
+    $webviewChildren = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object {
+        $_.CommandLine -and $_.CommandLine.Contains($webviewRoot)
+    })
+} while ($webviewChildren.Count -gt 0 -and (Get-Date) -lt $deadline)
+if ($webviewChildren.Count -gt 0) { throw 'WebView2 child processes did not exit within 10 seconds' }
 if ($null -eq $previousWebView) { Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER -ErrorAction SilentlyContinue }
 else { Set-Item Env:WEBVIEW2_USER_DATA_FOLDER $previousWebView }
 
