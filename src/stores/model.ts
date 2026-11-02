@@ -11,6 +11,7 @@ import { matchesModelSource, type ModelSourceFilter } from '@/utils/modelSource'
 import { useAppStore } from '@/stores/app'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import { inferenceChunkSizeIssue, normalizeInferenceParamMeta, type InferenceParamMeta } from '@/features/inference/sampleStep'
+import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus } from '@/features/downloads/lifecycle'
 
 /** How the model library lays its entries out. */
 export type ModelViewMode = 'card' | 'list'
@@ -163,8 +164,6 @@ export type ModelDebugStatus = {
   debugCatalogPath?: string
 }
 
-type DownloadStatus = 'idle' | 'preparing' | 'downloading' | 'done' | 'error' | 'cancelled' | 'paused' | 'interrupted'
-
 export type DownloadLogLevel = 'info' | 'warn' | 'error'
 
 export type DownloadLogEntry = {
@@ -242,8 +241,6 @@ export type ModelPreference = {
   lastUsedAt?: number
   updatedAt?: number
 }
-
-export type DeleteTaskStatus = 'deleting' | 'done' | 'error' | 'cancelled'
 
 export type DeleteTask = {
   taskId: string
@@ -775,10 +772,6 @@ export const useModelStore = defineStore('model', () => {
     })
   }
 
-  function isDeleteTaskTerminal(task?: DeleteTask | null) {
-    return task?.status === 'done' || task?.status === 'error' || task?.status === 'cancelled'
-  }
-
   function clearDeleteTaskIndex(taskId?: string | null) {
     if (!taskId || !deleteTaskIndex.value[taskId]) return
     const { [taskId]: _, ...rest } = deleteTaskIndex.value
@@ -1231,7 +1224,7 @@ export const useModelStore = defineStore('model', () => {
 
   async function deleteModel(name: string, source: 'single' | 'batch' = 'single') {
     const existingTask = deleteTasks.value[name]
-    if (existingTask && !isDeleteTaskTerminal(existingTask)) {
+    if (existingTask && !isTerminalDeleteTaskStatus(existingTask)) {
       throw new Error('Model deletion already in progress')
     }
     const settings = useSettingsStore()
@@ -1313,7 +1306,7 @@ export const useModelStore = defineStore('model', () => {
       clearDeleteTask(name)
     } catch (err) {
       const current = deleteTasks.value[name]
-      if (!current || current.taskId !== taskId || isDeleteTaskTerminal(current)) return
+      if (!current || current.taskId !== taskId || isTerminalDeleteTaskStatus(current)) return
       deleteTasks.value = {
         ...deleteTasks.value,
         [name]: {
