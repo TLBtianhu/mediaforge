@@ -93,10 +93,7 @@ if ($failures.Count -gt 0) {
     Write-Host ("FAIL: {0}; 现场保留在 {1}" -f ($failures -join ', '), $work)
     exit 1
 }
-$workName = Split-Path -Leaf $work
-$workParent = [System.IO.Path]::GetDirectoryName($work).TrimEnd('\', '/')
-$tempRoot = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd('\', '/')
-if (-not $workName.StartsWith('mediaforge-runtime-rollback-', [System.StringComparison]::OrdinalIgnoreCase)) { throw "拒绝清理意外目录名：$work" }
-if (-not [string]::Equals($workParent, $tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw "拒绝清理临时目录之外的路径：$work" }
-Remove-Item -LiteralPath $work -Recurse -Force
+. (Join-Path $PSScriptRoot 'temp-work-guard.ps1')
+$resolvedWork = Assert-TempWorkDir -Work $work -Prefix 'mediaforge-runtime-rollback-'
+Remove-Item -LiteralPath $resolvedWork -Recurse -Force
 Write-Host 'PASS: 运行时 A→B→A 复用与回滚端到端成立'

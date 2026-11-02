@@ -114,6 +114,19 @@ begin
     Result := '';
 end;
 
+function DataRoot(): string;
+var
+  EnvRoot: string;
+begin
+  { 与应用 storage::data_root_dir 对齐：MEDIAFORGE_DATA_ROOT 优先，否则用户目录。
+    升级修复必须写进真实数据根，不能在自定义数据根时误写 ~/.mediaforge。 }
+  EnvRoot := GetEnv('MEDIAFORGE_DATA_ROOT');
+  if EnvRoot <> '' then
+    Result := EnvRoot
+  else
+    Result := ExpandConstant('{userprofile}\.mediaforge');
+end;
+
 function ExistingBundledBackendPython(): Boolean;
 var
   Backend: string;
@@ -124,9 +137,7 @@ begin
     Result := False;
     Exit;
   end;
-  Result := FileExists(
-    ExpandConstant('{userprofile}\.mediaforge\runtime-envs\') + Backend + '\Scripts\python.exe'
-  );
+  Result := FileExists(DataRoot() + '\runtime-envs\' + Backend + '\Scripts\python.exe');
 end;
 
 function ShouldInstallBundledRuntimeEnvs(): Boolean;
@@ -170,7 +181,7 @@ var
   PythonExe: string;
   Content: string;
 begin
-  EnvDir := ExpandConstant('{userprofile}\.mediaforge\runtime-envs\') + Backend;
+  EnvDir := DataRoot() + '\runtime-envs\' + Backend;
   ConfigPath := EnvDir + '\pyvenv.cfg';
   PythonRuntimeDir := ExpandConstant('{app}') + '\python-runtime';
   PythonExe := PythonRuntimeDir + '\python.exe';

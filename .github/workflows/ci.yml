@@ -141,3 +141,14 @@ jobs:
           Copy-Item 'src-tauri\target\release\pymss-studio.exe' "$stage\MediaForge.exe" -Force
           ./scripts/fetch-third-party.ps1 -ToolName aria2 -Destination "$stage\bin"
           ./scripts/smoke-runtime-rollback.ps1 -AppExe "$stage\MediaForge.exe"
+
+  installer-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+      - name: Verify upgrade preserves data, models and runtime assets
+        shell: pwsh
+        run: ./scripts/smoke-upgrade.ps1
