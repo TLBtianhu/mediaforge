@@ -6,9 +6,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::process::Command;
 use std::sync::atomic::Ordering;
-use std::sync::{mpsc, Arc, Mutex};
+#[cfg(test)]
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 

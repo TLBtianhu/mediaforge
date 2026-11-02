@@ -103,6 +103,7 @@ static APPLICATION_ACCESS: Mutex<RuntimeAccess> = Mutex::new(RuntimeAccess {
     updating: false,
 });
 
+#[cfg(test)]
 pub(crate) fn acquire_application_update() -> AppResult<impl Drop> {
     acquire_runtime_access(&APPLICATION_ACCESS, "update_runtime_core")
         .map_err(|error| match error {
@@ -615,6 +616,7 @@ fn active_runtime_overlay_path(app: &AppHandle, active_python: &str) -> AppResul
         .find_map(|file| resolve_runtime_overlay_for_record(&file, active_python, &allowed_roots)))
 }
 
+#[cfg(test)]
 fn is_bundled_runtime_python_path(file: &Path, python_path: &str) -> AppResult<bool> {
     let content = std::fs::read_to_string(file)?;
     let record: ActiveRuntimeRecord = serde_json::from_str(&content)?;
