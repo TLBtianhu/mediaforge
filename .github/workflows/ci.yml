@@ -116,6 +116,9 @@ jobs:
       - name: Check architecture invariants
         run: python scripts/check-architecture.py
 
+      - name: Check the worker command surface
+        run: python scripts/check-command-surface.py --strict
+
       - name: Verify the MCP bridge contract for DSH
         run: python scripts/smoke_mcp.py
 

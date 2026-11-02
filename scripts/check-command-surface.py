@@ -1,4 +1,4 @@
-"""对账 worker 命令面：Rust 调用的命令 vs Python 实现的命令。
+"""对账 worker 命令面：Rust 调用的命令 vs protocol.json 声明的实现。
 
 背景：同一个命令名散落在 Rust 调度、Python 分派、诊断分类、agent 契约里，
 全是字符串，编译器不管。今天删掉 download_model 后，四处留了孤儿，全靠人肉找。
@@ -12,13 +12,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUST_DIR = ROOT / "src-tauri" / "src"
-PY_DISPATCH = ROOT / "python" / "worker.py"
+PROTOCOL = ROOT / "manifest" / "protocol.json"
 
 # Rust 侧真正"发命令给 worker"的两个入口
 CALL_SITES = ("run_worker_with_payload", "spawn_worker_background")
@@ -51,15 +52,17 @@ def rust_commands() -> dict[str, list[str]]:
 
 
 def python_commands() -> set[str]:
-    text = PY_DISPATCH.read_text(encoding="utf-8", errors="replace")
-    names = set(re.findall(r'command\s*==\s*"([a-z][a-z0-9_]+)"', text))
-    for group in re.findall(r"command\s+in\s*\(([^)]+)\)", text):
-        names.update(re.findall(r'"([a-z][a-z0-9_]+)"', group))
-    return names
+    protocol = json.loads(PROTOCOL.read_text(encoding="utf-8"))
+    return {
+        str(entry["command"])
+        for domain in (protocol.get("domains") or {}).values()
+        for entry in (domain.get("commands") or {}).values()
+        if entry.get("command")
+    }
 
 
 
-AGENT_FILES = ("agent_bridge.py", "agent_contract.py")
+AGENT_FILES = ("agent_bridge.py", "surfaces/agent_contract.py")
 
 
 def agent_commands(implemented: set[str]) -> set[str]:
