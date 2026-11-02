@@ -191,6 +191,10 @@ pub fn runtime_asset_status(app: AppHandle) -> AppResult<Value> {
 pub fn runtime_asset_install(app: AppHandle) -> AppResult<Value> {
     let handle = app.clone();
     if is_ready(&handle) {
+        let descriptor = desired_runtime(&handle)?;
+        let envs = envs_dir(&handle)?;
+        write_active_pointer(&envs, &descriptor).map_err(AppError::Worker)?;
+        emit(&handle, &descriptor, "done", descriptor.size, "运行时已激活");
         return Ok(json!({ "started": false, "installed": true }));
     }
     std::thread::spawn(move || {
@@ -203,11 +207,27 @@ pub fn runtime_asset_install(app: AppHandle) -> AppResult<Value> {
     Ok(json!({ "started": true, "installed": false }))
 }
 
+fn apply_smoke_descriptor_override(app: &AppHandle) -> Result<(), String> {
+    let Ok(raw) = std::env::var("MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR") else {
+        return Ok(());
+    };
+    if raw.trim().is_empty() {
+        return Ok(());
+    }
+    let descriptor: RuntimeDescriptor = serde_json::from_str(&raw)
+        .map_err(|error| format!("MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR 不是合法描述符：{error}"))?;
+    write_desired(app, &descriptor).map_err(|error| error.to_string())
+}
+
 /// dev-only 首装冒烟入口：在真实进程主线程里跑完整安装，返回进程退出码。
 ///
 /// 为什么走 CLI 而不是 #[test]：Windows 的 Tao 事件循环要求主线程，测试线程起不了 App。
 /// `MEDIAFORGE_SMOKE_RUNTIME_URL` 可把下载源换成本地 HTTP（不打外网、可复现）。
 pub fn smoke_install(app: &AppHandle) -> i32 {
+    if let Err(error) = apply_smoke_descriptor_override(app) {
+        eprintln!("smoke-install-runtime: 写入本地描述符失败: {error}");
+        return 1;
+    }
     if let Ok(url) = std::env::var("MEDIAFORGE_SMOKE_RUNTIME_URL") {
         let url = url.trim().to_string();
         if !url.is_empty() {
@@ -236,6 +256,39 @@ pub fn smoke_install(app: &AppHandle) -> i32 {
             1
         }
     }
+}
+
+/// dev-only 回滚/复用冒烟：走公开命令的 ready 分支，不重新下载资产。
+pub fn smoke_activate(app: &AppHandle) -> i32 {
+    if let Err(error) = apply_smoke_descriptor_override(app) {
+        eprintln!("smoke-activate-runtime: 写入本地描述符失败: {error}");
+        return 1;
+    }
+    match runtime_asset_install(app.clone()) {
+        Ok(value) if value.get("started") == Some(&json!(false)) && value.get("installed") == Some(&json!(true)) => {
+            println!("smoke-activate-runtime: OK");
+            0
+        }
+        Ok(value) => {
+            eprintln!("smoke-activate-runtime: 资产未就绪，不能走复用分支：{value}");
+            1
+        }
+        Err(error) => {
+            eprintln!("smoke-activate-runtime: FAILED: {error}");
+            1
+        }
+    }
+}
+
+fn write_active_pointer(envs: &Path, descriptor: &RuntimeDescriptor) -> Result<(), String> {
+    let target = envs.join(&descriptor.asset_id);
+    let record = json!({
+        "pythonPath": target.join("Scripts").join("python.exe").to_string_lossy(),
+        "backend": descriptor.backend,
+        "assetId": descriptor.asset_id,
+    });
+    fs::write(envs.join("active-runtime.json"), record.to_string())
+        .map_err(|error| error.to_string())
 }
 
 fn install_blocking(app: &AppHandle) -> Result<(), String> {
@@ -273,13 +326,7 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
     }
     verify_interpreter(&target.join("Scripts").join("python.exe"))?;
 
-    let record = json!({
-        "pythonPath": target.join("Scripts").join("python.exe").to_string_lossy(),
-        "backend": descriptor.backend,
-        "assetId": descriptor.asset_id,
-    });
-    fs::write(envs.join("active-runtime.json"), record.to_string())
-        .map_err(|error| error.to_string())?;
+    write_active_pointer(&envs, &descriptor)?;
     // 标记最后写：它存在就意味着这份运行时完整、且与描述符一致。
     let marker = json!({ "assetId": descriptor.asset_id, "sha256": descriptor.sha256 });
     fs::write(target.join(ASSET_MARKER), marker.to_string()).map_err(|error| error.to_string())?;

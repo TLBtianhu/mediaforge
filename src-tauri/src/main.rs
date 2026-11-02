@@ -243,6 +243,9 @@ fn main() {
     if std::env::args().any(|arg| arg == "--smoke-install-runtime") {
         std::process::exit(runtime_assets::smoke_install(&app.handle()));
     }
+    if std::env::args().any(|arg| arg == "--smoke-activate-runtime") {
+        std::process::exit(runtime_assets::smoke_activate(&app.handle()));
+    }
 
     app.run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {

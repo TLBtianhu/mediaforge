@@ -167,6 +167,12 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integratio
    Windows 的 Tao 事件循环要求主线程，而 Rust 测试跑在独立线程（2026-11-01 探针实证）。
    所以唯一干净的端到端入口是 dev-only CLI 子命令，而不是测试内 build 或前端 mock。
    目前依赖本机的 runtime zip 与打包 stage，属本地/发布前验证；接 CI 需换成小夹具运行时。
+7. **运行时复用与回滚端到端（已实现，2026-11-02 本地 PASS）**：
+   `scripts/smoke-runtime-rollback.ps1` 现场编译微型解释器，生成 A/B 两个小 zip，
+   经本地 HTTP 完成 A 安装 → B 安装 → ready 分支直接激活 A，断言两资产并存、
+   `active-runtime.json` 可逆切换且 A 内容不被覆盖。完整描述符由
+   `MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR` 注入，复用入口为
+   `MediaForge.exe --smoke-activate-runtime`；不需要外网或真实 3.6 GB 运行时。
 
 ## 6. 升级策略：只发安装包
 
