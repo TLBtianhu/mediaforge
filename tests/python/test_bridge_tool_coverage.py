@@ -213,9 +213,13 @@ class BridgeContractSurfaceTests(unittest.TestCase):
             self.bridge.call("definitely.not.a.tool", {})
 
     def test_aliased_tool_can_still_be_called_by_contract_name(self) -> None:
-        """别名只是"不重复上表"，不代表不能调——按契约名调也要能用。"""
-        result = self.bridge.call("media.metadata", {"inputs": []})
-        self.assertIn("ok", result)
+        """别名只是"不重复上表"；规范名与 probe 必须走同一个媒体探测实现。"""
+        from unittest import mock
+
+        with mock.patch.object(self.bridge, "probe", return_value={"ok": True}) as probe:
+            result = self.bridge.call("media.metadata", {"inputs": ["x.png"]})
+        self.assertTrue(result["ok"])
+        probe.assert_called_once_with(["x.png"])
 
 
 if __name__ == "__main__":
