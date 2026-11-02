@@ -327,3 +327,59 @@ def download_model(
             )
         )
     return {"model": record, "files": results, "modelDir": str(model_root)}
+
+
+def verify_model(model_id: str, root: str | None = None) -> dict:
+    """离线校验 catalog 文件；明确区分通过现有检查与完整哈希验证。"""
+    data = list_models(root=root)
+    record = next((item for item in data["models"] if item["id"] == model_id), None)
+    if record is None:
+        raise ValueError(f"unknown model: {model_id}")
+    model_root = Path(data["modelDir"])
+    results: list[dict] = []
+    for file in record["files"]:
+        target = model_root / file["path"]
+        expected_size = int(file.get("size") or 0)
+        expected_sha256 = str(file.get("sha256") or "")
+        result: dict[str, Any] = {
+            "path": str(target),
+            "expectedSize": expected_size,
+            "expectedSha256": expected_sha256,
+            "ok": True,
+            "verified": False,
+        }
+        if not target.exists():
+            result.update(ok=False, status="missing")
+            results.append(result)
+            continue
+        if not target.is_file():
+            result["status"] = "present_unverified"
+            results.append(result)
+            continue
+        actual_size = target.stat().st_size
+        result["actualSize"] = actual_size
+        if expected_size and actual_size != expected_size:
+            result.update(ok=False, status="size_mismatch")
+            results.append(result)
+            continue
+        if not expected_sha256:
+            result["status"] = "size_only" if expected_size else "present_unverified"
+            results.append(result)
+            continue
+        actual_sha256 = _sha256_of(target)
+        result["actualSha256"] = actual_sha256
+        if actual_sha256.lower() != expected_sha256.lower():
+            result.update(ok=False, status="hash_mismatch")
+            results.append(result)
+            continue
+        result.update(verified=True, status="verified")
+        results.append(result)
+    return {
+        "model": record,
+        "modelDir": str(model_root),
+        "ok": all(item["ok"] for item in results),
+        "verified": bool(results) and all(item["verified"] for item in results),
+        "files": results,
+        "failures": [item["path"] for item in results if not item["ok"]],
+        "unverified": [item["path"] for item in results if not item["verified"]],
+    }

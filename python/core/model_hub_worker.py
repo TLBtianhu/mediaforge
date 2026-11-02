@@ -16,13 +16,22 @@ def _request_id(payload: dict[str, Any]) -> str | None:
 
 
 def cmd_model_hub(payload: dict[str, Any]) -> int:
+    operation = str(payload.get("operation") or "list").strip().lower()
     try:
-        result = model_hub.list_models(
-            str(payload.get("query") or ""),
-            str(payload.get("modality") or "all"),
-            source=str(payload.get("source") or "modelscope"),
-            root=payload.get("modelDir"),
-        )
+        if operation == "verify":
+            model_id = str(payload.get("modelId") or "").strip()
+            if not model_id:
+                return emit_error("MODEL_HUB_INVALID", "Missing modelId", request_id=_request_id(payload))
+            result = model_hub.verify_model(model_id, root=payload.get("modelDir"))
+        elif operation == "list":
+            result = model_hub.list_models(
+                str(payload.get("query") or ""),
+                str(payload.get("modality") or "all"),
+                source=str(payload.get("source") or "modelscope"),
+                root=payload.get("modelDir"),
+            )
+        else:
+            raise ValueError(f"Unknown model hub operation: {operation}")
         emit("model_hub_result", {"ok": True, **result})
         return 0
     except Exception as exc:  # noqa: BLE001

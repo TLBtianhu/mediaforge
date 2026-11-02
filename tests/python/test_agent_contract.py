@@ -129,6 +129,16 @@ class ResultContractTests(unittest.TestCase):
         self.assertEqual(run_command.call_args.args[0], "media_tool")
         self.assertEqual(run_command.call_args.args[1]["operation"], "media_probe")
         self.assertEqual(run_command.call_args.args[1]["inputs"], ["x.png"])
+    def test_offline_verification_uses_the_hub_contract(self) -> None:
+        tool = agent_contract.find_tool("model.verify")
+        self.assertEqual(tool["command"], "model_hub")
+        self.assertEqual(tool["operation"], "verify")
+        self.assertEqual(tool["resultEvent"], "model_hub_result")
+        with mock.patch("worker.run_command", return_value=0) as run_command:
+            agent_contract.dispatch("model.verify", {"modelId": "media:demo"})
+        self.assertEqual(run_command.call_args.args[0], "model_hub")
+        self.assertEqual(run_command.call_args.args[1]["operation"], "verify")
+        self.assertEqual(run_command.call_args.args[1]["modelId"], "media:demo")
 
 
 class SlotVocabularyTests(unittest.TestCase):

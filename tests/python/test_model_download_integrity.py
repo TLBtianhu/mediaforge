@@ -15,6 +15,7 @@ import hashlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
@@ -79,6 +80,72 @@ class DownloadIntegrityTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as caught:
             model_hub._download_file(self.url, self.target, len(self.payload) + 1, None, "测试模型")
         self.assertIn("size mismatch", str(caught.exception))
+
+
+class OfflineVerificationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="mf-offline-verify-"))
+        self.addCleanup(__import__("shutil").rmtree, self.root, True)
+        self.payload = b"offline-model-payload" * 32
+        self.digest = hashlib.sha256(self.payload).hexdigest()
+        self.target = self.root / "weights.bin"
+        self.target.write_bytes(self.payload)
+
+    def verify(self, *, sha256: str | None = None) -> dict:
+        expected = self.digest if sha256 is None else sha256
+        record = {
+            "id": "media:demo",
+            "files": [{
+                "path": "weights.bin",
+                "size": len(self.payload),
+                "sha256": expected,
+            }],
+        }
+        with mock.patch.object(
+            model_hub, "list_models", return_value={"models": [record], "modelDir": str(self.root)}
+        ):
+            return model_hub.verify_model("media:demo", root=str(self.root))
+
+    def test_matching_hash_is_fully_verified_offline(self) -> None:
+        result = self.verify()
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["files"][0]["status"], "verified")
+        self.assertEqual(result["unverified"], [])
+
+    def test_same_size_corruption_is_a_hash_mismatch(self) -> None:
+        self.target.write_bytes(b"x" * len(self.payload))
+        result = self.verify()
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["files"][0]["status"], "hash_mismatch")
+        self.assertEqual(result["failures"], [str(self.target)])
+
+    def test_missing_hash_is_explicitly_unverified_not_fully_verified(self) -> None:
+        result = self.verify(sha256="")
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["files"][0]["status"], "size_only")
+        self.assertEqual(result["unverified"], [str(self.target)])
+
+    def test_missing_file_fails_verification(self) -> None:
+        self.target.unlink()
+        result = self.verify()
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["files"][0]["status"], "missing")
+
+    def test_worker_exposes_verification_through_the_existing_hub_command(self) -> None:
+        from core import model_hub_worker
+
+        events = []
+        result = {"ok": True, "verified": True, "files": []}
+        with mock.patch.object(model_hub_worker.model_hub, "verify_model", return_value=result) as verify, \
+             mock.patch.object(model_hub_worker, "emit", side_effect=lambda kind, payload, **kwargs: events.append((kind, payload))):
+            code = model_hub_worker.cmd_model_hub({"operation": "verify", "modelId": "media:demo", "modelDir": "root"})
+        self.assertEqual(code, 0)
+        verify.assert_called_once_with("media:demo", root="root")
+        self.assertEqual(events[0][0], "model_hub_result")
+        self.assertTrue(events[0][1]["verified"])
 
 
 if __name__ == "__main__":
