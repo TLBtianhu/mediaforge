@@ -17,6 +17,7 @@
         "watermark_removal",
         "denoise",
         "matting",
+        "face_restoration",
         "depth",
         "object_detection",
         "frame_interpolation"

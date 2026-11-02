@@ -355,6 +355,8 @@ def default_model_by_scale(capability_id: str, scale: int) -> str:
 def steps_from_mode(mode: str) -> list[dict[str, Any]]:
     """Compatibility bridge for existing UI modes."""
     steps: list[dict[str, Any]] = []
+    if mode in {"face", "face_restoration"}:
+        steps.append({"capability": "face_restoration", "bindings": default_bindings("face_restoration"), "params": {}})
     if mode in {"matting"}:
         steps.append({"capability": "matting", "bindings": default_bindings("matting"), "params": {}})
     if mode in {"depth"}:
@@ -415,4 +417,6 @@ def mode_for_steps(steps: list[dict[str, Any]]) -> str:
     # 插帧不是逐帧能力：它成对读帧，走单独的整段视频管线。
     if ids == {"frame_interpolation"}:
         return "interpolate"
+    if ids == {"face_restoration"}:
+        return "face"
     raise ValueError("mixed pipeline steps are not supported by the current frame adapter")

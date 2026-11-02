@@ -6,7 +6,7 @@
 用户点下去才在运行时报错。
 
 现在 `implemented` 由注册表算出来，`audit_capabilities()` 列四类漂移。这组测试钉住：
-① 当前只剩"计划中"的四条缺口；② 审计真的能发现新漂移（不是永远返回空）；
+① 只剩明确计划中的缺口；② 审计真的能发现新漂移（不是永远返回空）；
 ③ 手写 implemented 会被忽略并计入审计。
 """
 from __future__ import annotations
@@ -27,12 +27,11 @@ from media_ops import capabilities  # noqa: E402
 # 已经声明、还没适配器的能力。这个集合只能变小（做完一条删一条）——
 # 变大的意思是"又画了一张饼"，那是产品决定，不该由代码悄悄接受。
 PLANNED_CAPABILITIES = {
-    "face_restoration",
     "video_inpainting",
     "video_super_resolution",
 }
 
-ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth", "matting", "frame_interpolation"}
+ADAPTER_CAPABILITIES = {"upscale", "watermark_removal", "denoise", "object_detection", "depth", "matting", "frame_interpolation", "face_restoration"}
 
 
 class CapabilityManifestTests(unittest.TestCase):
@@ -102,7 +101,7 @@ class CapabilityManifestTests(unittest.TestCase):
     def test_normalize_steps_rejects_a_planned_capability(self) -> None:
         with self.assertRaises(ValueError) as caught:
             capabilities.normalize_steps(
-                [{"capability": "face_restoration", "bindings": {"face_restorer": "media:gfpgan-v14"}}]
+                [{"capability": "video_inpainting", "bindings": {"primary": "media:propainter"}}]
             )
         self.assertIn("not implemented", str(caught.exception))
 

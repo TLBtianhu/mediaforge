@@ -11,6 +11,7 @@ projects can share the same model weights and behavior.
 from __future__ import annotations
 
 import gc
+import threading
 import time
 from pathlib import Path
 
@@ -116,7 +117,7 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
 
 
 # 只在图像路径上实现的 capability（视频逐帧管线没有对应 planner）。
-IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth", "matting", "frame_interpolation")
+IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth", "matting", "frame_interpolation", "face_restoration")
 
 
 def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:
@@ -219,6 +220,52 @@ def _install_torchvision_shim() -> None:
     shim = types.ModuleType(name)
     shim.rgb_to_grayscale = functional.rgb_to_grayscale  # type: ignore[attr-defined]
     sys.modules[name] = shim
+
+
+_GFPGAN_INIT_LOCK = threading.Lock()
+
+
+def restore_faces(model_path: str | Path, image: np.ndarray, device: str | None = None) -> np.ndarray:
+    """GFPGAN v1.4 人脸修复；GFPGANer 内部负责检测、对齐与粘贴回原图。"""
+    model = Path(model_path)
+    if not model.is_file():
+        raise FileNotFoundError(f"GFPGAN model not found: {model}")
+    _install_torchvision_shim()
+    import cv2
+    from gfpgan import GFPGANer, utils as gfpgan_utils
+
+    # 上游把辅助权重目录写成相对 cwd 的 gfpgan/weights；这里改为模型目录内的绝对路径。
+    with _GFPGAN_INIT_LOCK:
+        original_helper = gfpgan_utils.FaceRestoreHelper
+
+        def isolated_helper(*args, **kwargs):
+            kwargs["model_rootpath"] = str(model.parent / "gfpgan" / "weights")
+            return original_helper(*args, **kwargs)
+
+        gfpgan_utils.FaceRestoreHelper = isolated_helper
+        try:
+            restorer = GFPGANer(
+                model_path=str(model),
+                upscale=1,
+                arch="clean",
+                channel_multiplier=2,
+                bg_upsampler=None,
+                device=device or pick_device(),
+            )
+        finally:
+            gfpgan_utils.FaceRestoreHelper = original_helper
+    rgb = ensure_rgb_uint8(image)
+    # GFPGANer 使用 OpenCV BGR；MediaForge 的内部图像契约始终是 RGB。
+    _, _, restored = restorer.enhance(
+        cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
+        has_aligned=False,
+        only_center_face=False,
+        paste_back=True,
+        weight=0.5,
+    )
+    if restored is None:
+        return rgb.copy()
+    return ensure_rgb_uint8(cv2.cvtColor(restored, cv2.COLOR_BGR2RGB))
 
 
 def remove_background(model_dir: str | Path, image: np.ndarray) -> np.ndarray:
