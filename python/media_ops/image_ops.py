@@ -11,6 +11,7 @@ projects can share the same model weights and behavior.
 from __future__ import annotations
 
 import gc
+import re
 import threading
 import time
 from pathlib import Path
@@ -266,6 +267,59 @@ def restore_faces(model_path: str | Path, image: np.ndarray, device: str | None 
     if restored is None:
         return rgb.copy()
     return ensure_rgb_uint8(cv2.cvtColor(restored, cv2.COLOR_BGR2RGB))
+
+
+def _normalize_basicvsrpp_state(checkpoint: dict) -> dict:
+    """把 MMEditing 官方 checkpoint 键名映射到 basicsr 的同一网络结构。"""
+    state = checkpoint.get("params_ema") or checkpoint.get("params") or checkpoint.get("state_dict") or checkpoint
+    if not isinstance(state, dict):
+        raise ValueError("BasicVSR++ checkpoint does not contain a state dict")
+    normalized = {}
+    for key, value in state.items():
+        if key == "step_counter":
+            continue
+        key = key.removeprefix("generator.")
+        key = key.replace("upsample1.upsample_conv.", "upconv1.")
+        key = key.replace("upsample2.upsample_conv.", "upconv2.")
+        if key.startswith("spynet."):
+            match = re.fullmatch(r"(spynet\.basic_module\.\d+\.basic_module\.)(\d+)\.conv\.(weight|bias)", key)
+            if match:
+                key = f"{match.group(1)}{int(match.group(2)) * 2}.{match.group(3)}"
+        normalized[key] = value
+    return normalized
+
+
+def upscale_video_sequence(model_path: str | Path, frames: np.ndarray, device: str | None = None) -> np.ndarray:
+    """BasicVSR++ 整段视频超分：输入 (t,h,w,c)，输出 (t,4h,4w,c)。"""
+    model_path = Path(model_path)
+    if not model_path.is_file():
+        raise FileNotFoundError(f"BasicVSR++ model not found: {model_path}")
+    source = np.asarray(frames)
+    if source.ndim != 4 or source.shape[0] == 0:
+        raise ValueError(f"video frames must have shape (t,h,w,c) and t>0, got {source.shape}")
+    source = np.stack([ensure_rgb_uint8(frame) for frame in source])
+    _install_torchvision_shim()
+    import torch
+    from basicsr.archs.basicvsrpp_arch import BasicVSRPlusPlus
+
+    model = BasicVSRPlusPlus(
+        mid_channels=64,
+        num_blocks=7,
+        is_low_res_input=True,
+        spynet_path=None,
+    )
+    checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=True)
+    state = _normalize_basicvsrpp_state(checkpoint)
+    model.load_state_dict(state, strict=True)
+    dev = device or pick_device()
+    model.eval().to(dev)
+    tensor = torch.from_numpy(source).permute(0, 3, 1, 2).unsqueeze(0).float().div(255.0).to(dev)
+    with torch.inference_mode():
+        restored = model(tensor)
+    if restored.ndim != 5 or restored.shape[1] != len(source):
+        raise ValueError(f"BasicVSR++ returned an unexpected sequence shape: {tuple(restored.shape)}")
+    array = restored.clamp(0.0, 1.0)[0].permute(0, 2, 3, 1).cpu().numpy()
+    return (array * 255.0).round().astype(np.uint8)
 
 
 def remove_background(model_dir: str | Path, image: np.ndarray) -> np.ndarray:

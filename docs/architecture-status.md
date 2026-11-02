@@ -19,7 +19,7 @@ Python 物理分层   python/ 根只剩 worker.py、agent_bridge.py、audio_cata
 MCP 工具面        surfaces/agent_contract.py 同时声明 worker 与 bridge 工具，70 个工具；
                   10 个桥接专属工具无 worker 命令，5 个别名与桥接专属 schema 均由契约渲染
 模型元数据        领域 catalog 各自唯一：audio_catalog.json（326 个模型、639 个文件哈希）
-                  与 media_ops/media_catalog.json（22 个可下载条目全部有 SHA-256）；
+                  与 media_ops/media_catalog.json（23 个可下载条目全部有 SHA-256）；
                   model_registry.json 的 326 个音频接口条目由 sync_model_registry.py 原位生成
 离线下载与校验    model_hub 统一单文件/目录多文件下载；model.verify 可离线检查存在性、
                   大小和 SHA-256，并区分 ok 与 verified。downloaded 仍只是存在性/大小状态，

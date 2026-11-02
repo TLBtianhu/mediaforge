@@ -128,6 +128,8 @@ def adapter_capability_ids() -> set[str]:
     from . import image_ops, video_step
 
     ids = set(video_step.registered())
+    # 整段视频模型（如 BasicVSR++）不是逐帧 planner，但必须同样计入已实现能力。
+    ids |= set(getattr(video_step, "SEQUENCE_CAPABILITIES", ()))
     return ids | set(getattr(image_ops, "IMAGE_CAPABILITIES", ()))
 
 
@@ -355,6 +357,8 @@ def default_model_by_scale(capability_id: str, scale: int) -> str:
 def steps_from_mode(mode: str) -> list[dict[str, Any]]:
     """Compatibility bridge for existing UI modes."""
     steps: list[dict[str, Any]] = []
+    if mode in {"video_sr", "video_super_resolution"}:
+        steps.append({"capability": "video_super_resolution", "bindings": default_bindings("video_super_resolution"), "params": {}})
     if mode in {"face", "face_restoration"}:
         steps.append({"capability": "face_restoration", "bindings": default_bindings("face_restoration"), "params": {}})
     if mode in {"matting"}:
@@ -419,4 +423,6 @@ def mode_for_steps(steps: list[dict[str, Any]]) -> str:
         return "interpolate"
     if ids == {"face_restoration"}:
         return "face"
+    if ids == {"video_super_resolution"}:
+        return "video_super_resolution"
     raise ValueError("mixed pipeline steps are not supported by the current frame adapter")

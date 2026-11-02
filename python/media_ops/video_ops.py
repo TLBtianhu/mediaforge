@@ -517,6 +517,78 @@ def interpolate_video(
         }
     finally:
         shutil.rmtree(work, ignore_errors=True)
+def upscale_video(
+    model_path: str | Path,
+    source: str | Path,
+    output_dir: str | Path,
+    *,
+    preview_seconds: float = 0.0,
+    crf: int = 18,
+    preset: str = "fast",
+    progress=None,
+) -> dict:
+    """BasicVSR++ 整段视频超分；保持帧率、帧数与原始音轨。"""
+    import shutil
+    import tempfile
+    import numpy as np
+    from . import image_ops
+
+    src = Path(source)
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    meta = ffmpeg.probe(src)
+    fps = float((meta.get("video") or {}).get("fps") or meta.get("fps") or 0) or 30.0
+    work = Path(tempfile.mkdtemp(prefix="mf-video-sr-"))
+    frames_dir = work / "frames"
+    out_frames = work / "out"
+    frames_dir.mkdir()
+    out_frames.mkdir()
+    started = time.perf_counter()
+    try:
+        if progress:
+            progress(0.05, "解出视频帧…")
+        command = [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+        if preview_seconds > 0:
+            command.extend(["-t", str(float(preview_seconds))])
+        command.extend(["-i", str(src), "-vsync", "0", str(frames_dir / "f_%06d.png")])
+        subprocess.run(command, check=True, capture_output=True)
+        frames = sorted(frames_dir.glob("f_*.png"))
+        if not frames:
+            raise ValueError("视频没有可处理的帧")
+
+        if progress:
+            progress(0.2, f"BasicVSR++ 时序超分 {len(frames)} 帧…")
+        source_frames = np.stack([image_ops.read_image(frame) for frame in frames])
+        restored = image_ops.upscale_video_sequence(model_path, source_frames)
+        for index, frame in enumerate(restored, start=1):
+            image_ops.write_image(out_frames / f"o_{index:06d}.png", frame)
+
+        destination = output_root / f"{src.stem}_video_sr.mp4"
+        if progress:
+            progress(0.92, "回封视频与原始音轨…")
+        command = [
+            ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-framerate", f"{fps:.6f}", "-i", str(out_frames / "o_%06d.png"),
+            "-i", str(src), "-map", "0:v:0", "-map", "1:a:0?",
+            "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
+            "-c:a", "copy", "-shortest", str(destination),
+        ]
+        subprocess.run(command, check=True, capture_output=True)
+        if progress:
+            progress(1.0, "完成")
+        return {
+            "path": str(destination),
+            "source": str(src),
+            "size": destination.stat().st_size,
+            "fps": round(fps, 3),
+            "frames": len(restored),
+            "scale": 4,
+            "input_size": [int(source_frames.shape[2]), int(source_frames.shape[1])],
+            "output_size": [int(restored.shape[2]), int(restored.shape[1])],
+            "elapsed": round(time.perf_counter() - started, 2),
+        }
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def process_video(

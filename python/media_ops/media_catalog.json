@@ -193,21 +193,21 @@
       "modalities": [
         "video"
       ],
-      "implemented": false,
+      "implemented": true,
       "task": "video_super_resolution",
-      "size": 0,
+      "size": 29349005,
       "license": "Apache-2.0",
-      "description": "Temporal video super-resolution. Catalog entry; adapter is next.",
-      "url": "",
+      "description": "Temporal video super-resolution.",
+      "url": "https://download.openmmlab.com/mmediting/restorers/basicvsr_plusplus/basicvsr_plusplus_c64n7_8x1_600k_reds4_20210217-db622b2f.pth",
       "capabilities": [
         "video_super_resolution"
       ],
       "roles": [
         "upscaler"
       ],
-      "status": "planned",
-      "blockedReason": "缺少权重地址与加载代码，尚不可下载",
-      "licenseSpdx": null
+      "status": "available",
+      "licenseSpdx": "Apache-2.0",
+      "sha256": "db622b2fd4caae0a4c63ab5e54f1cfef7a62a0f3b8ad101aba2eae068d928549"
     },
     {
       "id": "gfpgan-v14",

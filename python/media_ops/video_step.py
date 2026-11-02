@@ -48,6 +48,8 @@ class StepPlan:
 
 _PLANNERS: dict[str, Callable[[StepInputs], StepPlan]] = {}
 _SUFFIXES: dict[str, str] = {}
+# 整段时序模型不走逐帧 planner；单独登记，避免误进 FrameStep 管线。
+SEQUENCE_CAPABILITIES: tuple[str, ...] = ("video_super_resolution",)
 
 
 def register(capability_id: str, suffix: str) -> Callable[[Callable[[StepInputs], StepPlan]], Callable[[StepInputs], StepPlan]]:
