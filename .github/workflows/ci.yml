@@ -124,3 +124,13 @@ jobs:
 
       - name: Check Tauri backend
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Verify runtime install, reuse and rollback end to end
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path src-tauri/Cargo.toml
+          $stage = Join-Path $env:RUNNER_TEMP 'mediaforge-runtime-smoke'
+          New-Item -ItemType Directory -Force -Path "$stage\bin" | Out-Null
+          Copy-Item 'src-tauri\target\release\pymss-studio.exe' "$stage\MediaForge.exe" -Force
+          ./scripts/fetch-third-party.ps1 -ToolName aria2 -Destination "$stage\bin"
+          ./scripts/smoke-runtime-rollback.ps1 -AppExe "$stage\MediaForge.exe"

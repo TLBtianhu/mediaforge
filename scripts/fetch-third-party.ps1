@@ -9,11 +9,13 @@
     pwsh scripts/fetch-third-party.ps1                   # 下载到 release/bin
     pwsh scripts/fetch-third-party.ps1 -VerifyOnly       # 只校验已有的文件
     pwsh scripts/fetch-third-party.ps1 -Destination X:\bin
+    pwsh scripts/fetch-third-party.ps1 -ToolName aria2   # 只拉取 aria2c（运行时冒烟）
 #>
 [CmdletBinding()]
 param(
     [string]$Destination,
     [string]$ManifestPath,
+    [string]$ToolName,
     [switch]$VerifyOnly
 )
 
@@ -50,6 +52,7 @@ $manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 
 foreach ($name in $manifest.tools.PSObject.Properties.Name) {
+    if ($ToolName -and $name -ne $ToolName) { continue }
     $tool = $manifest.tools.$name
     $needed = @()
     foreach ($file in $tool.files.PSObject.Properties.Name) {

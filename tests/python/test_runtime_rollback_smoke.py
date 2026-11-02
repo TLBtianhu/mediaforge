@@ -25,6 +25,14 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         self.assertIn("回滚后 B 仍保留", script)
         self.assertIn("http://127.0.0.1:$Port", script)
 
+    def test_ci_builds_the_real_cli_and_runs_the_rollback_smoke(self) -> None:
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("cargo build --release --manifest-path src-tauri/Cargo.toml", workflow)
+        self.assertIn("fetch-third-party.ps1 -ToolName aria2", workflow)
+        self.assertIn("smoke-runtime-rollback.ps1", workflow)
+        fetch = (ROOT / "scripts/fetch-third-party.ps1").read_text(encoding="utf-8")
+        self.assertIn("if ($ToolName -and $name -ne $ToolName) { continue }", fetch)
+
 
 if __name__ == "__main__":
     unittest.main()
