@@ -66,7 +66,7 @@ RESULT_EVENTS: dict[str, str] = {
     "system.contract": "agent_contract",
     "system.env": "env_info",
     "model.list": "models",
-    "model.hub": "models",
+    "model.hub": "model_hub_result",
     "model.verify": "model_hub_result",
     "graph.operations": "operations_list",
     "graph.operation_spec": "operation_spec",

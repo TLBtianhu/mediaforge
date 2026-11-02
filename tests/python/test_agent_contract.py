@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -109,16 +110,20 @@ class ResultContractTests(unittest.TestCase):
         self.assertEqual(tools["system.health"]["resultEvent"], "health")
         self.assertEqual(tools["system.contract"]["resultEvent"], "agent_contract")
         self.assertEqual(tools["media.image.upscale"]["resultEvent"], "task.result")
+        self.assertEqual(tools["model.hub"]["resultEvent"], "model_hub_result")
 
     def test_declared_result_event_matches_what_dispatch_returns(self) -> None:
         from surfaces import agent_contract as contract
 
-        for name in ("system.health", "system.contract", "model.list"):
-            tool = contract.find_tool(name)
-            outcome = contract.dispatch(name, {})
-            self.assertEqual(
-                outcome["result"]["type"], tool["resultEvent"], f"{name} 的输出契约与实际不一致"
-            )
+        with tempfile.TemporaryDirectory(prefix="mf-contract-dispatch-") as root:
+            with mock.patch.dict("os.environ", {"MEDIAFORGE_DATA_ROOT": root}, clear=False):
+                for name in ("system.health", "system.contract", "model.list", "model.hub"):
+                    tool = contract.find_tool(name)
+                    outcome = contract.dispatch(name, {})
+                    self.assertEqual(
+                        outcome["result"]["type"], tool["resultEvent"], f"{name} 的输出契约与实际不一致"
+                    )
+
     def test_metadata_schema_matches_media_probe_dispatch(self) -> None:
         tool = agent_contract.find_tool("media.metadata")
         self.assertEqual(tool["command"], "media_tool")
@@ -129,6 +134,7 @@ class ResultContractTests(unittest.TestCase):
         self.assertEqual(run_command.call_args.args[0], "media_tool")
         self.assertEqual(run_command.call_args.args[1]["operation"], "media_probe")
         self.assertEqual(run_command.call_args.args[1]["inputs"], ["x.png"])
+
     def test_offline_verification_uses_the_hub_contract(self) -> None:
         tool = agent_contract.find_tool("model.verify")
         self.assertEqual(tool["command"], "model_hub")
