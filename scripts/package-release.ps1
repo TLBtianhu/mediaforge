@@ -8,7 +8,7 @@
 #   2. staging                              → release\stage-<ver>\
 #   3. portable zip                         → release\MediaForge-<ver>-windows-x64-portable.zip
 #   4. Inno Setup                           → release\MediaForge-<ver>-windows-x64-cuda-setup.exe
-#   5. 复制安装包到 Downloads                → 方便本机测试，不依赖网络
+#   5. 复制安装包到 release\local           → 本机副本不依赖 Downloads
 #
 # 约定（见 docs/install-state.md）：
 #   * 安装目录固定为 {autopf}\MediaForge，向导不允许改
@@ -253,10 +253,12 @@ Write-Host "[6/6] 安装包输出"
 $setup = "$out\MediaForge-$Version-windows-x64-cuda-setup.exe"
 if (-not (Test-Path $setup)) { throw "没有找到安装包: $setup" }
 if ($SkipDownloadCopy) {
-    Write-Host '  跳过复制到 Downloads（-SkipDownloadCopy）'
+    Write-Host '  跳过本机副本（-SkipDownloadCopy）'
 } else {
-    Copy-Item $setup "$env:USERPROFILE\Downloads\$(Split-Path $setup -Leaf)" -Force
-    Write-Host "  已复制到 Downloads"
+    $localOut = "$out\local"
+    New-Item -ItemType Directory -Force -Path $localOut | Out-Null
+    Copy-Item $setup (Join-Path $localOut (Split-Path $setup -Leaf)) -Force
+    Write-Host "  已复制到 $localOut"
 }
 Get-Item $setup | ForEach-Object { Write-Host ("  installer: {0} MB" -f [Math]::Round($_.Length/1MB,1)) }
 Write-Host "DONE"
