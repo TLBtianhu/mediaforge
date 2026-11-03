@@ -45,6 +45,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends build-essential pkg-config \
             libasound2-dev libwebkit2gtk-4.1-dev libssl-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: linux-native
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -64,6 +69,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: macos-native
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -97,8 +107,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            python/requirements-ci.txt
+            .github/workflows/ci.yml
 
       - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: validate
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -137,6 +156,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: runtime-lifecycle
       - name: Build the real release executable
         run: cargo build --release --manifest-path src-tauri/Cargo.toml
       - name: Verify the development executable keeps its data in the repository
