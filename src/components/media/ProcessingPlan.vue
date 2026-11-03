@@ -156,7 +156,7 @@ onMounted(load)
 <template>
   <section class="processing-plan">
     <n-spin v-if="loading" :show="true" class="processing-plan__loading" />
-    <div v-else-if="!hasUsableModel" class="plan-empty">
+    <div v-else-if="!available.length" class="plan-empty">
       <span class="plan-empty__glyph"><n-icon :component="CubeOutline" /></span>
       <strong>{{ t('plan.noModelTitle') }}</strong>
       <p>{{ t('plan.noModelHint') }}</p>

@@ -13,6 +13,10 @@ _USE_OPERATIONS = True
 def cmd_audio_tools(payload: dict[str, Any]) -> int:
     operation = str(payload.get("operation") or "").strip().lower()
     request_id = str(payload.get("requestId") or "").strip() or None
+    if operation in {"media_image", "media_video", "media_workflow", "media_probe", "media_convert"}:
+        from media_ops.worker import cmd_media_tool
+
+        return cmd_media_tool(payload)
     if _USE_OPERATIONS:
         try:
             # pymss Operation path: kit builtins for convert/inspect/sdr/

@@ -194,7 +194,7 @@ def list_capabilities(override_dir: Any = None) -> dict[str, Any]:
                     "id": model_id,
                     "label": record.get("label") or record.get("name"),
                     "roles": [role for role, spec in item["roles"].items() if spec.get("task") == record.get("task")],
-                    "downloaded": path.is_file(),
+                    "downloaded": path.exists(),
                     "implemented": bool(record.get("implemented", True)),
                     "params": record.get("params") or {},
                 }

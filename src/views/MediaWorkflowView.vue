@@ -11,6 +11,7 @@ import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
+import { buildMediaWorkflowPayload } from '@/features/media/workflowPayload'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 defineOptions({ name: 'MediaWorkflowView' })
@@ -26,6 +27,8 @@ const outputDir = ref('')
 const modality = ref<'image' | 'video'>('image')
 const modelDir = ref('')
 const steps = ref<PlanStep[]>([{ capability: 'upscale', bindings: { upscaler: 'media:real-esrgan-x2' }, params: { scale: 2 } }])
+const maskPath = ref('')
+const needsMask = computed(() => steps.value.some(step => step.capability === 'video_inpainting') && modality.value === 'video')
 const busy = ref(false)
 const progress = ref(0)
 const status = ref('')
@@ -79,6 +82,10 @@ async function pickModelDir() {
   const selected = await open({ directory: true, multiple: false })
   if (typeof selected === 'string') modelDir.value = selected
 }
+async function pickMaskPath() {
+  const selected = await open({ directory: true, multiple: false })
+  if (typeof selected === 'string') maskPath.value = selected
+}
 function onProgress(payload: Record<string, unknown>) {
   progress.value = Math.round(Number(payload.fraction || 0) * 100)
   status.value = String(payload.current || status.value)
@@ -99,15 +106,15 @@ async function start() {
   status.value = t('mediaWorkflow.starting')
   try {
     await invoke('start_audio_tool', {
-      payload: {
-        operation: 'media_workflow',
+      payload: buildMediaWorkflowPayload({
         requestId,
         modality: modality.value,
         inputs: inputs.value,
         outputDir: outputDir.value,
         modelDir: modelDir.value,
         steps: steps.value,
-      },
+        maskPath: needsMask.value ? maskPath.value : '',
+      }),
     })
   } catch (error) {
     busy.value = false
@@ -194,6 +201,13 @@ onBeforeUnmount(() => unlisten?.())
               <n-button secondary :disabled="busy" @click="pickModelDir"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('factory.browse') }}</n-button>
             </div>
           </div>
+          <div v-if="needsMask">
+            <label class="mf-form-label">{{ t('mediaWorkflow.maskPath') }}</label>
+            <div class="media-workflow-path">
+              <n-input v-model:value="maskPath" :placeholder="t('mediaWorkflow.maskPathHint')" />
+              <n-button secondary :disabled="busy" @click="pickMaskPath"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('mediaWorkflow.chooseMaskDir') }}</n-button>
+            </div>
+          </div>
         </n-space>
       </WorkbenchCard>
 
@@ -204,7 +218,7 @@ onBeforeUnmount(() => unlisten?.())
               <strong>{{ t('mediaWorkflow.step', { index: index + 1 }) }}</strong>
               <n-button text :disabled="busy || steps.length <= 1" @click="removeStep(index)">{{ t('mediaWorkflow.removeStep') }}</n-button>
             </div>
-            <ProcessingPlan :model-value="step" :modality="modality" :busy="busy" @update:model-value="value => updateStep(index, value)" />
+            <ProcessingPlan :model-value="step" :modality="modality" :busy="busy" :model-dir="modelDir" @update:model-value="value => updateStep(index, value)" />
           </div>
           <n-button secondary :disabled="busy" @click="addStep">+ {{ t('mediaWorkflow.addStep') }}</n-button>
           <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="start">

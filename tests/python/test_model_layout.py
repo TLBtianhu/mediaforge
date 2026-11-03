@@ -150,6 +150,31 @@ class CapabilityPathTests(unittest.TestCase):
         lama = next(item for item in listed["capabilities"] if item["id"] == "watermark_removal")
         model = next(entry for entry in lama["models"] if entry["id"] == "media:lama")
         self.assertTrue(model["downloaded"])
+    def test_multifile_model_directory_counts_as_downloaded(self) -> None:
+        catalog = json.loads(self.catalog_path.read_text(encoding="utf-8"))
+        catalog["models"].append({
+            "id": "propainter",
+            "name": "ProPainter.pth",
+            "label": "ProPainter",
+            "task": "video_inpainting",
+            "implemented": True,
+            "files": [
+                {"path": "ProPainter.pth", "size": 1},
+                {"path": "raft-things.pth", "size": 1},
+                {"path": "recurrent_flow_completion.pth", "size": 1},
+            ],
+        })
+        self.catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+        model_dir = self.models / "media" / "ProPainter.pth"
+        model_dir.mkdir(parents=True)
+        for name in ("ProPainter.pth", "raft-things.pth", "recurrent_flow_completion.pth"):
+            (model_dir / name).write_bytes(b"x")
+        with mock.patch.object(capabilities, "CATALOG_PATH", self.catalog_path), \
+                mock.patch.object(worker_paths, "model_root", return_value=self.models):
+            listed = capabilities.list_capabilities()
+        capability = next(item for item in listed["capabilities"] if item["id"] == "video_inpainting")
+        model = next(entry for entry in capability["models"] if entry["id"] == "media:propainter")
+        self.assertTrue(model["downloaded"])
 
 
 class ImageRestorerDefaultPathTests(unittest.TestCase):
