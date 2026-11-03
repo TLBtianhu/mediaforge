@@ -265,9 +265,16 @@ def _validate_step_params(capability_id: str, params: dict[str, Any], declared: 
             if not isinstance(value, python_type):
                 raise ValueError(f"capability {capability_id}: parameter {key} should be {expected}")
         slot = ranges.get(key)
-        if slot and isinstance(value, (int, float)) and not isinstance(value, bool):
+        choices = spec.get("enum")
+        if isinstance(choices, list) and value not in choices:
+            raise ValueError(f"capability {capability_id}: parameter {key} must be one of {choices}")
+        minimum = spec.get("minimum")
+        maximum = spec.get("maximum")
+        if minimum is None and slot:
             minimum = slot.get("min")
+        if maximum is None and slot:
             maximum = slot.get("max")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             if isinstance(minimum, (int, float)) and value < minimum:
                 raise ValueError(
                     f"capability {capability_id}: parameter {key} must be >= {minimum} (got {value})"

@@ -520,19 +520,9 @@ def interpolate_video(
 
 
 def _propainter_model_paths(model_dir: str | Path) -> dict[str, str]:
-    root = Path(model_dir)
-    names = {
-        "propainter": "ProPainter.pth",
-        "flow": "recurrent_flow_completion.pth",
-        "raft": "raft-things.pth",
-    }
-    paths = {}
-    for key, name in names.items():
-        path = root / name
-        if not path.is_file():
-            raise FileNotFoundError(f"ProPainter model file not found: {path}")
-        paths[key] = str(path)
-    return paths
+    from .propainter_adapter import propainter_model_paths
+
+    return propainter_model_paths(model_dir)
 
 
 def inpaint_video(
@@ -544,20 +534,21 @@ def inpaint_video(
     detector_path: str | Path | None = None,
     conf: float = 0.25,
     expand: int = 8,
+    detect_mode: str = "fixed",
+    subvideo_length: int = 80,
     preview_seconds: float = 0.0,
     crf: int = 18,
     preset: str = "fast",
     progress=None,
 ) -> dict:
-    """ProPainter 固定 mask 视频修复；优先使用显式 mask，否则检测首帧水印。"""
-    from PIL import Image
+    """ProPainter 视频修复；视频 I/O 与 mask/模型适配分离。"""
     from . import image_ops
 
     src = Path(source)
     if not src.is_file():
         raise FileNotFoundError(f"video not found: {src}")
     models = _propainter_model_paths(model_dir)
-    if mask_path is not None and not Path(mask_path).is_file():
+    if mask_path is not None and not Path(mask_path).exists():
         raise FileNotFoundError(f"mask not found: {mask_path}")
     if mask_path is None and (detector_path is None or not Path(detector_path).is_file()):
         raise FileNotFoundError(f"watermark detector not found: {detector_path}")
@@ -586,63 +577,33 @@ def inpaint_video(
         if not frames:
             raise ValueError("视频没有可处理的帧")
 
-        first = image_ops.read_image(frames[0])
-        if mask_path is not None:
-            with Image.open(mask_path) as mask_image:
-                mask = (np.asarray(mask_image.convert("L")) > 0).astype(np.uint8)
-        else:
+        from . import propainter_adapter
+
+        detector = None
+        if mask_path is None:
             detector = image_ops.WatermarkDetector(str(detector_path), device=image_ops.pick_device())
-            boxes, _scores, detected = detector.detect(first, conf=conf, expand=expand)
-            if int(detected.max()) == 0:
-                raise ValueError("没有在首帧检测到水印；请提供 maskPath 或降低阈值")
-            mask = (image_ops.boxes_to_mask(first.shape[:2], boxes, expand=expand) > 0).astype(np.uint8)
-        if mask.shape != first.shape[:2]:
-            raise ValueError(f"mask size {mask.shape[::-1]} does not match video {first.shape[1::-1]}")
-        if not np.any(mask):
-            raise ValueError("mask is empty")
-        for index in range(1, len(frames) + 1):
-            Image.fromarray(mask).save(masks_dir / f"m_{index:06d}.png")
+        propainter_adapter.prepare_masks(
+            frames,
+            masks_dir,
+            mask_path=mask_path,
+            detector=detector,
+            detect_mode=detect_mode,
+            conf=conf,
+            expand=expand,
+        )
+        first = image_ops.read_image(frames[0])
 
         if progress:
             progress(0.25, f"ProPainter 流式修复 {len(frames)} 帧…")
-        from propainter.propainter_video import (
-            FilePathDirSequencer,
-            RawFrameSequencer,
-            RawMaskSequencer,
-            ScaledProPainterIterator,
+        count = propainter_adapter.inpaint_frames(
+            frames_dir,
+            masks_dir,
+            models,
+            out_frames,
+            use_cuda=image_ops.pick_device() == "cuda",
+            subvideo_length=subvideo_length,
+            progress=progress,
         )
-
-        raw_frames = RawFrameSequencer(data=FilePathDirSequencer(str(frames_dir)))
-        raw_masks = RawMaskSequencer(data=FilePathDirSequencer(str(masks_dir)))
-        use_cuda = image_ops.pick_device() == "cuda"
-        from .propainter_adapter import load_flow_completion, load_propainter, load_raft
-
-        iterator = ScaledProPainterIterator(
-            raw_frames,
-            raw_masks,
-            image_resize_ratio=1.0,
-            mask_dilation=1,
-            post_raw_mask_dilation=2,
-            raft_model=load_raft(models["raft"], use_cuda=use_cuda),
-            pprfc_model=load_flow_completion(models["flow"], use_cuda=use_cuda),
-            pp_model=load_propainter(models["propainter"], use_cuda=use_cuda),
-            use_cuda=use_cuda,
-            pp_window_size=80,
-            pp_stride=5,
-            step=10,
-        )
-        # 上游 ScaledProPainterIterator 漏传 use_cuda 给帧/mask 序列器，CPU 必须显式同步。
-        iterator.frames.use_cuda = use_cuda
-        iterator.masks.use_cuda = use_cuda
-        count = 0
-        for chunk in iterator:
-            for frame in chunk:
-                count += 1
-                image_ops.write_image(out_frames / f"o_{count:06d}.png", frame)
-            if progress:
-                progress(0.25 + 0.65 * count / len(frames), f"ProPainter 修复 {count}/{len(frames)} 帧")
-        if count != len(frames):
-            raise RuntimeError(f"ProPainter returned {count} frames for {len(frames)} input frames")
 
         destination = output_root / f"{src.stem}_video_clean.mp4"
         if progress:

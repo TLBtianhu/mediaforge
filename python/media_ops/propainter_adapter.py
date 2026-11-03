@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 
 def normalize_raft_state(checkpoint: dict) -> dict:
@@ -229,3 +230,148 @@ def load_propainter(model_path: str, use_cuda: bool = False):
     if use_cuda:
         model = model.cuda()
     return model
+
+
+def propainter_model_paths(model_dir: str | Path) -> dict[str, str]:
+    """返回三份官方权重的绝对路径，缺失时在任何视频 I/O 前失败。"""
+    root = Path(model_dir)
+    names = {
+        "propainter": "ProPainter.pth",
+        "flow": "recurrent_flow_completion.pth",
+        "raft": "raft-things.pth",
+    }
+    paths = {}
+    for key, name in names.items():
+        path = root / name
+        if not path.is_file():
+            raise FileNotFoundError(f"ProPainter model file not found: {path}")
+        paths[key] = str(path)
+    return paths
+
+
+def prepare_masks(
+    frames: list[Path],
+    masks_dir: Path,
+    *,
+    mask_path: str | Path | None = None,
+    detector=None,
+    detect_mode: str = "fixed",
+    conf: float = 0.25,
+    expand: int = 8,
+) -> int:
+    """把单 mask、mask 目录或逐帧检测结果统一成逐帧二值 mask 文件。"""
+    import numpy as np
+    from PIL import Image
+    from . import image_ops
+
+    if detect_mode not in {"fixed", "per_frame"}:
+        raise ValueError(f"unsupported mask detection mode: {detect_mode}")
+    if not frames:
+        raise ValueError("mask preparation requires at least one frame")
+    masks_dir.mkdir(parents=True, exist_ok=True)
+    mask_files: list[Path] = []
+    if mask_path is not None:
+        source = Path(mask_path)
+        if source.is_dir():
+            mask_files = sorted(
+                path for path in source.iterdir()
+                if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+            )
+            if len(mask_files) != len(frames):
+                raise ValueError(f"mask directory has {len(mask_files)} masks for {len(frames)} frames")
+        elif source.is_file():
+            mask_files = [source] * len(frames)
+        else:
+            raise FileNotFoundError(f"mask not found: {source}")
+    elif detector is None:
+        raise ValueError("maskPath is required when no watermark detector is available")
+
+    has_mask = False
+    fixed_mask = None
+    for index, frame_path in enumerate(frames, start=1):
+        if mask_files:
+            with Image.open(mask_files[index - 1]) as mask_image:
+                mask = (np.asarray(mask_image.convert("L")) > 0).astype(np.uint8)
+            shape = image_ops.read_image(frame_path).shape[:2]
+        else:
+            frame = image_ops.read_image(frame_path)
+            shape = frame.shape[:2]
+            if detect_mode == "fixed" and fixed_mask is not None:
+                mask = fixed_mask
+            else:
+                boxes, _scores, detected = detector.detect(frame, conf=conf, expand=expand)
+                if int(detected.max()) == 0:
+                    if detect_mode == "fixed":
+                        raise ValueError("没有在首帧检测到水印；请提供 maskPath 或降低阈值")
+                    mask = np.zeros(shape, dtype=np.uint8)
+                else:
+                    mask = (image_ops.boxes_to_mask(shape, boxes, expand=expand) > 0).astype(np.uint8)
+            if detect_mode == "fixed":
+                fixed_mask = mask
+        if mask.shape != shape:
+            raise ValueError(f"mask size {mask.shape[::-1]} does not match video {shape[::-1]}")
+        has_mask = has_mask or bool(np.any(mask))
+        Image.fromarray(mask).save(masks_dir / f"m_{index:06d}.png")
+    if not has_mask:
+        raise ValueError("mask is empty for every frame")
+    return len(frames)
+
+
+def inpaint_frames(
+    frames_dir: Path,
+    masks_dir: Path,
+    models: dict[str, str],
+    out_dir: Path,
+    *,
+    use_cuda: bool,
+    subvideo_length: int = 80,
+    progress=None,
+) -> int:
+    """运行 ProPainter 流式推理；只消费已准备的帧/mask，不负责视频编解码。"""
+    from . import image_ops
+
+    frames = sorted(Path(frames_dir).glob("f_*.png"))
+    masks = sorted(Path(masks_dir).glob("m_*.png"))
+    if not frames or len(frames) != len(masks):
+        raise ValueError(f"frame/mask count mismatch: {len(frames)} frames, {len(masks)} masks")
+    subvideo_length = int(subvideo_length)
+    if subvideo_length < 8:
+        raise ValueError("subvideo_length must be at least 8")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    from propainter.propainter_video import (
+        FilePathDirSequencer,
+        RawFrameSequencer,
+        RawMaskSequencer,
+        ScaledProPainterIterator,
+    )
+
+    raw_frames = RawFrameSequencer(data=FilePathDirSequencer(str(frames_dir)))
+    raw_masks = RawMaskSequencer(data=FilePathDirSequencer(str(masks_dir)))
+    iterator = ScaledProPainterIterator(
+        raw_frames,
+        raw_masks,
+        image_resize_ratio=1.0,
+        mask_dilation=1,
+        post_raw_mask_dilation=2,
+        raft_model=load_raft(models["raft"], use_cuda=use_cuda),
+        pprfc_model=load_flow_completion(models["flow"], use_cuda=use_cuda),
+        pp_model=load_propainter(models["propainter"], use_cuda=use_cuda),
+        use_cuda=use_cuda,
+        pp_window_size=subvideo_length,
+        pp_stride=5,
+        step=10,
+    )
+    # 上游 ScaledProPainterIterator 漏传 use_cuda 给帧/mask 序列器。
+    iterator.frames.use_cuda = use_cuda
+    iterator.masks.use_cuda = use_cuda
+    count = 0
+    for chunk in iterator:
+        for frame in chunk:
+            count += 1
+            image_ops.write_image(out_dir / f"o_{count:06d}.png", frame)
+        if progress:
+            progress(0.25 + 0.65 * count / len(frames), f"ProPainter 修复 {count}/{len(frames)} 帧")
+    if count != len(frames):
+        raise RuntimeError(f"ProPainter returned {count} frames for {len(frames)} input frames")
+    return count

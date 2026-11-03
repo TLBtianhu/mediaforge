@@ -105,6 +105,9 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         if mode in {"video_inpaint", "video_inpainting"}:
             model_id = str(payload.get("modelId") or "").strip() or capabilities.default_bindings("video_inpainting")["primary"]
             model_dir = capabilities.model_path(model_id)
+            step_params = next((step["params"] for step in steps if step["capability"] == "video_inpainting"), {})
+            detect_mode = str(step_params.get("detectMode") or detect_mode)
+            subvideo_length = int(step_params.get("subvideoLength") or payload.get("subvideoLength") or 80)
             mask_path = str(payload.get("maskPath") or "").strip() or None
             detector_path = None
             if mask_path is None:
@@ -120,6 +123,8 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                             detector_path=detector_path,
                             conf=float(payload.get("conf") or 0.25),
                             expand=int(payload.get("expand") or 8),
+                            detect_mode=detect_mode,
+                            subvideo_length=subvideo_length,
                             preview_seconds=float(payload.get("previewSeconds") or 0),
                             crf=int(payload.get("crf") or 18),
                             preset=str(payload.get("preset") or "fast"),

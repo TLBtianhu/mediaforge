@@ -168,7 +168,22 @@
       "modelIds": [
         "media:propainter"
       ],
-      "params": {}
+      "params": {
+        "detectMode": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "per_frame"
+          ],
+          "default": "fixed"
+        },
+        "subvideoLength": {
+          "type": "integer",
+          "default": 80,
+          "minimum": 8,
+          "maximum": 240
+        }
+      }
     },
     {
       "id": "video_super_resolution",
