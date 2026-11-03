@@ -27,6 +27,9 @@
 
 发布时同步到 GitHub Release 与魔搭 `release/` 目录；运行时包继续由 HF 镜像与魔搭承载。
 
+- GitHub Release：https://github.com/TLBtianhu/mediaforge/releases/tag/v0.0.24
+- 魔搭安装包直链：https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/release/MediaForge-0.0.24-windows-x64-cuda-setup.exe
+
 ## 产物校验
 
 | 产物 | 字节数 | SHA-256 |
