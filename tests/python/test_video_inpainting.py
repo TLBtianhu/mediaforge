@@ -121,9 +121,11 @@ class VideoInpaintingTests(unittest.TestCase):
                 path = root / f"f_{index:06d}.png"
                 Image.fromarray(np.full((8, 8, 3), value, dtype=np.uint8)).save(path)
                 frames.append(path)
-            count = propainter_adapter.prepare_masks(
-                frames, root / "masks", detector=Detector(), detect_mode="per_frame"
-            )
+            with mock.patch.dict(sys.modules, {"cv2": None}), \
+                 mock.patch("media_ops.image_ops.boxes_to_mask", side_effect=lambda shape, _boxes, expand: np.ones(shape, dtype=np.uint8)):
+                count = propainter_adapter.prepare_masks(
+                    frames, root / "masks", detector=Detector(), detect_mode="per_frame"
+                )
             self.assertEqual(count, 2)
             first = np.asarray(Image.open(root / "masks" / "m_000001.png"))
             second = np.asarray(Image.open(root / "masks" / "m_000002.png"))
