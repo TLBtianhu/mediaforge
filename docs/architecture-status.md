@@ -72,8 +72,8 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
                  SeparateView 与 DebugView 已按工厂拆过一轮，剩下的先把有测试契约的簇外移。
 门面间接         worker_bootstrap.py 337 行门面 + bootstrap_parts 四层；
                  测试仍按门面名字打补丁，所以 wb.<name> 这层间接还在。
-测试稳定性       editorParameterSlider.test.mjs 在本地全量/单文件运行中出现过不同断言失败，
-                 相关用例单独运行又通过；后续应固定测试同步，不能误判成产品回归。
+测试稳定性       editorParameterSlider.test.mjs 已统一焦点、active 状态和生命周期拖拽准备；
+                 定向连续 20 轮、完整前端与综合 CI 均通过
 ```
 
 ## 单点风险
