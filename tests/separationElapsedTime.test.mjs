@@ -6,10 +6,13 @@ import ts from 'typescript'
 import { computed, effectScope, nextTick, ref, watch } from 'vue'
 import { parse } from 'vue/compiler-sfc'
 import { isTerminalTaskStatus } from '../src/features/tasks/lifecycle.ts'
+import { makeTaskPresentation } from '../src/views/separate/taskPresentation.ts'
+
+const { taskDuration } = makeTaskPresentation(key => key)
 
 const { descriptor } = parse(readFileSync(new URL('../src/views/SeparateView.vue', import.meta.url), 'utf8'))
 const source = ts.createSourceFile('SeparateView.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true)
-const names = new Set(['taskClockNow', 'taskClockTimer', 'currentTaskDuration', 'stopTaskClock', 'syncTaskClock', 'taskDuration'])
+const names = new Set(['taskClockNow', 'taskClockTimer', 'currentTaskDuration', 'stopTaskClock', 'syncTaskClock'])
 const statements = source.statements.filter(node => {
   if (ts.isFunctionDeclaration(node)) return names.has(node.name?.text)
   if (ts.isVariableStatement(node)) return node.declarationList.declarations.some(item => names.has(item.name.getText(source)))
@@ -35,7 +38,7 @@ function setup(t, item) {
   const currentTask = ref(item)
   const scope = effectScope()
   const state = scope.run(() => vm.runInNewContext(`${code}\n({ currentTaskDuration, taskClockNow })`, {
-    ref, computed, watch, currentTask, isTerminalTaskStatus,
+    ref, computed, watch, currentTask, isTerminalTaskStatus, taskDuration,
     Date: { now: () => now },
     setInterval: (callback, interval) => {
       intervals.push(interval)
