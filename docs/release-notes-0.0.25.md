@@ -33,6 +33,16 @@ MediaForge/
 
 安装包本机副本继续放在 `release\local`，不写 Downloads。
 
+## 产物校验
+
+| 产物 | 字节数 | SHA-256 |
+|---|---:|---|
+| `MediaForge-0.0.25-windows-x64-cuda-setup.exe` | 68058469 | `373a6c4b4508f6f7882aea8ac3b0f32447917e6db27515a47c324dabd1bd34e6` |
+| `MediaForge-0.0.25-windows-x64-portable.zip` | 129158294 | `e64811afe1eafcb92886ace166dc68afcefd98d18548a2a581501d253c345b41` |
+| `MediaForge-0.0.25-windows-x64-update.zip` | 105370527 | `e77b13857ea0c142a66c9f22e905b9fbab380881793400f838eade0567d8b9ca` |
+
+更新包签名文件：`MediaForge-0.0.25-windows-x64-update.zip.sig`。
+
 ## 环境要求
 
 - Windows 10/11 x64。

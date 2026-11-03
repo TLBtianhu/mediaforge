@@ -324,6 +324,8 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
         let copied = copy_dlls(&vcrt, &scripts).map_err(|error| format!("复制 VC++ 运行库失败：{error}"))?;
         emit(app, &descriptor, "verifying", descriptor.size, &format!("已放置 {copied} 个 VC++ 运行库文件"));
     }
+    let bootstrap = storage::runtime_root_dir(app).map_err(|error| error.to_string())?.join("python.exe");
+    repair_embedded_python_from(&bootstrap, &target)?;
     verify_interpreter(&target.join("Scripts").join("python.exe"))?;
 
     write_active_pointer(&envs, &descriptor)?;
@@ -362,6 +364,18 @@ fn copy_dlls(from: &Path, to: &Path) -> std::io::Result<usize> {
         }
     }
     Ok(copied)
+}
+
+/// 运行时资产必须是自包含的嵌入式 Python，而不是依赖旧安装目录的 venv 启动器。
+/// 用随包提供的真实嵌入式解释器覆盖 venv 启动器，并移除 pyvenv.cfg。
+fn repair_embedded_python_from(bootstrap: &Path, target: &Path) -> Result<(), String> {
+    if !bootstrap.is_file() {
+        return Err(format!("嵌入式 Python 解释器不存在：{}", bootstrap.display()));
+    }
+    let python = target.join("Scripts").join("python.exe");
+    fs::copy(bootstrap, &python).map_err(|error| error.to_string())?;
+    let _ = fs::remove_file(target.join("pyvenv.cfg"));
+    Ok(())
 }
 
 /// 装完立刻验证解释器能加载 C++ 运行库：失败时给出可操作的错误，
@@ -541,6 +555,21 @@ mod descriptor_tests {
         assert_eq!(copied, 1);
         assert!(target.join("msvcp140.dll").is_file());
         assert!(!target.join("SOURCE.json").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn repair_embedded_python_replaces_the_venv_launcher_and_removes_config() {
+        let root = std::env::temp_dir().join(format!("mediaforge-embedded-python-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let bootstrap = root.join("bootstrap-python.exe");
+        let target = root.join("runtime");
+        fs::create_dir_all(target.join("Scripts")).unwrap();
+        fs::write(&bootstrap, b"embedded-python").unwrap();
+        fs::write(target.join("pyvenv.cfg"), "home = C:/old/install\n").unwrap();
+        repair_embedded_python_from(&bootstrap, &target).unwrap();
+        assert_eq!(fs::read(target.join("Scripts").join("python.exe")).unwrap(), b"embedded-python");
+        assert!(!target.join("pyvenv.cfg").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
