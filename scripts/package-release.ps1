@@ -48,13 +48,9 @@ function Compress-Folder([string]$Source, [string]$Destination, [string]$Label) 
 }
 
 function Get-SigningPassword {
-    # 环境变量优先；其次读用户级环境（setx 写 HKCU\Environment，
-    # 已在运行的进程继承不到新值，只能直接读注册表）。
-    if ($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { return $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD }
-    try {
-        $value = (Get-ItemProperty 'HKCU:\Environment' -Name 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD' -ErrorAction Stop).TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-        if ($value) { return [string]$value }
-    } catch { }
+    # 新专用密钥默认无密码。若以后加密，只从当前进程显式读取，
+    # 不再回退到旧密钥可能留下的注册表密码。
+    if ($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { return [string]$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD }
     return ''
 }
 
@@ -207,9 +203,10 @@ $updateZip = "$out\MediaForge-$Version-windows-x64-update.zip"
 if (Test-Path $updateZip) { Remove-Item $updateZip -Force }
 Compress-Folder -Source $updateRoot -Destination $updateZip -Label "update.zip"
 Remove-Item $updateRoot -Recurse -Force
-$keyPath = Join-Path $env:USERPROFILE '.mediaforge-keys\mediaforge.key'
+$keyPath = Join-Path $env:USERPROFILE '.mediaforge-signing\mediaforge-minisign.key'
 $signingPassword = if ($SkipSign) { '' } else { Get-SigningPassword }
-if (-not $SkipSign -and $signingPassword -and (Test-Path $keyPath)) {
+$passwordArg = if ($signingPassword) { $signingPassword } else { '""' }
+if (-not $SkipSign -and (Test-Path $keyPath)) {
     $signer = "$root\node_modules\.bin\tauri.cmd"
     Push-Location $root
     # tauri CLI 会把 TAURI_SIGNING_PRIVATE_KEY 环境变量也算作"已提供 key"，
@@ -218,7 +215,7 @@ if (-not $SkipSign -and $signingPassword -and (Test-Path $keyPath)) {
     $savedPassword = $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
     Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
-    try { Invoke-Native 'signer' { & $signer signer sign -f $keyPath -p $signingPassword $updateZip } }
+    try { Invoke-Native 'signer' { & $signer signer sign -f $keyPath -p $passwordArg $updateZip } }
     finally {
         Pop-Location
         if ($savedKey) { $env:TAURI_SIGNING_PRIVATE_KEY = $savedKey }

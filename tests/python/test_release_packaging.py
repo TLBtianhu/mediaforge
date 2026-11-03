@@ -11,7 +11,9 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertIn("[switch]$SkipSign", script)
         self.assertIn("[switch]$SkipDownloadCopy", script)
         self.assertIn("if ($SkipSign) { '' } else { Get-SigningPassword }", script)
-        self.assertIn("-not $SkipSign -and $signingPassword", script)
+        self.assertIn("-not $SkipSign -and (Test-Path $keyPath)", script)
+        self.assertIn(".mediaforge-signing\\mediaforge-minisign.key", script)
+        self.assertIn('-p $passwordArg $updateZip', script)
 
     def test_local_installer_copy_stays_inside_release_local(self) -> None:
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
