@@ -25,6 +25,28 @@ static JSON_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static JSON_WRITE_LOCK: Mutex<()> = Mutex::new(());
 const PORTABLE_MARKER_FILE_NAME: &str = "mediaforge.portable";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InstalledLayout {
+    data: PathBuf,
+    models: PathBuf,
+    runtime_envs: PathBuf,
+}
+
+/// 安装根下的 app 子目录只放可替换程序，数据、模型和运行时与程序平级。
+/// 旧扁平安装仍按旧数据根处理，不把任意 exe 目录误认成安装根。
+fn installed_layout_for(exe: &Path) -> Option<InstalledLayout> {
+    let app_dir = exe.parent()?;
+    if app_dir.file_name()?.to_str()? != "app" {
+        return None;
+    }
+    let root = app_dir.parent()?;
+    Some(InstalledLayout {
+        data: root.join("data"),
+        models: root.join("models"),
+        runtime_envs: root.join("runtime-envs"),
+    })
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppPathsPayload {
@@ -45,6 +67,14 @@ pub fn home_dir(app: &AppHandle) -> AppResult<PathBuf> {
 
 fn legacy_data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(home_dir(app)?.join(DATA_ROOT_DIR_NAME))
+}
+
+fn installed_data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    #[cfg(windows)]
+    if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
+        return Ok(layout.data);
+    }
+    legacy_data_root_dir(app)
 }
 
 fn development_data_root_dir() -> AppResult<PathBuf> {
@@ -130,7 +160,7 @@ pub fn data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
         env_root,
         development_data_root_dir()?,
         portable_data_root_dir()?,
-        legacy_data_root_dir(app)?,
+        installed_data_root_dir(app)?,
         is_development_executable(),
     ))
 }
@@ -140,6 +170,10 @@ pub fn settings_dir(app: &AppHandle) -> AppResult<PathBuf> {
 }
 
 pub fn models_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    #[cfg(windows)]
+    if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
+        return Ok(layout.models);
+    }
     Ok(data_root_dir(app)?.join("models"))
 }
 
@@ -216,6 +250,10 @@ pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
         if !value.is_empty() {
             return Ok(PathBuf::from(value));
         }
+    }
+    #[cfg(windows)]
+    if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
+        return Ok(layout.runtime_envs);
     }
     #[cfg(any(feature = "vst-lab", target_os = "macos", target_os = "linux"))]
     {
@@ -1399,9 +1437,12 @@ mod tests {
     }
 
     #[test]
-    fn release_without_portable_marker_uses_legacy_data() {
-        let root = resolve_data_root(None, path("dev-data"), None, path("legacy-data"), false);
-
-        assert_eq!(root, path("legacy-data"));
+    fn installed_layout_keeps_data_models_and_runtime_beside_app() {
+        let layout = super::installed_layout_for(&path("C:/root/app/MediaForge.exe"))
+            .expect("installed layout");
+        assert_eq!(layout.data, path("C:/root/data"));
+        assert_eq!(layout.models, path("C:/root/models"));
+        assert_eq!(layout.runtime_envs, path("C:/root/runtime-envs"));
+        assert!(super::installed_layout_for(&path("C:/root/MediaForge.exe")).is_none());
     }
 }

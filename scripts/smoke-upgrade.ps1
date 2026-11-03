@@ -132,8 +132,8 @@ try {
     Write-Host "`n[1/4] 安装 A"
     $a = Start-Process -FilePath $installerA -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"" -Wait -PassThru
     Check 'A 安装退出码为 0' ($a.ExitCode -eq 0) "exit=$($a.ExitCode)"
-    Check 'A 程序已落盘' (Test-Path (Join-Path $installDir 'MediaForge.exe'))
-    Check 'A 版本标记正确' ((Get-Content (Join-Path $installDir 'app-marker.txt') -Raw).Trim() -eq "version=$VersionA")
+    Check 'A 程序已落盘' (Test-Path (Join-Path $installDir 'app\MediaForge.exe'))
+    Check 'A 版本标记正确' ((Get-Content (Join-Path $installDir 'app\app-marker.txt') -Raw).Trim() -eq "version=$VersionA")
 
     Write-Host "`n[2/4] 造一份老用户数据"
     $settings = Join-Path $dataRoot 'settings\settings.json'
@@ -159,12 +159,12 @@ try {
     Write-Host "`n[3/4] 覆盖安装 B"
     $b = Start-Process -FilePath $installerB -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"" -Wait -PassThru
     Check 'B 安装退出码为 0' ($b.ExitCode -eq 0) "exit=$($b.ExitCode)"
-    Check 'B 版本标记已替换' ((Get-Content (Join-Path $installDir 'app-marker.txt') -Raw).Trim() -eq "version=$VersionB")
+    Check 'B 版本标记已替换' ((Get-Content (Join-Path $installDir 'app\app-marker.txt') -Raw).Trim() -eq "version=$VersionB")
     Check '配置文件保留' ((Test-Path $settings) -and ((Hash-Of $settings) -eq $settingsHash))
     Check '模型权重保留' ((Test-Path $weights) -and ((Hash-Of $weights) -eq $weightsHash))
     Check '运行时解释器保留' (Test-Path (Join-Path $venvDir 'Scripts\python.exe'))
     $cfgText = if (Test-Path $venvCfg) { Get-Content $venvCfg -Raw } else { '' }
-    $expectedHome = 'home = ' + (Join-Path $installDir 'python-runtime')
+    $expectedHome = 'home = ' + (Join-Path $installDir 'app\python-runtime')
     Check 'pyvenv.cfg 重指到新程序目录' ($cfgText.Contains($expectedHome)) $expectedHome
     Check 'pyvenv.cfg 仍在测试数据根内' ($venvCfg.StartsWith($dataRoot, [System.StringComparison]::OrdinalIgnoreCase))
     if ($realVenvHash) {
@@ -182,7 +182,7 @@ try {
         $un = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
         Check '卸载退出码为 0' ($un.ExitCode -eq 0) "exit=$($un.ExitCode)"
         Start-Sleep -Seconds 2
-        Check '卸载后程序目录消失' (-not (Test-Path (Join-Path $installDir 'MediaForge.exe')))
+        Check '卸载后程序目录消失' (-not (Test-Path (Join-Path $installDir 'app\MediaForge.exe')))
         Check '卸载保留配置与模型' ((Test-Path $settings) -and (Test-Path $weights))
     }
 } finally {

@@ -23,7 +23,7 @@ AppPublisher={#MyAppPublisher}
 AppVerName={#MyAppName} {#MyAppVersion}
 DefaultDirName={localappdata}\Programs\{#MyAppName}
 ; 用户不选目录：安装位置是常量，升级自然落在同一处。
-DisableDirPage=yes
+DisableDirPage=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 ; Select the installer process architecture independently of the install mode.
@@ -38,7 +38,7 @@ LZMADictionarySize=1048576
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=..\src-tauri\icons\icon.ico
-UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayIcon={app}\app\{#MyAppExeName}
 CloseApplications=yes
 RestartApplications=no
 DirExistsWarning=no
@@ -49,29 +49,32 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "dshbridge"; Description: "附带 DSH 集成桥（由 DSH 插件管理器加载）"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "python-runtime\runtime-envs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion
+Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "python-runtime\runtime-envs\*,integrations\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\integrations\*"; DestDir: "{app}\integrations"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Tasks: dshbridge
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 
 [Dirs]
-; Keep the bootstrap interpreter read-only. Only managed environments need user write access.
+Name: "{app}\data"
+Name: "{app}\models"
+Name: "{app}\runtime-envs"
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\app\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\app\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
 ; 安装路径指针：MCP 启动器（%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd）按
 ; MEDIAFORGE_HOME → 这个键 → %LOCALAPPDATA%\Programs → Program Files 的顺序找应用。
 ; 写在声明区而不是脚本里，脚本失败也不会丢指针。
-Root: HKCU; Subkey: "Software\MediaForge"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\MediaForge"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}\app"; Flags: uninsdeletekey
 
 [Run]
-; 安装结束把 MediaForge 接进 DeepSeek Harness（没有 DSH 时脚本自己跳过）。
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\integrations\dsh-mediaforge\register.ps1"""; StatusMsg: "Registering MediaForge with DeepSeek Harness..."; Flags: runhidden waituntilterminated skipifdoesntexist
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; DSH 集成只随包提供能力，不由安装器修改宿主配置；以后由 DSH 插件管理器加载。
+Filename: "{app}\app\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 function DataRoot(): string;
@@ -84,7 +87,7 @@ begin
   if EnvRoot <> '' then
     Result := EnvRoot
   else
-    Result := ExpandConstant('{userprofile}\.mediaforge');
+    Result := ExpandConstant('{app}\data');
 end;
 
 procedure RemoveIfExists(Path: string);
@@ -102,15 +105,15 @@ end;
 procedure CleanupInstallTree();
 begin
   { Remove known development leftovers if they ever slip into the staged directory. }
-  RemoveIfExists(ExpandConstant('{app}') + '\.git');
-  RemoveIfExists(ExpandConstant('{app}') + '\.github');
-  RemoveIfExists(ExpandConstant('{app}') + '\.claude');
-  RemoveIfExists(ExpandConstant('{app}') + '\.omc');
-  RemoveIfExists(ExpandConstant('{app}') + '\.spec-workflow');
-  RemoveIfExists(ExpandConstant('{app}') + '\__pycache__');
-  RemoveIfExists(ExpandConstant('{app}') + '\python-runtime\Doc');
-  RemoveIfExists(ExpandConstant('{app}') + '\python-runtime\include');
-  RemoveIfExists(ExpandConstant('{app}') + '\python-runtime\libs');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\.git');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\.github');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\.claude');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\.omc');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\.spec-workflow');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\__pycache__');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\python-runtime\Doc');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\python-runtime\include');
+  RemoveIfExists(ExpandConstant('{app}\app') + '\python-runtime\libs');
 end;
 
 procedure RepairVenvConfig(Backend: string);
@@ -123,7 +126,7 @@ var
 begin
   EnvDir := DataRoot() + '\runtime-envs\' + Backend;
   ConfigPath := EnvDir + '\pyvenv.cfg';
-  PythonRuntimeDir := ExpandConstant('{app}') + '\python-runtime';
+  PythonRuntimeDir := ExpandConstant('{app}\app') + '\python-runtime';
   PythonExe := PythonRuntimeDir + '\python.exe';
 
   if (not FileExists(ConfigPath)) or (not FileExists(PythonExe)) then
@@ -163,5 +166,53 @@ begin
     RepairBundledRuntimeEnvs();
     CleanupInstallTree();
       SaveStringToFile(ExpandConstant('{app}') + '\mediaforge.inno-install', 'managed' + #13#10, False);
+  end;
+end;
+
+var
+  CleanupOptions: TNewCheckListBox;
+  SelectAllButton: TNewButton;
+
+procedure SelectAllCleanup(Sender: TObject);
+var
+  Index: Integer;
+begin
+  for Index := 0 to CleanupOptions.Items.Count - 1 do
+    CleanupOptions.Checked[Index] := True;
+end;
+
+procedure InitializeUninstallProgressForm();
+begin
+  if UninstallSilent then
+    Exit;
+  CleanupOptions := TNewCheckListBox.Create(UninstallProgressForm);
+  CleanupOptions.Parent := UninstallProgressForm;
+  CleanupOptions.Left := 0;
+  CleanupOptions.Top := 80;
+  CleanupOptions.Width := UninstallProgressForm.ClientWidth;
+  CleanupOptions.Height := 120;
+  CleanupOptions.Items.Add('同时删除独立运行时（runtime-envs）');
+  CleanupOptions.Items.Add('同时删除模型资源（models）');
+  CleanupOptions.Items.Add('同时删除配置、日志和任务历史（data）');
+
+  SelectAllButton := TNewButton.Create(UninstallProgressForm);
+  SelectAllButton.Parent := UninstallProgressForm;
+  SelectAllButton.Left := 0;
+  SelectAllButton.Top := 205;
+  SelectAllButton.Width := 120;
+  SelectAllButton.Caption := '全选以上资源';
+  SelectAllButton.OnClick := @SelectAllCleanup;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    if Assigned(CleanupOptions) then
+    begin
+      if CleanupOptions.Checked[0] then RemoveIfExists(ExpandConstant('{app}\runtime-envs'));
+      if CleanupOptions.Checked[1] then RemoveIfExists(ExpandConstant('{app}\models'));
+      if CleanupOptions.Checked[2] then RemoveIfExists(ExpandConstant('{app}\data'));
+    end;
   end;
 end;
