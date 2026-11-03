@@ -32,8 +32,8 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   sha256 7301ed11…f3d1，3618371871 字节
 分发隔离          开发=仓库 .dev-data，便携=<exe 目录>/data，安装=%USERPROFILE%/.mediaforge；
                   开发/便携/首装/升级/A→B→A 回滚均有真实进程级 E2E 与 CI
-版本清单          远端 versions.json 的 GitHub 与魔搭端点均返回 200，但仍为旧
-                  runtime-cuda-2026.10.2；本地基线已是 2026.11.3，待重签并发布新清单
+版本清单          GitHub 与魔搭 versions.json 均返回 200，runtime-cuda-2026.11.3、
+                  大小和 SHA-256 与本地及 manifest/runtime.json 一致，签名文件同步
 Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
                   makeInferenceDefaults / makePlayback / makeStemSelection / makeQueue /
                   makeOutputDirectory / makeExecutionLog / makeRuntimeDebugFiles

@@ -85,6 +85,9 @@ def sign(path: Path) -> Path:
         command += ["-k", key]
     if password:
         command += ["-p", password]
+    else:
+        # Tauri 在无密码私钥时也需要显式空密码，否则会停在密码提示。
+        command += ["-p", ""]
     command.append(str(path))
     result = subprocess.run(command, cwd=ROOT, env=env)
     if result.returncode != 0:

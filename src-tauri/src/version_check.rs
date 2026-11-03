@@ -21,7 +21,7 @@ use crate::runtime_assets::{self, RuntimeDescriptor};
 use crate::storage;
 
 /// 与 `tauri.conf.json` 的 `plugins.updater.pubkey` 是同一把 key（minisign 公钥，base64）。
-const VERSIONS_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGOTFCNEFFRTRGNUJBN0EKUldSNnV2WGtyclNSZjc4Y0Z4aDVGSUNTV0xlSkgwczdhSW9jenNkQXgrQmVZOTIrVVVhWEpLYW4K";
+const VERSIONS_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk3OTE1MTQyQjEyNzYxMzYKUldRMllTZXhRbEdSbHdKclg2RzBGbmo0ZGJZYzZMNzY1a1d3a3hFN3JXbWs3SkxOK21HTkI4RFMK";
 
 /// 发布源：版本清单与签名放在同一个目录下（`versions.json` + `versions.json.sig`）。
 /// 环境变量可覆盖，测试与自建镜像都走这一个入口。
