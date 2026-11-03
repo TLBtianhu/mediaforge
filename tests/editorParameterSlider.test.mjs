@@ -62,6 +62,11 @@ const flush = async () => {
 }
 const resetLabel = spec => spec.reset === 1 ? '100%' : spec.min < 0 ? 'Center' : '0%'
 const updatedValues = env => env.emitted.filter(([kind]) => kind === 'update').map(([, , value]) => value)
+// happy-dom 在 mousedown 内发生的 focus/blur 可能立即终止 Naive 拖拽；先建立稳定焦点。
+const focusHandle = async env => {
+  env.handle().focus()
+  await flush()
+}
 
 async function mountSliders(t, specs = [parameters[0]], { disabled = false, value = 0.4 } = {}) {
   const pinia = createPinia()
@@ -113,6 +118,15 @@ async function doubleClick(target, x) {
   await click(target, x, 1)
   await click(target, x, 2)
   await mouse(target, 'dblclick', x, 2)
+}
+async function startLifecycleDrag(env) {
+  await focusHandle(env)
+  await mouse(env.slider(), 'mousedown', 20)
+  assert.equal(document.activeElement, env.handle())
+  assert.equal(env.slider().classList.contains('n-slider--active'), true)
+  // 先让 document 的拖拽监听看到起点，再验证移动、禁用或卸载。
+  await mouse(document, 'mousemove', 20)
+  await mouse(document, 'mousemove', 60)
 }
 
 test('limiter switch Space activation preserves playback while the editor background retains its shortcut', async t => {
@@ -232,6 +246,7 @@ test('Space on the focused Default button preserves native activation without re
 
 test('double-clicking the handle edge resets without an intermediate positional update', async t => {
   const env = await mountSliders(t)
+  await focusHandle(env)
   await doubleClick(env.handle(), 23)
   assert.equal(env.store.masterVolume, 1)
   assert.deepEqual(updatedValues(env), [1])
@@ -243,6 +258,7 @@ test('double-clicking the handle edge resets without an intermediate positional 
 
 test('ordinary rail double-click adjusts the value and never resets it', async t => {
   const env = await mountSliders(t)
+  await focusHandle(env)
   await doubleClick(env.slider().querySelector('.n-slider-rail'), 85)
   assert.equal(env.store.masterVolume, 1.7)
   assert.deepEqual(updatedValues(env), [1.7])
@@ -253,6 +269,7 @@ test('ordinary rail double-click adjusts the value and never resets it', async t
 
 test('a rail click that moves the handle under the pointer does not become a handle reset', async t => {
   const env = await mountSliders(t)
+  await focusHandle(env)
   await click(env.slider().querySelector('.n-slider-rail'), 85, 1)
   await click(env.handle(), 85, 2)
   await mouse(env.handle(), 'dblclick', 85, 2)
@@ -298,6 +315,7 @@ test('ordinary drag groups updates while keyboard steps remain independent undo 
   const env = await mountSliders(t)
   assert.equal(env.handle().getAttribute('aria-valuemin'), '0')
   assert.equal(env.handle().getAttribute('aria-valuemax'), '2')
+  await focusHandle(env)
   await mouse(env.handle(), 'mousedown', 23)
   assert.equal(env.store.masterVolume, 0.4, 'pressing the thumb edge must not jump')
   await mouse(document, 'mousemove', 40)
@@ -335,6 +353,7 @@ test('default values and unchanged handle presses do not add undo history', asyn
   const env = await mountSliders(t, undefined, { value: 1 })
   assert.equal(env.resetButton().disabled, true)
   env.resetButton().click()
+  await focusHandle(env)
   await doubleClick(env.handle(), 53)
   await mouse(env.slider(), 'mousedown', 85, 1, { altKey: true })
   await mouse(document, 'mouseup', 85)
@@ -345,8 +364,7 @@ test('default values and unchanged handle presses do not add undo history', asyn
 
 test('unmount closes an active interaction so later edits can start their own undo action', async t => {
   const env = await mountSliders(t)
-  await mouse(env.handle(), 'mousedown', 20)
-  await mouse(document, 'mousemove', 60)
+  await startLifecycleDrag(env)
   env.visible.value = false
   await flush()
   assert.equal(env.emitted.filter(([kind]) => kind === 'begin').length, 1)
@@ -363,8 +381,7 @@ test('unmount closes an active interaction so later edits can start their own un
 
 test('disabling during a drag commits once and blocks further gesture updates', async t => {
   const env = await mountSliders(t)
-  await mouse(env.handle(), 'mousedown', 20)
-  await mouse(document, 'mousemove', 60)
+  await startLifecycleDrag(env)
   env.inactive.value = true
   await flush()
   await mouse(document, 'mousemove', 85)
