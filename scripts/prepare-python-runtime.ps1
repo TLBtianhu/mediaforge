@@ -132,6 +132,19 @@ function Install-BootstrapRequirements {
     }
 }
 
+function Install-MediaRequirements {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PythonPath
+    )
+    $requirements = Join-Path $root "python\requirements-media.txt"
+    if (Test-Path -LiteralPath $requirements) {
+        Invoke-NativeChecked -FilePath $PythonPath -Arguments @(
+            '-m', 'pip', 'install', '--no-cache-dir', '--only-binary=:all:', '--prefer-binary', '-r', $requirements
+        )
+    }
+}
+
 function Rewrite-WindowsRuntimeEnvConfigs {
     param(
         [Parameter(Mandatory = $true)]
@@ -266,6 +279,7 @@ if ($InitialBackend) {
     if ($manifestBackendExtras.Count -gt 0) {
         Invoke-NativeChecked -FilePath $envPython -Arguments (@('-m', 'pip', 'install', '--no-cache-dir') + $manifestBackendExtras)
     }
+    Install-MediaRequirements -PythonPath $envPython
     Invoke-NativeChecked -FilePath $envPython -Arguments (@('-m', 'pip', 'install', '--no-cache-dir', '--upgrade') + @($manifestPymssRequirement, $manifestPymssCoreRequirement))
     $rocmToolDirs = if ($InitialBackend -eq "rocm") { Remove-RocmOffloadArchLauncher -EnvironmentDir $envDir } else { @() }
     & (Join-Path $PSScriptRoot "prune-python-runtime.ps1") -RuntimeDir $envDir -KeepScripts
@@ -437,6 +451,7 @@ Invoke-NativeChecked -FilePath $runtimePython -Arguments (@('-m', 'pip', 'instal
 if ($manifestBackendExtras.Count -gt 0) {
     Invoke-NativeChecked -FilePath $runtimePython -Arguments (@('-m', 'pip', 'install', '--no-cache-dir') + $manifestBackendExtras)
 }
+Install-MediaRequirements -PythonPath $runtimePython
 Invoke-NativeChecked -FilePath $runtimePython -Arguments (@('-m', 'pip', 'install', '--no-cache-dir', '--upgrade') + @($manifestPymssRequirement, $manifestPymssCoreRequirement))
 
 & (Join-Path $PSScriptRoot "prune-python-runtime.ps1") -RuntimeDir $runtime -KeepVenv

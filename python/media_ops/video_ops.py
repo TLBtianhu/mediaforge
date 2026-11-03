@@ -244,7 +244,7 @@ def _stream(
         ]
         if preview_seconds and preview_seconds > 0:
             decode_command += ["-t", f"{float(preview_seconds):.3f}"]
-        decode_command += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0", "-"]
+        decode_command += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-fps_mode", "passthrough", "-"]
 
         if progress:
             progress(0.02, "解码首帧…")
@@ -468,7 +468,7 @@ def interpolate_video(
             progress(0.05, "解出原始帧…")
         subprocess.run(
             [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-             "-i", str(src), "-vsync", "0", str(frames_dir / "f_%06d.png")],
+             "-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")],
             check=True, capture_output=True,
         )
         frames = sorted(frames_dir.glob("f_*.png"))
@@ -571,7 +571,7 @@ def inpaint_video(
         command = [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
         if preview_seconds > 0:
             command.extend(["-t", str(float(preview_seconds))])
-        command.extend(["-i", str(src), "-vsync", "0", str(frames_dir / "f_%06d.png")])
+        command.extend(["-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")])
         subprocess.run(command, check=True, capture_output=True)
         frames = sorted(frames_dir.glob("f_*.png"))
         if not frames:
@@ -665,7 +665,7 @@ def upscale_video(
         command = [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
         if preview_seconds > 0:
             command.extend(["-t", str(float(preview_seconds))])
-        command.extend(["-i", str(src), "-vsync", "0", str(frames_dir / "f_%06d.png")])
+        command.extend(["-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")])
         subprocess.run(command, check=True, capture_output=True)
         frames = sorted(frames_dir.glob("f_*.png"))
         if not frames:

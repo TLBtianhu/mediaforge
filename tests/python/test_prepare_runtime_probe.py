@@ -46,6 +46,13 @@ class PrepareRuntimeProbeTests(unittest.TestCase):
                 self.assertEqual(state["packageVersions"]["torch"], "2.7.1")
                 self.assertTrue(state["packages"]["torch"])
 
+    def test_windows_prepare_installs_media_requirements_in_both_build_modes(self):
+        script = (Path(__file__).resolve().parents[2] / "scripts/prepare-python-runtime.ps1").read_text(encoding="utf-8")
+        self.assertIn("function Install-MediaRequirements", script)
+        self.assertIn("requirements-media.txt", script)
+        self.assertEqual(script.count("Install-MediaRequirements -PythonPath $envPython"), 1)
+        self.assertEqual(script.count("Install-MediaRequirements -PythonPath $runtimePython"), 1)
+
     def test_windows_backend_extras_omit_missing_and_blank_requirements(self):
         powershell = shutil.which("powershell.exe") or shutil.which("pwsh")
         if powershell is None:

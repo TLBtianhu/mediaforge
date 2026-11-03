@@ -9,7 +9,7 @@
 #       -AppExe release\stage-0.0.23\MediaForge.exe
 param(
     [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.23\MediaForge.exe",
-    [string]$RuntimeZip = "$PSScriptRoot\..\release\runtime\runtime-cuda-2026.10.2.zip",
+    [string]$RuntimeZip = "$PSScriptRoot\..\release\runtime\runtime-cuda-2026.11.3.zip",
     [int]$Port = 8765,
     [string]$HttpPython = ''
 )

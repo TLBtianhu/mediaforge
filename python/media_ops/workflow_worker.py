@@ -51,7 +51,7 @@ def _validate_models(steps: list[dict[str, Any]]) -> None:
     for step in steps:
         for model_id in step["bindings"].values():
             path = capabilities.model_path(str(model_id))
-            if not path.is_file():
+            if not path.exists():
                 missing.append(f"{model_id} ({path})")
     if missing:
         raise FileNotFoundError("missing models: " + ", ".join(missing))
@@ -92,6 +92,66 @@ def _run_image(
     return result
 
 
+def _run_video_sequence(
+    source: Path,
+    output_dir: Path,
+    steps: list[dict[str, Any]],
+    payload: dict[str, Any],
+    request_id: str | None,
+    index: int,
+    total: int,
+) -> dict[str, Any]:
+    """整段序列能力的单步工作流入口，与逐帧 FrameStep 管线分开。"""
+    capability = str(steps[0].get("capability") or "")
+    params = steps[0].get("params") if isinstance(steps[0].get("params"), dict) else {}
+    bindings = steps[0].get("bindings") if isinstance(steps[0].get("bindings"), dict) else {}
+
+    def report(fraction: float, message: str) -> None:
+        base = (index + max(0.0, min(1.0, fraction))) / max(total, 1)
+        _progress(request_id, base, f"{message} {source.name}", index, total)
+
+    if capability == "video_super_resolution":
+        result = video_ops.upscale_video(
+            capabilities.model_path(str(bindings["upscaler"])),
+            source,
+            output_dir,
+            preview_seconds=float(payload.get("previewSeconds") or 0),
+            crf=int(payload.get("crf") or 18),
+            preset=str(payload.get("preset") or "fast"),
+            progress=report,
+        )
+    elif capability == "video_inpainting":
+        mask_path = str(payload.get("maskPath") or "").strip() or None
+        detector_path = None
+        if mask_path is None:
+            detector_path = capabilities.model_path(capabilities.default_bindings("watermark_removal")["detector"])
+        result = video_ops.inpaint_video(
+            capabilities.model_path(str(bindings["primary"])),
+            source,
+            output_dir,
+            mask_path=mask_path,
+            detector_path=detector_path,
+            conf=float(params.get("conf") or payload.get("conf") or 0.25),
+            expand=int(params.get("expand") or payload.get("expand") or 8),
+            detect_mode=str(params.get("detectMode") or payload.get("detectMode") or "fixed"),
+            subvideo_length=int(params.get("subvideoLength") or payload.get("subvideoLength") or 80),
+            preview_seconds=float(payload.get("previewSeconds") or 0),
+            crf=int(payload.get("crf") or 18),
+            preset=str(payload.get("preset") or "fast"),
+            progress=report,
+        )
+    else:
+        raise ValueError(f"unsupported sequence workflow capability: {capability}")
+    return {
+        "path": result["path"],
+        "source": str(source),
+        "mode": "workflow",
+        "steps": [capability],
+        "info": result,
+        "size": result["size"],
+    }
+
+
 def _run_video(
     source: Path,
     output_dir: Path,
@@ -107,6 +167,12 @@ def _run_video(
     （代际损失 × N）、每步还新建一个 `ImageRestorer` 把模型重新加载一遍。
     现在步骤被翻译成 `FrameStep`，一帧跑完所有步骤再进编码器。
     """
+    sequence = [str(step.get("capability") or "") for step in steps if str(step.get("capability") or "") in video_step.SEQUENCE_CAPABILITIES]
+    if sequence:
+        if len(steps) != 1:
+            raise ValueError("sequence video capabilities currently require a single-step workflow")
+        return _run_video_sequence(source, output_dir, steps, payload, request_id, index, total)
+
     merged_paths: dict[str, str] = {}
     frame_steps: list[video_ops.FrameStep] = []
     step_meta: list[dict[str, Any]] = []

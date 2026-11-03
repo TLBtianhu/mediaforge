@@ -28,12 +28,12 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   测试专用 helper 与 imports 已用 cfg(test) 移出生产构建
 模型列表          core/model_hub.py 是唯一入口，合并 audio_catalog.json（326 条）
                   与 media_ops/media_catalog.json（含目录型 Depth/RMBG 文件清单）
-运行时            内容寻址资产 runtime-cuda-2026.10.2，
-                  sha256 7a1040eb…784d，3616417066 字节
+运行时            内容寻址资产 runtime-cuda-2026.11.3，
+                  sha256 7301ed11…f3d1，3618371871 字节
 分发隔离          开发=仓库 .dev-data，便携=<exe 目录>/data，安装=%USERPROFILE%/.mediaforge；
                   开发/便携/首装/升级/A→B→A 回滚均有真实进程级 E2E 与 CI
 版本清单          versions.json 的 GitHub 与魔搭端点均返回 200，内容为 app 0.0.23、
-                  runtime-cuda-2026.10.2，与 manifest/runtime.json 一致
+                  runtime-cuda-2026.11.3，与 manifest/runtime.json 一致
 Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
                   makeInferenceDefaults / makePlayback / makeStemSelection / makeQueue /
                   makeOutputDirectory / makeExecutionLog / makeRuntimeDebugFiles
