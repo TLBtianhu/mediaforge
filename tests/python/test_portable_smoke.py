@@ -6,14 +6,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class PortableSmokeTests(unittest.TestCase):
-    def test_portable_smoke_polls_for_its_data_root_and_captures_logs(self) -> None:
+    def test_portable_smoke_bounds_gui_wait_and_captures_logs(self) -> None:
         script = (ROOT / "scripts/smoke-portable.ps1").read_text(encoding="utf-8")
         self.assertIn("[int]$LaunchSeconds = 30", script)
-        self.assertIn("AddSeconds($LaunchSeconds)", script)
-        self.assertIn("until ((Test-Path $portableSettings)", script)
+        self.assertIn("Start-Sleep -Seconds ([Math]::Min(3, $LaunchSeconds))", script)
+        self.assertNotIn("until ((Test-Path $portableSettings)", script)
         self.assertIn("-RedirectStandardOutput $stdout", script)
         self.assertIn("-RedirectStandardError $stderr", script)
-        self.assertNotIn("Start-Sleep -Seconds $LaunchSeconds", script)
         self.assertIn("Assert-TempWorkDir", script)
 
     def test_portable_smoke_isolates_and_restores_webview_profile(self) -> None:
@@ -28,6 +27,12 @@ class PortableSmokeTests(unittest.TestCase):
         self.assertIn("Name = 'msedgewebview2.exe'", script)
         self.assertIn("$_.CommandLine.Contains($webviewRoot)", script)
         self.assertIn("WebView2 child processes did not exit within 10 seconds", script)
+
+    def test_data_root_probe_is_separate_from_gui_startup(self) -> None:
+        script = (ROOT / "scripts/smoke-portable.ps1").read_text(encoding="utf-8")
+        self.assertIn("-ArgumentList '--smoke-print-data-root'", script)
+        self.assertIn("真实进程数据根初始化", script)
+        self.assertIn("便携形态被识别", script)
 
 
 if __name__ == "__main__":

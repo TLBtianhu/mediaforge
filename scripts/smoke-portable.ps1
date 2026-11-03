@@ -67,16 +67,27 @@ $stderr = Join-Path $work 'portable.stderr.log'
 $previousWebView = [Environment]::GetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER')
 $webviewRoot = Join-Path $work 'webview2'
 $env:WEBVIEW2_USER_DATA_FOLDER = $webviewRoot
+# 先用真实进程直接验证数据根，避免把 GUI/WebView2 启动速度误当成数据根错误。
+$rootStdout = Join-Path $work 'portable-root.stdout.log'
+$rootStderr = Join-Path $work 'portable-root.stderr.log'
+$rootProcess = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList '--smoke-print-data-root' -Wait -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput $rootStdout -RedirectStandardError $rootStderr
+$rootOutput = if (Test-Path $rootStdout) { Get-Content $rootStdout -Raw } else { '' }
+$rootErrors = if (Test-Path $rootStderr) { Get-Content $rootStderr -Raw } else { '' }
+$rootLine = @($rootOutput -split '\r?\n' | Where-Object { $_ -like 'SMOKE_DATA_ROOT=*' }) | Select-Object -Last 1
+$actualRoot = if ($rootLine) { $rootLine.Substring('SMOKE_DATA_ROOT='.Length).Trim().TrimEnd('\') } else { '' }
+$expectedRoot = (Join-Path $app 'data').TrimEnd('\')
+if ($rootOutput) { Write-Host $rootOutput.TrimEnd() }
+if ($rootErrors) { Write-Host $rootErrors.TrimEnd() }
+Check '真实进程数据根初始化' ($rootProcess.ExitCode -eq 0) "exit=$($rootProcess.ExitCode)"
+Check '便携形态被识别' ($rootOutput -match '(?m)^SMOKE_DEVELOPMENT=false\s*$')
+Check '数据根在程序旁 data\' ($actualRoot -and $actualRoot.Equals($expectedRoot, [StringComparison]::OrdinalIgnoreCase)) $actualRoot
+if ($failures.Count -gt 0) { exit 1 }
+
 $process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-$portableSettings = Join-Path $app 'data\settings'
-$deadline = [DateTime]::UtcNow.AddSeconds($LaunchSeconds)
-do {
-    Start-Sleep -Seconds 1
-    if ($process.HasExited) { break }
-} until ((Test-Path $portableSettings) -or [DateTime]::UtcNow -ge $deadline)
+Start-Sleep -Seconds ([Math]::Min(3, $LaunchSeconds))
 Check '应用启动后保持运行' (-not $process.HasExited)
-Check '数据根在程序旁 data\' (Test-Path $portableSettings)
 if ($failures.Count -gt 0) {
     foreach ($log in @($stdout, $stderr)) {
         if (-not (Test-Path $log)) { continue }
