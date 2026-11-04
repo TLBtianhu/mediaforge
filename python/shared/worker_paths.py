@@ -5,6 +5,46 @@ from pathlib import Path
 from typing import Any
 
 
+def _app_root() -> Path:
+    # python/shared/worker_paths.py -> 应用根（安装版的 app、便携根或仓库根）
+    return Path(__file__).resolve().parents[2]
+
+
+def default_layout() -> tuple[Path, Path, Path]:
+    """返回 data/models/runtime-envs 三个根，禁止再各自推导旧路径。"""
+    app_root = _app_root()
+    if app_root.name.lower() == "app":
+        root = app_root.parent
+        return root / "data", root / "models", root / "runtime-envs"
+    if (app_root / "mediaforge.portable").is_file():
+        return app_root / "data", app_root / "models", app_root / "runtime-envs"
+    dev_root = app_root / ".dev-data"
+    return dev_root, dev_root / "models", dev_root / "runtime-envs"
+
+
+def data_root(override: Any = None) -> Path:
+    explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
+    if explicit:
+        return Path(explicit).expanduser()
+    return default_layout()[0]
+
+
+def _sibling_or_child(root: Path, name: str) -> Path:
+    # 安装/便携的 data 与 models、runtime-envs 同级；显式自定义数据根保持其子目录语义。
+    return root.parent / name if root.name.lower() == "data" else root / name
+
+
+def runtime_envs_root(override: Any = None, *, data_root: Any = None) -> Path:
+    explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("MEDIAFORGE_DATA_ROOT")):
+        text = str(candidate or "").strip()
+        if text:
+            return _sibling_or_child(Path(text).expanduser(), "runtime-envs")
+    return default_layout()[2]
+
+
 def model_root(override: Any = None, *, data_root: Any = None) -> Path:
     """模型根目录：全仓**唯一**的解析点。
 
@@ -17,17 +57,11 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
 
     1. ``override`` —— payload 里的 ``modelDir`` / 调用方显式参数
     2. ``MEDIAFORGE_MODEL_DIR``
-    3. ``MEDIAFORGE_MODEL_DIR``
-    4. ``data_root`` 参数 / ``MEDIAFORGE_DATA_DIR`` / ``MEDIAFORGE_DATA_ROOT`` 下的 ``models``
-    5. ``~/.mediaforge/models`` —— 打包版的默认值
+    3. ``data_root`` / ``MEDIAFORGE_DATA_DIR`` / ``MEDIAFORGE_DATA_ROOT``
+       —— 安装与便携版的 ``data`` 旁取同级 ``models``，开发根取其 ``models`` 子目录
+    4. ``default_layout()`` —— 安装、便携或开发布局的唯一默认模型根
 
-    刻意**不包含**这两种兜底：
-
-    - ``Path(__file__).parents[N] / "models"``：打包后等于安装目录（Program Files、只读，
-      而且安装包里根本没有 ``models/``）。它只在"某条路径忘了传 modelDir"时发作，
-      也就是**只在发布之后才会炸**。
-    - 仓库根的 ``all_models``：它在打包版里永远不存在，留着只会让开发态和发布态
-      走两条不同的路。需要仓库内模型时显式设 ``MEDIAFORGE_MODEL_DIR``。
+    不再回退到 ``~/.mediaforge/models``，也不包含仓库根的 ``all_models`` 或程序目录。
 
     返回绝对路径；是否创建目录由调用方决定（下载器要 mkdir，只读查询不必）。
     """
@@ -44,9 +78,9 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
     for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("MEDIAFORGE_DATA_ROOT")):
         text = str(candidate or "").strip()
         if text:
-            return Path(text).expanduser() / "models"
+            return _sibling_or_child(Path(text).expanduser(), "models")
 
-    return Path.home() / ".mediaforge" / "models"
+    return default_layout()[1]
 
 
 def export_model_root(model_dir: Any) -> None:

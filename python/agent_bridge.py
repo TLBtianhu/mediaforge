@@ -35,8 +35,7 @@ from media_ops import capabilities  # noqa: E402
 
 
 def _data_root(override: str = "") -> Path:
-    explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
-    root = Path(explicit).expanduser() if explicit else Path.home() / ".mediaforge"
+    root = worker_paths.data_root(override)
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -66,7 +65,7 @@ class Bridge:
         self.token = token
         self.port = port
         self.data_root = data_root
-        runtime_envs = Path(os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR") or data_root / "runtime-envs")
+        runtime_envs = worker_paths.runtime_envs_root(data_root=data_root)
         self.python_path = _active_runtime_python(runtime_envs)
         self.jobs = OperationKernel(data_root, self.python_path)
         # 每个作业已用掉几次自动重试（异步重试必须自己记，台账不存这个）

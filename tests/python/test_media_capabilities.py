@@ -78,15 +78,12 @@ class ModelDirResolutionTests(unittest.TestCase):
     def _env_without_overrides(self) -> dict:
         return {key: value for key, value in os.environ.items() if key not in self.ENV_KEYS}
 
-    def test_never_falls_back_into_the_repository(self) -> None:
+    def test_development_models_live_in_dev_data(self) -> None:
         with mock.patch.dict(os.environ, self._env_without_overrides(), clear=True):
             root = capabilities.model_dir()
         repo_root = Path(capabilities.__file__).resolve().parents[2]
-        self.assertFalse(
-            str(root).lower().startswith(str(repo_root).lower()),
-            f"模型根不能兜底到程序目录：{root}",
-        )
-        self.assertEqual(root.name, "models")
+        self.assertEqual(root, repo_root / ".dev-data" / "models")
+        self.assertNotIn(".mediaforge", str(root))
 
     def test_follows_the_data_root_env(self) -> None:
         with mock.patch.dict(os.environ, {"MEDIAFORGE_DATA_ROOT": r"C:\tmp\mf-data"}):

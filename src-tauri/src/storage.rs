@@ -47,6 +47,18 @@ fn installed_layout_for(exe: &Path) -> Option<InstalledLayout> {
     })
 }
 
+fn portable_layout_for(exe: &Path) -> Option<InstalledLayout> {
+    let root = exe.parent()?;
+    if !root.join(PORTABLE_MARKER_FILE_NAME).is_file() {
+        return None;
+    }
+    Some(InstalledLayout {
+        data: root.join("data"),
+        models: root.join("models"),
+        runtime_envs: root.join("runtime-envs"),
+    })
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppPathsPayload {
@@ -174,6 +186,9 @@ pub fn models_dir(app: &AppHandle) -> AppResult<PathBuf> {
     if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
         return Ok(layout.models);
     }
+    if let Some(layout) = portable_layout_for(&std::env::current_exe()?) {
+        return Ok(layout.models);
+    }
     Ok(data_root_dir(app)?.join("models"))
 }
 
@@ -253,6 +268,9 @@ pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
     }
     #[cfg(windows)]
     if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
+        return Ok(layout.runtime_envs);
+    }
+    if let Some(layout) = portable_layout_for(&std::env::current_exe()?) {
         return Ok(layout.runtime_envs);
     }
     #[cfg(any(feature = "vst-lab", target_os = "macos", target_os = "linux"))]
@@ -1437,12 +1455,15 @@ mod tests {
     }
 
     #[test]
-    fn installed_layout_keeps_data_models_and_runtime_beside_app() {
-        let layout = super::installed_layout_for(&path("C:/root/app/MediaForge.exe"))
-            .expect("installed layout");
-        assert_eq!(layout.data, path("C:/root/data"));
-        assert_eq!(layout.models, path("C:/root/models"));
-        assert_eq!(layout.runtime_envs, path("C:/root/runtime-envs"));
-        assert!(super::installed_layout_for(&path("C:/root/MediaForge.exe")).is_none());
+    fn portable_layout_keeps_models_and_runtime_beside_data() {
+        let fixture = ResourceFixture::new();
+        let exe = fixture.0.join("MediaForge.exe");
+        std::fs::write(&exe, b"").unwrap();
+        assert!(super::portable_layout_for(&exe).is_none());
+        std::fs::write(fixture.0.join(super::PORTABLE_MARKER_FILE_NAME), b"portable").unwrap();
+        let layout = super::portable_layout_for(&exe).expect("portable layout");
+        assert_eq!(layout.data, fixture.0.join("data"));
+        assert_eq!(layout.models, fixture.0.join("models"));
+        assert_eq!(layout.runtime_envs, fixture.0.join("runtime-envs"));
     }
 }

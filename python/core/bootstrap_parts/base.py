@@ -24,15 +24,10 @@ from pip._vendor.packaging.version import Version
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 from core import worker_bootstrap as wb
+from shared import worker_paths
 
 def _default_runtime_envs_dir() -> Path:
-    executable = Path(sys.executable).resolve()
-    if executable.parent.name.lower() in {"scripts", "bin"}:
-        env_dir = executable.parent.parent
-        if (env_dir / "pyvenv.cfg").is_file():
-            return env_dir.parent
-        return env_dir / "runtime-envs"
-    return executable.parent / "runtime-envs"
+    return worker_paths.runtime_envs_root()
 
 
 def _manifest() -> dict[str, Any]:

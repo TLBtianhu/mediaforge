@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from shared.worker_protocol import emit, emit_error
+from shared import worker_paths
 
 
 OPTIONAL_PACKAGES: dict[str, dict[str, str]] = {
@@ -88,9 +89,7 @@ def _runtime_envs_dir() -> Path:
     if sys.platform == "darwin":
         data_root = str(os.environ.get("PYMSS_STUDIO_DATA_ROOT") or "").strip()
         return (Path(data_root).expanduser() if data_root else Path.home() / ".pymss-studio") / "runtime-envs"
-    executable = Path(sys.executable).resolve()
-    env_dir = executable.parent.parent if executable.parent.name.lower() in {"scripts", "bin"} else executable.parent
-    return env_dir.parent
+    return worker_paths.runtime_envs_root()
 
 
 def _runtime_identity(*, backend: str | None = None, executable: Path | None = None) -> str:
