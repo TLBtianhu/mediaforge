@@ -1,7 +1,7 @@
 # 小资产运行时回滚端到端：A 安装 → B 安装 → 不下载直接激活 A。
 # 使用本地 HTTP 与隔离数据根；两个资产都保留，active-runtime.json 必须可逆切换。
 param(
-    [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.26\MediaForge.exe",
+    [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.27\MediaForge.exe",
     [int]$Port = 8766
 )
 

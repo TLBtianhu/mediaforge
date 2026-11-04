@@ -170,35 +170,50 @@ begin
 end;
 
 var
-  CleanupOptions: TNewCheckListBox;
+  RuntimeCheck: TNewCheckBox;
+  ModelsCheck: TNewCheckBox;
+  DataCheck: TNewCheckBox;
   SelectAllButton: TNewButton;
 
 procedure SelectAllCleanup(Sender: TObject);
-var
-  Index: Integer;
 begin
-  for Index := 0 to CleanupOptions.Items.Count - 1 do
-    CleanupOptions.Checked[Index] := True;
+  RuntimeCheck.Checked := True;
+  ModelsCheck.Checked := True;
+  DataCheck.Checked := True;
 end;
 
 procedure InitializeUninstallProgressForm();
 begin
   if UninstallSilent then
     Exit;
-  CleanupOptions := TNewCheckListBox.Create(UninstallProgressForm);
-  CleanupOptions.Parent := UninstallProgressForm;
-  CleanupOptions.Left := 0;
-  CleanupOptions.Top := 80;
-  CleanupOptions.Width := UninstallProgressForm.ClientWidth;
-  CleanupOptions.Height := 120;
-  CleanupOptions.AddCheckBox('同时删除独立运行时（runtime-envs）', '', 0, True, False, True, True, nil);
-  CleanupOptions.AddCheckBox('同时删除模型资源（models）', '', 0, True, False, True, True, nil);
-  CleanupOptions.AddCheckBox('同时删除配置、日志和任务历史（data）', '', 0, True, False, True, True, nil);
+  RuntimeCheck := TNewCheckBox.Create(UninstallProgressForm);
+  RuntimeCheck.Parent := UninstallProgressForm;
+  RuntimeCheck.Left := 0;
+  RuntimeCheck.Top := 80;
+  RuntimeCheck.Width := UninstallProgressForm.ClientWidth;
+  RuntimeCheck.Caption := '同时删除独立运行时（runtime-envs）';
+  RuntimeCheck.Checked := False;
+
+  ModelsCheck := TNewCheckBox.Create(UninstallProgressForm);
+  ModelsCheck.Parent := UninstallProgressForm;
+  ModelsCheck.Left := 0;
+  ModelsCheck.Top := 105;
+  ModelsCheck.Width := UninstallProgressForm.ClientWidth;
+  ModelsCheck.Caption := '同时删除模型资源（models）';
+  ModelsCheck.Checked := False;
+
+  DataCheck := TNewCheckBox.Create(UninstallProgressForm);
+  DataCheck.Parent := UninstallProgressForm;
+  DataCheck.Left := 0;
+  DataCheck.Top := 130;
+  DataCheck.Width := UninstallProgressForm.ClientWidth;
+  DataCheck.Caption := '同时删除配置、日志和任务历史（data）';
+  DataCheck.Checked := False;
 
   SelectAllButton := TNewButton.Create(UninstallProgressForm);
   SelectAllButton.Parent := UninstallProgressForm;
   SelectAllButton.Left := 0;
-  SelectAllButton.Top := 205;
+  SelectAllButton.Top := 155;
   SelectAllButton.Width := 120;
   SelectAllButton.Caption := '全选以上资源';
   SelectAllButton.OnClick := @SelectAllCleanup;
@@ -208,11 +223,11 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    if Assigned(CleanupOptions) then
+    if Assigned(RuntimeCheck) then
     begin
-      if CleanupOptions.Checked[0] then RemoveIfExists(ExpandConstant('{app}\runtime-envs'));
-      if CleanupOptions.Checked[1] then RemoveIfExists(ExpandConstant('{app}\models'));
-      if CleanupOptions.Checked[2] then RemoveIfExists(ExpandConstant('{app}\data'));
+      if RuntimeCheck.Checked then RemoveIfExists(ExpandConstant('{app}\runtime-envs'));
+      if ModelsCheck.Checked then RemoveIfExists(ExpandConstant('{app}\models'));
+      if DataCheck.Checked then RemoveIfExists(ExpandConstant('{app}\data'));
     end;
   end;
 end;
