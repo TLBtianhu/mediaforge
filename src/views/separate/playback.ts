@@ -2,9 +2,12 @@
 // 依赖通过 deps 注入（Audio 构造器与 convertFileSrc 也由调用方提供，方便 VM 测试）。
 import type { StemOutput } from '@/stores/task'
 
-type Deps = Record<string, any>
+type PlaybackDeps = Record<string, any> & {
+  Audio: new () => HTMLAudioElement
+  convertFileSrc: (path: string) => string
+}
 
-export function makePlayback(deps: Deps) {
+export function makePlayback(deps: PlaybackDeps) {
   function getOutputPlayback(path: string) {
     return deps.outputPlayback.value[path] || { currentTime: 0, duration: 0 }
   }

@@ -1,10 +1,11 @@
 // SeparateView 的任务队列：分离任务筛选、各状态列表、聚焦与取消。
 import { isTerminalTaskStatus } from '../../features/tasks/lifecycle.ts'
 import type { SeparationJob } from '@/stores/task'
+import type { computed } from 'vue'
 
-type Deps = Record<string, any>
+type QueueDeps = Record<string, any> & { computed: typeof computed }
 
-export function makeQueue(deps: Deps) {
+export function makeQueue(deps: QueueDeps) {
   function isSeparationJob(job: SeparationJob) {
     return !job.primary.runConfig?.workbench
   }
