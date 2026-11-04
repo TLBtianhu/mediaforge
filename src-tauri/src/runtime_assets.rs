@@ -13,6 +13,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -379,15 +384,21 @@ fn repair_embedded_python_from(bootstrap: &Path, target: &Path) -> Result<(), St
     Ok(())
 }
 
+fn hide_console_window(command: &mut Command) {
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
 /// 装完立刻验证解释器能加载 C++ 运行库：失败时给出可操作的错误，
 /// 而不是等用户点任务才看到 "DLL load failed"。
 fn verify_interpreter(python: &Path) -> Result<(), String> {
-    let output = Command::new(python)
-        .args([
-            "-c",
-            "import ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); print('ok')",
-        ])
-        .output()
+    let mut command = Command::new(python);
+    command.args([
+        "-c",
+        "import ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); print('ok')",
+    ]);
+    hide_console_window(&mut command);
+    let output = command.output()
         .map_err(|error| format!("无法启动解释器自检：{error}"))?;
     if output.status.success() {
         return Ok(());
@@ -407,7 +418,8 @@ fn download(
 ) -> Result<(), String> {
     let aria2 = aria2_path(app).map_err(|error| error.to_string())?;
     emit(app, descriptor, "downloading", 0, "下载运行时");
-    let mut child = Command::new(&aria2)
+    let mut command = Command::new(&aria2);
+    command
         .args([
             "-x4",
             "-s4",
@@ -429,7 +441,9 @@ fn download(
         )
         .args(&descriptor.urls)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    hide_console_window(&mut command);
+    let mut child = command
         .spawn()
         .map_err(|error| format!("无法启动 aria2c：{error}"))?;
 
