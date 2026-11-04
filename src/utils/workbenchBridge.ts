@@ -8,6 +8,7 @@ import { cloneWorkflow } from '@/workflows/workbench'
 import { createWorkbenchBridge, type WorkbenchAction } from '@/workflows/workbenchBridge'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { isTauriRuntime } from '@/utils/appStore'
+import { launchTask } from '@/features/tasks/launch'
 
 let bridge: ReturnType<typeof createWorkbenchBridge> | undefined
 export function initializeWorkbenchBridge() {
@@ -35,7 +36,7 @@ export function initializeWorkbenchBridge() {
           const entry = workflows.workflows.find(item => item.id === action.workflowKey)
           if (!entry || !action.entry || entry.updatedAt !== action.entry.updatedAt) throw new Error('workflows.revisionConflictTitle')
           if (!action.bindings) throw new Error('workbench.missingInput')
-          const result = await tasks.startWorkbenchInference(action.entry, action.bindings)
+          const result = await launchTask(tasks, { kind: 'workbench', workflow: action.entry, bindings: action.bindings })
           const session = workbench.session(entry.id)
           session.bindings = cloneWorkflow(action.bindings)
           session.selectedJobId = result.jobId

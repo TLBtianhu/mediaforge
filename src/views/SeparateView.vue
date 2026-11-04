@@ -43,6 +43,7 @@ import { makePlayback } from './separate/playback'
 import { makeStemSelection } from './separate/stemSelection'
 import { makeQueue } from './separate/queue'
 import { makeOutputDirectory } from './separate/outputDirectory'
+import { launchTask } from '@/features/tasks/launch'
 import { makeTaskPresentation } from './separate/taskPresentation'
 import { makeReorder } from './separate/reorder'
 import { useOutputNaming } from './separate/useOutputNaming'
@@ -1207,7 +1208,7 @@ const {
   temporaryOutputDir, normalizedOutputDir, app, settings, outputNamingPreviewFiles, effectiveOutputLayout, t,
   submittingJob, ensembleEnabled, ensembleReady, modelDownloaded, inputFiles, hasOutputStemSelection,
   currentChunkIssue, task, focusedSeparationJobId, newestRunningJob, composingNewJob, ensembleModels, model,
-  buildEnsembleWorkflow, outputNamingConfig, WINDOWS_RESERVED_FILENAMES, computed,
+  buildEnsembleWorkflow, outputNamingConfig, WINDOWS_RESERVED_FILENAMES, computed, launchTask,
 })
 function beginNextSeparation() {
   stopAllPreviewAudio()

@@ -9,6 +9,7 @@ import { useSettingsStore } from '@/stores/settings'
 import type { WorkflowEntry } from '@/stores/workflow'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { isTerminalTaskStatus } from '@/features/tasks/lifecycle'
+import { launchTask } from '@/features/tasks/launch'
 import { detectWorkflowFormat } from '@/workflows/formats'
 import { initializeWorkbenchBridge, requestWorkbenchAction } from '@/utils/workbenchBridge'
 import { cloneWorkflow, prepareWorkbenchRun, visibleWorkflowNodeStates, workbenchOutputDirectory, workflowBindingsEqual, workflowExecutionSignature, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
@@ -144,7 +145,7 @@ export function useWorkflowWorkbench(options: {
       if (!entry) return
       store.adopt(originalKey, entry.id)
       let result: { jobId?: string; total?: number }
-      if (owner) result = await tasks.startWorkbenchInference(entry, bindings)
+      if (owner) result = await launchTask(tasks, { kind: 'workbench', workflow: entry, bindings })
       else {
         const connected = await initializeWorkbenchBridge()
         if (!connected) throw new Error('workbench.hostUnavailable')

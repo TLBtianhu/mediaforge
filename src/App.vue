@@ -19,6 +19,7 @@ import { useWorkflowStore } from '@/stores/workflow'
 import { useToastStore } from '@/stores/toast'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { WorkflowRuntimeBindings } from '@/workflows/workbench'
+import { launchTask } from '@/features/tasks/launch'
 import { activeRuntimeEnvironment, runtimeBackendLabel, runtimeCoreSyncAvailable, runtimeCoreUpdateAvailable as hasRuntimeCoreUpdate } from '@/utils/runtime'
 import { connectWorkerEvents } from '@/utils/events'
 
@@ -182,7 +183,7 @@ onMounted(async () => {
           session.bindings = payload.bindings
           try {
             const { useTaskStore } = await import('@/stores/task')
-            const result = await useTaskStore().startWorkbenchInference(entry, payload.bindings)
+            const result = await launchTask(useTaskStore(), { kind: 'workbench', workflow: entry, bindings: payload.bindings })
             session.selectedJobId = result.jobId
             session.viewMode = 'execution'
           } catch (error) { useToastStore().error(error instanceof Error ? error.message : String(error)) }

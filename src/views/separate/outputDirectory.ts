@@ -2,8 +2,9 @@
 import type { StemOutput } from '@/stores/task'
 
 import { computed } from 'vue'
+import type { launchTask } from '@/features/tasks/launch'
 
-type OutputDirectoryDeps = Record<string, any> & { computed: typeof computed }
+type OutputDirectoryDeps = Record<string, any> & { computed: typeof computed; launchTask: typeof launchTask }
 
 export function makeOutputDirectory(deps: OutputDirectoryDeps) {
   const outputDirectoryInput = deps.computed({
@@ -98,9 +99,14 @@ export function makeOutputDirectory(deps: OutputDirectoryDeps) {
     }
     deps.submittingJob.value = true
     try {
+      const options = {
+        outputDir: deps.normalizedOutputDir.value,
+        outputLayout: deps.effectiveOutputLayout.value,
+        outputNaming: deps.outputNamingConfig.value,
+      }
       const result = deps.ensembleEnabled.value
-        ? await deps.task.startWorkflowInference(deps.buildEnsembleWorkflow(), { outputDir: deps.normalizedOutputDir.value, outputLayout: deps.effectiveOutputLayout.value, outputNaming: deps.outputNamingConfig.value })
-        : await deps.task.startSeparation({ outputDir: deps.normalizedOutputDir.value, outputLayout: deps.effectiveOutputLayout.value, outputNaming: deps.outputNamingConfig.value })
+        ? await deps.launchTask(deps.task, { kind: 'workflow', workflow: deps.buildEnsembleWorkflow(), options })
+        : await deps.launchTask(deps.task, { kind: 'separation', options })
       deps.focusedSeparationJobId.value = result?.jobId || deps.newestRunningJob.value?.id || deps.focusedSeparationJobId.value
       deps.composingNewJob.value = false
       if (deps.ensembleEnabled.value && result) {
