@@ -11,6 +11,8 @@
 #   dsh CLI（PATH 里没有）。写一行 mcp-client 配置是最小、可审计、可回滚的方式。
 param(
     [string]$DshHome = '',
+    [string]$AppRoot = '',
+    [string]$LauncherPath = '',
     [switch]$DryRun
 )
 
@@ -22,7 +24,7 @@ $NOTE  = '# 由 MediaForge 安装器维护；这段区块会被整体替换，�
 
 if (-not $DshHome) { $DshHome = Join-Path $env:USERPROFILE '.dsh' }
 
-$launcher = Join-Path $env:USERPROFILE '.mediaforge\bin\mediaforge-mcp.cmd'
+$launcher = if ($LauncherPath) { $LauncherPath } else { Join-Path $PSScriptRoot 'mediaforge-mcp.cmd' }
 
 # 安装器只会调这个脚本，不会调 setup.ps1；启动器必须在这里补出来，
 # 否则写进配置的是一个不存在的 .cmd，DSH 侧调用会直接失败。
@@ -43,15 +45,17 @@ if (-not (Test-Path -LiteralPath $launcher)) {
 # 安装路径指针：本脚本位于 <安装目录>\integrations\dsh-mediaforge，向上两级就是根。
 # 安装器自己也会写一次注册表；这里再写一次是为了覆盖便携版与"先解压后装 DSH"的情况，
 # 让启动器在没有任何安装器参与时也能找到应用。
-$appRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+if (-not $AppRoot) {
+    $inferredRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    $AppRoot = if (Test-Path -LiteralPath (Join-Path $inferredRoot 'app\python\agent_bridge.py')) {
+        Join-Path $inferredRoot 'app'
+    } else {
+        $inferredRoot
+    }
+}
 if (-not $DryRun -and (Test-Path -LiteralPath (Join-Path $appRoot 'python\agent_bridge.py'))) {
     New-Item -Path 'HKCU:\Software\MediaForge' -Force | Out-Null
     New-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name 'InstallDir' -Value $appRoot -PropertyType String -Force | Out-Null
-    [System.IO.File]::WriteAllText(
-        (Join-Path $env:USERPROFILE '.mediaforge\home.txt'),
-        $appRoot,
-        (New-Object System.Text.UTF8Encoding($false))
-    )
     Write-Host "home     : $appRoot"
 }
 if (-not $DryRun -and -not (Test-Path -LiteralPath $launcher)) {
@@ -80,7 +84,7 @@ function Get-Block {
         '        command: cmd'
         '        args:'
         '          - /c'
-        "          - '%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd'"
+        "          - '$LauncherPath'"
         '        failOnStartupError: false'
         '        toolCallTimeoutMs: 120000'
         $END

@@ -4,8 +4,8 @@
 #   powershell -ExecutionPolicy Bypass -File setup.ps1 -AppRoot "D:\portable\MediaForge"
 #
 # 为什么要有这一步：DSH 插件包（cordis.patch.yml）里不能写机器相关的绝对路径，
-# 否则发出去谁都用不了。启动器固定放在 %USERPROFILE%\.mediaforge\bin\，
-# 和其它由程序生成的状态放在同一个数据根里（卸载不会删掉它，重装后仍然可用）。
+# 否则发出去谁都用不了。启动器放在 integrations/dsh-mediaforge 下，
+# 不再写旧 .mediaforge；数据、模型和运行时按安装根布局解析。
 # 启动器自己按 MEDIAFORGE_HOME → 注册表 → %LOCALAPPDATA%\Programs → Program Files
 # 的顺序找应用。
 #
@@ -31,10 +31,14 @@ if (-not (Test-Path -LiteralPath $template)) {
 # 1) 启动器：开发态只写 <repo>\.dev-data，安装/便携态才写用户数据根。
 #    判定开发树的标准是存在 src-tauri\Cargo.toml（分发物里没有这个目录）。
 $isDevCheckout = Test-Path -LiteralPath (Join-Path $root 'src-tauri\Cargo.toml')
-$dataRoot = if ($isDevCheckout) { Join-Path $root '.dev-data' } else { Join-Path $env:USERPROFILE '.mediaforge' }
-$binDir = Join-Path $dataRoot 'bin'
-New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-$launcher = Join-Path $binDir 'mediaforge-mcp.cmd'
+$dataRoot = if ($isDevCheckout) {
+    Join-Path $root '.dev-data'
+} elseif ($root -like '*\app') {
+    Join-Path (Split-Path $root -Parent) 'data'
+} else {
+    Join-Path $root 'data'
+}
+$launcher = Join-Path $PSScriptRoot 'mediaforge-mcp.cmd'
 Copy-Item -LiteralPath $template -Destination $launcher -Force
 
 # 2) 安装路径指针：只在分发态写用户级注册表（不需要管理员）和用户数据根。
@@ -51,7 +55,7 @@ if ($isDevCheckout) {
 
     # 3) 一个人类可读的指针文件，排障时不用去翻注册表
     [System.IO.File]::WriteAllText(
-        (Join-Path $env:USERPROFILE '.mediaforge\home.txt'),
+        (Join-Path $dataRoot 'home.txt'),
         $root,
         (New-Object System.Text.UTF8Encoding($false))
     )
@@ -63,7 +67,7 @@ if ($isDevCheckout) {
     Write-Host "mode     : dev checkout（未写注册表，未碰用户数据根）"
 } else {
     Write-Host "registry : HKCU\Software\MediaForge\InstallDir = $root"
-    Write-Host "home.txt : $env:USERPROFILE\.mediaforge\home.txt"
+    Write-Host "home.txt : $dataRoot\home.txt"
 }
 Write-Host ""
 Write-Host "next: install this bundle in DSH (plugin_manager install_bundle -> $PSScriptRoot)"

@@ -17,7 +17,7 @@ rem
 rem DSH scrubs ambient names matching KEY|PASSWORD|SECRET|TOKEN and DSH_*, so
 rem MEDIAFORGE_HOME survives that scrub. Keep this file ASCII-only: cmd.exe reads
 rem it in the OEM code page.
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
 set "MF_ROOT="
 
@@ -50,9 +50,9 @@ rem overrides always win. Installed roots use app/../{data,models,runtime-envs};
 rem portable roots use the same layout beside the marker; development uses .dev-data.
 if /i "%MF_ROOT:~-4%"=="\app" (
   for %%I in ("%MF_ROOT%\..") do set "MF_INSTALL_ROOT=%%~fI"
-  if not defined MEDIAFORGE_DATA_ROOT set "MEDIAFORGE_DATA_ROOT=%MF_INSTALL_ROOT%\data"
-  if not defined MEDIAFORGE_MODEL_DIR set "MEDIAFORGE_MODEL_DIR=%MF_INSTALL_ROOT%\models"
-  if not defined MEDIAFORGE_RUNTIME_ENVS_DIR set "MEDIAFORGE_RUNTIME_ENVS_DIR=%MF_INSTALL_ROOT%\runtime-envs"
+  if not defined MEDIAFORGE_DATA_ROOT set "MEDIAFORGE_DATA_ROOT=!MF_INSTALL_ROOT!\data"
+  if not defined MEDIAFORGE_MODEL_DIR set "MEDIAFORGE_MODEL_DIR=!MF_INSTALL_ROOT!\models"
+  if not defined MEDIAFORGE_RUNTIME_ENVS_DIR set "MEDIAFORGE_RUNTIME_ENVS_DIR=!MF_INSTALL_ROOT!\runtime-envs"
 ) else if exist "%MF_ROOT%\mediaforge.portable" (
   if not defined MEDIAFORGE_DATA_ROOT set "MEDIAFORGE_DATA_ROOT=%MF_ROOT%\data"
   if not defined MEDIAFORGE_MODEL_DIR set "MEDIAFORGE_MODEL_DIR=%MF_ROOT%\models"

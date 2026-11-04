@@ -4,13 +4,11 @@
       config:
         serverName: mediaforge
         transport: stdio
-        # 启动器由安装包/便携版脚本写到数据根下的固定位置：
-        #   %USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd
-        # cmd 会展开 %USERPROFILE%，所以这里不需要机器相关路径，
-        # 也不需要 DSH 重启去继承新的环境变量。
+        # 启动器随安装包放在 integrations/dsh-mediaforge 下，
+        # 不再写旧 .mediaforge；cmd 会展开 %LOCALAPPDATA%。
         command: cmd
         args:
           - /c
-          - '%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd'
+          - '%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\mediaforge-mcp.cmd'
         failOnStartupError: false
         toolCallTimeoutMs: 120000

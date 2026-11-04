@@ -5,12 +5,20 @@
 # 依次检查：启动器存在 → 能找到应用 → bridge 能起 MCP 握手 → 报出工具数量。
 # 任何一步失败都会打印它试过的位置，方便直接定位，而不是只看到"没有工具"。
 param(
-    # 开发态传 <repo>\.dev-data；不传则用安装版的用户数据根
-    [string]$DataRoot = (Join-Path $env:USERPROFILE '.mediaforge')
+    # 开发态传 <repo>\.dev-data；不传则按安装/便携根布局推导
+    [string]$DataRoot = ''
 )
 $ErrorActionPreference = 'Stop'
 
-$launcher = Join-Path $DataRoot 'bin\mediaforge-mcp.cmd'
+$installRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+if (-not $DataRoot) {
+    $DataRoot = if (Test-Path -LiteralPath (Join-Path $installRoot 'src-tauri\Cargo.toml')) {
+        Join-Path $installRoot '.dev-data'
+    } else {
+        Join-Path $installRoot 'data'
+    }
+}
+$launcher = Join-Path $PSScriptRoot 'mediaforge-mcp.cmd'
 $homeFile = Join-Path $DataRoot 'home.txt'
 
 Write-Host '== 1. 启动器 =='
@@ -31,8 +39,8 @@ if (Test-Path -LiteralPath $homeFile) {
 }
 $reg = Get-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name InstallDir -ErrorAction SilentlyContinue
 Write-Host "  registry InstallDir = $(if ($reg) { $reg.InstallDir } else { '(未设置)' })"
-Write-Host "  用户级安装兜底 = $(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs\MediaForge\python\agent_bridge.py'))"
-Write-Host "  Program Files 兜底 = $(Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'MediaForge\python\agent_bridge.py'))"
+Write-Host "  用户级安装兜底 = $(Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs\MediaForge\app\python\agent_bridge.py'))"
+Write-Host "  Program Files 兜底 = $(Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'MediaForge\app\python\agent_bridge.py'))"
 
 Write-Host '== 3. MCP 握手 =='
 # 用临时文件喂 stdin：PowerShell 5.1 的管道会给第一行加 BOM，bridge 会拒绝
