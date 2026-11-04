@@ -410,6 +410,16 @@ fn verify_interpreter(python: &Path) -> Result<(), String> {
     ))
 }
 
+fn stderr_tail(bytes: &[u8]) -> String {
+    const LIMIT: usize = 2000;
+    let text = String::from_utf8_lossy(bytes);
+    let trimmed = text.trim();
+    if trimmed.len() <= LIMIT {
+        return trimmed.to_string();
+    }
+    trimmed[trimmed.len() - LIMIT..].to_string()
+}
+
 fn download(
     app: &AppHandle,
     descriptor: &RuntimeDescriptor,
@@ -440,8 +450,8 @@ fn download(
                 .unwrap_or_else(|| format!("{}.zip", descriptor.asset_id)),
         )
         .args(&descriptor.urls)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     hide_console_window(&mut command);
     let mut child = command
         .spawn()
@@ -455,8 +465,11 @@ fn download(
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
+                    let output = child.wait_with_output().map_err(|error| error.to_string())?;
+                    let detail = stderr_tail(&output.stderr);
+                    let suffix = if detail.is_empty() { String::new() } else { format!("：{detail}") };
                     // 断点续传：下一轮从已有字节继续，所以先保留文件。
-                    return Err(format!("下载中断（aria2c 退出码 {status:?}），可重试续传"));
+                    return Err(format!("下载中断（aria2c 退出码 {status:?}）{suffix}，可重试续传"));
                 }
                 break;
             }
@@ -598,6 +611,13 @@ mod descriptor_tests {
         repair_embedded_python_from(&root.join("missing-python.exe"), &target).unwrap();
         assert_eq!(fs::read(target.join("Scripts").join("python.exe")).unwrap(), b"fixture");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn stderr_tail_keeps_the_actual_download_error() {
+        assert_eq!(stderr_tail(b"  TLS certificate verification failed\n"), "TLS certificate verification failed");
+        let long = "x".repeat(2500);
+        assert_eq!(stderr_tail(long.as_bytes()).len(), 2000);
     }
 
     #[test]
