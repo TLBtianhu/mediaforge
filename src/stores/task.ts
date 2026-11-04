@@ -32,6 +32,7 @@ import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, normalizeOutputLayout, no
 import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
+import { completeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
@@ -1473,24 +1474,21 @@ export const useTaskStore = defineStore('task', () => {
     normalizeInferenceInputsBeforeSubmit()
     const inferenceParams = buildInferenceParams(modelType)
     const targets = [...inputFiles.value]
-    const jobId = createRunId('job')
-    const outputLayout = normalizeOutputLayout(options.outputLayout)
-    const jobOutput = resolveOutputDirectory(options.outputDir, separateOutputDir.value, windowsPaths.value)
-    const outputNaming = normalizeOutputNaming(options.outputNaming)
+    const batch = prepareTaskBatch(options, separateOutputDir.value, windowsPaths.value)
     const createdTasks = targets.map((input, batchIndex) => submitOne(
       input,
       model,
       inferenceParams,
       modelType,
-      jobId,
-      jobOutput,
-      outputLayout,
-      outputNaming,
+      batch.jobId,
+      batch.jobOutput,
+      batch.outputLayout,
+      batch.outputNaming,
       batchIndex,
     ))
     modelStore.recordModelUse(model)
     scheduleQueue()
-    return { succeeded: targets.length, failed: 0, total: targets.length, jobId, tasks: createdTasks }
+    return completeTaskBatch(batch.jobId, createdTasks)
   }
 
   function workflowDefinitionValidationError(definition: Record<string, unknown>): string {
@@ -1528,33 +1526,34 @@ export const useTaskStore = defineStore('task', () => {
     if (!targets.length) {
       throw new Error(i18n.global.t('separate.startHintNoInput'))
     }
-    const jobId = createRunId('job')
-    const outputLayout = normalizeOutputLayout(options.outputLayout)
-    const jobOutput = resolveOutputDirectory(options.outputDir, separateOutputDir.value, windowsPaths.value)
-    const outputNaming = normalizeOutputNaming(options.outputNaming)
+    const batch = prepareTaskBatch(options, separateOutputDir.value, windowsPaths.value)
     const createdTasks = targets.map((input, batchIndex) => createQueuedWorkflowTask(
       input,
       workflow,
-      jobId,
-      jobOutput,
-      outputLayout,
-      outputNaming,
+      batch.jobId,
+      batch.jobOutput,
+      batch.outputLayout,
+      batch.outputNaming,
       batchIndex,
     ))
     scheduleQueue()
-    return { succeeded: targets.length, failed: 0, total: targets.length, jobId, tasks: createdTasks }
+    return completeTaskBatch(batch.jobId, createdTasks)
   }
   async function startWorkbenchInference(workflow: WorkflowEntry, bindings: WorkflowRuntimeBindings) {
     if (!isMainTaskOwner()) throw new Error('workbench.mainWindowOnly')
     const validationError = workflowDefinitionValidationError(workflow.definition)
     if (validationError) throw new Error(validationError)
     const nativeGraph = detectWorkflowFormat(workflow.definition) === 'graph'
-    const directory = resolveOutputDirectory(bindings.outputDirectory, useSettingsStore().outputDir, windowsPaths.value)
+    const batch = prepareTaskBatch(
+      { outputDir: bindings.outputDirectory, outputLayout: bindings.outputLayout },
+      useSettingsStore().outputDir,
+      windowsPaths.value,
+    )
+    const directory = batch.jobOutput
     const prepared = prepareWorkbenchRun(workflow.definition, bindings, directory, windowsPaths.value)
-    const jobId = createRunId('job')
     const runtimeEntry = { ...workflow, definition: prepared.definition }
     const createdTasks = prepared.runs.map((run, batchIndex) => {
-      const created = createQueuedWorkflowTask(run.input, runtimeEntry, jobId, directory, nativeGraph ? 'flat' : bindings.outputLayout, undefined, batchIndex)
+      const created = createQueuedWorkflowTask(run.input, runtimeEntry, batch.jobId, directory, nativeGraph ? 'flat' : bindings.outputLayout, undefined, batchIndex)
       const config = tasks.value.find(task => task.id === created.id)!.runConfig!
       config.useTta = false
       if (nativeGraph) config.workflowDefinition = cloneWorkflow(workflow.definition)
@@ -1567,7 +1566,7 @@ export const useTaskStore = defineStore('task', () => {
     })
     queuePersist()
     scheduleQueue()
-    return { jobId, tasks: createdTasks, total: createdTasks.length }
+    return completeTaskBatch(batch.jobId, createdTasks)
   }
 
   async function retryTask(taskId: string) {
