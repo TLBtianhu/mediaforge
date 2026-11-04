@@ -24,6 +24,10 @@ class DshIntegrationLayoutTest(unittest.TestCase):
         self.assertIn("[string]$AppRoot = ''", self.register)
         self.assertIn("[string]$LauncherPath = ''", self.register)
         self.assertNotIn(".mediaforge\\home.txt", self.register)
+    def test_icon_stays_below_the_dsh_metadata_limit(self) -> None:
+        icon = self.root / "icon.svg"
+        self.assertLess(icon.stat().st_size, 256 * 1024)
+        self.assertNotIn("data:image", icon.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
