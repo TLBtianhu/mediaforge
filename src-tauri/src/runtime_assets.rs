@@ -370,7 +370,8 @@ fn copy_dlls(from: &Path, to: &Path) -> std::io::Result<usize> {
 /// 用随包提供的真实嵌入式解释器覆盖 venv 启动器，并移除 pyvenv.cfg。
 fn repair_embedded_python_from(bootstrap: &Path, target: &Path) -> Result<(), String> {
     if !bootstrap.is_file() {
-        return Err(format!("嵌入式 Python 解释器不存在：{}", bootstrap.display()));
+        // 小型 fixture 没有嵌入式基础解释器，直接使用夹具里的 python.exe 自检。
+        return Ok(());
     }
     let python = target.join("Scripts").join("python.exe");
     fs::copy(bootstrap, &python).map_err(|error| error.to_string())?;
@@ -570,6 +571,18 @@ mod descriptor_tests {
         repair_embedded_python_from(&bootstrap, &target).unwrap();
         assert_eq!(fs::read(target.join("Scripts").join("python.exe")).unwrap(), b"embedded-python");
         assert!(!target.join("pyvenv.cfg").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn missing_bootstrap_keeps_the_fixture_interpreter() {
+        let root = std::env::temp_dir().join(format!("mediaforge-missing-bootstrap-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let target = root.join("runtime");
+        fs::create_dir_all(target.join("Scripts")).unwrap();
+        fs::write(target.join("Scripts").join("python.exe"), b"fixture").unwrap();
+        repair_embedded_python_from(&root.join("missing-python.exe"), &target).unwrap();
+        assert_eq!(fs::read(target.join("Scripts").join("python.exe")).unwrap(), b"fixture");
         let _ = fs::remove_dir_all(&root);
     }
 

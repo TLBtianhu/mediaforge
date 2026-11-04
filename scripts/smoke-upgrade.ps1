@@ -175,16 +175,20 @@ try {
     Check '旧安装目录未被写入' (Test-SameTree $oldBefore $oldInstallDir)
     Check '无关临时目录未被写入' (Test-SameTree $foreignBefore $foreignTemp)
 
-    Write-Host "`n[4/5] 安装态默认数据根"
-    Remove-Item Env:MEDIAFORGE_DATA_ROOT -ErrorAction SilentlyContinue
-    $probeOut = Join-Path $WorkRoot 'probe.stdout.log'
-    $probeErr = Join-Path $WorkRoot 'probe.stderr.log'
-    $probeProcess = Start-Process -FilePath (Join-Path $installDir 'app\MediaForge.exe') -ArgumentList '--smoke-print-data-root' -Wait -PassThru -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr
-    $env:MEDIAFORGE_DATA_ROOT = $dataRoot
-    $expectedDataRoot = Join-Path $installDir 'data'
-    $probeText = @((Get-Content $probeOut -Raw -ErrorAction SilentlyContinue), (Get-Content $probeErr -Raw -ErrorAction SilentlyContinue)) -join "`n"
-    Write-Host "  probe: $probeText"
-    Check '安装态默认数据根位于安装根 data' ($probeText -match [regex]::Escape($expectedDataRoot)) $probeText
+    if ($StageDir) {
+        Write-Host "`n[4/5] 安装态默认数据根"
+        Remove-Item Env:MEDIAFORGE_DATA_ROOT -ErrorAction SilentlyContinue
+        $probeOut = Join-Path $WorkRoot 'probe.stdout.log'
+        $probeErr = Join-Path $WorkRoot 'probe.stderr.log'
+        $probeProcess = Start-Process -FilePath (Join-Path $installDir 'app\MediaForge.exe') -ArgumentList '--smoke-print-data-root' -Wait -PassThru -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr
+        $env:MEDIAFORGE_DATA_ROOT = $dataRoot
+        $expectedDataRoot = Join-Path $installDir 'data'
+        $probeText = @((Get-Content $probeOut -Raw -ErrorAction SilentlyContinue), (Get-Content $probeErr -Raw -ErrorAction SilentlyContinue)) -join "`n"
+        Write-Host "  probe: $probeText"
+        Check '安装态默认数据根位于安装根 data' ($probeText -match [regex]::Escape($expectedDataRoot)) $probeText
+    } else {
+        Write-Host "`n[4/5] 占位 exe 不可执行，跳过安装态数据根探针"
+    }
 
     Write-Host "`n[5/5] 卸载"
     $uninstaller = Join-Path $installDir 'unins000.exe'

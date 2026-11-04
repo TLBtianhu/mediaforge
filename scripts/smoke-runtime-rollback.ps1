@@ -55,8 +55,7 @@ foreach ($name in @('runtime-a', 'runtime-b')) {
     }
 }
 
-$python = "$env:USERPROFILE\.mediaforge\runtime-envs\cuda\Scripts\python.exe"
-if (-not (Test-Path $python)) { $python = 'python' }
+$python = 'python'
 $server = Start-Process -FilePath $python -ArgumentList @('-m','http.server',"$Port",'--bind','127.0.0.1','--directory',$httpRoot) -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 2
 if ($server.HasExited) { throw "本地 HTTP 服务启动失败，端口 $Port 可能已被占用" }
