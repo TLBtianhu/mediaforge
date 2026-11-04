@@ -28,8 +28,8 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   测试专用 helper 与 imports 已用 cfg(test) 移出生产构建
 模型列表          core/model_hub.py 是唯一入口，合并 audio_catalog.json（326 条）
                   与 media_ops/media_catalog.json（含目录型 Depth/RMBG 文件清单）
-运行时            内容寻址资产 runtime-cuda-2026.11.3，
-                  sha256 7301ed11…f3d1，3618371871 字节
+运行时            自包含嵌入式 Python 资产 runtime-cuda-2026.11.4，
+                  sha256 ccbeb67d…021f，3618200716 字节，无 venv 启动器与 pyvenv.cfg
 分发隔离          开发=仓库 .dev-data，便携=<exe 目录>/data，安装=%USERPROFILE%/.mediaforge；
                   开发/便携/首装/升级/A→B→A 回滚均有真实进程级 E2E 与 CI
 版本清单          GitHub 与魔搭 versions.json 均返回 200，runtime-cuda-2026.11.3、
@@ -80,7 +80,6 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
 
 ```
 运行时包 3.45 GB，超过 GitHub Release 的 2 GiB 单文件上限，
-托管在 HF 镜像与魔搭。runtime-cuda-2026.11.3 两端回读均为 200，
-大小 3618371871 字节；HF X-Linked-Etag 与 SHA-256 一致。
-真实解包、激活、ProPainter 导入和解释器启动均已在隔离环境验证。
+托管在 HF 镜像与魔搭。runtime-cuda-2026.11.4 为自包含嵌入式 Python，
+不含 venv 启动器与 pyvenv.cfg；真实解包、激活、ProPainter 导入和解释器启动均已验证。
 ```

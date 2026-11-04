@@ -5,10 +5,10 @@
     "App 与 worker 在启动/接单时校验，缺能力要明确拒绝，而不是等到调用时才报模块缺失。",
     "assetId 与 src-tauri/src/runtime_assets.rs 里的 ASSET_ID 必须一致（由测试保证）。"
   ],
-  "fallbackAssetId": "runtime-cuda-2026.11.3",
+  "fallbackAssetId": "runtime-cuda-2026.11.4",
   "runtimes": [
     {
-      "assetId": "runtime-cuda-2026.11.3",
+      "assetId": "runtime-cuda-2026.11.4",
       "backend": "cuda",
       "python": "3.11",
       "torch": "2.7.1",
@@ -24,12 +24,12 @@
         "video_super_resolution",
         "video_inpainting"
       ],
-      "notes": "当前唯一发布版本；视频/图像与音频共用同一套解释器，包含 ProPainter 动态 mask 与流式修复依赖，按任务起独立进程。",
-      "sha256": "7301ed114c68590c32171116047e5715d53e1c5b96d2bf6e8ae0caa4aef5f3d1",
-      "size": 3618371871,
+      "notes": "自包含嵌入式 Python 运行时；无 venv 启动器或 pyvenv.cfg，包含 ProPainter 动态 mask 与流式修复依赖，按任务起独立进程。",
+      "sha256": "ccbeb67d0110dc1b6abc1906d06e7636c9945e333672874b43738f53b29d021f",
+      "size": 3618200716,
       "urls": [
-        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.11.3.zip",
-        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-2026.11.3.zip"
+        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.11.4.zip",
+        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-2026.11.4.zip"
       ]
     }
   ]
