@@ -191,9 +191,9 @@ begin
   CleanupOptions.Top := 80;
   CleanupOptions.Width := UninstallProgressForm.ClientWidth;
   CleanupOptions.Height := 120;
-  CleanupOptions.Items.Add('同时删除独立运行时（runtime-envs）');
-  CleanupOptions.Items.Add('同时删除模型资源（models）');
-  CleanupOptions.Items.Add('同时删除配置、日志和任务历史（data）');
+  CleanupOptions.AddCheckBox('同时删除独立运行时（runtime-envs）', '', 0, True, False, True, True, nil);
+  CleanupOptions.AddCheckBox('同时删除模型资源（models）', '', 0, True, False, True, True, nil);
+  CleanupOptions.AddCheckBox('同时删除配置、日志和任务历史（data）', '', 0, True, False, True, True, nil);
 
   SelectAllButton := TNewButton.Create(UninstallProgressForm);
   SelectAllButton.Parent := UninstallProgressForm;

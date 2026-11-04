@@ -30,9 +30,9 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn("CurUninstallStepChanged", self.script)
         for relative in ("runtime-envs", "models", "data"):
             self.assertIn(f"RemoveIfExists(ExpandConstant('{{app}}\\{relative}'))", self.script)
-        self.assertIn("同时删除独立运行时（runtime-envs）')", self.script)
-        self.assertIn("同时删除模型资源（models）')", self.script)
-        self.assertIn("同时删除配置、日志和任务历史（data）')", self.script)
+        self.assertIn("AddCheckBox('同时删除独立运行时（runtime-envs）', '', 0, True, False, True, True, nil)", self.script)
+        self.assertIn("AddCheckBox('同时删除模型资源（models）', '', 0, True, False, True, True, nil)", self.script)
+        self.assertIn("AddCheckBox('同时删除配置、日志和任务历史（data）', '', 0, True, False, True, True, nil)", self.script)
 
 
 if __name__ == "__main__":
