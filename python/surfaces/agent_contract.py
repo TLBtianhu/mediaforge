@@ -228,21 +228,23 @@ _MEDIA_STEPS_SCHEMA = _schema(
 
 
 def _media_tools() -> list[dict[str, Any]]:
-    from media_ops import capabilities
+    from media_ops import capabilities, runtime_guard
 
     tools: list[dict[str, Any]] = []
     # 契约本身不能因为"某个可选依赖没装"就生成不出来：
     # 拿不到适配器/默认绑定时降级为"未就绪"，而不是抛异常。
     try:
         implemented = set(capabilities.adapter_capability_ids())
+        runtime_supported = set(runtime_guard.describe().get("capabilities", []))
     except Exception:  # noqa: BLE001
         implemented = set()
+        runtime_supported = set()
     for capability in capabilities.CAPABILITIES:
         try:
             bindings = capabilities.default_bindings(capability["id"])
         except Exception:  # noqa: BLE001
             bindings = {}
-        is_available = capability["id"] in implemented
+        is_available = capability["id"] in implemented and capability["id"] in runtime_supported
         # 模型清单来自能力声明（catalog 的 id）；新增模型只要登记进能力就会出现在工具里
         models = [str(item) for item in capability.get("modelIds") or []]
         for modality in capability["modalities"]:
