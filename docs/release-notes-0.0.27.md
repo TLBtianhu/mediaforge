@@ -20,6 +20,19 @@
 
 安装包本机副本继续放在 `release\local`，不写 Downloads。
 
+- GitHub Release：https://github.com/TLBtianhu/mediaforge/releases/tag/v0.0.27
+- 魔搭安装包直链：https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/release/MediaForge-0.0.27-windows-x64-cuda-setup.exe
+
+## 产物校验
+
+| 产物 | 字节数 | SHA-256 |
+|---|---:|---|
+| `MediaForge-0.0.27-windows-x64-cuda-setup.exe` | 68053883 | `3b7e8fdc33d3001acccff7f74e9d903e61a4fe5f44342e5431ba49861e9fa002` |
+| `MediaForge-0.0.27-windows-x64-portable.zip` | 129158941 | `9b02048238c6cf6fc87331d9fb3f888c90bfdef1bb2c72a4966bdc33f0787c32` |
+| `MediaForge-0.0.27-windows-x64-update.zip` | 105371188 | `4cb35837a610445138aaaab5b456e97e200163c48a9f7e3b3856192359c2fa0c` |
+
+更新包签名文件：`MediaForge-0.0.27-windows-x64-update.zip.sig`。
+
 ## 卸载说明
 
 卸载程序默认只删除主程序、快捷方式和安装注册项。独立运行时、模型和配置历史只有显式勾选才清理；不勾选则全部保留。DSH 集成由 DSH 插件管理器单独处理。
