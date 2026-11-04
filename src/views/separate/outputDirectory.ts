@@ -1,9 +1,11 @@
 // SeparateView 的输出目录：默认值、平台校验、预览、提交入口。
 import type { StemOutput } from '@/stores/task'
 
-type Deps = Record<string, any>
+import { computed } from 'vue'
 
-export function makeOutputDirectory(deps: Deps) {
+type OutputDirectoryDeps = Record<string, any> & { computed: typeof computed }
+
+export function makeOutputDirectory(deps: OutputDirectoryDeps) {
   const outputDirectoryInput = deps.computed({
     get: () => deps.temporaryOutputDir.value || deps.normalizedOutputDir.value,
     set: (value: string | null) => { deps.temporaryOutputDir.value = value || '' },
