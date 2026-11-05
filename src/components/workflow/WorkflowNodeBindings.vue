@@ -3,12 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
-import { CloseOutline, FolderOpenOutline, MusicalNotesOutline, RefreshOutline } from '@vicons/ionicons5'
+import { FolderOpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useSettingsStore } from '@/stores/settings'
 import { workbenchOutputDirectory, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
 import { detectWorkflowFormat } from '@/workflows/formats'
 import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
+import TaskInputFiles from '@/components/TaskInputFiles.vue'
 
 const props = withDefaults(defineProps<{
   workflowKey: string; definition: Record<string, unknown>
@@ -85,27 +86,14 @@ watch(() => [props.nodeId, props.action], () => {
   <section class="node-bindings" :class="{ 'node-bindings--compact': compact }" @pointerdown.stop @dblclick.stop @wheel.stop>
     <div v-for="node in inputs" :key="node.id" class="binding-group" :data-workbench-input="node.id">
       <strong v-if="!compact && (inputs.length > 1 || mode === 'all')">{{ node.label }}</strong>
-      <div class="binding-actions">
-        <n-button size="small" secondary :disabled="busy" @click="pickFiles(node.id)">{{ t('workbench.addFiles') }}</n-button>
-        <n-button size="small" secondary :disabled="busy" @click="pickFolder(node.id)">{{ t('workbench.chooseFolder') }}</n-button>
-      </div>
-      <div class="binding-selection-summary">
-        <span>{{ t('workbench.filesCountShort', { count: files(node.id).length }) }}</span>
-        <n-button v-if="files(node.id).length" size="tiny" quaternary :disabled="busy" @click="setFiles(node.id, [])">{{ t('separate.clearAll') }}</n-button>
-      </div>
-      <n-scrollbar v-if="files(node.id).length" style="max-height: 180px">
-        <div class="binding-files" role="list" :aria-label="t('workbench.selectedFiles')">
-          <div v-for="path in files(node.id)" :key="path" class="binding-file" role="listitem" :data-input-path="path">
-            <n-icon class="binding-file__glyph" :component="MusicalNotesOutline" />
-            <div class="binding-file__main">
-              <strong :title="path">{{ path.split(/[\\/]/).pop() }}</strong>
-              <span :title="path">{{ path }}</span>
-            </div>
-            <n-button quaternary circle size="tiny" :disabled="busy" :title="t('separate.remove')" :aria-label="t('separate.remove') + ' ' + path.split(/[\\/]/).pop()" @click.stop="setFiles(node.id, files(node.id).filter(file => file !== path))"><template #icon><n-icon :component="CloseOutline" /></template></n-button>
-          </div>
-        </div>
-      </n-scrollbar>
-      <button v-else type="button" class="binding-empty" :disabled="busy" @click="pickFiles(node.id)">{{ t('separate.candidateEmpty') }}</button>
+      <TaskInputFiles
+        :files="files(node.id)"
+        :busy="busy"
+        @add="pickFiles(node.id)"
+        @folder="pickFolder(node.id)"
+        @remove="path => setFiles(node.id, files(node.id).filter(file => file !== path))"
+        @clear="setFiles(node.id, [])"
+      />
       <n-button v-if="workflowInputNodes(definition).length > 1" size="tiny" :type="session.bindings.primaryInput === node.id ? 'primary' : 'default'" @click="session.bindings.primaryInput = node.id">{{ t('workbench.primaryInput') }}</n-button>
     </div>
     <div v-for="node in outputs" :key="node.id" class="binding-group" :data-workbench-output="node.id">

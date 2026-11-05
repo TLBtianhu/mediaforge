@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { createLogger } from '@/utils/logger'
 import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
+import TaskInputFiles from '@/components/TaskInputFiles.vue'
 
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -1368,47 +1369,25 @@ const audioSteps = computed(() => [
             </div>
           </template>
 
-            <div class="picker-buttons">
-              <button type="button" class="picker-btn" :disabled="isRunModeLocked" @click="handlePickFiles">
-                <n-icon :component="MusicalNotesOutline" />
-                <span>{{ t('separate.chooseFiles') }}</span>
-              </button>
-              <button type="button" class="picker-btn" :disabled="isRunModeLocked" @click="handlePickFolder">
-                <n-icon :component="FolderOutline" />
-                <span>{{ t('separate.chooseFolder') }}</span>
-              </button>
-            </div>
-
             <div
               class="dropzone"
               :class="{ 'dropzone--dragging': isDragging, 'dropzone--filled': inputFiles.length, 'dropzone--clickable': !inputFiles.length && !isRunModeLocked }"
               @click="(!inputFiles.length && !isRunModeLocked) ? handlePickFiles() : undefined"
             >
-              <div v-if="inputFiles.length" class="file-list">
-                <div
-                  v-for="(path, index) in inputFiles"
-                  :key="path"
-                  class="file-chip"
-                  :class="{ 'file-chip--dragging': draggedInputIndex === index }"
-                  @pointerdown="onInputPointerDown($event, index)"
-                  @pointermove="onInputPointerMove"
-                  @pointerup="finishInputPointerDrag"
-                  @pointercancel="finishInputPointerDrag"
-                >
-                  <span class="file-chip__handle" :title="t('separate.dragToReorder')"><n-icon :component="ReorderFourOutline" /></span>
-                  <span class="file-chip__glyph"><n-icon :component="MusicalNotesOutline" /></span>
-                  <div class="file-chip__main">
-                    <strong :title="getFileName(path)">{{ getFileName(path) }}</strong>
-                    <div class="file-chip__sub">
-                      <span class="file-chip__kind">{{ getFileKindLabel(path) }}</span>
-                      <code :title="path">{{ shortenMiddle(path, 60) }}</code>
-                    </div>
-                  </div>
-                  <n-button quaternary circle size="tiny" class="file-chip__remove" :title="t('separate.remove')" :disabled="isRunModeLocked" @click.stop="task.removeInputFile(path)">
-                    <template #icon><n-icon :component="CloseOutline" /></template>
-                  </n-button>
-                </div>
-              </div>
+              <TaskInputFiles
+                v-if="inputFiles.length"
+                :files="inputFiles"
+                :busy="isRunModeLocked"
+                reorderable
+                :dragged-index="draggedInputIndex"
+                :drag-handlers="{ down: onInputPointerDown, move: onInputPointerMove, up: finishInputPointerDrag, cancel: finishInputPointerDrag }"
+                :kind-for="getFileKindLabel"
+                :shorten-for="value => shortenMiddle(value, 60)"
+                @add="handlePickFiles"
+                @folder="handlePickFolder"
+                @remove="task.removeInputFile"
+                @clear="task.clearInputFiles"
+              />
               <div v-else class="dropzone__empty">
                 <div class="dropzone__glyph"><n-icon :component="CloudUploadOutline" /></div>
                 <strong>{{ isDragging ? t('separate.dropHere') : t('separate.candidateEmpty') }}</strong>
