@@ -174,6 +174,9 @@ var
   ModelsCheck: TNewCheckBox;
   DataCheck: TNewCheckBox;
   SelectAllButton: TNewButton;
+  RemoveRuntime: Boolean;
+  RemoveModels: Boolean;
+  RemoveData: Boolean;
 
 procedure SelectAllCleanup(Sender: TObject);
 begin
@@ -182,52 +185,99 @@ begin
   DataCheck.Checked := True;
 end;
 
-procedure InitializeUninstallProgressForm();
+function ChooseCleanupOptions(): Boolean;
+var
+  Form: TSetupForm;
+  OkButton: TNewButton;
+  CancelButton: TNewButton;
+begin
+  RemoveRuntime := False;
+  RemoveModels := False;
+  RemoveData := False;
+  Form := CreateCustomForm(ScaleX(460), ScaleY(220), False, True);
+  try
+    Form.Caption := '选择卸载内容';
+    Form.ClientWidth := 460;
+    Form.ClientHeight := 220;
+
+    RuntimeCheck := TNewCheckBox.Create(Form);
+    RuntimeCheck.Parent := Form;
+    RuntimeCheck.Left := 16;
+    RuntimeCheck.Top := 16;
+    RuntimeCheck.Width := 420;
+    RuntimeCheck.Caption := '同时删除独立运行时（runtime-envs）';
+    RuntimeCheck.Checked := False;
+
+    ModelsCheck := TNewCheckBox.Create(Form);
+    ModelsCheck.Parent := Form;
+    ModelsCheck.Left := 16;
+    ModelsCheck.Top := 44;
+    ModelsCheck.Width := 420;
+    ModelsCheck.Caption := '同时删除模型资源（models）';
+    ModelsCheck.Checked := False;
+
+    DataCheck := TNewCheckBox.Create(Form);
+    DataCheck.Parent := Form;
+    DataCheck.Left := 16;
+    DataCheck.Top := 72;
+    DataCheck.Width := 420;
+    DataCheck.Caption := '同时删除配置、日志和任务历史（data）';
+    DataCheck.Checked := False;
+
+    SelectAllButton := TNewButton.Create(Form);
+    SelectAllButton.Parent := Form;
+    SelectAllButton.Left := 16;
+    SelectAllButton.Top := 108;
+    SelectAllButton.Width := 150;
+    SelectAllButton.Caption := '全选以上资源';
+    SelectAllButton.OnClick := @SelectAllCleanup;
+
+    OkButton := TNewButton.Create(Form);
+    OkButton.Parent := Form;
+    OkButton.Left := 238;
+    OkButton.Top := 165;
+    OkButton.Width := 90;
+    OkButton.Caption := '开始卸载';
+    OkButton.ModalResult := mrOk;
+    OkButton.Default := True;
+
+    CancelButton := TNewButton.Create(Form);
+    CancelButton.Parent := Form;
+    CancelButton.Left := 338;
+    CancelButton.Top := 165;
+    CancelButton.Width := 90;
+    CancelButton.Caption := '取消';
+    CancelButton.ModalResult := mrCancel;
+    CancelButton.Cancel := True;
+
+    Result := Form.ShowModal() = mrOk;
+    if Result then
+    begin
+      RemoveRuntime := RuntimeCheck.Checked;
+      RemoveModels := ModelsCheck.Checked;
+      RemoveData := DataCheck.Checked;
+    end;
+  finally
+    Form.Free;
+  end;
+end;
+
+function InitializeUninstall(): Boolean;
 begin
   if UninstallSilent then
+  begin
+    Result := True;
     Exit;
-  RuntimeCheck := TNewCheckBox.Create(UninstallProgressForm);
-  RuntimeCheck.Parent := UninstallProgressForm;
-  RuntimeCheck.Left := 0;
-  RuntimeCheck.Top := 80;
-  RuntimeCheck.Width := UninstallProgressForm.ClientWidth;
-  RuntimeCheck.Caption := '同时删除独立运行时（runtime-envs）';
-  RuntimeCheck.Checked := False;
-
-  ModelsCheck := TNewCheckBox.Create(UninstallProgressForm);
-  ModelsCheck.Parent := UninstallProgressForm;
-  ModelsCheck.Left := 0;
-  ModelsCheck.Top := 105;
-  ModelsCheck.Width := UninstallProgressForm.ClientWidth;
-  ModelsCheck.Caption := '同时删除模型资源（models）';
-  ModelsCheck.Checked := False;
-
-  DataCheck := TNewCheckBox.Create(UninstallProgressForm);
-  DataCheck.Parent := UninstallProgressForm;
-  DataCheck.Left := 0;
-  DataCheck.Top := 130;
-  DataCheck.Width := UninstallProgressForm.ClientWidth;
-  DataCheck.Caption := '同时删除配置、日志和任务历史（data）';
-  DataCheck.Checked := False;
-
-  SelectAllButton := TNewButton.Create(UninstallProgressForm);
-  SelectAllButton.Parent := UninstallProgressForm;
-  SelectAllButton.Left := 0;
-  SelectAllButton.Top := 155;
-  SelectAllButton.Width := 120;
-  SelectAllButton.Caption := '全选以上资源';
-  SelectAllButton.OnClick := @SelectAllCleanup;
+  end;
+  Result := ChooseCleanupOptions();
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    if Assigned(RuntimeCheck) then
-    begin
-      if RuntimeCheck.Checked then RemoveIfExists(ExpandConstant('{app}\runtime-envs'));
-      if ModelsCheck.Checked then RemoveIfExists(ExpandConstant('{app}\models'));
-      if DataCheck.Checked then RemoveIfExists(ExpandConstant('{app}\data'));
-    end;
+    if RemoveRuntime then RemoveIfExists(ExpandConstant('{app}\runtime-envs'));
+    if RemoveModels then RemoveIfExists(ExpandConstant('{app}\models'));
+    if RemoveData then RemoveIfExists(ExpandConstant('{app}\data'));
   end;
 end;

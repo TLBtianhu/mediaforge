@@ -36,6 +36,12 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn("RuntimeCheck.Checked := False", self.script)
         self.assertIn("ModelsCheck.Checked := False", self.script)
         self.assertIn("DataCheck.Checked := False", self.script)
+        self.assertIn("ChooseCleanupOptions", self.script)
+        self.assertIn("InitializeUninstall", self.script)
+        self.assertIn("Form.ShowModal() = mrOk", self.script)
+        self.assertIn("RemoveRuntime := RuntimeCheck.Checked", self.script)
+        self.assertIn("RemoveModels := ModelsCheck.Checked", self.script)
+        self.assertIn("RemoveData := DataCheck.Checked", self.script)
         self.assertNotIn("CleanupOptions.Checked", self.script)
 
 
