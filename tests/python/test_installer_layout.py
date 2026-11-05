@@ -42,6 +42,9 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn("RemoveRuntime := RuntimeCheck.Checked", self.script)
         self.assertIn("RemoveModels := ModelsCheck.Checked", self.script)
         self.assertIn("RemoveData := DataCheck.Checked", self.script)
+        self.assertNotIn("RepairVenvConfig", self.script)
+        self.assertNotIn("RepairBundledRuntimeEnvs", self.script)
+        self.assertNotIn("pyvenv.cfg", self.script)
         self.assertNotIn("CleanupOptions.Checked", self.script)
 
 

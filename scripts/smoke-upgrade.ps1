@@ -3,7 +3,7 @@
 # 验证的是"老用户点升级会发生什么"，不是功能：
 #   * 同一 AppId 覆盖安装后，配置 / 模型 / 运行时资产原样保留
 #   * 新版文件确实落盘（不是装了个寂寞）
-#   * pyvenv.cfg 被重指到新程序目录，且写在 MEDIAFORGE_DATA_ROOT 里，不碰真实 ~/.mediaforge
+#   * 安装器不改写旧 pyvenv.cfg，也不碰真实用户目录
 #   * 不写入旧安装目录、不写入无关临时目录
 #   * 卸载只删程序、保留数据
 #
@@ -164,8 +164,8 @@ try {
     Check '模型权重保留' ((Test-Path $weights) -and ((Hash-Of $weights) -eq $weightsHash))
     Check '运行时解释器保留' (Test-Path (Join-Path $venvDir 'Scripts\python.exe'))
     $cfgText = if (Test-Path $venvCfg) { Get-Content $venvCfg -Raw } else { '' }
-    $expectedHome = 'home = ' + (Join-Path $installDir 'app\python-runtime')
-    Check 'pyvenv.cfg 重指到新程序目录' ($cfgText.Contains($expectedHome)) $expectedHome
+    $originalCfgText = "home = C:\stale\python-runtime`ninclude-system-site-packages = false`n"
+    Check '安装器不改写旧 pyvenv.cfg' ($cfgText -eq $originalCfgText) '旧配置保持原样'
     Check 'pyvenv.cfg 仍在测试数据根内' ($venvCfg.StartsWith($dataRoot, [System.StringComparison]::OrdinalIgnoreCase))
     if ($realVenvHash) {
         Check '真实用户数据根未被改写' ((Hash-Of $realVenv) -eq $realVenvHash) $realVenv
