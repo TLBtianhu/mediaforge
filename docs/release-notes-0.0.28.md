@@ -21,6 +21,9 @@
 
 安装包本机副本继续放在 `release\local`，不写 Downloads。
 
+- GitHub Release：https://github.com/TLBtianhu/mediaforge/releases/tag/v0.0.28
+- 魔搭安装包直链：https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/release/MediaForge-0.0.28-windows-x64-cuda-setup.exe
+
 ## 产物校验
 
 | 产物 | 字节数 | SHA-256 |
