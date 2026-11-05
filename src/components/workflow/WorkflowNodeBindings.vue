@@ -8,6 +8,7 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { useSettingsStore } from '@/stores/settings'
 import { workbenchOutputDirectory, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
 import { detectWorkflowFormat } from '@/workflows/formats'
+import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
 
 const props = withDefaults(defineProps<{
   workflowKey: string; definition: Record<string, unknown>
@@ -109,17 +110,23 @@ watch(() => [props.nodeId, props.action], () => {
     </div>
     <div v-for="node in outputs" :key="node.id" class="binding-group" :data-workbench-output="node.id">
       <strong>{{ aggregateOutput ? t('separate.outputDirectorySummary') : node.label }}</strong>
-      <n-input size="small" readonly :value="outputDirectory(node.id)" :title="outputDirectory(node.id)" />
+      <TaskOutputSettings
+        :model-value="outputDirectory(node.id)"
+        :layout="session.bindings.outputLayout"
+        readonly
+        :disabled="busy"
+        :show-reset="true"
+        @browse="pickOutput(node.id)"
+        @reset="resetOutput(node.id)"
+        @update:layout="session.bindings.outputLayout = $event"
+      />
       <p v-if="nativeGraph" class="binding-hint">{{ t('workbench.outputRootHint') }}</p>
       <div class="binding-actions">
         <n-button size="small" secondary type="primary" :disabled="busy" @click="pickOutput(node.id)"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('workbench.chooseOutput') }}</n-button>
         <n-button size="small" secondary :disabled="busy || isDefaultOutput(node.id)" :title="t('separate.outputDefault')" @click="resetOutput(node.id)"><template #icon><n-icon :component="RefreshOutline" /></template>{{ t('workbench.defaultOutput') }}</n-button>
       </div>
     </div>
-    <label v-if="outputs.length && !nativeGraph" class="binding-layout">
-      <span>{{ t('separate.saveMode') }}</span>
-      <n-select size="small" v-model:value="session.bindings.outputLayout" :options="[{ label: t('separate.saveModeFlatName'), value: 'flat' }, { label: t('separate.saveModeFolderName'), value: 'folders' }]" />
-    </label>
+
   </section>
 </template>
 

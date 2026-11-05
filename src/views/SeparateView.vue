@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { createLogger } from '@/utils/logger'
+import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
 
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -1423,42 +1424,19 @@ const audioSteps = computed(() => [
             </n-button>
           </template>
 
-            <label class="ofield" data-guide="output-location">
-              <span class="ofield__label">{{ t('separate.temporaryOutputDir') }}</span>
-              <div class="dir-input" data-drop-zone="outputDir">
-                <n-input v-model:value="outputDirectoryInput" size="small" :status="outputDirectoryError ? 'error' : undefined" :placeholder="t('separate.outputDefault')" :disabled="isRunModeLocked" clearable />
-                <n-button secondary size="small" class="dir-input__browse" :title="t('separate.chooseOutput')" :disabled="isRunModeLocked" @click="pickTemporaryOutputDir">
-                  <template #icon><n-icon :component="FolderOutline" /></template>
-                </n-button>
-              </div>
-              <small v-if="outputDirectoryError" class="output-directory-error">{{ outputDirectoryError }}</small>
-            </label>
+            <TaskOutputSettings
+              v-model:model-value="outputDirectoryInput"
+              v-model:layout="outputLayout"
+              :error="outputDirectoryError"
+              :preview="outputPreview"
+              :disabled="isRunModeLocked"
+              @browse="pickTemporaryOutputDir"
+            />
 
-            <div class="ofield-row" data-guide="output-format">
-              <label class="ofield">
-                <span class="ofield__label">{{ t('settings.defaultFormat') }}</span>
-                <n-select v-model:value="settings.defaultFormat" size="small" :options="formatOptions" :disabled="isRunModeLocked" />
-              </label>
-              <div class="ofield">
-                <span class="ofield__label">{{ t('separate.saveMode') }}</span>
-                <div class="seg" :class="{ 'seg--locked': isRunModeLocked }">
-                  <button
-                    type="button"
-                    class="seg__btn"
-                    :class="{ 'seg__btn--active': !saveAsFolder }"
-                    :disabled="isRunModeLocked"
-                    @click="saveAsFolder = false"
-                  >{{ t('separate.saveModeFlatName') }}</button>
-                  <button
-                    type="button"
-                    class="seg__btn"
-                    :class="{ 'seg__btn--active': saveAsFolder }"
-                    :disabled="isRunModeLocked"
-                    @click="saveAsFolder = true"
-                  >{{ t('separate.saveModeFolderName') }}</button>
-                </div>
-              </div>
-            </div>
+            <label class="ofield" data-guide="output-format">
+              <span class="ofield__label">{{ t('settings.defaultFormat') }}</span>
+              <n-select v-model:value="settings.defaultFormat" size="small" :options="formatOptions" :disabled="isRunModeLocked" />
+            </label>
 
             <div class="ofield naming-field" data-guide="output-naming">
               <span class="ofield__label">{{ t('separate.namingRule') }}</span>
