@@ -245,13 +245,13 @@
 }
 
 .about-build-card--official {
-  border-color: color-mix(in srgb, #22c55e 34%, var(--outline));
-  background: color-mix(in srgb, #22c55e 8%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--success) 34%, var(--outline));
+  background: color-mix(in srgb, var(--success) 8%, var(--surface-2));
 }
 
 .about-build-card--development {
-  border-color: color-mix(in srgb, #f2c94c 38%, var(--outline));
-  background: color-mix(in srgb, #f2c94c 8%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--outline));
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface-2));
 }
 
 .about-build-card__head,
@@ -927,7 +927,7 @@
 }
 
 .runtime-env-card__accel--ok {
-  color: var(--success, #22c55e);
+  color: var(--success);
 }
 
 .runtime-env-card__actions {

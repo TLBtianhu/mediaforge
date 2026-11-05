@@ -216,8 +216,8 @@ function openPluginView(plugin: { name: string }, view: { id: string; placements
 .plugins-installed { display: grid; gap: 14px; }
 .plugin-installed-actions { justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
 .plugin-version, .plugins-help { opacity: .65; font-size: 12px; }
-.plugin-error { color: #d86262; white-space: pre-wrap; overflow-wrap: anywhere; }
-.plugin-update { color: #449f77; }
+.plugin-error { color: var(--danger); white-space: pre-wrap; overflow-wrap: anywhere; }
+.plugin-update { color: var(--success); }
 .plugin-location, .plugins-directory { font-size: 11px; opacity: .6; overflow-wrap: anywhere; }
 .plugins-empty { display: flex; justify-content: center; padding: 60px 20px; }
 .plugins-log-panel { margin-top: 24px; border-top: 1px solid rgba(128,128,128,.2); padding-top: 16px; }

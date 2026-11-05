@@ -105,7 +105,7 @@ async function switchRuntime() {
 }
 .version-update-card__hint {
   margin: 0;
-  color: var(--text-color-3, #9a9aa2);
+  color: var(--on-surface-muted);
   font-size: 13px;
 }
 .version-update-card__row {
@@ -122,7 +122,7 @@ async function switchRuntime() {
 }
 .version-update-card__error {
   margin: 6px 0 0;
-  color: #f07178;
+  color: var(--danger);
   font-size: 12px;
   word-break: break-word;
 }

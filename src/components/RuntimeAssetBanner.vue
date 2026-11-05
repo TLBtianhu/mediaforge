@@ -163,7 +163,7 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(24, 24, 28, 0.96);
-  color: #e8e8ea;
+  color: var(--on-surface-heading);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   font-size: 13px;
 }
@@ -174,17 +174,17 @@ onBeforeUnmount(() => {
   margin-bottom: 6px;
 }
 .runtime-asset-banner__size {
-  color: #9a9aa2;
+  color: var(--on-surface-muted);
   font-size: 12px;
 }
 .runtime-asset-banner__body {
   margin: 0 0 10px;
-  color: #b6b6bd;
+  color: var(--on-surface);
   line-height: 1.5;
 }
 .runtime-asset-banner__error {
   margin: 8px 0 0;
-  color: #f07178;
+  color: var(--danger);
 }
 .runtime-asset-banner__actions {
   margin-top: 12px;
