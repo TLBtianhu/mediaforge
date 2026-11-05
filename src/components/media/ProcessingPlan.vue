@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { CubeOutline } from '@vicons/ionicons5'
+import ModelParameterField from '@/components/ModelParameterField.vue'
 
 defineOptions({ name: 'ProcessingPlan' })
 
@@ -186,25 +187,13 @@ onMounted(load)
 
       <div v-if="paramEntries.length" class="processing-plan__params">
         <div v-for="[key, spec] in paramEntries" :key="key" class="processing-plan__field">
-          <label>{{ paramLabel(key) }}</label>
-          <n-select
-            v-if="spec.enum"
+          <ModelParameterField
+            :label="paramLabel(key)"
             :value="modelValue?.params?.[key]"
-            :options="(spec.enum || []).map(value => ({ label: value, value }))"
+            :type="spec.type"
+            :options="spec.enum"
             :disabled="busy"
             @update:value="(value: unknown) => setParam(key, value)"
-          />
-          <n-input-number
-            v-else-if="spec.type === 'integer' || spec.type === 'number'"
-            :value="Number(modelValue?.params?.[key] ?? 0)"
-            :disabled="busy"
-            @update:value="(value: number | null) => setParam(key, value ?? 0)"
-          />
-          <n-input
-            v-else
-            :value="String(modelValue?.params?.[key] ?? '')"
-            :disabled="busy"
-            @update:value="(value: string) => setParam(key, value)"
           />
         </div>
       </div>

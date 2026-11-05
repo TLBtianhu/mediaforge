@@ -2,6 +2,7 @@
 import { createLogger } from '@/utils/logger'
 import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
 import TaskInputFiles from '@/components/TaskInputFiles.vue'
+import ModelParameterField from '@/components/ModelParameterField.vue'
 
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -2008,7 +2009,7 @@ const audioSteps = computed(() => [
                   <n-grid-item v-if="hasInferenceField('batch_size')">
                     <div class="field-block" data-parameter-guide="batch_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'batch_size' }">
                       <label>{{ t('inference.batchSize') }}</label>
-                      <n-input-number v-model:value="batch_size" :min="0" :max="32" style="width:100%" @blur="task.restoreInferenceNumberFallback('batch_size')" />
+                      <ModelParameterField :label="t('inference.batchSize')" :value="batch_size" type="integer" :min="0" :max="32" @update:value="value => batch_size = Number(value)" @blur="task.restoreInferenceNumberFallback('batch_size')" />
                     </div>
                   </n-grid-item>
                   <n-grid-item v-if="hasInferenceField('overlap_size')">
@@ -2020,7 +2021,7 @@ const audioSteps = computed(() => [
                   <n-grid-item v-if="hasInferenceField('num_overlap')">
                     <div class="field-block" data-parameter-guide="num_overlap" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'num_overlap' }">
                       <label>{{ t('inference.numOverlap') }}</label>
-                      <n-input-number v-model:value="num_overlap" :min="0" :max="128" style="width:100%" @blur="task.restoreInferenceNumberFallback('num_overlap')" />
+                      <ModelParameterField :label="t('inference.numOverlap')" :value="num_overlap" type="integer" :min="0" :max="128" @update:value="value => num_overlap = Number(value)" @blur="task.restoreInferenceNumberFallback('num_overlap')" />
                     </div>
                   </n-grid-item>
                   <n-grid-item v-if="hasInferenceField('chunk_size')">
@@ -2033,19 +2034,19 @@ const audioSteps = computed(() => [
                   <n-grid-item v-if="hasInferenceField('window_size')">
                     <div class="field-block" data-parameter-guide="window_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'window_size' }">
                       <label>{{ t('inference.vrWindowSize') }}</label>
-                      <n-input-number v-model:value="window_size" :min="0" :max="4096" style="width:100%" @blur="task.restoreInferenceNumberFallback('window_size')" />
+                      <ModelParameterField :label="t('inference.vrWindowSize')" :value="window_size" type="integer" :min="0" :max="4096" @update:value="value => window_size = Number(value)" @blur="task.restoreInferenceNumberFallback('window_size')" />
                     </div>
                   </n-grid-item>
                   <n-grid-item v-if="hasInferenceField('aggression')">
                     <div class="field-block" data-parameter-guide="aggression" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'aggression' }">
                       <label>{{ t('inference.vrAggression') }}</label>
-                      <n-input-number v-model:value="aggression" :min="0" :max="100" style="width:100%" />
+                      <ModelParameterField :label="t('inference.vrAggression')" :value="aggression" type="integer" :min="0" :max="100" @update:value="value => aggression = Number(value)" />
                     </div>
                   </n-grid-item>
                   <n-grid-item v-if="hasInferenceField('post_process_threshold')">
                     <div class="field-block" data-parameter-guide="post_process_threshold" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'post_process_threshold' }">
                       <label>{{ t('inference.vrPostProcessThreshold') }}</label>
-                      <n-input-number v-model:value="post_process_threshold" :min="0" :max="1" :step="0.05" style="width:100%" />
+                      <ModelParameterField :label="t('inference.vrPostProcessThreshold')" :value="post_process_threshold" type="number" :min="0" :max="1" :step="0.05" @update:value="value => post_process_threshold = Number(value)" />
                     </div>
                   </n-grid-item>
                 </n-grid>
