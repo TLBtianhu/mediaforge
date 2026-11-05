@@ -534,11 +534,11 @@ onBeforeUnmount(() => {
         </WorkflowRunPanel>
       </template>
     </WorkflowSimpleNodeEditor>
-    <n-modal v-model:show="showOutputSettings" preset="card" :title="t('separate.output')" class="simple-output-settings-modal" style="width: min(480px, calc(100vw - 32px))">
+    <n-modal v-model:show="showOutputSettings" preset="card" :title="t('separate.output')" class="simple-output-settings-modal" style="width: var(--modal-width-sm)">
       <WorkflowNodeBindings :workflow-key="workflowKey" :definition="currentDefinition" mode="outputs" :aggregate-output="true" />
       <template #footer><div class="simple-editor-page__prompt-actions"><n-button size="small" secondary @click="showOutputSettings = false">{{ t('common.close') }}</n-button></div></template>
     </n-modal>
-    <n-modal v-model:show="showClosePrompt" preset="card" :title="t('workflows.simpleUnsavedTitle')" style="width: min(440px, calc(100vw - 32px))">
+    <n-modal v-model:show="showClosePrompt" preset="card" :title="t('workflows.simpleUnsavedTitle')" style="width: var(--modal-width-sm)">
       <p>{{ saveError || formError || t('workflows.simpleUnsavedHint') }}</p>
       <template #footer><div class="simple-editor-page__prompt-actions"><n-button secondary @click="showClosePrompt = false; void destroyWindow()">{{ t('workflows.simpleDiscardChanges') }}</n-button><n-button type="primary" :loading="saving" :disabled="saving" @click="void saveAndClose()">{{ t('workflows.simpleSaveAndClose') }}</n-button></div></template>
     </n-modal>

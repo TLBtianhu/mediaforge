@@ -836,7 +836,7 @@ watch([workflows, selectedWorkflowId], () => {
     />
 
     <n-modal v-model:show="settingsOpen" preset="card" class="wf-settings-modal" :title="t('workflows.settingsTitle')"
-      style="width: min(640px, calc(100vw - 48px)); max-height: calc(100dvh - 112px)"
+      style="width: var(--modal-width-md); max-height: calc(100dvh - 112px)"
       :content-style="{ minHeight: 0, overflow: 'auto' }"
       :bordered="false" role="dialog" aria-modal="true" :aria-label="t('workflows.settingsTitle')">
         <div v-if="selectedWorkflow" class="wf-settings">

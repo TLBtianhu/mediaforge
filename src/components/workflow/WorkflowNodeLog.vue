@@ -45,7 +45,7 @@ function guardLogKeys(event: KeyboardEvent) {
     </div>
     <TaskLogConsole :lines="logs || []" :compact="compact" />
   </details>
-  <n-modal v-model:show="expanded" preset="card" :title="t('workbench.nodeLogsTitle', { node: nodeLabel || nodeId })" class="workflow-node-log-modal" style="width: min(1040px, calc(100vw - 48px))" @pointerdown.stop @click.stop @dblclick.stop @contextmenu.stop @keydown="guardLogKeys" @wheel.stop>
+  <n-modal v-model:show="expanded" preset="card" :title="t('workbench.nodeLogsTitle', { node: nodeLabel || nodeId })" class="workflow-node-log-modal" style="width: var(--modal-width-lg)" @pointerdown.stop @click.stop @dblclick.stop @contextmenu.stop @keydown="guardLogKeys" @wheel.stop>
     <div class="workflow-node-log__actions">
       <n-button size="small" secondary :disabled="!logs?.length" :loading="copying" @click="copyLogs"><template #icon><n-icon :component="CopyOutline" /></template>{{ t('workbench.copyLogs') }}</n-button>
     </div>

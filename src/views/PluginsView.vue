@@ -184,7 +184,7 @@ function openPluginView(plugin: { name: string }, view: { id: string; placements
       <pre v-if="showLogs" class="plugins-log">{{ logs.join('\n') }}</pre>
     </section>
 
-    <n-modal v-model:show="showSource" preset="card" :title="t('plugins.installSource')" class="plugin-source-modal" style="width: min(560px, calc(100vw - 32px))">
+    <n-modal v-model:show="showSource" preset="card" :title="t('plugins.installSource')" class="plugin-source-modal" style="width: var(--modal-width-md)">
       <p class="plugins-help">{{ t('plugins.sourceHint') }}</p>
       <n-input v-model:value="source" :placeholder="t('plugins.sourcePlaceholder')" :disabled="disabled" />
       <template #footer><div class="plugins-actions">
