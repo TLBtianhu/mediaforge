@@ -24,6 +24,15 @@ class DshIntegrationLayoutTest(unittest.TestCase):
         self.assertIn("[string]$AppRoot = ''", self.register)
         self.assertIn("[string]$LauncherPath = ''", self.register)
         self.assertNotIn(".mediaforge\\home.txt", self.register)
+    def test_published_bundle_excludes_powershell_helpers(self) -> None:
+        import json
+        package = json.loads((self.root / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(package["version"], "0.2.2")
+        self.assertNotIn("register.ps1", package["files"])
+        self.assertNotIn("setup.ps1", package["files"])
+        self.assertNotIn("verify.ps1", package["files"])
+        self.assertIn("mediaforge-mcp.cmd", package["files"])
+
     def test_icon_stays_below_the_dsh_metadata_limit(self) -> None:
         icon = self.root / "icon.svg"
         self.assertLess(icon.stat().st_size, 256 * 1024)

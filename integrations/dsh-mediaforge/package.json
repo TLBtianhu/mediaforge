@@ -1,6 +1,6 @@
 {
   "name": "@local/mediaforge-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,9 +11,6 @@
     "cordis.patch.yml",
     "launcher.template.cmd",
     "mediaforge-mcp.cmd",
-    "register.ps1",
-    "setup.ps1",
-    "verify.ps1",
     "locale/*.json",
     "icon.svg",
     "README.md",
