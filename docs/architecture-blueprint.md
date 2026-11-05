@@ -164,9 +164,8 @@ pymss 以外部包形式存在，通过 `core` 里的 audio 适配器接入同�
 仍然保留、明确不在本轮处理的：
 
 - 音频引擎仍是外部 pymss 包，通过 `audio_tools` 适配器接入。
-  - `worker_bootstrap.py` 现在是 232 行门面，实现整体在 `core/bootstrap_parts.py`；
-    所有跨符号引用都改写为 `worker_bootstrap.<name>`，因此测试对门面打补丁仍然有效，
-    下一步可以把 parts 按依赖层机械拆分而不用改测试。
+  - `worker_bootstrap.py` 已合并为普通模块，不再通过 `bootstrap_parts` 或 `wb.<name>` 回调；
+    测试仍可直接对模块属性打补丁，运行时路径由 `shared.worker_paths` 解析。
 
 ## 6. 物理分层现状（0.0.23 之后）
 
@@ -198,7 +197,7 @@ python/
 | `views/SettingsView.vue` | 3765 | 3189 | `settings/{runtimeState,runtimeActions,proxyTest,appearance,modelDirMigration}.ts`，测试见 `tests/settings{Runtime,Appearance,ModelDir}.test.mjs` |
 | `stores/editor.ts` | 2273 | 2026 | `stores/{editorStems,editorNormalize}.ts`，测试见 `tests/editor{Stems,Normalize}.test.mjs` |
 | `stores/task.ts` | 2433 | 2103 | `stores/{taskOutputPaths,taskNormalize,taskInference}.ts`，测试见 `tests/task{OutputPaths,Normalize,Inference}.test.mjs` |
-| `python/core/worker_bootstrap.py` | 2430 | 337（门面） | 实现拆到 `core/bootstrap_parts/{base,primitives,operations,commands}.py`（589/555/509/1059），跨符号调用走门面 |
+| `python/core/worker_bootstrap.py` | 2430 | 2650（普通模块） | 合并 `base/primitives/operations/commands`，删除 bootstrap_parts 门面与分包 |
 
 拆分边界由测试契约决定：早期测试按名字从 SFC 里取声明，被取用的声明只能留在顶层；
 现在输出目录、队列、播放、词干选择、推理默认值、执行日志、运行时调试文件、设置页的
