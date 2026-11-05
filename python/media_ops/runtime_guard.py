@@ -24,6 +24,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
+from shared import worker_paths
+
 SCHEMA_VERSION = 1
 
 
@@ -61,10 +63,7 @@ def load_manifest() -> dict[str, Any]:
 
 
 def data_root() -> Path:
-    override = os.environ.get("MEDIAFORGE_DATA_DIR", "").strip()
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".mediaforge"
+    return worker_paths.data_root()
 
 
 def active_asset_id() -> str | None:
