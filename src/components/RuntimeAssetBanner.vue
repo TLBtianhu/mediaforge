@@ -7,6 +7,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useModelStore } from '@/stores/model'
+import RuntimePreparationProgress from '@/components/RuntimePreparationProgress.vue'
 
 const { t } = useI18n()
 const app = useAppStore()
@@ -135,12 +136,13 @@ onBeforeUnmount(() => {
       <span class="runtime-asset-banner__size">{{ totalMb }} MB</span>
     </div>
     <p class="runtime-asset-banner__body">{{ remoteAvailable ? t('runtimeAsset.newRuntimeBody', { asset: remoteRuntime }) : stale ? t('runtimeAsset.staleBody') : t('runtimeAsset.body') }}</p>
-    <div v-if="running" class="runtime-asset-banner__progress">
-      <div class="runtime-asset-banner__bar">
-        <div class="runtime-asset-banner__fill" :style="{ width: `${percent}%` }" />
-      </div>
-      <span>{{ percent }}% · {{ downloadedMb }} / {{ totalMb }} MB</span>
-    </div>
+    <RuntimePreparationProgress
+      v-if="running"
+      :message="t('runtimeAsset.downloading')"
+      :percent="percent"
+      :downloaded-mb="downloadedMb"
+      :total-mb="totalMb"
+    />
     <p v-if="error" class="runtime-asset-banner__error">{{ error }}</p>
     <div class="runtime-asset-banner__actions">
       <n-button size="small" type="primary" :loading="running" :disabled="!canStart" @click="remoteAvailable ? acceptRemoteRuntime() : startInstall()">
@@ -179,23 +181,6 @@ onBeforeUnmount(() => {
   margin: 0 0 10px;
   color: #b6b6bd;
   line-height: 1.5;
-}
-.runtime-asset-banner__bar {
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-.runtime-asset-banner__fill {
-  height: 100%;
-  background: #e8c069;
-  transition: width 0.3s ease;
-}
-.runtime-asset-banner__progress span {
-  display: block;
-  margin-top: 6px;
-  color: #9a9aa2;
-  font-size: 12px;
 }
 .runtime-asset-banner__error {
   margin: 8px 0 0;

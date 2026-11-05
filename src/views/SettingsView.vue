@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
+import RuntimePreparationProgress from '@/components/RuntimePreparationProgress.vue'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
@@ -856,19 +857,14 @@ onMounted(async () => {
                   </n-button>
                 </div>
 
-                <div v-if="card.installing" class="runtime-env-card__progress">
-                  <n-spin size="small" />
-                  <span class="runtime-env-card__progress-msg" :title="app.runtimeInstallMessage">{{ app.runtimeInstallMessage }}</span>
-                  <div class="runtime-env-card__progress-actions">
-                    <n-button size="tiny" tertiary @click="runtimeLogDialogVisible = true">
-                      <template #icon><n-icon :component="DocumentTextOutline" /></template>
-                      {{ t('settings.runtimeShowInstallLog') }}
-                    </n-button>
-                    <n-button size="tiny" tertiary @click="cancelRuntimeInstall">
-                      {{ t('common.cancel') }}
-                    </n-button>
-                  </div>
-                </div>
+                <RuntimePreparationProgress
+                  v-if="card.installing"
+                  :message="app.runtimeInstallMessage"
+                  :show-logs="true"
+                  :show-cancel="true"
+                  @logs="runtimeLogDialogVisible = true"
+                  @cancel="cancelRuntimeInstall"
+                />
               </div>
             </div>
             </Transition>
