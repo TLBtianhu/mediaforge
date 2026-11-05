@@ -3,6 +3,7 @@ import { createLogger } from '@/utils/logger'
 import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
 import TaskInputFiles from '@/components/TaskInputFiles.vue'
 import ModelParameterField from '@/components/ModelParameterField.vue'
+import ModelPanelState from '@/components/ModelPanelState.vue'
 
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -1784,17 +1785,16 @@ const audioSteps = computed(() => [
                     {{ t('separate.startHintModelMissing') }}
                   </div>
                 </template>
-                <div v-else class="stage-empty" :class="{ 'stage-empty--loading': modelPanelLoading }">
-                  <div class="stage-empty__glyph">
-                    <n-spin v-if="modelPanelLoading" size="medium" />
-                    <n-icon v-else :component="CubeOutline" />
-                  </div>
-                  <strong>{{ modelPanelLoading ? t('separate.modelPanelLoadingTitle') : t('separate.modelPanelEmptyTitle') }}</strong>
-                  <p>{{ modelPanelLoading ? t('separate.modelPanelLoadingDesc') : t('separate.modelPanelEmptyDesc') }}</p>
-                  <n-button v-if="!modelPanelLoading" secondary @click="router.push('/models')">
-                    {{ t('separate.modelPanelPrimaryAction') }}
-                  </n-button>
-                </div>
+                <ModelPanelState
+                  v-else
+                  :loading="modelPanelLoading"
+                  :empty-title="t('separate.modelPanelEmptyTitle')"
+                  :empty-description="t('separate.modelPanelEmptyDesc')"
+                  :loading-title="t('separate.modelPanelLoadingTitle')"
+                  :loading-description="t('separate.modelPanelLoadingDesc')"
+                  :action-label="t('separate.modelPanelPrimaryAction')"
+                  @action="router.push('/models')"
+                />
               </div>
 
             </transition>

@@ -3,8 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { CubeOutline } from '@vicons/ionicons5'
 import ModelParameterField from '@/components/ModelParameterField.vue'
+import ModelPanelState from '@/components/ModelPanelState.vue'
 
 defineOptions({ name: 'ProcessingPlan' })
 
@@ -157,13 +157,17 @@ onMounted(load)
 <template>
   <section class="processing-plan">
     <n-spin v-if="loading" :show="true" class="processing-plan__loading" />
-    <div v-else-if="!available.length" class="plan-empty">
-      <span class="plan-empty__glyph"><n-icon :component="CubeOutline" /></span>
-      <strong>{{ t('plan.noModelTitle') }}</strong>
-      <p>{{ t('plan.noModelHint') }}</p>
-      <p v-if="loadError" class="plan-load-error">{{ loadError }}</p>
-      <n-button secondary @click="openModels">{{ t('plan.openModels') }}</n-button>
-    </div>
+    <ModelPanelState
+      v-else-if="!available.length"
+      :loading="loading"
+      :empty-title="t('plan.noModelTitle')"
+      :empty-description="t('plan.noModelHint')"
+      :loading-title="t('plan.loading')"
+      :loading-description="t('plan.loadingHint')"
+      :action-label="t('plan.openModels')"
+      :error="loadError"
+      @action="openModels"
+    />
     <template v-else>
       <div class="processing-plan__head">
         <span>{{ t('plan.oneModel') }}</span>
