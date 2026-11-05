@@ -41,15 +41,22 @@ fn main() {
     // Normal launches acquire a
     // process-wide lock so a second launch cannot create another WebView
     // process and operate on the same runtime environment concurrently.
-    let _single_instance = match single_instance::acquire_or_focus() {
-        Ok(Some(guard)) => Some(guard),
-        Ok(None) => return,
-        Err(error) => {
-            // A mutex failure is rare (for example, a restricted user
-            // session). Keep the application usable, while making the loss
-            // of single-instance enforcement visible in diagnostics.
-            crate::session_log::early("WARN", "app.diagnostic", &format!("Unable to create the single-instance mutex: {error}"));
-            None
+    let smoke_probe = std::env::args().any(|arg| {
+        matches!(arg.as_str(), "--smoke-print-data-root" | "--smoke-install-runtime" | "--smoke-activate-runtime")
+    });
+    let _single_instance = if smoke_probe {
+        None
+    } else {
+        match single_instance::acquire_or_focus() {
+            Ok(Some(guard)) => Some(guard),
+            Ok(None) => return,
+            Err(error) => {
+                // A mutex failure is rare (for example, a restricted user
+                // session). Keep the application usable, while making the loss
+                // of single-instance enforcement visible in diagnostics.
+                crate::session_log::early("WARN", "app.diagnostic", &format!("Unable to create the single-instance mutex: {error}"));
+                None
+            }
         }
     };
 
