@@ -6,9 +6,9 @@
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File scripts/smoke-first-install.ps1 `
-#       -AppExe release\stage-0.0.27\MediaForge.exe
+#       -AppExe release\stage-0.0.28\MediaForge.exe
 param(
-    [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.27\MediaForge.exe",
+    [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.28\MediaForge.exe",
     [string]$RuntimeZip = "$PSScriptRoot\..\release\runtime\runtime-cuda-2026.11.4.zip",
     [int]$Port = 8765,
     [string]$HttpPython = ''
