@@ -2,7 +2,7 @@
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File scripts/smoke-portable.ps1 `
-#       -Zip release/MediaForge-0.0.30-windows-x64-portable.zip
+#       -Zip release/MediaForge-0.0.31-windows-x64-portable.zip
 #
 # 旧版便携 zip 没有 mediaforge.portable 标记；脚本会先把标记补进 zip 的副本，
 # 用来验证"标记 → 便携数据根"这条链路，而不依赖某个已发布的包。
