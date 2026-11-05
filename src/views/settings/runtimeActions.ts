@@ -5,6 +5,7 @@
  * 确认被关掉（Esc / 遮罩 / 关闭）一律当取消。派生状态见 runtimeState.ts。
  */
 import type { InstalledRuntime, RuntimeBackend } from '../../stores/app.ts'
+import { invoke } from '@tauri-apps/api/core'
 import { runtimeEnvironmentForBackend, runtimeSizeHint } from '../../utils/runtime.ts'
 
 type Deps = Record<string, any>
@@ -44,7 +45,12 @@ export function makeRuntimeActions(deps: Deps) {
     )
     if (!confirmed) return
     try {
-      await app.installRuntime(backend, deps.runtimeMirror.value, deps.currentLocale.value)
+      if (backend === 'cuda') {
+        // CUDA 已统一为内容寻址资产安装；其它后端暂保留旧路径，直到有对应资产清单。
+        await invoke('runtime_asset_install')
+      } else {
+        await app.installRuntime(backend, deps.runtimeMirror.value, deps.currentLocale.value)
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : String(error))
     }
