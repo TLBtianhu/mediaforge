@@ -21,6 +21,16 @@
 
 安装包本机副本继续放在 `release\local`，不写 Downloads。
 
+## 产物校验
+
+| 产物 | 字节数 | SHA-256 |
+|---|---:|---|
+| `MediaForge-0.0.28-windows-x64-cuda-setup.exe` | 67404849 | `61ced5d75586a0e1c1f992a63f51728dbb02fa58dce75c1bd0b0624a911d3108` |
+| `MediaForge-0.0.28-windows-x64-portable.zip` | 128566361 | `bf1f7f4c1603b59870228c74a8a7081b4e47e793bbee278b8d8b7208653ebddc` |
+| `MediaForge-0.0.28-windows-x64-update.zip` | 104607720 | `32d6f8d64012b2b774e8d48a8d0c9b41b22930b9e17effbb2952a500624398fd` |
+
+更新包签名文件：`MediaForge-0.0.28-windows-x64-update.zip.sig`。
+
 ## 卸载说明
 
 默认只卸载主程序、快捷方式和安装注册项。独立运行时、模型和配置历史只有显式勾选才清理，不勾选则全部保留。DSH 集成由 DSH 插件管理器单独处理。
