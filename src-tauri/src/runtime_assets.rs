@@ -3,7 +3,7 @@
 //! 设计约束（来自项目决定）：
 //!   * 资产身份来自 `manifest/runtime.json`（可被 `versions.json` 覆盖成 desired），
 //!     程序里不再写死 sha256——换运行时是换数据，不是重编译；
-//!   * 资产落在数据根 `~/.mediaforge/runtime-envs/<assetId>`，并列存放，切指针即回滚；
+//!   * 资产落在共享 `runtime-envs/<assetId>`，并列存放，切指针即回滚；
 //!   * 下载交给随包的 aria2c（4 连接、断点续传、自带重试），Rust 只负责编排与校验；
 //!   * 解压先落临时目录、校验通过后原子改名，避免断电留下半个运行时。
 
@@ -101,10 +101,6 @@ fn asset_dir(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<PathB
     Ok(envs_dir(app)?.join(&descriptor.asset_id))
 }
 
-fn legacy_backend_dir(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<PathBuf> {
-    Ok(envs_dir(app)?.join(&descriptor.backend))
-}
-
 fn python_path(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<PathBuf> {
     Ok(asset_dir(app, descriptor)?.join("Scripts").join("python.exe"))
 }
@@ -186,7 +182,6 @@ pub fn runtime_asset_status(app: AppHandle) -> AppResult<Value> {
         "installed": ready,
         "stale": present && !ready,
         "dir": asset_dir(&app, &descriptor)?.display().to_string(),
-        "legacyDir": legacy_backend_dir(&app, &descriptor)?.display().to_string(),
         "python": if ready { Some(python.display().to_string()) } else { None },
     }))
 }
