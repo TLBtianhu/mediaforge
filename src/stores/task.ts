@@ -19,9 +19,7 @@ import {
 import {
   isInterruptedTaskStatus,
   isTerminalTaskStatus,
-  resolveJobStatus,
   selectQueuedJobGroups,
-  sortJobTasks,
   taskJobId,
   type TaskStatus,
 } from '@/features/tasks/lifecycle'
@@ -34,6 +32,7 @@ import { makeTaskQueue } from '@/stores/taskQueue'
 import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
 import { validateSeparateWorkflowInput, validateWorkflowRunConfig, workflowDefinitionValidationError } from '@/stores/taskValidation'
 import { resolveRetryOutput } from '@/stores/taskRetry'
+import { buildJobs, findJobById } from '@/stores/taskJobs'
 import { primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
@@ -375,48 +374,8 @@ export const useTaskStore = defineStore('task', () => {
     return persistedSeparateModelState.value[String(modelName || '').trim()]
   }
 
-  function buildJobs(sourceTasks: SeparationTask[]): SeparationJob[] {
-    const groups = new Map<string, SeparationTask[]>()
-    sourceTasks.forEach((task) => {
-      const id = taskJobId(task)
-      groups.set(id, [...(groups.get(id) || []), task])
-    })
-    return [...groups.entries()].map(([id, items]) => {
-      const sorted = sortJobTasks(items)
-      const primary = sorted[0]
-      const output = primary.jobOutput || primary.output
-      const progressTotal = sorted.reduce((sum, item) => {
-        if (isTerminalTaskStatus(item.status)) return sum + 100
-        if (item.status === 'queued') return sum
-        return sum + Math.max(0, Math.min(99, Number(item.progress || 0)))
-      }, 0)
-      const status = resolveJobStatus(sorted)
-      const startedValues = sorted.map(item => item.startedAt || item.createdAt).filter((value): value is number => typeof value === 'number')
-      const finishedValues = sorted.map(item => item.finishedAt || item.updatedAt).filter((value): value is number => typeof value === 'number')
-      const startedAt = startedValues.length ? Math.min(...startedValues) : undefined
-      const finishedAt = isTerminalTaskStatus(status) && finishedValues.length ? Math.max(...finishedValues) : undefined
-      return {
-        id,
-        output,
-        tasks: sorted,
-        primary,
-        model: primary.model,
-        inputCount: sorted.length,
-        outputCount: sorted.reduce((sum, item) => sum + item.outputs.length, 0),
-        createdAt: Math.min(...sorted.map(item => item.createdAt)),
-        updatedAt: Math.max(...sorted.map(item => item.updatedAt)),
-        startedAt,
-        finishedAt,
-        durationMs: startedAt && finishedAt ? Math.max(0, finishedAt - startedAt) : undefined,
-        status,
-        progress: Math.round(progressTotal / sorted.length),
-      }
-    })
-  }
-
   function getJobById(id: string | null | undefined) {
-    if (!id) return null
-    return allJobs.value.find((job) => job.id === id) || null
+    return findJobById(allJobs.value, id)
   }
 
   function rememberSessionTasks(items: readonly Pick<SeparationTask, 'id'>[]) {
