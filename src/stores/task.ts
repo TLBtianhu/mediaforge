@@ -33,6 +33,7 @@ import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
 import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
 import { validateSeparateWorkflowInput, validateWorkflowRunConfig, workflowDefinitionValidationError } from '@/stores/taskValidation'
+import { resolveRetryOutput } from '@/stores/taskRetry'
 import { primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
@@ -1524,26 +1525,7 @@ export const useTaskStore = defineStore('task', () => {
       scheduleQueue()
       return created
     }
-    const outputLayout = normalizeOutputLayout(existing.runConfig?.outputLayout)
-    const windows = windowsPaths.value
-    const isAbsolute = (path: string) => windows ? /^(?:[A-Za-z]:[/\\]|[/\\]{2})/.test(path) : path.startsWith('/')
-    let jobOutput = existing.jobOutput
-    if (!jobOutput || !isAbsolute(jobOutput)) {
-      const output = existing.output
-      if (!isAbsolute(output)) throw new Error(i18n.global.t('separate.retryOutputDirectoryUnknown'))
-      if (outputLayout === 'folders') {
-        const folderName = output.split(windows ? /[/\\]/ : /[/]/).filter(Boolean).pop()
-        const inputName = inputStemSegment(existing.input, existing.resultId || existing.id, windows)
-        const matchesInput = windows ? folderName?.toLowerCase() === inputName.toLowerCase() : folderName === inputName
-        if (!matchesInput) throw new Error(i18n.global.t('separate.retryOutputDirectoryUnknown'))
-        jobOutput = output.replace(windows ? /[^/\\]+[/\\]*$/ : /[^/]+[/]*$/, '')
-        if (jobOutput.length > 1 && !(windows && /^[A-Za-z]:[/\\]$/.test(jobOutput))) {
-          jobOutput = jobOutput.replace(windows ? /[/\\]$/ : /[/]$/, '')
-        }
-      } else {
-        jobOutput = output
-      }
-    }
+    const { jobOutput, outputLayout } = resolveRetryOutput(existing, windowsPaths.value, i18n.global.t('separate.retryOutputDirectoryUnknown'))
     if (existing.runConfig?.runMode === 'workflow' && existing.runConfig.workflowId && existing.runConfig.workflowName && existing.runConfig.workflowDefinition) {
       validateSeparateWorkflowInput(existing.runConfig.workflowDefinition)
       const task = createQueuedWorkflowTask(existing.input, {
