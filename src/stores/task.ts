@@ -13,7 +13,6 @@ import { appendWorkflowNodeLogs, type WorkflowNodeLogs } from '@/workflows/nodeL
 import { normalizeLogRecord, workerLogRecord, localLogRecord, type LogEntry } from '@/utils/logRecord'
 import { detectWorkflowFormat, WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
 import {
-  getWorkflowDefinitionIssue,
   prepareWorkflowDefinitionForRun,
   resolveWorkflowRuntimeDefaults,
 } from '@/workflows/runtimeDefinition'
@@ -33,11 +32,11 @@ import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
 import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
+import { validateSeparateWorkflowInput, validateWorkflowRunConfig, workflowDefinitionValidationError } from '@/stores/taskValidation'
 import { primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
-import { getSeparateWorkflowInputIssue } from '@/utils/workflowInputs'
 import { cloneWorkflow, prepareWorkbenchRun, workflowInputNodes, type WorkflowRuntimeBindings, type WorkflowWorkbenchSnapshot, type WorkflowNodeState } from '@/workflows/workbench'
 import { SEPARATE_MODEL_PAGE_SIZES, normalizePageSize } from '@/utils/pagination'
 
@@ -1455,30 +1454,6 @@ export const useTaskStore = defineStore('task', () => {
     ))
     modelStore.recordModelUse(model)
     return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
-  }
-
-  function workflowDefinitionValidationError(definition: Record<string, unknown>): string {
-    const issue = getWorkflowDefinitionIssue(definition)
-    if (issue === 'steps-required') return i18n.global.t('workflows.stepsRequired')
-    if (issue === 'no-save-outputs') return i18n.global.t('workflows.workflowNoSaveOutputs')
-    if (issue === 'invalid-definition') return i18n.global.t('workflows.workflowFormatInvalid')
-    if (issue === 'invalid-format') return i18n.global.t('workflows.workflowFormatInvalid')
-    return ''
-  }
-
-  function validateSeparateWorkflowInput(definition: Record<string, unknown>) {
-    const issue = getSeparateWorkflowInputIssue(definition)
-    if (issue) throw new Error(i18n.global.t(
-      issue.code === 'multiple-inputs' ? 'separate.workflowMultipleInputs' : 'separate.workflowNoInput',
-      { count: issue.count },
-    ))
-  }
-
-  function validateWorkflowRunConfig(config: SeparationRunConfig) {
-    const definition = config.workflowDefinition || {}
-    const validationError = workflowDefinitionValidationError(definition)
-    if (validationError) throw new Error(validationError)
-    if (!config.workbench) validateSeparateWorkflowInput(definition)
   }
 
   async function startWorkflowInference(workflow: WorkflowEntry, options: { outputDir?: string; outputLayout?: OutputLayout; outputNaming?: OutputNamingConfig } = {}) {
