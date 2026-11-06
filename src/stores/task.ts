@@ -32,6 +32,7 @@ import { makeTaskQueue } from '@/stores/taskQueue'
 import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
 import { validateSeparateWorkflowInput, validateWorkflowRunConfig, workflowDefinitionValidationError } from '@/stores/taskValidation'
 import { resolveRetryOutput } from '@/stores/taskRetry'
+import { buildInferenceParams as buildInferenceParamsFromValues, modelInferenceParamsFromState as modelInferenceParamsFromValues } from '@/stores/taskInferenceParams'
 import { buildJobs, findJobById } from '@/stores/taskJobs'
 import { primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
@@ -1229,107 +1230,25 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   function buildInferenceParams(modelType?: string | null): Record<string, unknown> {
-    const inferenceParams: Record<string, unknown> = {}
-    const defaults = selectedModelDefaults.value
-    const modelOverrides = selectedModelOverrides.value
-    const useModelOverrideFallback = !inferenceParamsDirty.value
-    const vrModel = isVrModelType(modelType)
-    const apolloModel = isApolloModelType(modelType)
-
-    const batchSizeOverride = preferCurrentOverride(
-      resolveNumberOverride(defaults, 'batch_size', batch_size.value, { zeroMeansUnset: true }),
-      modelOverrides,
-      'batch_size',
-      useModelOverrideFallback,
-    )
-    if (batchSizeOverride !== null) inferenceParams.batch_size = batchSizeOverride
-
-    if (vrModel) {
-      const windowSizeOverride = preferCurrentOverride(
-        resolveNumberOverride(defaults, 'window_size', window_size.value, { zeroMeansUnset: true }),
-        modelOverrides,
-        'window_size',
-        useModelOverrideFallback,
-      )
-      const aggressionOverride = preferCurrentOverride(
-        resolveNumberOverride(defaults, 'aggression', aggression.value),
-        modelOverrides,
-        'aggression',
-        useModelOverrideFallback,
-      )
-      const enablePostProcessOverride = preferCurrentOverride(
-        resolveBooleanOverride(defaults, 'enable_post_process', enable_post_process.value),
-        modelOverrides,
-        'enable_post_process',
-        useModelOverrideFallback,
-      )
-      const postProcessThresholdOverride = preferCurrentOverride(
-        resolveNumberOverride(defaults, 'post_process_threshold', post_process_threshold.value),
-        modelOverrides,
-        'post_process_threshold',
-        useModelOverrideFallback,
-      )
-      const highEndProcessOverride = preferCurrentOverride(
-        resolveBooleanOverride(defaults, 'high_end_process', high_end_process.value),
-        modelOverrides,
-        'high_end_process',
-        useModelOverrideFallback,
-      )
-      const normalizeOverride = preferCurrentOverride(
-        resolveBooleanOverride(defaults, 'normalize', normalize.value),
-        modelOverrides,
-        'normalize',
-        useModelOverrideFallback,
-      )
-
-      if (windowSizeOverride !== null) inferenceParams.window_size = windowSizeOverride
-      if (aggressionOverride !== null) inferenceParams.aggression = aggressionOverride
-      if (enablePostProcessOverride !== null) inferenceParams.enable_post_process = enablePostProcessOverride
-      if (postProcessThresholdOverride !== null) inferenceParams.post_process_threshold = postProcessThresholdOverride
-      if (highEndProcessOverride !== null) inferenceParams.high_end_process = highEndProcessOverride
-      if (normalizeOverride !== null) inferenceParams.normalize = normalizeOverride
-      return inferenceParams
-    }
-
-    const overlapSizeOverride = preferCurrentOverride(
-      resolveNumberOverride(defaults, 'overlap_size', overlap_size.value, { zeroMeansUnset: true }),
-      modelOverrides,
-      'overlap_size',
-      useModelOverrideFallback,
-    )
-    const numOverlapOverride = apolloModel
-      ? null
-      : preferCurrentOverride(
-          resolveNumberOverride(defaults, 'num_overlap', num_overlap.value, { zeroMeansUnset: true }),
-          modelOverrides,
-          'num_overlap',
-          useModelOverrideFallback,
-        )
-    const chunkSizeOverride = preferCurrentOverride(
-      resolveNumberOverride(defaults, 'chunk_size', chunk_size.value, { zeroMeansUnset: true }),
-      modelOverrides,
-      'chunk_size',
-      useModelOverrideFallback,
-    )
-    const standardizeOverride = preferCurrentOverride(
-      resolveBooleanOverride(defaults, 'standardize', standardize.value),
-      modelOverrides,
-      'standardize',
-      useModelOverrideFallback,
-    )
-    const normalizeOverride = preferCurrentOverride(
-      resolveBooleanOverride(defaults, 'normalize', normalize.value),
-      modelOverrides,
-      'normalize',
-      useModelOverrideFallback,
-    )
-
-    if (overlapSizeOverride !== null) inferenceParams.overlap_size = overlapSizeOverride
-    if (numOverlapOverride !== null) inferenceParams.num_overlap = numOverlapOverride
-    if (chunkSizeOverride !== null) inferenceParams.chunk_size = chunkSizeOverride
-    if (standardizeOverride !== null) inferenceParams.standardize = standardizeOverride
-    if (normalizeOverride !== null) inferenceParams.normalize = normalizeOverride
-    return inferenceParams
+    return buildInferenceParamsFromValues({
+      modelType,
+      defaults: selectedModelDefaults.value,
+      modelOverrides: selectedModelOverrides.value,
+      dirty: inferenceParamsDirty.value,
+      values: {
+        batch_size: batch_size.value,
+        overlap_size: overlap_size.value,
+        num_overlap: num_overlap.value,
+        chunk_size: chunk_size.value,
+        window_size: window_size.value,
+        aggression: aggression.value,
+        enable_post_process: enable_post_process.value,
+        post_process_threshold: post_process_threshold.value,
+        high_end_process: high_end_process.value,
+        standardize: standardize.value,
+        normalize: normalize.value,
+      },
+    })
   }
 
   function modelInferenceParamsFromState(modelName: string, modelType?: string | null): Record<string, unknown> {
@@ -1341,43 +1260,7 @@ export const useTaskStore = defineStore('task', () => {
       : (entry?.defaultInferenceParams || {})
     const overrides = modelStore.getModelInferenceOverrides(modelName) || {}
     const saved = getSavedModelState(modelName) || {}
-    const source = { ...saved, ...overrides }
-    const params: Record<string, unknown> = {}
-    const vrModel = isVrModelType(modelType)
-    const apolloModel = isApolloModelType(modelType)
-
-    const numberParam = (key: keyof ModelDefaultInferenceParams, options?: { zeroMeansUnset?: boolean }) => {
-      const value = source[key]
-      if (typeof value !== 'number' || !Number.isFinite(value)) return
-      if (options?.zeroMeansUnset && value <= 0) return
-      if (defaults[key] === value) return
-      params[key] = value
-    }
-    const booleanParam = (key: keyof ModelDefaultInferenceParams) => {
-      const value = source[key]
-      if (typeof value !== 'boolean') return
-      if (defaults[key] === value) return
-      if (!value && defaults[key] === undefined) return
-      params[key] = value
-    }
-
-    numberParam('batch_size', { zeroMeansUnset: true })
-    if (vrModel) {
-      numberParam('window_size', { zeroMeansUnset: true })
-      numberParam('aggression')
-      numberParam('post_process_threshold')
-      booleanParam('enable_post_process')
-      booleanParam('high_end_process')
-      booleanParam('normalize')
-      return params
-    }
-
-    numberParam('overlap_size', { zeroMeansUnset: true })
-    if (!apolloModel) numberParam('num_overlap', { zeroMeansUnset: true })
-    numberParam('chunk_size', { zeroMeansUnset: true })
-    booleanParam('standardize')
-    booleanParam('normalize')
-    return params
+    return modelInferenceParamsFromValues({ modelType, defaults, overrides, saved })
   }
 
   function submitOne(input: string, model: string, inferenceParams: Record<string, unknown>, modelType?: string | null, jobId?: string, jobOutput?: string, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig, batchIndex?: number) {
