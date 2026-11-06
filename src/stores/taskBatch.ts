@@ -29,7 +29,18 @@ export function prepareTaskBatch(
   }
 }
 
-/** 统一批次结果；调度仍由调用方在业务准备完成后触发。 */
+/** 创建任务后的统一收尾：按需持久化、入队并返回同一种批次结果。 */
+export function finalizeTaskBatch(
+  batch: TaskBatchPreparation,
+  tasks: SeparationTask[],
+  options: { schedule: () => void; persist?: () => void },
+) {
+  options.persist?.()
+  options.schedule()
+  return completeTaskBatch(batch.jobId, tasks)
+}
+
+
 export function completeTaskBatch(jobId: string, tasks: SeparationTask[]) {
   return {
     succeeded: tasks.length,

@@ -32,7 +32,7 @@ import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, normalizeOutputLayout, no
 import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
-import { completeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
+import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
 import { primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
@@ -1454,8 +1454,7 @@ export const useTaskStore = defineStore('task', () => {
       batchIndex,
     ))
     modelStore.recordModelUse(model)
-    scheduleQueue()
-    return completeTaskBatch(batch.jobId, createdTasks)
+    return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
   }
 
   function workflowDefinitionValidationError(definition: Record<string, unknown>): string {
@@ -1503,8 +1502,7 @@ export const useTaskStore = defineStore('task', () => {
       batch.outputNaming,
       batchIndex,
     ))
-    scheduleQueue()
-    return completeTaskBatch(batch.jobId, createdTasks)
+    return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
   }
   async function startWorkbenchInference(workflow: WorkflowEntry, bindings: WorkflowRuntimeBindings) {
     if (!isMainTaskOwner()) throw new Error('workbench.mainWindowOnly')
@@ -1531,9 +1529,7 @@ export const useTaskStore = defineStore('task', () => {
       }
       return created
     })
-    queuePersist()
-    scheduleQueue()
-    return completeTaskBatch(batch.jobId, createdTasks)
+    return finalizeTaskBatch(batch, createdTasks, { persist: queuePersist, schedule: scheduleQueue })
   }
 
   async function retryTask(taskId: string) {
