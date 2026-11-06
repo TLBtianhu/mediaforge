@@ -33,6 +33,7 @@ import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
 import { completeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
+import { primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
@@ -1028,16 +1029,8 @@ export const useTaskStore = defineStore('task', () => {
 
   // 删除结果时始终仅回收当前结果对应的输出文件，避免误删共享目录、
   // 任务目录中的附加文件或后续派生产物。
-  function resultTrashTargets(task: SeparationTask): string[] {
-    const seen = new Set<string>()
-    return task.outputs
-      .map((output) => output.path)
-      .filter((path): path is string => Boolean(path))
-      .filter((path) => {
-        if (seen.has(path)) return false
-        seen.add(path)
-        return true
-      })
+  function resultTrashEmptyDirs(task: SeparationTask): string[] {
+    return resultTrashEmptyDirsForTask(task, windowsPaths.value)
   }
 
   function resultTrashTargetsForTasks(items: SeparationTask[]): { paths: string[]; retained: number } {
@@ -1086,32 +1079,6 @@ export const useTaskStore = defineStore('task', () => {
       return true
     })
     return { paths, retained }
-  }
-
-  function resultTrashEmptyDirs(task: SeparationTask): string[] {
-    // Node-bound directories can have unrelated roots; only recycle explicit output files.
-    if (task.runConfig?.workbench) return []
-    if (task.runConfig?.outputLayout !== 'folders') return []
-    const jobOutput = task.jobOutput
-    const output = task.output
-    const windows = windowsPaths.value
-    if (output && !samePath(output, jobOutput, windows)) return cleanupDirChain(output, jobOutput, windows)
-
-    const parents = task.outputs
-      .map((item) => parentDir(item.path || '', windows))
-      .filter(Boolean)
-    const dirs = parents.flatMap(parent => cleanupDirChain(parent, jobOutput, windows))
-    const seen = new Set<string>()
-    return dirs.filter((dir) => {
-      const key = pathKey(dir, windows)
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-  }
-
-  function primaryRevealPath(task: SeparationTask) {
-    return task.runConfig?.workbench ? task.outputs[0]?.path || task.output : task.output
   }
 
   function getTaskById(id: string) {
