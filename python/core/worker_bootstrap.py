@@ -344,6 +344,7 @@ def _read_json_object(path: Path) -> dict[str, Any] | None:
 def _core_update_identity(state: dict[str, Any], versions: dict[str, Any], manifest: dict[str, Any]) -> str:
     identity = {
         "backend": state.get("backend"),
+        "assetId": state.get("assetId"),
         "python": os.path.normcase(_normal_runtime_path(Path(str(state.get("pythonPath") or "")))),
         "overlay": os.path.normcase(_normal_runtime_path(Path(str(state.get("overlayPath") or "")))),
         "versions": versions, "manifest": manifest,
@@ -357,6 +358,9 @@ def _load_core_update_plan(plan_id: str) -> dict[str, Any]:
     plan = _read_json_object(_runtime_overlay_root() / ".plans" / f"{plan_id}.json")
     if not plan or time.time() - plan.get("createdAt", 0) > 15 * 60:
         raise ValueError("The runtime update plan expired. Check for updates again.")
+    active = _resolve_runtime_state_from(ACTIVE_RUNTIME_FILE) or {}
+    if plan.get("assetId") and active.get("assetId") != plan.get("assetId"):
+        raise ValueError("The runtime update plan belongs to a different runtime asset.")
     return plan
 
 
@@ -720,6 +724,7 @@ def _fresh_runtime_state_from_probe(
         "pymssVersion": probed.get("pymssVersion"),
         "pymssCoreVersion": probed.get("pymssCoreVersion"),
         "pymssGraphAvailable": bool(probed.get("pymssGraphAvailable")),
+        **({"assetId": str(probed.get("assetId"))} if probed.get("assetId") else {}),
     }
 
 
@@ -987,6 +992,7 @@ def _core_rollback_available(state: dict[str, Any] | None, manifest: dict[str, A
     return bool(
         isinstance(previous, dict)
         and _same_path(previous.get("pythonPath"), state.get("pythonPath"))
+        and (not state.get("assetId") or not previous.get("assetId") or previous.get("assetId") == state.get("assetId"))
         and (not previous.get("overlayPath") or _overlay_path_from_state(previous) is not None)
         and previous.get("pymssGraphAvailable") is not False
         and _runtime_health(str(state.get("backend") or ""), previous, manifest) == "ready"
@@ -995,6 +1001,9 @@ def _core_rollback_available(state: dict[str, Any] | None, manifest: dict[str, A
 
 def _save_core_update_plan(plan: dict[str, Any], task_id: str) -> None:
     plan.update({"id": uuid.uuid4().hex, "createdAt": time.time()})
+    active = _resolve_runtime_state_from(ACTIVE_RUNTIME_FILE) or {}
+    if active.get("assetId"):
+        plan["assetId"] = active["assetId"]
     root = _runtime_overlay_root() / ".plans"
     root.mkdir(parents=True, exist_ok=True)
     for path in root.glob("*.json"):
@@ -1003,9 +1012,9 @@ def _save_core_update_plan(plan: dict[str, Any], task_id: str) -> None:
     _atomic_write_json(root / f"{plan['id']}.json", plan)
     _emit("runtime_core_update_plan", {
         key: plan[key] for key in (
-            "id", "backend", "pythonPath", "mode", "channel", "mirror",
+            "id", "backend", "assetId", "pythonPath", "mode", "channel", "mirror",
             "currentVersions", "targetVersions", "dependencyCount",
-        )
+        ) if key in plan
     }, task_id)
 
 
