@@ -22,6 +22,18 @@ def default_layout() -> tuple[Path, Path, Path]:
     return dev_root, dev_root / "models", dev_root / "runtime-envs"
 
 
+def bundled_runtime_envs_dir() -> Path | None:
+    value = os.environ.get("MEDIAFORGE_BUNDLED_RUNTIME_ENVS_DIR") or os.environ.get("PYMSS_STUDIO_BUNDLED_RUNTIME_ENVS_DIR")
+    return Path(value).expanduser() if value else None
+
+
+def allow_debug_runtime_override() -> bool:
+    return (
+        os.environ.get("MEDIAFORGE_ALLOW_DEBUG_RUNTIME_OVERRIDE") == "1"
+        or os.environ.get("PYMSS_STUDIO_ALLOW_DEBUG_RUNTIME_OVERRIDE") == "1"
+    )
+
+
 def data_root(override: Any = None) -> Path:
     explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
     if explicit:

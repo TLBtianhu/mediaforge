@@ -33,8 +33,8 @@ def _default_runtime_envs_dir() -> Path:
 
 RUNTIME_ENVS_DIR = Path(os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR") or _default_runtime_envs_dir())
 ACTIVE_RUNTIME_FILE = Path(os.environ.get("MEDIAFORGE_ACTIVE_RUNTIME_FILE") or RUNTIME_ENVS_DIR / "active-runtime.json")
-BUNDLED_RUNTIME_ENVS_DIR = Path(os.environ["PYMSS_STUDIO_BUNDLED_RUNTIME_ENVS_DIR"]) if os.environ.get("PYMSS_STUDIO_BUNDLED_RUNTIME_ENVS_DIR") else None
-ALLOW_DEBUG_RUNTIME_OVERRIDE = os.environ.get("PYMSS_STUDIO_ALLOW_DEBUG_RUNTIME_OVERRIDE") == "1"
+BUNDLED_RUNTIME_ENVS_DIR = worker_paths.bundled_runtime_envs_dir()
+ALLOW_DEBUG_RUNTIME_OVERRIDE = worker_paths.allow_debug_runtime_override()
 PACKAGE_IMPORT_NAMES = {
     "pysocks": "socks",
     "pyyaml": "yaml",
