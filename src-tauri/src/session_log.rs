@@ -681,7 +681,10 @@ fn write_diagnostic_report_with_trigger(
             "source": "Last successful observations in this process; probes are not rerun when generating a report",
             "observations": activity.get("environment")})),
         ("Last Observed Editor Project", activity.get("editor").cloned().filter(|value| !value.is_null()).unwrap_or_else(|| serde_json::json!({"status": "not_observed"}))),
-        ("Persisted Separation and Workflow Tasks", report_store(app, "task-history", diagnostic_report::summarize_task_history)),
+        ("Persisted Jobs", match crate::storage::data_root_dir(app).and_then(|root| crate::python::task_journal::list(&root)) {
+            Ok(jobs) => serde_json::json!({"schemaVersion": 2, "count": jobs.len(), "jobs": jobs.iter().map(|job| serde_json::json!({"jobId": job["jobId"], "command": job["command"], "status": job["status"], "createdAt": job["createdAt"], "updatedAt": job["updatedAt"]})).collect::<Vec<_>>()}),
+            Err(error) => serde_json::json!({"error": error.to_string()}),
+        }),
         ("Workflow Library", report_store(app, "workflow-state", diagnostic_report::summarize_workflows)),
         ("Application Settings", report_store(app, "app-settings", diagnostic_report::summarize_settings)),
         ("Selected Separation Options", report_store(app, "separate-state", |value| scalar_snapshot(value, &[

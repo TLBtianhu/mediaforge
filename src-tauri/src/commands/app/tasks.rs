@@ -4,7 +4,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::python::worker::{run_worker_with_payload, spawn_worker_background};
-use crate::python::task_journal;
+use crate::python::{audio_jobs, task_journal};
 use crate::session_log;
 use crate::state::AppState;
 use crate::storage;
@@ -20,9 +20,9 @@ pub async fn start_separation(
     payload: Value,
 ) -> AppResult<Value> {
     let task_id = payload
-        .get("taskId")
+        .get("jobId")
         .and_then(Value::as_str)
-        .ok_or_else(|| AppError::Worker("missing taskId".into()))?
+        .ok_or_else(|| AppError::Worker("missing queued jobId".into()))?
         .to_string();
     session_log::append(
         &app,
@@ -41,9 +41,9 @@ pub async fn start_workflow_inference(
     payload: Value,
 ) -> AppResult<Value> {
     let task_id = payload
-        .get("taskId")
+        .get("jobId")
         .and_then(Value::as_str)
-        .ok_or_else(|| AppError::Worker("missing taskId".into()))?
+        .ok_or_else(|| AppError::Worker("missing queued jobId".into()))?
         .to_string();
     session_log::append(
         &app,
@@ -83,7 +83,7 @@ pub async fn agent_jobs(app: AppHandle) -> AppResult<Value> {
     let root = storage::data_root_dir(&app)?;
     let jobs = task_journal::list(&root)?;
     Ok(serde_json::json!({
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "dataRoot": root,
         "jobsDir": root.join("agent-jobs"),
         "jobs": jobs,
@@ -91,18 +91,29 @@ pub async fn agent_jobs(app: AppHandle) -> AppResult<Value> {
 }
 
 #[tauri::command]
+pub async fn enqueue_audio_jobs(app: AppHandle, payload: Value) -> AppResult<Value> {
+    let root = storage::data_root_dir(&app)?;
+    let jobs = audio_jobs::enqueue(&root, payload)?;
+    Ok(serde_json::json!({"schemaVersion": 2, "jobs": jobs, "dataRoot": root, "jobsDir": root.join("agent-jobs")}))
+}
+
+#[tauri::command]
+pub async fn remove_audio_jobs(app: AppHandle, job_ids: Vec<String>, check_only: Option<bool>) -> AppResult<Value> {
+    let root = storage::data_root_dir(&app)?;
+    if check_only == Some(true) {
+        return Ok(serde_json::json!({"schemaVersion": 2, "removedJobIds": [], "checkedJobIds": audio_jobs::check_remove(&root, &job_ids)?}));
+    }
+    Ok(serde_json::json!({"schemaVersion": 2, "removedJobIds": audio_jobs::remove(&root, &job_ids)?}))
+}
+
+#[tauri::command]
 pub async fn cancel_agent_job(app: AppHandle, job_id: String) -> AppResult<Value> {
-    if job_id.is_empty()
-        || !job_id
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
-    {
+    if !task_journal::valid_id(&job_id) {
         return Err(AppError::Worker("invalid agent job id".into()));
     }
     let root = storage::data_root_dir(&app)?;
-    let cancel_path = root.join("agent-jobs").join(format!("{job_id}.cancel"));
-    std::fs::write(&cancel_path, b"cancel")?;
-    Ok(serde_json::json!({ "ok": true, "jobId": job_id, "cancelPath": cancel_path }))
+    let requested = task_journal::request_cancel(&root, &job_id)?;
+    Ok(serde_json::json!({ "ok": requested, "jobId": job_id }))
 }
 
 #[tauri::command]
@@ -242,6 +253,7 @@ pub async fn cancel_task(
         }
         Ok(true)
     } else {
-        Ok(false)
+        let root = storage::data_root_dir(&app)?;
+        task_journal::request_cancel(&root, &task_id)
     }
 }

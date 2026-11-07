@@ -1,127 +1,110 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import test from 'node:test'
-import vm from 'node:vm'
-import ts from 'typescript'
-import { isTerminalTaskStatus, taskJobId } from '../src/features/tasks/lifecycle.ts'
-import { getRemovalTasks as getRemovalTasksFromState } from '../src/stores/taskResultCleanup.ts'
-import { TASK_HISTORY_VERSION } from '../src/stores/taskNormalize.ts'
+import test,{after} from 'node:test'
+import {fileURLToPath} from 'node:url'
+import {createServer} from 'vite'
+import {createPinia} from 'pinia'
+import {nextTick} from 'vue'
+import {recordsFromEnqueue} from './_audioJournalFixture.mjs'
 
-const source = ts.createSourceFile('task.ts', readFileSync(new URL('../src/stores/task.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true)
-const names = new Set(['persistTasks', 'hasResultPresence', 'getRemovalTasks', 'removeResults', 'removeResult', 'clearResults', 'removeWorkflowRun', 'removeSeparationRuns'])
-const selected = []
-function collect(node) {
-  if (ts.isFunctionDeclaration(node) && names.has(node.name?.text)) selected.push(node.getText(source))
-  ts.forEachChild(node, collect)
+const id='\0audio-removal-fixture'
+const vite=await createServer({configFile:false,server:{watch:null,middlewareMode:true,hmr:false,ws:false,preTransformRequests:false},appType:'custom',optimizeDeps:{noDiscovery:true},resolve:{alias:{'@tauri-apps/api/core':'\0removal-core','@tauri-apps/api/event':'\0removal-events','@':fileURLToPath(new URL('../src',import.meta.url))}},plugins:[{
+ name:'canonical-audio-removal-boundary',enforce:'pre',
+ resolveId(value){return [id,'\0removal-core','\0removal-events'].includes(value)?value:null},
+ load(value){
+  if(value==='\0removal-core')return `export {invoke} from '${id}'`
+  if(value==='\0removal-events')return 'export const listen=async()=>()=>{}'
+  if(value===id)return `export const calls=[];let records=[],removeHook;
+   export function reset(rows){calls.length=0;records=structuredClone(rows);removeHook=undefined}
+   export function setRemoveHook(hook){removeHook=hook}
+   export function rows(){return structuredClone(records)}
+   export async function invoke(command,args){calls.push({command,args});
+    if(command==='agent_jobs')return {schemaVersion:2,jobs:rows(),dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'};
+    if(command==='load_app_store'){if(args.name==='task-history')throw Error('Removed store');return {version:1}};
+    if(command==='save_app_store')return;
+    if(command==='remove_audio_jobs'){
+     if(removeHook)await removeHook(args);
+     const selected=new Set(args.jobIds),groups=new Set(records.filter(job=>selected.has(job.jobId)).map(job=>job.audio.groupId));
+     const removing=records.filter(job=>groups.has(job.audio.groupId));
+     if(removing.some(job=>!['completed','failed','cancelled','interrupted'].includes(job.status)))throw Error('Active group');
+     if(args.checkOnly)return {schemaVersion:2,removedJobIds:[],checkedJobIds:removing.map(job=>job.jobId)};
+     records=records.filter(job=>!groups.has(job.audio.groupId));
+     return {schemaVersion:2,removedJobIds:removing.map(job=>job.jobId)};
+    }
+    throw Error('Unexpected '+command)
+   }`
+ },
+ transform(_code,path){path=path.replaceAll('\\','/');
+  if(path.endsWith('/src/stores/settings.ts'))return 'export const useSettingsStore=()=>({maxConcurrentSeparations:1,developerMode:false})'
+  if(path.endsWith('/src/stores/model.ts'))return 'export const useModelStore=()=>({models:[],selectedModel:""})'
+  if(path.endsWith('/src/stores/app.ts'))return 'export const useAppStore=()=>({envInfo:{platform:"win32"}})'
+  if(path.endsWith('/src/utils/taskOwner.ts'))return 'export const isMainTaskOwner=()=>false'
+ }
+}]})
+after(()=>vite.close())
+globalThis.window={__TAURI_INTERNALS__:{},matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),addEventListener(){},removeEventListener(){}}
+const fixture=await vite.ssrLoadModule(id)
+const {useTaskStore}=await vite.ssrLoadModule('/src/stores/task.ts')
+const {useMediaJobsStore}=await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
+const tick=async()=>{await nextTick();await new Promise(resolve=>setImmediate(resolve));await nextTick()}
+function group(name,statuses=['completed'],workbench=false){
+ const command=workbench?'infer_workflow':'infer',primary=name+'-0'
+ const payload={output:'D:/out',outputLayout:'folders',source:'modelscope',downloadMethod:'aria2c',modelDir:null,device:'cpu',deviceIds:[0],outputFormat:'wav',selectedStems:['Vocals'],inferenceParamsVersion:3,inferenceParams:{},audioParams:{},useTta:false,debug:false,...(workbench?{workflowName:'Workflow',workflow:{version:0.4,nodes:[],links:[]}}:{model:'Fixture'})}
+ return recordsFromEnqueue({schemaVersion:2,command,groupId:name,primaryJobId:primary,payload,...(workbench?{presentation:{workflowId:'workflow',workbench:{nativeGraph:true}}}:{}),tasks:statuses.map((_,index)=>({jobId:name+'-'+index,request:{input:'D:/input/'+index+'.wav',output:'D:/out/'+index,inputIndex:index+1}}))},1700000000).map((job,index)=>({...job,status:statuses[index],startedAt:1700000001,updatedAt:1700000002,finishedAt:['completed','failed','cancelled','interrupted'].includes(statuses[index])?1700000002:null,owner:statuses[index]==='running'?{kind:'tauri-worker',pid:123456}:null,logs:[{schemaVersion:1,id:job.jobId+'-log',timestamp:'2026-11-07T00:00:00Z',source:'worker',level:'info',logger:'worker',event:'task.log',message:'Run log',taskId:job.jobId,context:{}}],result:statuses[index]==='completed'?{outputs:[{stem:'Vocals',path:'D:/out/'+job.jobId+'.wav'}]}:null}))
 }
-collect(source)
-assert.equal(selected.length, names.size)
-const code = ts.transpileModule(selected.join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-const plain = value => JSON.parse(JSON.stringify(value))
-const ref = value => ({ value })
-function task(id, jobId, status = 'done') {
-  return { id, jobId, status, logs: ['Run log'], outputs: status === 'done' ? [{ path: `D:/out/${id}.wav` }] : [], files: [],
-    runConfig: { workflowId: 'workflow', workbench: { sourceDefinition: { nodes: [], links: [] } } } }
-}
-function environment(items) {
-  const writes = []
-  let saveHandler, retries = 0
-  const state = {
-    tasks: ref(items), initialized: ref(true), isTerminalTaskStatus, taskJobId, getRemovalTasksFromState, TASK_HISTORY_VERSION,
-    activeTaskId: ref(items[0]?.id), focusedTaskId: ref(items[0]?.id), focusedResultTaskId: ref(items[0]?.id),
-    sessionTaskIds: ref(new Set(items.map(item => item.id))),
-    i18n: { global: { t: key => key } }, queuePersist: () => { retries++ },
-    async saveAppStore(name, data) { writes.push({ name, data: plain(data) }); if (saveHandler) await saveHandler(data) },
-    getJobById(id) { const tasks = state.tasks.value.filter(item => taskJobId(item) === id); return tasks.length ? { id, tasks } : null },
-  }
-  state.taskBoardTasks = { get value() { return state.tasks.value.filter(item => !item.taskHidden) } }
-  state.resultTasks = { get value() { return state.tasks.value.filter(item => item.status === 'done' && !item.resultHidden && (item.outputs.length || item.files.length)) } }
-  const store = vm.runInNewContext(`${code}\n({persistTasks,getRemovalTasks,removeResults,removeResult,clearResults,removeWorkflowRun,removeSeparationRuns})`, state)
-  return { state, store, writes, retries: () => retries, setSaveHandler(handler) { saveHandler = handler } }
-}
+async function setup(t,records){fixture.reset(records);const pinia=createPinia();const store=useTaskStore(pinia),journal=useMediaJobsStore(pinia);await store.initialize();t.after(()=>{store.$dispose();journal.$dispose()});return {store,journal}}
 
-test('result deletion removes the entire finished batch and its logs from persistent and session state', async () => {
-  const env = environment([task('success', 'batch'), task('failure', 'batch', 'failed'), task('cancelled', 'batch', 'cancelled'), task('other', 'other')])
-  assert.equal(await env.store.removeResult('success'), 3)
-  assert.deepEqual(Array.from(env.state.tasks.value, item => item.id), ['other'])
-  assert.deepEqual(env.writes.at(-1).data.tasks.map(item => item.id), ['other'])
-  assert.deepEqual([...env.state.sessionTaskIds.value], ['other'])
-  assert.equal(env.state.focusedResultTaskId.value, null)
-  assert.equal(env.state.focusedTaskId.value, null)
-  assert.equal(env.state.activeTaskId.value, 'other')
-  assert.equal(await env.store.removeResult('success'), 0)
-  assert.equal(env.writes.length, 1)
+test('result deletion removes the full terminal group and its logs from the canonical journal',async t=>{
+ const {store,journal}=await setup(t,[...group('batch',['completed','failed','cancelled']),...group('other')])
+ assert.equal(await store.removeResult('batch-0'),3)
+ assert.deepEqual(store.tasks.map(task=>task.id),['other-0'])
+ assert.deepEqual(fixture.rows().map(job=>job.jobId),['other-0'])
+ assert.deepEqual(journal.jobs.map(job=>job.jobId),['other-0'])
+ assert.equal(fixture.calls.some(call=>call.command.includes('app_store')&&call.args?.name==='task-history'),false)
 })
-
-test('running or queued siblings block deletion before any records are changed', async () => {
-  for (const status of ['queued', 'preparing', 'loading_model', 'separating', 'writing_output']) {
-    const env = environment([task('success', 'batch'), task('pending', 'batch', status)])
-    await assert.rejects(env.store.removeResult('success'), /results.removeRunningBatch/)
-    assert.equal(env.state.tasks.value.length, 2)
-    assert.equal(env.writes.length, 0)
-  }
+test('active or queued siblings block removal before the backend transaction',async t=>{
+ for(const status of ['running','queued']){
+  const {store}=await setup(t,group('batch',['completed',status]))
+  const before=fixture.calls.length
+  await assert.rejects(store.removeResult('batch-0'),/running|运行/i)
+  assert.equal(fixture.calls.slice(before).some(call=>call.command==='remove_audio_jobs'),false)
+  assert.equal(store.tasks.length,2)
+ }
 })
-
-test('clearing an empty selection does nothing and clearing results retains unrelated failures', async () => {
-  const env = environment([task('one', 'first'), task('two', 'second'), task('failed', 'third', 'failed')])
-  assert.equal(await env.store.clearResults([]), 0)
-  assert.equal(env.writes.length, 0)
-  assert.equal(await env.store.clearResults(), 2)
-  assert.deepEqual(Array.from(env.state.tasks.value, item => item.id), ['failed'])
+test('empty selection does not delete all records and clear-results preserves unrelated failures',async t=>{
+ const {store}=await setup(t,[...group('one'),...group('failed',['failed'])])
+ assert.equal(await store.clearResults([]),0)
+ assert.equal(await store.clearResults(),1)
+ assert.deepEqual(store.tasks.map(task=>task.id),['failed-0'])
 })
-
-test('a failed history write restores removed records without losing concurrent task updates', async () => {
-  const env = environment([task('one', 'first'), task('active', 'second', 'separating')])
-  env.setSaveHandler(async () => {
-    env.state.tasks.value[0].status = 'done'
-    env.state.tasks.value.unshift(task('new', 'new', 'queued'))
-    throw new Error('Disk write failed')
-  })
-  await assert.rejects(env.store.removeResult('one'), /Disk write failed/)
-  assert.deepEqual(Array.from(env.state.tasks.value, item => [item.id, item.status]), [['new', 'queued'], ['one', 'done'], ['active', 'done']])
-  assert.equal(env.state.focusedResultTaskId.value, 'one')
-  assert.equal(env.retries(), 1)
+test('a rejected removal never hides records or overwrites concurrent journal progress',async t=>{
+ const {store,journal}=await setup(t,[...group('result'),...group('live',['running'])])
+ let reject;const gate=new Promise((_,no)=>{reject=no});fixture.setRemoveHook(()=>gate)
+ const original=store.tasks.find(task=>task.id==='live-0')
+ const rejected=assert.rejects(store.removeResult('result-0'),/disk transaction failed/)
+ journal.handleWorkerEvent({type:'task.progress',taskId:'live-0',payload:{stage:'separating',done:2,total:4,progress:50}})
+ await tick();reject(new Error('disk transaction failed'));await rejected
+ assert.equal(store.tasks.find(task=>task.id==='live-0'),original)
+ assert.equal(original.progress,50)
+ assert.ok(store.tasks.some(task=>task.id==='result-0'))
+ assert.equal(fixture.rows().length,2)
 })
-
-test('workflow log cleanup accepts only finished runs with no visible result and validates ownership', async () => {
-  const env = environment([task('done', 'result'), task('failed', 'no-output', 'failed'), task('queued', 'pending', 'queued')])
-  await assert.rejects(env.store.removeWorkflowRun('workflow', 'result'), /workbench.removeRunHasResults/)
-  await assert.rejects(env.store.removeWorkflowRun('other-workflow', 'no-output'), /workbench.runNotFound/)
-  await assert.rejects(env.store.removeWorkflowRun('workflow', 'pending'), /results.removeRunningBatch/)
-  await env.store.removeWorkflowRun('workflow', 'no-output')
-  assert.deepEqual(Array.from(env.state.tasks.value, item => item.id), ['done', 'queued'])
+test('large groups are not truncated by a former history limit',async t=>{
+ const {store}=await setup(t,group('large',Array(125).fill('completed')))
+ assert.equal(store.tasks.length,125)
+ assert.equal(await store.removeResult('large-50'),125)
+ assert.equal(store.tasks.length,0)
 })
-
-test('persistence retains batches larger than 80 tasks until explicitly deleted', async () => {
-  const env = environment(Array.from({ length: 105 }, (_, i) => task(String(i), 'large-batch', i === 104 ? 'queued' : 'done')))
-  await env.store.persistTasks()
-  assert.equal(env.writes[0].data.tasks.length, 105)
-  assert.equal(env.writes[0].data.tasks[104].status, 'queued')
+test('workbench run deletion verifies workflow ownership and preserves visible results',async t=>{
+ const records=group('workflow-run',['failed'],true)
+ const {store}=await setup(t,records)
+ await assert.rejects(store.removeWorkflowRun('other','workflow-run'))
+ await store.removeWorkflowRun('workflow','workflow-run')
+ assert.equal(store.tasks.length,0)
 })
-
-test('old failed model and Ensemble runs can be cleared even after leaving the current-session queue', async () => {
-  const items = Array.from({ length: 100 }, (_, index) => ({
-    ...task(`task-${index}`, `job-${index}`, index % 2 ? 'failed' : 'cancelled'),
-    runConfig: { runMode: index % 2 ? 'model' : 'workflow' },
-  }))
-  const env = environment(items)
-  env.state.sessionTaskIds.value.clear()
-  assert.equal(await env.store.removeSeparationRuns(items.map(item => item.jobId)), 100)
-  assert.equal(env.state.tasks.value.length, 0)
-  assert.equal(env.writes.at(-1).data.tasks.length, 0)
-})
-
-test('separation record cleanup preserves workflow-editor runs, active batches and results', async () => {
-  const workflow = task('workflow', 'workflow', 'failed')
-  const model = { ...task('model', 'model', 'failed'), runConfig: { runMode: 'model' } }
-  const result = { ...task('result', 'result'), runConfig: { runMode: 'model' } }
-  const active = { ...task('active', 'active', 'separating'), runConfig: { runMode: 'model' } }
-  const env = environment([workflow, model, result, active])
-  await assert.rejects(env.store.removeSeparationRuns(['model', 'workflow']), /workbench.runNotFound/)
-  await assert.rejects(env.store.removeSeparationRuns(['model', 'result']), /workbench.removeRunHasResults/)
-  await assert.rejects(env.store.removeSeparationRuns(['model', 'active']), /results.removeRunningBatch/)
-  assert.equal(env.writes.length, 0)
-  assert.equal(await env.store.removeSeparationRuns([]), 0)
-  await env.store.removeSeparationRuns(['model'])
-  assert.deepEqual(Array.from(env.state.tasks.value, item => item.id), ['workflow', 'result', 'active'])
+test('metadata preflight is non-destructive and rejects an owned cleanup lease',async t=>{
+ const {store}=await setup(t,group('result'))
+ await store.checkRemoval(['result-0']);assert.equal(fixture.rows().length,1)
+ fixture.setRemoveHook(()=>{throw Error('runtime cleanup lease is busy')})
+ await assert.rejects(store.checkRemoval(['result-0']),/cleanup lease/)
+ assert.equal(fixture.rows().length,1);assert.equal(store.tasks.length,1)
 })

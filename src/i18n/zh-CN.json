@@ -1132,6 +1132,7 @@
     "typeAdvanced": "高级工作流",
     "removeRunningBatch": "该批次仍有任务正在运行或排队，请在批次结束后删除。",
     "removeRecordsFailed": "记录删除失败，请重试。",
+    "removeNotReady": "暂时无法移除这些记录，请稍后重试。",
     "removeFilesRetained": "结果及关联记录已删除，保留了 {count} 个输入文件或其他任务仍引用的文件",
     "audioSection": "音频分离与工作流",
     "journal": {

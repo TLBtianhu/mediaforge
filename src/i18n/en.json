@@ -1132,6 +1132,7 @@
     "typeAdvanced": "Advanced workflow",
     "removeRunningBatch": "This batch still has running or queued tasks. Wait for it to finish before deleting it.",
     "removeRecordsFailed": "Failed to delete records. Please try again.",
+    "removeNotReady": "These records cannot be removed yet. Try again shortly.",
     "removeFilesRetained": "Results and linked records deleted; kept {count} files used as inputs or referenced by other tasks",
     "audioSection": "Audio separation and workflows",
     "journal": {

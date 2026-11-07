@@ -51,7 +51,10 @@ test('the real task lifecycle receives mock completion and usable audio data', a
   const events = []
   const handler = runtime.callback(event => events.push(event.payload))
   await runtime.invoke('plugin:event|listen', { event: 'pymss://worker-event', handler })
-  assert.equal((await runtime.invoke('start_separation', { payload: { taskId: 'sample-run' } })).started, true)
+  const current = (await runtime.invoke('agent_jobs')).jobs[0]
+  await runtime.invoke('enqueue_audio_jobs', { payload: { schemaVersion: 2, command: 'infer', groupId: 'sample-group', primaryJobId: 'sample-run',
+    payload: current.payload, tasks: [{ jobId: 'sample-run', request: { input: runtime.input, output: current.payload.output, inputIndex: 1 } }] } })
+  assert.equal((await runtime.invoke('start_separation', { payload: { jobId: 'sample-run' } })).started, true)
   await new Promise(resolve => setTimeout(resolve, 1200))
   const completed = events.find(event => event.type === 'task.result')
   assert.equal(completed.taskId, 'sample-run')

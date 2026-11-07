@@ -74,8 +74,7 @@ export function buildJournalResults(jobs: readonly JournalResultJob[], audioTask
     if (NON_RESULT_OPERATIONS.has(operation)) continue
     const source = job.source === 'manual' ? 'manual' : 'agent'
     if (AUDIO_RUNS.has(job.command)) {
-      // Manual audio owns deletion in task-history; showing its journal mirror
-      // would resurrect a result after the user deleted the audio record.
+      // Manual audio uses the editable audio results presentation of these same records.
       if (source === 'manual') continue
       const identities = [job.jobId, job.cancelTaskId, text(payload.taskId), text(payload.jobId)]
       if (identities.some(id => id && audioTaskIds.has(id))) continue

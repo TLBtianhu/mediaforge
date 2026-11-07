@@ -1453,7 +1453,7 @@ watch(developerMode, (enabled) => {
             <div class="debug-task-entry__meta">
               <span>{{ t(item.runConfig?.runMode === 'workflow' ? 'debug.workflowTasks' : 'debug.modelTask') }}</span>
               <code :title="item.id">{{ shortTaskId(item.id) }}</code>
-              <span v-if="item.batchId">{{ t('debug.batchTask') }}{{ item.batchIndex != null ? ` #${item.batchIndex + 1}` : '' }}</span>
+              <span v-if="item.jobId">{{ t('debug.batchTask') }}{{ item.batchIndex != null ? ` #${item.batchIndex + 1}` : '' }}</span>
             </div>
             <code class="debug-task-entry__input" :title="item.input">{{ item.input }}</code>
             <p v-if="item.stageLabel || item.progressDetail">{{ item.stageLabel }} {{ item.progressDetail }}</p>

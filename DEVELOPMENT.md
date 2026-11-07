@@ -219,69 +219,48 @@ Adjust `command`, `cwd`, and `MEDIAFORGE_DATA_DIR` in
 `integrations/dsh-mediaforge/cordis.patch.yml` when the project is not at
 `C:\MediaForge`.
 
-### Shared agent workspace
+### Shared job ledger
 
-The bridge writes durable task state under the data root through
-`python/core/operation_kernel.py`:
+UI audio, media workers and MCP use the same current schema-2 files under the data root:
 
 ```text
 agent-jobs/<jobId>.json
-agent-jobs/index.json
-agent-workspace.json
+agent-jobs/.catalog.lock
+agent-jobs/.owners/<jobId>.lock
+agent-jobs/.writes/<jobId>.lock
 ```
 
-Individual `agent-jobs/<jobId>.json` files are authoritative. `index.json` is
-a compatibility snapshot from the Python bridge; `agent_jobs` reads the job
-files and recovers interrupted Rust-owned work only after its owner lease is
-released. Rust records manual worker tasks before spawning, saves progress
-and terminal results atomically, and retains partial outputs on failure or
-cancellation. Batch children retain their own input and shared parameters;
-only the parent duplicates the complete batch input list.
+There is no task-history/tasks.json writer, index snapshot or agent-workspace copy.
+Readers validate the full current catalog and reference closure before recovery or deletion;
+old/future versions, malformed JSON, duplicate keys and incomplete groups raise errors and
+preserve existing files. They are never converted into an empty history.
 
-`stores/mediaJobs.ts` owns the media event subscription for the app lifetime.
-Image, video, format conversion and media workflow pages restore their latest
-submitted snapshot when mounted again. `/queue` merges the journal with audio
-store tasks, including audio work still waiting for the scheduler, and refreshes
-external jobs every ten seconds while visible. Audio cancellation goes through
-the audio store scheduler; other manual tasks use `cancel_task` and agent jobs
-use `cancel_agent_job`.
+Audio enqueue must be acknowledged durably before scheduling. The primary stores the shared
+worker request and ordered member IDs once; each child stores only a payloadRef and its own
+input/output/bindings. Starting work passes only jobId, and the backend claims the stored request.
+Runtime stage/progress, nodes and structured logs are persisted by the backend observer; the
+frontend derives task/result views, file lists and node-log groups in memory.
 
-Only a current-session submission or a backend-owned lease record restores
-an active media page. Records without a recognized owner never acquire a page
-lock or get treated as proof that a task is still running.
+All directory membership operations and complete reads share .catalog.lock; owner leases and
+per-job atomic writes use their separate locks. An ownerless queued job remains queued.
+Rust and Python recover a typed owner only after its lease is released, including jobs left by
+an exited bridge. PID alone does not establish liveness.
 
-Results include a separate read-only media/tool/Agent file area alongside the
-existing audio area. Manual audio journal mirrors are excluded so clearing audio
-history cannot resurrect it. The physical audio history and journal remain
-separate; media result deletion and a shared cross-process scheduler are not
-implemented. The old frontend journal mirror and `journal_job` write command
-are removed; the backend owns task lifecycle records.
+Queued audio cancellation affects the requested leaf. A cancelled primary remains the shared
+request anchor for its siblings. Running batch cancellation follows the shared worker ID.
+Removing audio records requires the complete group to be terminal and its owner leases free.
+Results must call remove_audio_jobs(checkOnly=true) before recycling files or deleting editor
+projects; the final metadata transaction follows those explicit user actions.
 
-The stdio and HTTP bridge modes write the same state, so DSH and the app see
-the same task list when they use the same `MEDIAFORGE_DATA_DIR`.
+Full lists are authoritative, without an implicit 100-terminal cap. Kernel retention applies
+to its Agent history; manual audio records remain until explicit removal. Reference groups
+must not lose an anchor. The CLI transport payload.json is removed after its own worker is
+reaped; diagnostics and any other workspace artifacts remain.
 
-Smoke test (temporary profile, no user data):
-
-```powershell
-.\scripts\smoke-mcp.ps1
-```
-
-Current limitations, intentionally explicit:
-
-- The stdio bridge is a separate headless worker process. It shares the data
-  root and models, but not the live Tauri job queue.
-- `pipeline_plan` is read-only; image/video execution still goes through the
-  existing app commands until the Operation Kernel refactor lands.
-- No DSH model bridge yet. MCP is used for capabilities only, not for
-  inheriting DSH login/model selection.
-
-Next phases:
-
-1. Extract the shared Operation Kernel so UI, MCP, and the internal agent use
-   one implementation.
-2. Add a DSH Host plugin model gateway that streams from `ctx.llm` using
-   `agentDefaultModel`; no second API key.
-3. Add the internal agent loop and the structured harness feedback workflow.
+MCP stdio and HTTP share records when configured with the same data root. Their execution
+processes and concurrency quotas are still separate from the UI scheduler; storage unification
+does not claim a shared cross-process scheduler. Media/Agent produced-file deletion remains a
+separate next step. See [the job contract](docs/job-ledger-contract.md) for the exact boundaries.
 
 ## Capability and model binding
 

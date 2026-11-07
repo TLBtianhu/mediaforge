@@ -11,7 +11,7 @@ export function makeQueue(deps: QueueDeps) {
   }
   function isNoResultSeparationJob(job: SeparationJob) {
     return isSeparationJob(job) && job.tasks.every(item => isTerminalTaskStatus(item.status))
-      && !job.tasks.some((item: SeparationJob['tasks'][number]) => item.status === 'done' && !item.resultHidden && (item.outputs.length || item.files.length))
+      && !job.tasks.some((item: SeparationJob['tasks'][number]) => item.status === 'done' && (item.outputs.length || item.files.length))
   }
   const separationJobs = deps.computed(() => deps.task.allJobs.filter(isSeparationJob))
   const separationSessionJobs = deps.computed(() => deps.task.sessionJobs.filter(isSeparationJob))

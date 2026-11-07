@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isTutorialFrame, tutorialAdapter } from '../features/onboarding/demoContext.ts'
 
-export type AppStoreName = 'app-settings' | 'task-history' | 'model-state' | 'editor-ui' | 'audio-tools' | 'workflow-state' | 'media-workflows' | 'separate-state' | 'update-state'
+export type AppStoreName = 'app-settings' | 'model-state' | 'editor-ui' | 'audio-tools' | 'workflow-state' | 'media-workflows' | 'separate-state' | 'update-state'
 
 export const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -11,7 +11,7 @@ function localStoreKey(name: AppStoreName) {
   return `pymss-studio:${name}`
 }
 
-const strictStores = new Set<AppStoreName>(['task-history', 'separate-state', 'workflow-state', 'media-workflows'])
+const strictStores = new Set<AppStoreName>(['separate-state', 'workflow-state', 'media-workflows'])
 
 function readLocalStore<T>(name: AppStoreName): T | null {
   const raw = localStorage.getItem(localStoreKey(name))

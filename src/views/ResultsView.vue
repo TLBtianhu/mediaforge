@@ -57,7 +57,7 @@ const { resultGroups, filteredResults, getFileName, getGroupTitle } = makeResult
   computed, t, task, search, typeFilter, sortBy, resultType,
 })
 const journalResults = computed(() => buildJournalResults(mediaJobs.jobs,
-  new Set(task.tasks.flatMap(item => [item.id, item.jobId, item.batchId].filter((id): id is string => Boolean(id))))))
+  new Set(task.tasks.flatMap(item => [item.id, item.jobId].filter((id): id is string => Boolean(id))))))
 const filteredJournalResults = computed(() => filterJournalResults(journalResults.value, search.value, sortBy.value))
 async function refreshJournalResults() {
   try { await mediaJobs.refresh() } catch { /* The shared store exposes the refresh error. */ }
@@ -146,6 +146,16 @@ async function removeResultRecords(items: SeparationTask[]) {
     return true
   } catch (error) {
     message.error(error instanceof Error ? error.message : t('results.removeRecordsFailed'))
+    return false
+  }
+}
+
+async function prepareResultRemoval(items: SeparationTask[]) {
+  try {
+    await task.checkRemoval(items.map(item => item.id))
+    return true
+  } catch {
+    message.warning(t('results.removeNotReady'))
     return false
   }
 }
@@ -303,6 +313,7 @@ function handleRemoveResult(group: ResultGroup) {
       const finishRemove = async () => {
         return removeResultRecords(items)
       }
+      if (!await prepareResultRemoval(items)) return false
       if (!deleteFiles.value) {
         if (!await finishRemove()) return false
         message.success(t('results.removeSuccess'))
@@ -383,6 +394,8 @@ function handleRemoveSelected() {
         return true
       }
 
+      if (!await prepareResultRemoval(items)) return false
+
       if (!deleteFiles.value) {
         return await finishRemove() ? undefined : false
       }
@@ -458,6 +471,8 @@ function handleClearResults() {
         selecting.value = false
         return true
       }
+
+      if (!await prepareResultRemoval(items)) return false
 
       if (!deleteFiles.value) {
         return await finishClear() ? undefined : false

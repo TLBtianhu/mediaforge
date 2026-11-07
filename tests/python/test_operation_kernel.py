@@ -22,6 +22,14 @@ if str(PYTHON_DIR) not in sys.path:
 
 from core.operation_kernel import Job, OperationKernel  # noqa: E402
 from core.worker_runtime_lock import RuntimeLockBusy  # noqa: E402
+from core.job_store import JobStoreError
+from ._job_fixtures import job_record
+
+
+def owned_job(*args, **kwargs):
+    job = Job(*args, **kwargs)
+    job.owner = {"kind": "operation-kernel", "kernelId": "fixture", "pid": 12345}
+    return job
 
 
 def read_json(path: Path) -> dict:
@@ -34,7 +42,7 @@ class RecoveryTests(unittest.TestCase):
             root = Path(raw)
             jobs = root / "agent-jobs"
             jobs.mkdir(parents=True)
-            stale = {"jobId": "job_stale", "command": "audio_tools", "status": "running", "createdAt": time.time(), "payload": {}}
+            stale = job_record("job_stale", status="running")
             (jobs / "job_stale.json").write_text(json.dumps(stale), encoding="utf-8")
 
             kernel = OperationKernel(root)
@@ -53,7 +61,7 @@ class RecoveryTests(unittest.TestCase):
             root = Path(raw)
             jobs = root / "agent-jobs"
             jobs.mkdir(parents=True)
-            done = {"jobId": "job_done", "command": "audio_tools", "status": "completed", "createdAt": time.time(), "payload": {}}
+            done = job_record("job_done")
             (jobs / "job_done.json").write_text(json.dumps(done), encoding="utf-8")
 
             kernel = OperationKernel(root)
@@ -61,7 +69,7 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(kernel.recovered, 0)
             self.assertEqual(read_json(jobs / "job_done.json")["status"], "completed")
 
-    def test_corrupt_job_file_does_not_block_startup(self) -> None:
+    def test_corrupt_job_file_blocks_startup_and_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             jobs = root / "agent-jobs"
@@ -69,10 +77,10 @@ class RecoveryTests(unittest.TestCase):
             (jobs / "job_broken.json").write_text("{ not json", encoding="utf-8")
             (jobs / "index.json").write_text("{}", encoding="utf-8")
 
-            kernel = OperationKernel(root)
-
-            self.assertEqual(kernel.recovered, 0)
-            self.assertEqual(kernel.count(), 0)
+            with self.assertRaises(JobStoreError):
+                OperationKernel(root)
+            self.assertEqual((jobs / "job_broken.json").read_text(encoding="utf-8"), "{ not json")
+            self.assertEqual((jobs / "index.json").read_text(encoding="utf-8"), "{}")
 
     def test_other_kernel_in_same_process_does_not_interrupt_an_owned_job(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -86,7 +94,7 @@ class RecoveryTests(unittest.TestCase):
                 self.assertEqual(observer.get(job.job_id).snapshot()["status"], "queued")
                 self.assertEqual(observer.count(), 0)  # Observing does not own/run it.
                 with mock.patch("core.operation_kernel.threading.Thread.start"):
-                    with self.assertRaises(RuntimeLockBusy):
+                    with self.assertRaises(JobStoreError):
                         observer.start("fixture", {"requestId": "job_live"})
             finally:
                 job._lease.__exit__(None, None, None)
@@ -133,21 +141,22 @@ sys.stdin.readline()
             root = Path(raw)
             jobs = root / "agent-jobs"
             jobs.mkdir()
-            snapshot = {"jobId": "manual_1", "source": "manual", "status": "running", "createdAt": time.time()}
+            snapshot = job_record("manual_1", source="manual", status="queued", owner=None)
             (jobs / "manual_1.json").write_text(json.dumps(snapshot), encoding="utf-8")
             kernel = OperationKernel(root)
             self.assertEqual(kernel.recovered, 0)
-            self.assertEqual(kernel.get("manual_1").snapshot()["status"], "running")
+            self.assertEqual(kernel.get("manual_1").snapshot()["status"], "queued")
 
     def test_retention_cannot_delete_a_job_while_its_owner_still_holds_the_lease(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             owner = OperationKernel(root)
-            with mock.patch("core.operation_kernel.threading.Thread.start"):
+            with mock.patch("core.operation_kernel.threading.Thread.start"), \
+                 mock.patch("core.operation_kernel.time.time", return_value=time.time() - 100 * 86400):
                 job = owner.start("fixture", {"requestId": "job_live"})
             try:
                 # A terminal event may be visible before the worker/thread has exited.
-                job.update(status="completed", created_at=time.time() - 100 * 86400)
+                job.update(status="completed")
                 owner._persist(job, force=True)
                 observer = OperationKernel(root)
                 self.assertEqual(observer.pruned, 0)
@@ -165,7 +174,7 @@ sys.stdin.readline()
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             kernel = OperationKernel(root)
-            job = Job("historical", "run_operation", {"operation": "test"}, root / "bridge-jobs" / "historical")
+            job = owned_job("historical", "run_operation", {"operation": "test"}, root / "bridge-jobs" / "historical")
             job.update(status="completed", result={"outputs": {"value": 42}}, finished_at=123.0)
             kernel._persist(job, force=True)
             restarted = OperationKernel(root)
@@ -184,7 +193,7 @@ sys.stdin.readline()
             kernel = OperationKernel(root)
             payload = {"operation": "media_image", "device": "cuda", "steps": [{"capability": "upscale", "params": {}}]}
             result = {"recovery": {"retryable": True, "actions": [{"action": "switch_device", "to": "cpu"}]}}
-            job = Job("historical_failure", "audio_tools", payload, root / "bridge-jobs" / "historical_failure")
+            job = owned_job("historical_failure", "audio_tools", payload, root / "bridge-jobs" / "historical_failure")
             job.update(status="failed", result=result, error="CUDA out of memory")
             kernel._persist(job, force=True)
             bridge = agent_bridge.Bridge(token=None, port=0, data_root=root)
@@ -203,7 +212,7 @@ sys.stdin.readline()
 class PersistTests(unittest.TestCase):
     def _kernel_with_job(self, root: Path, job_id: str = "job_progress") -> tuple[OperationKernel, Job]:
         kernel = OperationKernel(root)
-        job = Job(job_id, "audio_tools", {}, root / "bridge-jobs" / job_id)
+        job = owned_job(job_id, "audio_tools", {}, root / "bridge-jobs" / job_id)
         job.workdir.mkdir(parents=True, exist_ok=True)
         return kernel, job
 
@@ -216,7 +225,7 @@ class PersistTests(unittest.TestCase):
 
             def counting(snapshot):
                 writes["count"] += 1
-                original(snapshot)
+                return original(snapshot)
 
             kernel._write_job_file = counting  # type: ignore[method-assign]
             for step in range(120):
@@ -261,10 +270,10 @@ class SingleFileHistoryTests(unittest.TestCase):
             root = Path(raw)
             kernel = OperationKernel(root)
             path = kernel.jobs_root / "manual_1.json"
-            snapshot = {"jobId": "manual_1", "source": "manual", "status": "running", "createdAt": time.time()}
+            snapshot = job_record("manual_1", source="manual", status="running", owner={"kind": "tauri-worker", "pid": 12345})
             path.write_text(json.dumps(snapshot), encoding="utf-8")
             self.assertEqual(kernel.get("manual_1").snapshot()["status"], "running")
-            snapshot.update(status="completed", result={"outputs": ["done.wav"]})
+            snapshot.update(status="completed", result={"outputs": ["done.wav"]}, finishedAt=time.time())
             path.write_text(json.dumps(snapshot), encoding="utf-8")
             self.assertEqual(kernel.get("manual_1").snapshot()["result"], snapshot["result"])
             path.unlink()
@@ -276,14 +285,17 @@ class SingleFileHistoryTests(unittest.TestCase):
             kernel = OperationKernel(root)
             legacy_index = kernel.jobs_root / "index.json"
             legacy_workspace = root / "agent-workspace.json"
-            legacy_index.write_bytes(b"leave previous index untouched")
             legacy_workspace.write_bytes(b"leave previous workspace untouched")
-            job = Job("new_job", "audio_tools", {}, root / "bridge-jobs/new_job")
+            job = owned_job("new_job", "audio_tools", {}, root / "bridge-jobs/new_job")
+            kernel._persist(job, force=True)
+            legacy_index.write_bytes(b"leave previous index untouched")
             with mock.patch.object(Path, "glob", side_effect=AssertionError("progress must not scan history")):
                 kernel._persist(job, force=True)
                 job.update(status="completed", result={"outputs": ["done.wav"]})
                 kernel._persist(job)
-            self.assertEqual(kernel.get("new_job").snapshot()["status"], "completed")
+            with self.assertRaises(JobStoreError):
+                kernel.get("new_job")
+            self.assertEqual(read_json(kernel.jobs_root / "new_job.json")["status"], "completed")
             self.assertEqual(legacy_index.read_bytes(), b"leave previous index untouched")
             self.assertEqual(legacy_workspace.read_bytes(), b"leave previous workspace untouched")
 
@@ -292,10 +304,10 @@ class SingleFileHistoryTests(unittest.TestCase):
             root = Path(raw)
             kernel = OperationKernel(root)
             manual = kernel.jobs_root / "manual_1.json"
-            value = {"jobId": "manual_1", "source": "manual", "command": "ui_task", "status": "completed", "createdAt": time.time()}
+            value = job_record("manual_1", source="manual", command="ui_task")
             manual.write_text(json.dumps(value), encoding="utf-8")
             before = manual.read_bytes()
-            job = Job("job_a", "audio_tools", {}, root / "bridge-jobs/job_a")
+            job = owned_job("job_a", "audio_tools", {}, root / "bridge-jobs/job_a")
             kernel._persist(job, force=True)
             self.assertEqual(manual.read_bytes(), before)
             self.assertEqual(kernel.get("manual_1").snapshot()["source"], "manual")
@@ -316,7 +328,7 @@ class CancelTests(unittest.TestCase):
             root = Path(raw)
             kernel = OperationKernel(root)
             path = kernel.jobs_root / "foreign.json"
-            path.write_text(json.dumps({"jobId": "foreign", "status": "running", "source": "agent"}), encoding="utf-8")
+            path.write_text(json.dumps(job_record("foreign", status="running")), encoding="utf-8")
             result = kernel.cancel("foreign")
             self.assertTrue(result["requested"])
             self.assertFalse(result["cancelled"])
@@ -327,7 +339,7 @@ class CancelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             kernel = OperationKernel(Path(raw))
             path = kernel.jobs_root / "done.json"
-            path.write_text(json.dumps({"jobId": "done", "status": "completed"}), encoding="utf-8")
+            path.write_text(json.dumps(job_record("done")), encoding="utf-8")
             self.assertEqual(kernel.cancel("done"), {"ok": True, "cancelled": False})
             self.assertFalse((kernel.jobs_root / "done.cancel").exists())
 
@@ -335,7 +347,7 @@ class CancelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             kernel = OperationKernel(root)
-            job = Job("job_x", "audio_tools", {}, root / "bridge-jobs" / "job_x")
+            job = owned_job("job_x", "audio_tools", {}, root / "bridge-jobs" / "job_x")
             paths = kernel._cancel_paths(job)
             self.assertIn(job.workdir / "cancel", paths)
             self.assertIn(root / "agent-jobs" / "job_x.cancel", paths)
@@ -344,7 +356,8 @@ class CancelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             kernel = OperationKernel(root)
-            job = Job("job_y", "audio_tools", {}, root / "bridge-jobs" / "job_y")
+            job = owned_job("job_y", "audio_tools", {}, root / "bridge-jobs" / "job_y")
+            kernel._persist(job, force=True)
             with kernel._lock:
                 kernel._jobs["job_y"] = job
 
@@ -363,7 +376,7 @@ class CancelTests(unittest.TestCase):
 
 class SnapshotContractTests(unittest.TestCase):
     def test_snapshot_keeps_the_fields_index_and_mcp_rely_on(self) -> None:
-        job = Job("job_c", "audio_tools", {"source": "manual"}, Path("."))
+        job = owned_job("job_c", "audio_tools", {"source": "manual"}, Path("."))
         snapshot = job.snapshot()
         for key in (
             "jobId",
@@ -379,7 +392,8 @@ class SnapshotContractTests(unittest.TestCase):
             "payload",
         ):
             self.assertIn(key, snapshot)
-        self.assertEqual(snapshot["source"], "manual")
+        self.assertEqual(snapshot["source"], "agent")  # Payload data cannot change execution ownership.
+        self.assertEqual(snapshot["schemaVersion"], 2)
 
 
 class EventTests(unittest.TestCase):
@@ -392,7 +406,7 @@ class EventTests(unittest.TestCase):
                 ("asset.done", {"modelId": "media:test", "downloaded": ["model.bin"], "skipped": []}),
             ):
                 with self.subTest(terminal=terminal):
-                    job = Job(terminal.replace(".", "_"), "fixture", {}, root / "bridge-jobs" / terminal)
+                    job = owned_job(terminal.replace(".", "_"), "fixture", {}, root / "bridge-jobs" / terminal)
                     job.update(status="running")
                     progress = "task.progress" if terminal == "task.result" else "asset.progress"
                     kernel._consume(job, {"type": progress, "payload": {"fraction": 0.5, "message": "half"}})
@@ -407,7 +421,7 @@ class EventTests(unittest.TestCase):
     def test_asset_progress_percent_is_normalized(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             kernel = OperationKernel(Path(raw))
-            job = Job("download", "model_download", {}, Path(raw))
+            job = owned_job("download", "model_download", {}, Path(raw))
             kernel._consume(job, {"type": "asset.progress", "payload": {"progress": 25}})
             self.assertEqual(job.fraction, 0.25)
 
@@ -415,7 +429,7 @@ class EventTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             kernel = OperationKernel(Path(raw))
             for status in ("cancelled", "failed"):
-                job = Job(status, "fixture", {}, Path(raw))
+                job = owned_job(status, "fixture", {}, Path(raw))
                 job.update(status=status, error="original error")
                 kernel._consume(job, {"type": "task.result", "payload": {"outputs": {}}})
                 self.assertEqual(job.status, status)

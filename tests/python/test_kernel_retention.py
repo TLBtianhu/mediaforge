@@ -27,6 +27,8 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 from core.operation_kernel import OperationKernel  # noqa: E402
+from core.job_store import JobStoreError
+from ._job_fixtures import job_record
 
 DAY = 86400.0
 
@@ -39,15 +41,11 @@ class JobRetentionTests(unittest.TestCase):
         self.jobs.mkdir(parents=True)
 
     def seed(self, job_id: str, *, status: str = "completed", age_days: float = 0.0, stamp: bool = True) -> Path:
-        payload = {
-            "jobId": job_id,
-            "command": "audio_tools",
-            "status": status,
-            "fraction": 1.0,
-            "message": "done",
-        }
+        payload = job_record(job_id, status=status)
         if stamp:
             payload["createdAt"] = time.time() - age_days * DAY
+        else:
+            payload.pop("createdAt")
         path = self.jobs / f"{job_id}.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
         return path
@@ -93,13 +91,14 @@ class JobRetentionTests(unittest.TestCase):
         self.assertFalse(expired.exists())
         self.assertIsNone(kernel.get("expired"))
 
-    def test_entries_without_a_timestamp_survive(self) -> None:
+    def test_entries_without_a_timestamp_are_rejected_and_preserved(self) -> None:
         self.seed("undated", stamp=False)
         self.seed("dated", age_days=100)
         with mock.patch.dict(os.environ, {"MEDIAFORGE_JOB_RETENTION_COUNT": "0"}, clear=False):
-            kernel = OperationKernel(self.root)
+            with self.assertRaises(JobStoreError):
+                OperationKernel(self.root)
         self.assertTrue((self.jobs / "undated.json").is_file())
-        self.assertTrue(kernel.pruned >= 1)
+        self.assertTrue((self.jobs / "dated.json").is_file())
 
     def test_pruning_can_be_disabled(self) -> None:
         self.seed("ancient", age_days=3650)

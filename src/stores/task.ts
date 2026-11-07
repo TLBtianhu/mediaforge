@@ -8,8 +8,8 @@ import { useSettingsStore } from '@/stores/settings'
 import { useModelStore, type ModelDefaultInferenceParams } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import type { WorkflowEntry } from '@/stores/workflow'
-import { appendWorkflowNodeLogs, type WorkflowNodeLogs } from '@/workflows/nodeLogs'
-import { normalizeLogRecord, workerLogRecord, localLogRecord, type LogEntry } from '@/utils/logRecord'
+import type { WorkflowNodeLogs } from '@/workflows/nodeLogs'
+import type { LogEntry } from '@/utils/logRecord'
 import { detectWorkflowFormat, WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
 import {
   prepareWorkflowDefinitionForRun,
@@ -24,12 +24,14 @@ import {
 } from '@/features/tasks/lifecycle'
 import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
 import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
-import { CURRENT_INFERENCE_PARAMS_VERSION, TASK_HISTORY_VERSION, readTaskHistory, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
-import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
+import { CURRENT_INFERENCE_PARAMS_VERSION, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming } from '@/stores/taskNormalize'
+import { useMediaJobsStore } from '@/stores/mediaJobs'
+import { audioTasksFromJobs, audioEnqueueFromTasks } from '@/features/tasks/audioJobs'
+import { enqueueAudioJobs, removeAudioJobs } from '@/features/tasks/journal'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
 import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
-import { validateSeparateWorkflowInput, validateWorkflowRunConfig, workflowDefinitionValidationError } from '@/stores/taskValidation'
+import { validateSeparateWorkflowInput, workflowDefinitionValidationError } from '@/stores/taskValidation'
 import { resolveRetryOutput } from '@/stores/taskRetry'
 import { buildInferenceParams as buildInferenceParamsFromValues, modelInferenceParamsFromState as modelInferenceParamsFromValues } from '@/stores/taskInferenceParams'
 import { buildJobs, findJobById } from '@/stores/taskJobs'
@@ -86,13 +88,10 @@ type ScanMediaPathsResult = {
 export type SeparationTask = {
   id: string
   jobId?: string
-  resultId?: string
-  batchId?: string
   batchIndex?: number
   model: string
   input: string
   jobOutput?: string
-  outputPrefix?: string
   output: string
   outputDirectories?: string[]
   status: TaskStatus
@@ -118,8 +117,6 @@ export type SeparationTask = {
   nodeStates?: Record<string, WorkflowNodeState>
   nodeExecutionOrder?: string[]
   currentNodeId?: string
-  taskHidden?: boolean
-  resultHidden?: boolean
 }
 
 export type SeparationJob = {
@@ -137,11 +134,6 @@ export type SeparationJob = {
   durationMs?: number
   status: TaskStatus
   progress: number
-}
-
-type PersistedTaskState = {
-  version: number
-  tasks?: Partial<SeparationTask>[]
 }
 
 type PersistedSeparateModelState = {
@@ -185,8 +177,6 @@ type ModelInferenceUiDefaults = {
 
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus']
 const VIDEO_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv']
-const NORMAL_LOG_LIMIT = 300
-const DEVELOPER_LOG_LIMIT = 1200
 
 
 function isSupportedInputPath(path: string) {
@@ -222,20 +212,6 @@ function normalizePersistedModelState(value: unknown): PersistedSeparateModelSta
 
 
 
-function getLogLimit(developerMode: boolean) {
-  return developerMode ? DEVELOPER_LOG_LIMIT : NORMAL_LOG_LIMIT
-}
-
-function markTaskStarted(task: SeparationTask, at = Date.now()) {
-  if (!task.startedAt) task.startedAt = at
-}
-
-function markTaskFinished(task: SeparationTask, at = Date.now()) {
-  task.finishedAt = at
-  const startedAt = task.startedAt || task.createdAt
-  task.durationMs = Math.max(0, at - startedAt)
-}
-
 function resolveTaskErrorMessage(code: unknown, message: unknown, input?: string) {
   const detail = typeof message === 'string' ? message : ''
   const path = typeof input === 'string' ? input : ''
@@ -252,6 +228,22 @@ export const useTaskStore = defineStore('task', () => {
   const initialized = ref(false)
   const loadError = ref('')
   const tasks = ref<SeparationTask[]>([])
+  const journal = useMediaJobsStore()
+  const dispatchedTaskIds = new Set<string>()
+  function syncJournalTasks() {
+    const previous = new Map(tasks.value.map(task => [task.id,task]))
+    tasks.value = audioTasksFromJobs(journal.jobs, windowsPaths.value, resolveTaskErrorMessage).map(projected => {
+      const current = previous.get(projected.id)
+      if (!current) return projected
+      for (const key of Object.keys(current)) if (!(key in projected)) delete (current as unknown as Record<string, unknown>)[key]
+      return Object.assign(current,projected)
+    })
+  }
+  watch(() => journal.jobs, () => {
+    if (!initialized.value) return
+    syncJournalTasks()
+    scheduleQueue()
+  }, { deep: true })
   const activeTaskId = ref<string | null>(null)
   // Session-only queue visibility. Persisted task/result history remains the
   // source for Results and recovery, while this set intentionally starts empty
@@ -309,17 +301,15 @@ export const useTaskStore = defineStore('task', () => {
   const runningTasks = computed(() => tasks.value.filter((task) => !isTerminalTaskStatus(task.status)))
   const activeWorkerTasks = computed(() => tasks.value.filter((task) => !isTerminalTaskStatus(task.status) && task.status !== 'queued'))
   // 任务页可见任务：排除已在任务页隐藏的记录（结果页隐藏不影响任务页）
-  const taskBoardTasks = computed(() => tasks.value.filter((task) => !task.taskHidden))
+  const taskBoardTasks = computed(() => tasks.value)
   // 结果页可见结果：仅含有输出且未在结果页隐藏的任务（任务页隐藏不影响结果页）
-  const resultTasks = computed(() => completedTasks.value.filter((task) => !task.resultHidden && (task.outputs.length || task.files.length)))
+  const resultTasks = computed(() => completedTasks.value.filter((task) => task.outputs.length > 0))
   const queuedTasks = computed(() => tasks.value.filter((task) => task.status === 'queued'))
   const failedTasks = computed(() => tasks.value.filter((task) => task.status === 'failed'))
   const allJobs = computed(() => buildJobs(tasks.value))
   const resultJobs = computed(() => buildJobs(resultTasks.value))
   const sessionJobs = computed(() => buildJobs(tasks.value.filter(task => sessionTaskIds.value.has(task.id))))
 
-  let saveTimer: ReturnType<typeof setTimeout> | null = null
-  let progressPersistTimer: ReturnType<typeof setTimeout> | null = null
   let separateStateSaveTimer: ReturnType<typeof setTimeout> | null = null
   let applyingModelDefaults = false
 
@@ -411,40 +401,29 @@ export const useTaskStore = defineStore('task', () => {
     return finishedJobIds.size
   }
 
-  async function persistTasks() {
-    if (!initialized.value) return
-    await saveAppStore('task-history', {
-      version: TASK_HISTORY_VERSION,
-      tasks: tasks.value.map(({ files: _files, ...task }) => ({ ...task, logs: task.logs.slice(-120) })),
-    } satisfies PersistedTaskState)
+  async function enqueueTasks(drafts: SeparationTask[]): Promise<SeparationTask[]> {
+    if (!drafts.length) return []
+    if (!initialized.value) await initialize()
+    if (loadError.value || journal.error) throw new Error(loadError.value || journal.error)
+    const accepted = await enqueueAudioJobs(audioEnqueueFromTasks(drafts))
+    journal.acceptJobs(accepted)
+    syncJournalTasks()
+    const ids = new Set(drafts.map(task => task.id))
+    const confirmed = tasks.value.filter(task => ids.has(task.id)).sort((a,b) => (a.batchIndex || 0) - (b.batchIndex || 0))
+    rememberSessionTasks(confirmed)
+    activeTaskId.value = confirmed[0]?.id || activeTaskId.value
+    return confirmed
   }
 
-  function queuePersist() {
-    if (!initialized.value) return
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => {
-      saveTimer = null
-      void persistTasks().catch(error => studioLog.warn('Failed to persist task history', error))
-    }, 120)
-  }
-
-  function queueProgressPersist() {
-    if (!initialized.value) return
-    if (progressPersistTimer) return
-    progressPersistTimer = setTimeout(() => {
-      progressPersistTimer = null
-      void persistTasks().catch(error => studioLog.warn('Failed to persist task history', error))
-    }, 800)
-  }
-
-  async function initialize() {
+  let initializationPromise: Promise<void> | null = null
+  async function initialize(): Promise<void> {
     if (initialized.value) return
+    if (initializationPromise) return initializationPromise
+    initializationPromise = (async () => {
     try {
-    const [stored, separateStored] = await Promise.all([
-      loadAppStore<PersistedTaskState>('task-history'),
-      loadAppStore<PersistedSeparateState>('separate-state'),
-    ])
-    const currentTasks = readTaskHistory(stored, windowsPaths.value)
+    const [, separateStored] = await Promise.all([journal.initialize(), loadAppStore<PersistedSeparateState>('separate-state')])
+    if (journal.error) throw new Error(journal.error)
+    const currentTasks = audioTasksFromJobs(journal.jobs, windowsPaths.value, resolveTaskErrorMessage)
     validateSeparateState(separateStored)
     tasks.value = currentTasks
     activeTaskId.value = tasks.value[0]?.id || null
@@ -494,6 +473,8 @@ export const useTaskStore = defineStore('task', () => {
       loadError.value = error instanceof Error ? error.message : String(error)
       throw error
     }
+    })().finally(() => { initializationPromise = null })
+    return initializationPromise
   }
 
   watch(
@@ -531,10 +512,6 @@ export const useTaskStore = defineStore('task', () => {
   watch(() => useSettingsStore().maxConcurrentSeparations, () => {
     scheduleQueue()
   })
-
-  function touch(task: SeparationTask) {
-    task.updatedAt = Date.now()
-  }
 
   function applySelectedModelDefaults(
     baseDefaults: ModelDefaultInferenceParams | undefined,
@@ -642,19 +619,6 @@ export const useTaskStore = defineStore('task', () => {
     restoreInferenceNumberFallback('window_size')
   }
 
-  function appendTaskLogs(task: SeparationTask, lines: LogEntry | LogEntry[]) {
-    const settings = useSettingsStore()
-    const values = Array.isArray(lines) ? lines : [lines]
-    const normalized = values
-      .flatMap<LogEntry>((line) => typeof line === 'string' ? line.split(/\r?\n/).map(value => value.trimEnd()).filter(Boolean) : [line])
-      .filter(line => typeof line === 'string' || line.legacy || !task.logs.some(previous => typeof previous !== 'string' && previous.id === line.id))
-    if (!normalized.length) return
-    task.logs.push(...normalized)
-    task.logs = task.logs.slice(-getLogLimit(settings.developerMode))
-    touch(task)
-    queuePersist()
-  }
-
   function maxConcurrentSeparations() {
     const settings = useSettingsStore()
     return normalizeConcurrentSeparations(settings.maxConcurrentSeparations)
@@ -667,202 +631,45 @@ export const useTaskStore = defineStore('task', () => {
   })
   const { resolveTaskOutputPath, createQueuedTask, createQueuedWorkflowTask } = makeTaskQueue({
     useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath,
-    inputStemSegment, createRunId, STAGE_META, localLogRecord,
+    inputStemSegment, createRunId, STAGE_META,
     buildRunConfig, buildWorkflowRunConfig, tasks, rememberSessionTasks,
-    activeTaskId, queuePersist,
+    activeTaskId,
   })
   async function startQueuedTask(taskId: string) {
-    const task = tasks.value.find((item) => item.id === taskId)
-    if (!task || task.status !== 'queued') return false
-    rememberSessionTasks([task])
-    const settings = useSettingsStore()
-    const config = task.runConfig || buildRunConfig({})
-    setTaskStatus(task.id, 'preparing', 'Preparing task')
+    const task = tasks.value.find(item => item.id === taskId)
+    if (!task || task.status !== 'queued' || dispatchedTaskIds.has(taskId)) return false
+    return startQueuedGroup([task])
+  }
+
+  async function startQueuedGroup(group: SeparationTask[]) {
+    if (!group.length || group.some(task => dispatchedTaskIds.has(task.id))) return false
+    group.forEach(task => dispatchedTaskIds.add(task.id))
+    const primary = group[0].id
     try {
-      if (config.runMode === 'workflow') {
-        validateWorkflowRunConfig(config)
-        await invoke<{ taskId: string; started: boolean }>('start_workflow_inference', {
-          payload: {
-            taskId: task.id,
-            workflowName: config.workflowName || task.model,
-            workflow: config.workflowDefinition || {},
-            input: task.input || null,
-            ...(config.workbench && !config.workbench.nativeGraph ? { workbench: true, inputs: config.workbench.inputs, workbenchOutputs: config.workbench.outputs } : {}),
-            output: config.outputLayout === 'folders' ? (task.jobOutput || task.output) : task.output,
-            modelDir: config.modelDir ?? (settings.modelDir || null),
-            source: config.downloadSource || settings.downloadSource,
-            downloadMethod: config.downloadMethod || settings.downloadMethod,
-            device: config.device,
-            deviceIds: config.deviceIds,
-            outputFormat: config.outputFormat,
-            outputLayout: config.outputLayout,
-            outputNaming: config.outputNaming,
-            useTta: config.useTta,
-            debug: config.debug,
-            audioParams: config.audioParams,
-          },
-        })
-        return true
-      }
-      await invoke<{ taskId: string; started: boolean }>('start_separation', {
-        payload: {
-          taskId: task.id,
-          model: task.model,
-          input: task.input,
-          output: config.outputLayout === 'folders' ? (task.jobOutput || task.output) : task.output,
-          modelDir: config.modelDir ?? (settings.modelDir || null),
-          download: true,
-          source: config.downloadSource || settings.downloadSource,
-          downloadMethod: config.downloadMethod || settings.downloadMethod,
-          endpoint: null,
-          device: config.device,
-          deviceIds: config.deviceIds,
-          outputFormat: config.outputFormat,
-          outputLayout: config.outputLayout,
-          outputNaming: config.outputNaming,
-          selectedStems: config.selectedStems || [],
-          useTta: config.useTta,
-          debug: config.debug,
-          audioParams: config.audioParams,
-          inferenceParamsVersion: config.inferenceParamsVersion ?? CURRENT_INFERENCE_PARAMS_VERSION,
-          inferenceParams: config.inferenceParams || {},
-        },
-      })
+      await invoke(group[0].runConfig?.runMode === 'workflow' ? 'start_workflow_inference' : 'start_separation', { payload: { jobId: primary } })
+      await journal.refresh()
+      if (journal.error) throw new Error(journal.error)
+      syncJournalTasks()
       return true
-    } catch (err) {
-      task.status = 'failed'
-      task.error = err instanceof Error ? err.message : String(err)
-      task.message = task.error
-      task.stageLabel = STAGE_META.failed.label
-      task.progress = 100
-      appendTaskLogs(task, `error: ${task.error}`)
-      markTaskFinished(task)
-      queuePersist()
-      scheduleQueue()
+    } catch (error) {
+      studioLog.warn('Failed to start an enqueued audio job', error)
+      await journal.refresh()
+      syncJournalTasks()
       return false
     }
   }
 
-  async function startBatchWorker(batchTasks: SeparationTask[]) {
-    if (!batchTasks.length || batchTasks.some(task => task.status !== 'queued')) return false
-    rememberSessionTasks(batchTasks)
-    const settings = useSettingsStore()
-    const primary = batchTasks[0]
-    const config = primary.runConfig || buildRunConfig({})
-    batchTasks.forEach((task) => {
-      setTaskStatus(task.id, 'preparing', 'Preparing batch task')
-    })
-    try {
-      await invoke<{ taskId: string; started: boolean }>('start_separation', {
-        payload: {
-          taskId: primary.id,
-          model: primary.model,
-          output: primary.jobOutput || primary.output,
-          tasks: batchTasks.map((task, index) => ({
-            taskId: task.id,
-            input: task.input,
-            output: task.output,
-            inputIndex: index + 1,
-          })),
-          modelDir: config.modelDir ?? (settings.modelDir || null),
-          download: true,
-          source: config.downloadSource || settings.downloadSource,
-          downloadMethod: config.downloadMethod || settings.downloadMethod,
-          endpoint: null,
-          device: config.device,
-          deviceIds: config.deviceIds,
-          outputFormat: config.outputFormat,
-          outputLayout: config.outputLayout,
-          outputNaming: config.outputNaming,
-          selectedStems: config.selectedStems || [],
-          useTta: config.useTta,
-          debug: config.debug,
-          audioParams: config.audioParams,
-          inferenceParamsVersion: config.inferenceParamsVersion ?? CURRENT_INFERENCE_PARAMS_VERSION,
-          inferenceParams: config.inferenceParams || {},
-        },
-      })
-      return true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      batchTasks.forEach((task) => {
-        task.status = 'failed'
-        task.error = message
-        task.message = message
-        task.stageLabel = STAGE_META.failed.label
-        task.progress = 100
-        appendTaskLogs(task, `error: ${message}`)
-        markTaskFinished(task)
-      })
-      queuePersist()
-      scheduleQueue()
-      return false
-    }
-  }
+  const startBatchWorker = startQueuedGroup
+  const startWorkflowBatchWorker = startQueuedGroup
 
-  async function startWorkflowBatchWorker(batchTasks: SeparationTask[]) {
-    if (!batchTasks.length || batchTasks.some(task => task.status !== 'queued')) return false
-    rememberSessionTasks(batchTasks)
-    const settings = useSettingsStore()
-    const primary = batchTasks[0]
-    const config = primary.runConfig || buildRunConfig({})
-    batchTasks.forEach((task) => {
-      setTaskStatus(task.id, 'preparing', 'Preparing workflow batch task')
-    })
-    try {
-      for (const task of batchTasks) validateWorkflowRunConfig(task.runConfig || config)
-      await invoke<{ taskId: string; started: boolean }>('start_workflow_inference', {
-        payload: {
-          taskId: primary.id,
-          workflowName: config.workflowName || primary.model,
-          workflow: config.workflowDefinition || {},
-          output: primary.jobOutput || primary.output,
-          ...(config.workbench && !config.workbench.nativeGraph ? { workbench: true } : {}),
-          tasks: batchTasks.map((task, index) => ({
-            taskId: task.id,
-            input: task.input,
-            output: task.output,
-            inputIndex: index + 1,
-            ...(task.runConfig?.workbench && !task.runConfig.workbench.nativeGraph ? { inputs: task.runConfig.workbench.inputs, workbenchOutputs: task.runConfig.workbench.outputs } : {}),
-          })),
-          modelDir: config.modelDir ?? (settings.modelDir || null),
-          source: config.downloadSource || settings.downloadSource,
-          downloadMethod: config.downloadMethod || settings.downloadMethod,
-          device: config.device,
-          deviceIds: config.deviceIds,
-          outputFormat: config.outputFormat,
-          outputLayout: config.outputLayout,
-          outputNaming: config.outputNaming,
-          useTta: config.useTta,
-          debug: config.debug,
-          audioParams: config.audioParams,
-        },
-      })
-      return true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      batchTasks.forEach((task) => {
-        task.status = 'failed'
-        task.error = message
-        task.message = message
-        task.stageLabel = STAGE_META.failed.label
-        task.progress = 100
-        appendTaskLogs(task, `error: ${message}`)
-        markTaskFinished(task)
-      })
-      queuePersist()
-      scheduleQueue()
-      return false
-    }
-  }
-
+  let schedulingSuppressed = 0
   let schedulingQueue = false
   let queueScheduleRequested = false
 
   function scheduleQueue() {
     // Browser-only previews cannot start a Rust worker. Keep restored queue items
     // intact until the desktop runtime is available instead of failing them on boot.
-    if (!isTauriRuntime()) return
+    if (!isTauriRuntime() || !initialized.value || loadError.value || journal.error || schedulingSuppressed) return
     if (!isMainTaskOwner()) return
     if (schedulingQueue) {
       queueScheduleRequested = true
@@ -872,7 +679,10 @@ export const useTaskStore = defineStore('task', () => {
     try {
       do {
         queueScheduleRequested = false
-        const nextJobs = selectQueuedJobGroups(tasks.value, maxConcurrentSeparations())
+        const awaiting = new Set(tasks.value.filter(task => task.status === 'queued' && dispatchedTaskIds.has(task.id)).map(taskJobId)).size
+        const limit = maxConcurrentSeparations() - awaiting
+        if (limit <= 0) break
+        const nextJobs = selectQueuedJobGroups(tasks.value.filter(task => task.status !== 'queued' || !dispatchedTaskIds.has(task.id)), limit)
         nextJobs.forEach((jobTasks) => {
           if (jobTasks.length === 1) {
             void startQueuedTask(jobTasks[0].id)
@@ -891,41 +701,6 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  function setTaskStatus(id: string, status: TaskStatus, message?: string, progress?: number) {
-    const settings = useSettingsStore()
-    const task = tasks.value.find((item) => item.id === id)
-    if (!task) return
-    if (isTerminalTaskStatus(task.status) && !isTerminalTaskStatus(status)) return
-    const meta = STAGE_META[status]
-    if (status !== 'queued') markTaskStarted(task)
-    task.status = status
-    task.stageLabel = meta.label
-    task.message = message || meta.label
-    if (status !== 'separating') {
-      task.progressCurrent = undefined
-      task.progressTotal = undefined
-      task.progressDetail = undefined
-    }
-    const nextProgress = progress ?? meta.progress
-    const normalizedProgress = Math.min(99, Math.max(0, nextProgress))
-    task.progress = isTerminalTaskStatus(status)
-      ? 100
-      : status === 'separating'
-        ? normalizedProgress
-        : Math.max(task.progress || 0, normalizedProgress)
-    task.logs.push(localLogRecord(task.message, `task.${status}`, status === 'failed' ? 'error' : 'info', { taskId: task.id }))
-    task.logs = task.logs.slice(-getLogLimit(settings.developerMode))
-    touch(task)
-    if (isTerminalTaskStatus(status)) markTaskFinished(task, task.updatedAt)
-    queuePersist()
-  }
-
-  const handleWorkerEvent = makeTaskWorkerEventHandler({
-    tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus,
-    markTaskStarted, markTaskFinished, touch, queueProgressPersist, queuePersist, scheduleQueue,
-    appendWorkflowNodeLogs, localLogRecord, workerLogRecord, normalizeLogRecord, appendTaskLogs,
-    useSettingsStore, normalizeStemOutputs, windowsPaths, resolveTaskErrorMessage,
-  })
   function addInputFiles(paths: string[]) {
     const valid = paths.filter((p) => p?.trim() && isSupportedInputPath(p))
     if (!valid.length) return 0
@@ -1022,49 +797,7 @@ export const useTaskStore = defineStore('task', () => {
   // 不会出现在结果页的任务，其“结果维度”视为已不存在。
   function hasResultPresence(task: SeparationTask) {
     return task.status === 'done'
-      && !task.resultHidden
       && (task.outputs.length > 0 || task.files.length > 0)
-  }
-
-  // 当一个任务在任务页与结果页都不再可见时，从底层数组彻底回收，避免无限堆积。
-  function reclaimHiddenTasks() {
-    tasks.value = tasks.value.filter((task) => !task.taskHidden || hasResultPresence(task))
-    const retainedIds = new Set(tasks.value.map(task => task.id))
-    const nextSessionIds = new Set([...sessionTaskIds.value].filter(id => retainedIds.has(id)))
-    if (nextSessionIds.size !== sessionTaskIds.value.size) sessionTaskIds.value = nextSessionIds
-  }
-
-  function removeTask(id: string) {
-    const target = tasks.value.find((task) => task.id === id)
-    if (!target) return
-    // 任务页删除仅隐藏日志记录，不影响结果页与磁盘文件
-    target.taskHidden = true
-    if (activeTaskId.value === id) activeTaskId.value = taskBoardTasks.value[0]?.id || null
-    if (focusedTaskId.value === id) focusedTaskId.value = null
-    reclaimHiddenTasks()
-    queuePersist()
-  }
-
-  function removeTasks(ids: string[]) {
-    const removeSet = new Set(ids)
-    if (!removeSet.size) return 0
-    let removed = 0
-    tasks.value.forEach((task) => {
-      if (removeSet.has(task.id) && !task.taskHidden) {
-        task.taskHidden = true
-        removed += 1
-      }
-    })
-    if (!removed) return 0
-    if (activeTaskId.value && removeSet.has(activeTaskId.value)) {
-      activeTaskId.value = taskBoardTasks.value[0]?.id || null
-    }
-    if (focusedTaskId.value && removeSet.has(focusedTaskId.value)) {
-      focusedTaskId.value = null
-    }
-    reclaimHiddenTasks()
-    queuePersist()
-    return removed
   }
 
   function getRemovalTasks(ids: string[]) {
@@ -1077,30 +810,24 @@ export const useTaskStore = defineStore('task', () => {
     return removeResults([id])
   }
 
+  async function checkRemoval(ids: string[]) {
+    const related = getRemovalTasks(ids)
+    const checked = new Set(await removeAudioJobs(related.map(task => task.id), true))
+    if (related.some(task => !checked.has(task.id))) throw new Error('Result removal preflight did not confirm every job')
+  }
+
   async function removeResults(ids: string[]) {
     const related = getRemovalTasks(ids)
     if (!related.length) return 0
-    const removedIds = new Set(related.map(task => task.id))
-    const previous = [...tasks.value]
-    tasks.value = tasks.value.filter(task => !removedIds.has(task.id))
-    try {
-      await persistTasks()
-    } catch (error) {
-      // Preserve concurrent progress and newly queued work when restoring records.
-      const current = new Map(tasks.value.map(task => [task.id, task]))
-      const previousIds = new Set(previous.map(task => task.id))
-      tasks.value = [
-        ...tasks.value.filter(task => !previousIds.has(task.id)),
-        ...previous.flatMap(task => current.has(task.id) ? [current.get(task.id)!] : removedIds.has(task.id) ? [task] : []),
-      ]
-      queuePersist()
-      throw error
-    }
+    const removed = await removeAudioJobs(related.map(task => task.id))
+    journal.forget(removed)
+    syncJournalTasks()
+    const removedIds = new Set(removed)
     sessionTaskIds.value = new Set([...sessionTaskIds.value].filter(id => !removedIds.has(id)))
-    if (activeTaskId.value && removedIds.has(activeTaskId.value)) activeTaskId.value = taskBoardTasks.value[0]?.id || null
+    if (activeTaskId.value && removedIds.has(activeTaskId.value)) activeTaskId.value = tasks.value[0]?.id || null
     if (focusedTaskId.value && removedIds.has(focusedTaskId.value)) focusedTaskId.value = null
     if (focusedResultTaskId.value && removedIds.has(focusedResultTaskId.value)) focusedResultTaskId.value = null
-    return related.length
+    return removed.length
   }
 
   async function removeWorkflowRun(workflowId: string, jobId: string) {
@@ -1121,71 +848,47 @@ export const useTaskStore = defineStore('task', () => {
     return removeResults(related.map(task => task.id))
   }
 
-  function clearHistory() {
-    // 仅清空任务页的历史记录（标记 taskHidden），保留结果页数据
-    tasks.value.forEach((task) => {
-      if (isTerminalTaskStatus(task.status)) task.taskHidden = true
-    })
-    reclaimHiddenTasks()
-    queuePersist()
-  }
-
   // Empty selections must not turn into a request to remove all results.
   function clearResults(ids?: string[]) {
     return removeResults(ids ?? resultTasks.value.map(task => task.id))
   }
 
   async function cancelAllTasks() {
-    const currentRunning = [...runningTasks.value]
-    if (!currentRunning.length) return { total: 0, cancelled: 0 }
+    const current = [...runningTasks.value]
     let cancelled = 0
-    for (const item of currentRunning) {
-      // 串行取消，避免同时调用底层取消造成竞态
-      // eslint-disable-next-line no-await-in-loop
-      const ok = await cancelTask(item.id)
-      if (ok) cancelled += 1
+    schedulingSuppressed++
+    try {
+      for (const task of current) if (await cancelTask(task.id)) cancelled++
+    } finally {
+      schedulingSuppressed--
+      scheduleQueue()
     }
-    return { total: currentRunning.length, cancelled }
+    return { total: current.length, cancelled }
   }
 
   async function cancelTask(id: string) {
-    const task = tasks.value.find((item) => item.id === id)
-    if (!task) return false
-    if (task.status === 'queued') {
-      task.status = 'cancelled'
-      task.message = 'Cancelled'
-      task.stageLabel = STAGE_META.cancelled.label
-      task.progress = 100
-      markTaskFinished(task)
-      appendTaskLogs(task, 'Cancelled before execution')
-      queuePersist()
-      scheduleQueue()
-      return true
-    }
+    const task = tasks.value.find(item => item.id === id)
+    if (!task || isTerminalTaskStatus(task.status)) return false
     const cancelled = await invoke<boolean>('cancel_task', { taskId: id })
     if (cancelled) {
-      if (task.currentNodeId && task.nodeStates?.[task.currentNodeId]) task.nodeStates[task.currentNodeId].status = 'cancelled'
-      appendWorkflowNodeLogs(task, task.currentNodeId, '[info] Cancelled')
-      task.status = 'cancelled'
-      task.message = 'Cancelled'
-      task.stageLabel = STAGE_META.cancelled.label
-      task.progress = 100
-      touch(task)
-      markTaskFinished(task, task.updatedAt)
-      queuePersist()
+      await journal.refresh()
+      syncJournalTasks()
       scheduleQueue()
     }
     return cancelled
   }
 
   async function cancelWorkbenchJob(jobId: string) {
-    const targets = tasks.value.filter(task => (task.jobId || task.id) === jobId && !isTerminalTaskStatus(task.status))
-    // Remove the entire queued remainder before any cancellation can resume scheduling.
-    for (const target of targets.filter(task => task.status === 'queued')) setTaskStatus(target.id, 'cancelled', 'Cancelled')
-    for (const target of targets) {
-      if (!isTerminalTaskStatus(target.status)) await cancelTask(target.id)
+    const targets = tasks.value.filter(task => taskJobId(task) === jobId && !isTerminalTaskStatus(task.status))
+    schedulingSuppressed++
+    try {
+      for (const target of targets) await invoke('cancel_task', { taskId: target.id })
+      await journal.refresh()
+      syncJournalTasks()
+    } finally {
+      schedulingSuppressed--
+      scheduleQueue()
     }
-    scheduleQueue()
   }
 
   function buildInferenceParams(modelType?: string | null): Record<string, unknown> {
@@ -1256,7 +959,7 @@ export const useTaskStore = defineStore('task', () => {
       batchIndex,
     ))
     modelStore.recordModelUse(model)
-    return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
+    return finalizeTaskBatch(batch, await enqueueTasks(createdTasks), { schedule: scheduleQueue })
   }
 
   async function startWorkflowInference(workflow: WorkflowEntry, options: { outputDir?: string; outputLayout?: OutputLayout; outputNaming?: OutputNamingConfig } = {}) {
@@ -1281,7 +984,7 @@ export const useTaskStore = defineStore('task', () => {
       batch.outputNaming,
       batchIndex,
     ))
-    return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
+    return finalizeTaskBatch(batch, await enqueueTasks(createdTasks), { schedule: scheduleQueue })
   }
   async function startWorkbenchInference(workflow: WorkflowEntry, bindings: WorkflowRuntimeBindings) {
     if (loadError.value) throw new Error(loadError.value)
@@ -1299,17 +1002,17 @@ export const useTaskStore = defineStore('task', () => {
     const runtimeEntry = { ...workflow, definition: prepared.definition }
     const createdTasks = prepared.runs.map((run, batchIndex) => {
       const created = createQueuedWorkflowTask(run.input, runtimeEntry, batch.jobId, directory, nativeGraph ? 'flat' : bindings.outputLayout, undefined, batchIndex)
-      const config = tasks.value.find(task => task.id === created.id)!.runConfig!
+      const config = created.runConfig!
       config.useTta = false
       if (nativeGraph) config.workflowDefinition = cloneWorkflow(workflow.definition)
       const snapshot = {
         version: 2 as const, sourceUpdatedAt: workflow.updatedAt, bindings: cloneWorkflow(bindings),
         inputs: cloneWorkflow(run.inputs), outputs: cloneWorkflow(run.outputs),
       }
-      config.workbench = nativeGraph ? { ...snapshot, nativeGraph: true } : { ...snapshot, sourceDefinition: cloneWorkflow(workflow.definition) }
+      config.workbench = { ...snapshot, nativeGraph }
       return created
     })
-    return finalizeTaskBatch(batch, createdTasks, { persist: queuePersist, schedule: scheduleQueue })
+    return finalizeTaskBatch(batch, await enqueueTasks(createdTasks), { schedule: scheduleQueue })
   }
 
   async function retryTask(taskId: string) {
@@ -1324,11 +1027,12 @@ export const useTaskStore = defineStore('task', () => {
         definition: workflowSourceDefinition(config), format: detectWorkflowFormat(workflowSourceDefinition(config)),
         formatVersion: WORKFLOW_FORMAT_VERSION, createdAt: existing.createdAt, updatedAt: snapshot.sourceUpdatedAt,
       }, undefined, existing.jobOutput || existing.output, config.outputLayout, config.outputNaming)
-      const queued = tasks.value.find(task => task.id === created.id)!
+      const queued = created
       queued.runConfig = config
       queued.output = existing.output
+      const [confirmed] = await enqueueTasks([created])
       scheduleQueue()
-      return created
+      return confirmed
     }
     const { jobOutput, outputLayout } = resolveRetryOutput(existing, windowsPaths.value, i18n.global.t('separate.retryOutputDirectoryUnknown'))
     if (existing.runConfig?.runMode === 'workflow' && existing.runConfig.workflowId && existing.runConfig.workflowName && existing.runConfig.workflowDefinition) {
@@ -1343,8 +1047,10 @@ export const useTaskStore = defineStore('task', () => {
         createdAt: existing.createdAt,
         updatedAt: existing.updatedAt,
       }, undefined, jobOutput, outputLayout, existing.runConfig.outputNaming)
+      task.runConfig = cloneWorkflow(existing.runConfig!)
+      const [confirmed] = await enqueueTasks([task])
       scheduleQueue()
-      return task
+      return confirmed
     }
     const modelStore = useModelStore()
     modelStore.selectedModel = existing.model
@@ -1353,8 +1059,10 @@ export const useTaskStore = defineStore('task', () => {
     const modelEntry = modelStore.models.find((item) => item.name === existing.model) || null
     const modelType = modelEntry?.modelType || persistedModelType || null
     const task = createQueuedTask(existing.input, existing.model, retryParams, modelType, undefined, jobOutput, outputLayout, existing.runConfig?.outputNaming)
+    task.runConfig = cloneWorkflow(existing.runConfig!)
+    const [confirmed] = await enqueueTasks([task])
     scheduleQueue()
-    return task
+    return confirmed
   }
 
   return {
@@ -1410,7 +1118,6 @@ export const useTaskStore = defineStore('task', () => {
     high_end_process,
     restoreInferenceNumberFallback,
     initialize,
-    handleWorkerEvent,
     pickFiles,
     pickInputFolder,
     addPaths,
@@ -1430,17 +1137,15 @@ export const useTaskStore = defineStore('task', () => {
     taskJobId,
     focusResultTask,
     focusTask,
-    removeTask,
-    removeTasks,
     removeSessionJob,
     clearFinishedSessionJobs,
     removeResult,
     removeResults,
+    checkRemoval,
     getRemovalTasks,
     removeWorkflowRun,
     removeSeparationRuns,
     clearResults,
-    clearHistory,
     cancelTask,
     cancelAllTasks,
     startSeparation,

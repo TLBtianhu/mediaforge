@@ -3,7 +3,6 @@
  *
  * 全是纯函数，不碰 store 状态；stemFromOutputPath 复用 utils/stemOutputs 的唯一实现。
  */
-import { stemFromOutputPath, type StemOutput } from '../utils/stemOutputs.ts'
 
 export function normalizeOutputPath(value?: string | null) {
   return value && value.trim() ? value : 'outputs'
@@ -30,25 +29,6 @@ export function inputStemSegment(input: string, fallback: string, windows: boole
     .filter(Boolean)
     .pop()
     ?.replace(windows ? /\.[^/.\\]+$/ : /\.[^/.]+$/, '') || fallback
-}
-
-export function outputsFromFiles(outputDir: string, files: string[], outputFormat = 'wav', outputPrefix?: string, inputPath?: string, windows = /^[A-Za-z]:|^\\\\/.test(outputDir)): StemOutput[] {
-  if (!files?.length) return []
-  return files.flatMap((file) => {
-    const rawPath = String(file || '')
-    const parts = rawPath.split(windows ? /[/\\]/ : /[/]/)
-    if (!rawPath || parts.some(part => part === '.' || part === '..')) return []
-    const leaf = parts.at(-1) || ''
-    const extension = leaf.match(windows ? /\.[^/.\\]+$/ : /\.[^/.]+$/)?.[0] || ''
-    const rawStemName = extension ? leaf.slice(0, -extension.length) : leaf
-    const outputFileName = outputPrefix ? `${outputPrefix}_${rawStemName}` : rawStemName
-    const isAbsolutePath = windows ? /^(?:[A-Za-z]:[\\/]|[\\/]{2})/.test(rawPath) : rawPath.startsWith('/')
-    const relativeParent = rawPath.slice(0, rawPath.length - leaf.length)
-    return [{
-      stem: stemFromOutputPath(leaf, inputPath, windows),
-      path: isAbsolutePath ? rawPath : joinOutputPath(outputDir, `${relativeParent}${outputFileName}${extension || `.${outputFormat}`}`, windows),
-    }]
-  })
 }
 
 export function cleanupPath(path: string, windows: boolean) {

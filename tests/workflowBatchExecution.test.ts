@@ -6,7 +6,7 @@ import type { SeparationTask, SeparationJob } from '../src/stores/task.ts'
 const definition = { version: 1, steps: [{ id: 'split', model: 'model.ckpt', stems: ['Vocals'], save: { Vocals: 'Default' } }] }
 function task(id: string, status: SeparationTask['status'], nodeStatus?: 'done' | 'failed' | 'running' | 'cancelled'): SeparationTask {
   return { id, input: `D:/Music/${id}.wav`, model: 'Workflow', status, logs: [],
-    runConfig: { workbench: { sourceDefinition: definition } },
+    runConfig: { workflowDefinition: definition, workbench: { nativeGraph: false } },
     nodeStates: nodeStatus ? { 'step:split': { status: nodeStatus, progress: nodeStatus === 'done' ? 100 : 40 } } : {},
     nodeLogs: { 'step:split': [`${id} model log`] },
   } as SeparationTask
@@ -69,9 +69,10 @@ test('an executing file takes priority over other files marked preparing when th
   assert.equal(activeWorkflowTask(tasks)?.id, 'queued')
 })
 
-test('native nodes retain their own identities and old history with no node events is not labelled successful', () => {
+test('native nodes retain their own identities and current records with no node events is not labelled successful', () => {
   const native = task('native', 'done')
-  native.runConfig!.workbench!.sourceDefinition = { nodes: [{ id: 1, type: 'LoadAudio' }, { id: 2, type: 'SaveAudio' }], links: [] }
+  native.runConfig!.workbench!.nativeGraph = true
+  native.runConfig!.workflowDefinition = { version: 0.4, nodes: [{ id: 1, type: 'LoadAudio' }, { id: 2, type: 'SaveAudio' }], links: [] }
   native.nodeStates = { '1': { status: 'done', progress: 100 } }
   native.nodeLogs = { '1': ['Read audio'] }
   const result = workflowBatchExecution([native])
@@ -83,7 +84,8 @@ test('native nodes retain their own identities and old history with no node even
 
 test('native node details follow recorded execution rather than JSON array or numeric id order', () => {
   const native = task('native', 'done')
-  native.runConfig!.workbench!.sourceDefinition = { nodes: [
+  native.runConfig!.workbench!.nativeGraph = true
+  native.runConfig!.workflowDefinition = { version: 0.4, nodes: [
     { id: 3, type: 'pymss_mss_separate' }, { id: 4, type: 'pymss_save_audio' },
     { id: 10, type: 'pymss_load_audio' }, { id: 2, type: 'pymss_mss_params' },
   ], links: [] }
@@ -97,7 +99,8 @@ test('native node details follow recorded execution rather than JSON array or nu
 
 test('native nodes with no execution event follow observed nodes without inventing an execution order', () => {
   const native = task('native', 'failed')
-  native.runConfig!.workbench!.sourceDefinition = { nodes: [
+  native.runConfig!.workbench!.nativeGraph = true
+  native.runConfig!.workflowDefinition = { version: 0.4, nodes: [
     { id: 3, type: 'pymss_mss_separate' }, { id: 4, type: 'pymss_save_audio' },
     { id: 10, type: 'pymss_load_audio' }, { id: 2, type: 'pymss_mss_params' },
   ], links: [] }

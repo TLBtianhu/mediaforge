@@ -41,7 +41,7 @@ const vite = await createServer({
           calls.push({ command, args })
           if (hook) return hook(command, args)
           if (command === 'runtime_asset_status') return { installed: false, size: 0 }
-          if (command === 'agent_jobs') return {schemaVersion:1,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'}
+          if (command === 'agent_jobs') return {schemaVersion:2,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'}
           return {}
         }
         export async function listen(name, callback) { if (listenHook) await listenHook(name); listeners.set(name, callback); return () => listeners.delete(name) }
@@ -60,12 +60,14 @@ const vite = await createServer({
       if (path.endsWith('.vue')) return 'export default { render: () => null }'
       if (path.endsWith('/src/composables/useMediaDrop.ts')) return 'export const useMediaDrop = () => ({})'
       if (path.endsWith('/src/stores/app.ts')) return 'export const useAppStore = () => ({ checkRuntimeInfo: async () => {} })'
+      if (path.endsWith('/src/stores/settings.ts')) return 'export const useSettingsStore = () => ({ developerMode: false })'
       if (path.endsWith('/src/stores/model.ts')) return 'export const useModelStore = () => ({ loadModels: async () => {} })'
       return null
     },
   }],
 })
 after(() => vite.close())
+globalThis.window = { __TAURI_INTERNALS__: {} }
 const fixture = await vite.ssrLoadModule(fixtureId)
 const Workflow = (await vite.ssrLoadModule('/src/views/MediaWorkflowView.vue')).default
 const Banner = (await vite.ssrLoadModule('/src/components/RuntimeAssetBanner.vue')).default
@@ -137,7 +139,18 @@ test('media workflow keeps partial outputs while reporting partial failure', asy
 })
 
 test('media workflow survives route unmount and restores outputs and the submitted plan on remount', async t => {
-  fixture.reset()
+  const durable = []
+  fixture.reset(async (command, args) => {
+    if (command === 'agent_jobs') return { schemaVersion: 2, jobs: durable, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' }
+    if (command === 'start_audio_tool') {
+      const now = Date.now()/1000
+      durable.push({ schemaVersion: 2, jobId: args.payload.requestId, command: 'audio_tools', source: 'manual', status: 'running',
+        fraction: 0, message: '', error: null, result: null, createdAt: now, updatedAt: now, startedAt: now, finishedAt: null,
+        owner: {kind:'tauri-worker',pid:1}, runtime:{stage:null,progress:null,nodes:{},order:[]}, logs:[], payload: structuredClone(args.payload) })
+      return {started:true}
+    }
+    return {}
+  })
   const pinia = createPinia()
   const first = renderer.createApp(Workflow).use(pinia)
   first.mount({ children: [] })

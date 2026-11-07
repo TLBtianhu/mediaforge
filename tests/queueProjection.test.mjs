@@ -36,14 +36,14 @@ test('audio task IDs replace stale duplicate journal rows without collapsing the
   assert.ok(rows.every(row => row.cancelOwner === 'audio'))
 })
 
-test('removed or hidden manual audio history cannot be resurrected from journal records', () => {
+test('manual audio appears once through its canonical audio projection', () => {
   const rows = mergeQueueJobs([
     record('removed', { command: 'infer' }),
-    record('hidden', { command: 'infer_workflow' }),
+    record('projected', { command: 'infer_workflow' }),
     record('agent-audio', { command: 'infer', source: 'agent' }),
     record('media'),
-  ], [audio('hidden', { status: 'done', taskHidden: true }), audio('active', { taskHidden: true })])
-  assert.deepEqual(new Set(rows.map(row => row.jobId)), new Set(['agent-audio', 'media', 'active']))
+  ], [audio('projected', { status: 'done' }), audio('active')])
+  assert.deepEqual(new Set(rows.map(row => row.jobId)), new Set(['agent-audio', 'media', 'projected', 'active']))
 })
 
 test('all active audio stages are normalized for filtering and progress', () => {

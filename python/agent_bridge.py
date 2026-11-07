@@ -533,13 +533,20 @@ class Bridge:
         if snapshot.get("status") != "failed":
             return {"ok": False, "error": "job did not fail", "status": snapshot.get("status")}
         from core.retry_policy import plan_retry
+        from core.job_store import resolve_payload
 
         used = self._retry_counts.get(job_id, 0)
-        plan = plan_retry(snapshot.get("payload") or {}, snapshot.get("result"), attempts_used=used)
+        plan = plan_retry(resolve_payload(snapshot, self.jobs.jobs_root), snapshot.get("result"), attempts_used=used)
         if not plan["ok"]:
             return {**plan, "jobId": job_id, "attemptsUsed": used}
         self._retry_counts[job_id] = used + 1
-        payload = {**plan["payload"], "requestId": f"{job_id}-r{used + 1}"}
+        retry_id = f"{job_id}-r{used + 1}"
+        payload = {**plan["payload"], "requestId": retry_id, "taskId": retry_id}
+        if isinstance(payload.get("tasks"), list):
+            payload["tasks"] = [
+                {**task, "taskId": retry_id if len(payload["tasks"]) == 1 else f"{retry_id}-t{index + 1}"}
+                for index, task in enumerate(payload["tasks"])
+            ]
         retried = self.jobs.start(str(snapshot.get("command") or job.command), payload)
         return {
             "ok": True,
@@ -591,6 +598,11 @@ class Bridge:
                 "status": job.snapshot(),
                 "note": "long-running: poll job_status",
             }
+        if tool["command"] == "failure_stats":
+            # The bridge's --data-root is request scope, not a process-wide env override.
+            from core.failure_stats import collect
+
+            return {"ok": True, "tool": name, **collect(self.data_root)}
         outcome = agent_contract.dispatch(name, payload)
         terminal = outcome.get("result") or {}
         body = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}

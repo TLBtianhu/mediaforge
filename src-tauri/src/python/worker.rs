@@ -1098,7 +1098,7 @@ fn forward_python_terminal_log(app: &AppHandle, line: &str) -> bool {
     true
 }
 
-fn emit_batch_stderr(app: &AppHandle, task_ids: &[String], line: String) {
+fn emit_batch_stderr(app: &AppHandle, task_ids: &[String], line: String, journal: &Option<JournalHandle>) {
     let mut record = legacy_stderr(&line);
     if task_ids.len() == 1 {
         record.task_id = task_ids.first().cloned();
@@ -1110,6 +1110,9 @@ fn emit_batch_stderr(app: &AppHandle, task_ids: &[String], line: String) {
     }
     let record = session_log::append_record(app, record);
     for task_id in task_ids {
+        let envelope = WorkerEnvelope { event_type: "task.log".into(), task_id: Some(task_id.clone()), request_id: None,
+            timestamp: None, payload: serde_json::json!({"logRecord": record}) };
+        update_task_journal(app, journal, |journal| journal.observe(&envelope));
         let _ = app.emit(
             "pymss://worker-event",
             serde_json::json!({
@@ -1483,6 +1486,15 @@ fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
     }
 }
 
+fn is_supervisor_terminal_event(command: &str, envelope: &WorkerEnvelope) -> bool {
+    if envelope.event_type == "error"
+        && envelope.payload.get("recoverable").and_then(Value::as_bool) == Some(true)
+    {
+        return false;
+    }
+    is_background_terminal_event(command, &envelope.event_type)
+}
+
 fn mark_task_terminal(app: &AppHandle, task_id: &str) {
     if let Ok(mut terminal) = app.state::<AppState>().terminal_tasks.lock() {
         terminal.insert(task_id.to_string());
@@ -1737,10 +1749,18 @@ pub fn spawn_worker_background(
     app: AppHandle,
     state: State<'_, AppState>,
     command: &str,
-    task_id: String,
-    payload: Value,
+    mut task_id: String,
+    mut payload: Value,
 ) -> AppResult<()> {
-    let journal = if task_journal::tracks(command) {
+    let journal = if matches!(command, "infer" | "infer_workflow") {
+        if !payload.as_object().is_some_and(|map| map.len() == 1 && map.get("jobId").and_then(Value::as_str) == Some(&task_id)) {
+            return Err(AppError::Worker("audio start requires only the persisted queued jobId".into()));
+        }
+        let (journal, resolved) = task_journal::WorkerJournal::claim_audio(&storage::data_root_dir(&app)?, command, &task_id)?;
+        payload = resolved;
+        task_id = payload["taskId"].as_str().unwrap().to_string();
+        Some(journal)
+    } else if task_journal::tracks(command) {
         Some(task_journal::WorkerJournal::start(&storage::data_root_dir(&app)?, command, &task_id, &payload)?)
     } else { None };
     let operation_id = session_log::record_operation_request(&app, command, &payload, Some(&task_id));
@@ -1759,6 +1779,41 @@ fn update_task_journal(app: &AppHandle, journal: &Option<JournalHandle>, update:
     if let Err(error) = result {
         session_log::append(app, "WARN", "task.journal_failed", vec![("message", error.to_string())]);
     }
+}
+
+struct ManualCancelWatch {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for ManualCancelWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Release);
+        if let Some(thread) = self.thread.take() { let _ = thread.join(); }
+    }
+}
+
+fn watch_manual_cancel(app: &AppHandle, child: &Arc<Mutex<Child>>, ids: &[String], root: PathBuf, enabled: bool) -> ManualCancelWatch {
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let thread = if enabled {
+        let stopped = stop.clone(); let child = child.clone(); let ids = ids.to_vec(); let app = app.clone();
+        Some(std::thread::spawn(move || {
+            while !stopped.load(std::sync::atomic::Ordering::Acquire) {
+                if ids.iter().any(|id| root.join("agent-jobs").join(format!("{id}.cancel")).is_file()) {
+                    if let Ok(mut owned) = child.try_lock() {
+                        if matches!(owned.try_wait(), Ok(None)) {
+                            if let Ok(mut cancelled) = app.state::<AppState>().cancelled_tasks.lock() { cancelled.extend(ids.iter().cloned()); }
+                            for id in &ids { let _ = task_journal::cancel(&root, id); }
+                            kill_process_tree(owned.id()); let _ = owned.kill(); let _ = owned.wait();
+                        }
+                        for id in &ids { let _ = std::fs::remove_file(root.join("agent-jobs").join(format!("{id}.cancel"))); }
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }))
+    } else { None };
+    ManualCancelWatch { stop, thread }
 }
 
 fn spawn_worker_background_inner(
@@ -1858,13 +1913,14 @@ fn spawn_worker_background_inner(
     let stderr = child.stderr.take();
     let stderr_app = app.clone();
     let stderr_task_ids = registered_task_ids.clone();
+    let stderr_journal = journal.clone();
     let stderr_handle = stderr.map(|stderr| {
         std::thread::spawn(move || {
             read_lossy_lines(stderr, |line| {
                 if forward_python_terminal_log(&stderr_app, &line) {
                     return;
                 }
-                emit_batch_stderr(&stderr_app, &stderr_task_ids, line);
+                emit_batch_stderr(&stderr_app, &stderr_task_ids, line, &stderr_journal);
             });
         })
     });
@@ -1878,7 +1934,11 @@ fn spawn_worker_background_inner(
             tasks.insert(registered_task_id.clone(), shared_child.clone());
         }
     }
+    let cancel_root = journal.as_ref().and_then(|handle| handle.lock().ok().map(|journal| journal.data_root().to_path_buf()));
+    let cancel_enabled = cancel_root.is_some();
+    let cancel_watch = watch_manual_cancel(&app, &shared_child, &registered_task_ids, cancel_root.unwrap_or_default(), cancel_enabled);
     std::thread::spawn(move || {
+        let cancel_watch = cancel_watch;
         let mut terminal_task_ids: HashSet<String> = HashSet::new();
         let mut core_terminal_events = Vec::new();
         let mut core_terminal_error = None;
@@ -1892,7 +1952,7 @@ fn spawn_worker_background_inner(
                     if envelope.event_type == "error" {
                         log_worker_event_with_scope(&app, &command_name, &mut envelope, Some(&operation_id), Some(&task_id));
                     }
-                    if is_background_terminal_event(&command_name, envelope.event_type.as_str()) {
+                    if is_supervisor_terminal_event(&command_name, &envelope) {
                         if let Some(envelope_task_id) = envelope.task_id.as_deref() {
                             if registered_task_ids.iter().any(|id| id == envelope_task_id) {
                                 terminal_task_ids.insert(envelope_task_id.to_string());
@@ -1928,7 +1988,7 @@ fn spawn_worker_background_inner(
                         }
                     }
                     if matches!(command_name.as_str(), "update_runtime_core" | "manage_plugin")
-                        && is_background_terminal_event(&command_name, envelope.event_type.as_str())
+                        && is_supervisor_terminal_event(&command_name, &envelope)
                     {
                         core_terminal_events.push(envelope);
                         return;
@@ -1938,7 +1998,7 @@ fn spawn_worker_background_inner(
                 }
                 Err(err) => {
                     if is_rocm_offload_arch_diagnostic(&line) {
-                        emit_batch_stderr(&app, &registered_task_ids, line.clone());
+                        emit_batch_stderr(&app, &registered_task_ids, line.clone(), &journal);
                     } else {
                         update_task_journal(&app, &journal, |journal| journal.fail_all(&format!("Invalid worker event: {err}")));
                         let record = log_worker_parse_error(
@@ -1961,6 +2021,7 @@ fn spawn_worker_background_inner(
                 }
             }
         });
+        drop(cancel_watch);
         let exit_status = if let Ok(mut child) = shared_child.lock() {
             child.wait().ok()
         } else {
@@ -2098,6 +2159,30 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn supervisor_terminal_decisions_preserve_recoverable_jobs() {
+        let mut envelope = super::WorkerEnvelope {
+            event_type: "error".into(), task_id: Some("fixture-task".into()), request_id: None,
+            timestamp: None, payload: json!({"recoverable": true, "message": "continuing with next input"}),
+        };
+        for command in ["infer", "infer_workflow", "audio_tools", "run_operation", "model_download", "manage_plugin"] {
+            // A recoverable error cannot populate the terminal registry that gates cancellation.
+            assert!(!super::is_supervisor_terminal_event(command, &envelope), "{command}");
+            envelope.payload = json!({"recoverable": false, "message": "fatal"});
+            assert!(super::is_supervisor_terminal_event(command, &envelope), "{command}");
+            envelope.payload = json!({"message": "fatal without an optional flag"});
+            assert!(super::is_supervisor_terminal_event(command, &envelope), "{command}");
+            envelope.payload = json!({"recoverable": true});
+        }
+        for (command, kind) in [("infer", "task.result"), ("infer_workflow", "task.cancelled"),
+            ("model_download", "asset.done"), ("manage_plugin", "plugin_manage_result")] {
+            envelope.event_type = kind.into();
+            assert!(super::is_supervisor_terminal_event(command, &envelope), "{command}/{kind}");
+        }
+        envelope.event_type = "task.progress".into();
+        assert!(!super::is_supervisor_terminal_event("infer", &envelope));
+    }
 
     #[test]
     fn audio_output_scopes_match_python_operation_normalization() {

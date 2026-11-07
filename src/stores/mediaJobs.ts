@@ -4,21 +4,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
-export type JournalJob = {
-  jobId: string
-  command: string
-  source?: 'manual' | 'agent'
-  status: string
-  cancelTaskId?: string
-  fraction: number
-  message: string
-  createdAt: number
-  finishedAt?: number | null
-  payload?: Record<string, unknown>
-  result?: Record<string, unknown> | null
-  error?: string | null
-  owner?: { kind?: string; [key: string]: unknown }
-}
+export type { JournalJob } from '@/features/tasks/journal'
+import { readJournal, validateJournalSnapshot, type JournalJob, type JournalSnapshot } from '@/features/tasks/journal'
+import { audioJobEvent, isAudioJob } from '@/features/tasks/audioJobs'
+import { useSettingsStore } from '@/stores/settings'
+import { isTauriRuntime } from '@/utils/appStore'
+
 type WorkerEvent = { type?: string; requestId?: string | null; taskId?: string | null; payload?: Record<string, unknown> }
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'interrupted'])
 export const isJournalTerminal = (status: string) => TERMINAL.has(status)
@@ -34,26 +25,31 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   const error = ref('')
   const dataRoot = ref('')
   const jobsDir = ref('')
-  const active = computed(() => jobs.value.filter(job => !isJournalTerminal(job.status)
-    && (job.source !== 'manual' || trackedManual(job))))
+  const active = computed(() => jobs.value.filter(job => !isJournalTerminal(job.status)))
   const revisions = new Map<string, number>()
-  const submittedIds = new Set<string>()
+  const pendingIds = new Set<string>()
+  const deletedIds = new Set<string>()
   let revision = 0
   let listening = false
   let initializing: Promise<void> | undefined
   let refreshing: Promise<void> | undefined
 
   function put(job: JournalJob) {
+    job.updatedAt = Math.max(job.updatedAt, now())
     const index = jobs.value.findIndex(item => item.jobId === job.jobId)
     if (index < 0) jobs.value.push(job)
     else jobs.value[index] = job
     revisions.set(job.jobId, ++revision)
   }
 
-  function onEvent(event: WorkerEvent) {
+  function handleWorkerEvent(event: WorkerEvent) {
     const job = jobs.value.find(item => item.jobId === event.taskId)
       || jobs.value.find(item => item.jobId === event.requestId)
     if (!job || isJournalTerminal(job.status)) return
+    if (isAudioJob(job)) {
+      put(audioJobEvent(job, jobs.value, event, useSettingsStore().developerMode))
+      return
+    }
     const payload = event.payload || {}
     if (isTaskProgress(event.type) || event.type === 'task.started' || event.type === 'task.stage') {
       const fraction = Number(payload.fraction ?? payload.overallFraction ?? (Number(payload.total) > 0 ? Number(payload.completed ?? payload.done ?? 0) / Number(payload.total) : job.fraction))
@@ -75,31 +71,54 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
     }
   }
 
+  function adoptSnapshot(raw: JournalSnapshot, atStart = revision) {
+    const response = validateJournalSnapshot(raw)
+    const current = new Map(jobs.value.map(job => [job.jobId, job]))
+    const merged = new Map<string, JournalJob>()
+    for (const incoming of response.jobs) {
+      if (deletedIds.has(incoming.jobId)) continue
+      const previous = current.get(incoming.jobId)
+      const updated = (revisions.get(incoming.jobId) || 0) > atStart
+        || previous && (previous.updatedAt > incoming.updatedAt
+          || previous.updatedAt === incoming.updatedAt && previous.status === incoming.status && (revisions.get(incoming.jobId) || 0) > 0
+          || isJournalTerminal(previous.status) && !isJournalTerminal(incoming.status))
+      merged.set(incoming.jobId, previous && updated ? previous : snapshot(incoming))
+    }
+    for (const previous of jobs.value) {
+      if (!deletedIds.has(previous.jobId) && !merged.has(previous.jobId)
+        && (pendingIds.has(previous.jobId) || (revisions.get(previous.jobId) || 0) > atStart)) merged.set(previous.jobId, previous)
+    }
+    jobs.value = [...merged.values()]
+    dataRoot.value = response.dataRoot
+    jobsDir.value = response.jobsDir
+  }
+
+  function acceptJobs(raw: JournalSnapshot) {
+    const response = validateJournalSnapshot(raw)
+    for (const job of response.jobs) {
+      deletedIds.delete(job.jobId)
+      const index = jobs.value.findIndex(item => item.jobId === job.jobId)
+      if (index < 0) jobs.value.push(snapshot(job))
+      else jobs.value[index] = snapshot(job)
+      revisions.set(job.jobId, ++revision)
+    }
+    dataRoot.value = response.dataRoot
+    jobsDir.value = response.jobsDir
+  }
+
+  function forget(ids: readonly string[]) {
+    ids.forEach(id => { deletedIds.add(id); revisions.set(id, ++revision); pendingIds.delete(id) })
+    jobs.value = jobs.value.filter(job => !deletedIds.has(job.jobId))
+  }
+
   function refresh(): Promise<void> {
     if (refreshing) return refreshing
     const atStart = revision
     loading.value = true
     refreshing = (async () => {
       try {
-        const response = await invoke<{ schemaVersion: number; dataRoot: string; jobsDir: string; jobs: JournalJob[] }>('agent_jobs')
-        if (response.schemaVersion !== 1 || !Array.isArray(response.jobs) || typeof response.dataRoot !== 'string' || typeof response.jobsDir !== 'string') {
-          throw new Error('Unsupported task journal response schema')
-        }
-        const incoming = response.jobs
-        {
-          const merged = new Map(jobs.value.map(job => [job.jobId, job]))
-          for (const job of incoming) {
-            if (!job || typeof job.jobId !== 'string' || typeof job.status !== 'string') continue
-            const current = merged.get(job.jobId)
-            // An in-flight snapshot must not overwrite events received meanwhile.
-            if ((revisions.get(job.jobId) || 0) > atStart) continue
-            if (current && isJournalTerminal(current.status) && !isJournalTerminal(job.status)) continue
-            merged.set(job.jobId, snapshot(job))
-          }
-          jobs.value = [...merged.values()]
-        }
-        dataRoot.value = response.dataRoot || dataRoot.value
-        jobsDir.value = response.jobsDir
+        const response = await readJournal()
+        adoptSnapshot(response, atStart)
         error.value = ''
       } catch (cause) {
         error.value = cause instanceof Error ? cause.message : String(cause)
@@ -114,8 +133,8 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   function initialize(): Promise<void> {
     if (initializing) return initializing
     initializing = (async () => {
-      if (!listening) {
-        await listen<WorkerEvent>('pymss://worker-event', event => onEvent(event.payload))
+      if (!listening && isTauriRuntime()) {
+        await listen<WorkerEvent>('pymss://worker-event', event => handleWorkerEvent(event.payload))
         listening = true
       }
       await refresh()
@@ -129,15 +148,16 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
     if (error.value) throw new Error(error.value)
     const operation = String(request.operation || '')
     if (!operation) throw new Error('Missing media operation')
-    if (active.value.some(job => journalOperation(job) === operation && job.source === 'manual' && trackedManual(job))) {
+    if (active.value.some(job => journalOperation(job) === operation && job.source === 'manual')) {
       throw new Error('This operation is already running')
     }
     const jobId = String(request.requestId || `media-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`)
     if (jobs.value.some(job => job.jobId === jobId)) throw new Error('Task ID already exists')
     request.requestId = jobId
-    submittedIds.add(jobId)
-    put({ jobId, command: 'audio_tools', source: 'manual', status: 'queued', cancelTaskId: jobId,
-      fraction: 0, message: '', createdAt: now(), payload: request, result: null, error: null })
+    pendingIds.add(jobId)
+    put({ schemaVersion: 2, jobId, command: 'audio_tools', source: 'manual', status: 'queued', cancelTaskId: jobId,
+      fraction: 0, message: '', createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null, owner: null,
+      runtime: { stage: null, progress: null, nodes: {}, order: [] }, logs: [], payload: request, result: null, error: null })
     try {
       // The listener and immutable local snapshot exist before native work starts.
       await invoke('start_audio_tool', { payload: request })
@@ -146,19 +166,15 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
       if (!isJournalTerminal(current.status)) put({ ...current, status: 'failed', finishedAt: now(),
         message: cause instanceof Error ? cause.message : String(cause), error: String(cause) })
       throw cause
+    } finally {
+      pendingIds.delete(jobId)
     }
     return jobs.value.find(job => job.jobId === jobId)!
   }
 
-  function trackedManual(job: JournalJob) {
-    return submittedIds.has(job.jobId) || job.owner?.kind === 'tauri-worker'
-  }
   function latest(operation: string) {
-    // Old route-owned running rows have no lease, so their liveness is unknown.
-    // Keep them visible in the queue without permanently locking a media page.
-    return [...jobs.value].reverse().filter(job => job.source === 'manual' && journalOperation(job) === operation
-      && (isJournalTerminal(job.status) || trackedManual(job)))
+    return [...jobs.value].reverse().filter(job => job.source === 'manual' && journalOperation(job) === operation)
       .sort((a, b) => b.createdAt - a.createdAt)[0]
   }
-  return { jobs, loading, error, dataRoot, jobsDir, active, initialize, refresh, start, latest }
+  return { jobs, loading, error, dataRoot, jobsDir, active, initialize, refresh, adoptSnapshot, acceptJobs, forget, handleWorkerEvent, start, latest }
 })

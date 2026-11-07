@@ -4,7 +4,7 @@ import { resultType } from '../src/utils/resultType.ts'
 import type { SeparationRunConfig } from '../src/stores/task.ts'
 
 const classify = (config?: unknown) => resultType({ runConfig: config as SeparationRunConfig })
-const graph = { nodes: [{ type: 'pymss_audio_ensemble' }], links: [], extra: { studioEnsemble: { outputStem: 'Vocals' } } }
+const graph = { version: 0.4, nodes: [{ type: 'pymss_audio_ensemble' }], links: [], extra: { studioEnsemble: { outputStem: 'Vocals' } } }
 const simple = { version: 1, steps: [], ensembles: [{ id: 'mix', algorithm: 'avg_wave' }] }
 
 test('results classify single models, quick Ensemble and both workflow types from saved configuration', () => {
@@ -17,7 +17,7 @@ test('results classify single models, quick Ensemble and both workflow types fro
 
 test('an editor workflow containing Ensemble never becomes a quick Ensemble result', () => {
   for (const [definition, kind] of [[simple, 'simple'], [graph, 'advanced']] as const) {
-    const config = { runMode: 'workflow', workflowId: 'temporary-ensemble', workflowDefinition: graph, workbench: { sourceDefinition: definition } }
+    const config = { runMode: 'workflow', workflowId: 'temporary-ensemble', workflowDefinition: definition, workbench: { nativeGraph: kind === 'advanced' } }
     assert.equal(classify(config), kind)
     assert.equal(classify(JSON.parse(JSON.stringify(config))), kind)
   }
@@ -26,6 +26,6 @@ test('an editor workflow containing Ensemble never becomes a quick Ensemble resu
 test('incomplete workflow history is not misclassified as an advanced graph or single model', () => {
   assert.equal(classify({ runMode: 'workflow' }), 'unknown')
   assert.equal(classify({ runMode: 'workflow', workflowDefinition: { nodes: [], steps: [] } }), 'unknown')
-  assert.equal(classify({ workbench: { sourceDefinition: {} } }), 'unknown')
-  assert.equal(classify({ workbench: { sourceDefinition: {}, nativeGraph: true } }), 'advanced')
+  assert.equal(classify({ workflowDefinition: {}, workbench: { nativeGraph: false } }), 'unknown')
+  assert.equal(classify({ workflowDefinition: {}, workbench: { nativeGraph: true } }), 'advanced')
 })

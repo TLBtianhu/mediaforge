@@ -108,12 +108,14 @@ pub async fn get_app_paths(app: AppHandle) -> AppResult<storage::AppPathsPayload
 
 #[tauri::command]
 pub async fn load_app_store(app: AppHandle, name: String) -> AppResult<Value> {
+    if name == "task-history" { return Err(AppError::Worker("task-history is unsupported; use agent_jobs".into())); }
     session_log::append(&app, "DEBUG", "app.store.load", vec![("name", name.clone())]);
     storage::read_app_store(&app, &name)
 }
 
 #[tauri::command]
 pub async fn save_app_store(app: AppHandle, name: String, data: Value) -> AppResult<()> {
+    if name == "task-history" { return Err(AppError::Worker("task-history is unsupported; job state belongs to the backend".into())); }
     if name == "workflow-state" {
         return Err(AppError::Worker("workflow-state requires mutate_workflow_store".into()));
     }

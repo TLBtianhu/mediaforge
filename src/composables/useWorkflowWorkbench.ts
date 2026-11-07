@@ -12,7 +12,7 @@ import { isTerminalTaskStatus } from '@/features/tasks/lifecycle'
 import { launchTask } from '@/features/tasks/launch'
 import { detectWorkflowFormat } from '@/workflows/formats'
 import { initializeWorkbenchBridge, requestWorkbenchAction } from '@/utils/workbenchBridge'
-import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, visibleWorkflowNodeStates, workbenchOutputDirectory, workflowBindingsEqual, workflowExecutionSignature, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
+import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, visibleWorkflowNodeStates, workbenchOutputDirectory, workbenchExecutionMatches, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
 import { visibleWorkflowNodeLogs } from '@/workflows/nodeLogs'
 import { activeWorkflowTask, selectedWorkflowJob, workflowBatchExecution } from '@/workflows/batchExecution'
 
@@ -37,9 +37,10 @@ export function useWorkflowWorkbench(options: {
   const batchExecution = computed(() => workflowBatchExecution(focusedJob.value?.tasks || []))
   const executionDefinition = computed(() => focusedTask.value?.runConfig?.workbench ? workflowSourceDefinition(focusedTask.value.runConfig) : null)
   const executionMatchesDraft = computed(() => Boolean(executionDefinition.value)
-    && workflowExecutionSignature(executionDefinition.value!) === workflowExecutionSignature(options.definition())
-    && (focusedTask.value!.runConfig!.workbench!.nativeGraph
-      || workflowBindingsEqual(session.value.bindings, focusedTask.value!.runConfig!.workbench!.bindings)))
+    && workbenchExecutionMatches(options.definition(), session.value.bindings, executionDefinition.value!,
+      [...(focusedJob.value?.tasks || [])].sort((a, b) => (a.batchIndex || 0) - (b.batchIndex || 0)).map(task => ({
+        input: task.input, inputs: task.runConfig?.workbench?.inputs || {}, outputs: task.runConfig?.workbench?.outputs || {},
+      })), settings.outputDir))
   const executionNodeSummaries = computed(() => {
     const target = focusedTask.value
     const snapshot = target?.runConfig?.workbench

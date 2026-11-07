@@ -27,16 +27,16 @@ function setup() {
   return { ...factory, tasks, activeTaskId, remembered, persisted: () => persisted }
 }
 
-test('folder tasks derive their output directory and enter the session queue', () => {
+test('folder drafts freeze output paths without claiming queue visibility or persistence before ACK', () => {
   const env = setup()
   const task = env.createQueuedTask('D:/audio/song.wav', 'Model', { batch_size: 2 }, 'vr', undefined, undefined, 'folders', undefined, 3)
   assert.equal(task.output, 'D:/out/input')
   assert.equal(task.runConfig.runMode, 'model')
   assert.equal(task.batchIndex, 3)
-  assert.equal(env.tasks.value[0], task)
-  assert.equal(env.activeTaskId.value, task.id)
-  assert.deepEqual(env.remembered, [task.id])
-  assert.equal(env.persisted(), 1)
+  assert.equal(env.tasks.value.length, 0)
+  assert.equal(env.activeTaskId.value, null)
+  assert.deepEqual(env.remembered, [])
+  assert.equal(env.persisted(), 0)
 })
 
 test('workflow tasks retain flat output and workflow run configuration', () => {
@@ -47,5 +47,5 @@ test('workflow tasks retain flat output and workflow run configuration', () => {
   assert.equal(task.model, 'Workflow')
   assert.equal(task.runConfig.runMode, 'workflow')
   assert.equal(task.runConfig.outputLayout, 'flat')
-  assert.equal(env.tasks.value.length, 1)
+  assert.equal(env.tasks.value.length, 0)
 })

@@ -19,6 +19,10 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 1.0之前不做向下兼容：结构变了直接换格式，不写历史数据迁移、旧入口回退或双写副本。
 - 只接受当前schema；旧、缺失或未来schema明确报错并保留原文件，不能把加载失败当空数据写回。
 - 同类持久数据只有一个真源。任务以单job文件为准，列表在读取时聚合；UI内存投影不另存副本。
+- 任务当前格式为schemaVersion=2，音频排队/媒体/Agent共用`agent-jobs/<jobId>.json`，禁止恢复`task-history`读写。
+- 音频先持久入队确认，再仅按jobId领取执行；共享图/参数仅存primary，child保存引用与输入差异，前端不回写生命周期。
+- 目录成员与引用读取使用共享catalog锁；整组删除须全终态且owner lease释放，资产清理前先预检。
+- manual历史保留到显式删除，不套用Kernel默认Agent保留策略；仅清当前自建worker回收后的临时请求正文。
 - Python版本唯一目标来自`python/runtime-manifest.json`，当前为3.12；开发、bootstrap及独立资产均须实测一致。
 - 自包含运行时必须自带匹配解释器、DLL、stdlib和扩展。安装只验证/发布，不覆盖解释器修旧venv。
 

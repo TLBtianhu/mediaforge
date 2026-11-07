@@ -12,7 +12,7 @@ const OWNER_KIND: &str = "tauri-worker";
 const WRITE_INTERVAL: Duration = Duration::from_millis(250);
 pub(crate) type JournalHandle = Arc<Mutex<WorkerJournal>>;
 
-fn now() -> f64 {
+pub(super) fn now() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -34,27 +34,29 @@ pub(crate) fn valid_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
 }
 
-fn terminal(value: &Value) -> bool {
+pub(crate) fn terminal(value: &Value) -> bool {
     matches!(
         value.get("status").and_then(Value::as_str),
         Some("completed" | "failed" | "cancelled" | "interrupted")
     )
 }
 
-fn backend_owned(value: &Value) -> bool {
-    value.pointer("/owner/kind").and_then(Value::as_str) == Some(OWNER_KIND)
-}
-
-fn read_job(path: &Path) -> Option<Value> {
-    let text = fs::read_to_string(path).ok()?;
-    serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()
+pub(super) fn read_job(path: &Path) -> AppResult<Option<Value>> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let value = super::job_schema::parse(&text)?;
+    super::job_schema::validate(&value)?;
+    Ok(Some(value))
 }
 
 /// Windows sharing exclusion also excludes Python's msvcrt lease; Unix uses its flock.
 /// Never unlink these lock files: every process must keep locking the same inode.
-struct FileLock(File);
+pub(super) struct FileLock(File);
 impl FileLock {
-    fn acquire(path: &Path, timeout: Duration) -> AppResult<Self> {
+    pub(super) fn acquire(path: &Path, timeout: Duration) -> AppResult<Self> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -111,19 +113,56 @@ impl Drop for FileLock {
     }
 }
 
-fn job_path(root: &Path, id: &str) -> AppResult<PathBuf> {
+pub(super) fn job_path(root: &Path, id: &str) -> AppResult<PathBuf> {
     if !valid_id(id) {
         return Err(AppError::Worker("invalid journal job id".into()));
     }
     Ok(root.join("agent-jobs").join(format!("{id}.json")))
 }
 
-fn write_lock(root: &Path, id: &str) -> AppResult<FileLock> {
+pub(super) fn write_lock(root: &Path, id: &str) -> AppResult<FileLock> {
     job_path(root, id)?;
     FileLock::acquire(
         &root.join("agent-jobs/.writes").join(format!("{id}.lock")),
         Duration::from_secs(2),
     )
+}
+
+pub(super) fn catalog_lock(root: &Path) -> AppResult<FileLock> {
+    FileLock::acquire(&root.join("agent-jobs/.catalog.lock"), Duration::from_secs(5))
+}
+
+pub(super) fn owner_lock(root: &Path, id: &str) -> AppResult<FileLock> {
+    job_path(root, id)?;
+    FileLock::acquire(&root.join("agent-jobs/.owners").join(format!("{id}.lock")), Duration::ZERO)
+}
+
+pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
+    let directory = root.join("agent-jobs");
+    if !directory.is_dir() { return Ok(Vec::new()); }
+    let mut jobs = Vec::new();
+    for entry in fs::read_dir(&directory)? {
+        let path = entry?.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("removing") {
+            return Err(AppError::Worker("incomplete job removal transaction; original files preserved".into()));
+        }
+        if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+        let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if !valid_id(id) { return Err(AppError::Worker("unsupported job filename; original file preserved".into())); }
+        let metadata = fs::symlink_metadata(&path)?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x400 != 0 { return Err(AppError::Worker("job reparse point is not allowed".into())); }
+        }
+        if metadata.file_type().is_symlink() { return Err(AppError::Worker("job symlink is not allowed".into())); }
+        if let Some(value) = read_job(&path)? {
+            if value["jobId"] != id { return Err(AppError::Worker("job id does not match its filename".into())); }
+            jobs.push(value);
+        }
+    }
+    super::audio_jobs::validate_library(&jobs)?;
+    Ok(jobs)
 }
 
 pub(crate) fn registered_ids(primary: &str, payload: &Value) -> Vec<String> {
@@ -165,6 +204,7 @@ pub(crate) struct WorkerJournal {
 }
 
 impl WorkerJournal {
+    pub(crate) fn data_root(&self) -> &Path { &self.root }
     pub(crate) fn start(
         root: &Path,
         command: &str,
@@ -174,6 +214,8 @@ impl WorkerJournal {
         if !payload.is_object() {
             return Err(AppError::Worker("task payload must be an object".into()));
         }
+        let _catalog = catalog_lock(root)?;
+        read_all_unlocked(root)?;
         let mut journal = Self {
             root: root.into(),
             primary: primary.into(),
@@ -191,10 +233,8 @@ impl WorkerJournal {
                     AppError::Worker(format!("task journal already owned ({id}): {error}"))
                 })?;
                 let _write = write_lock(root, &id)?;
-                let previous = read_job(&path);
-                if previous.as_ref().is_some_and(|value| {
-                    terminal(value) || value.get("source").and_then(Value::as_str) == Some("agent")
-                }) {
+                let previous = read_job(&path)?;
+                if previous.is_some() {
                     return Err(AppError::Worker(format!(
                         "task journal already exists: {id}"
                     )));
@@ -234,10 +274,11 @@ impl WorkerJournal {
                     }
                 }
                 let snapshot = json!({
+                    "schemaVersion": 2,
                     "jobId": id, "command": command, "source": "manual", "cancelTaskId": id,
                     "status": "queued", "fraction": 0.0, "message": "queued", "error": null, "result": null,
-                    "createdAt": previous.as_ref().and_then(|value| value.get("createdAt")).and_then(Value::as_f64).unwrap_or(created),
-                    "finishedAt": null, "payload": snapshot_payload,
+                    "createdAt": created, "updatedAt": created, "startedAt": null,
+                    "finishedAt": null, "payload": snapshot_payload, "runtime": super::job_schema::empty_runtime(), "logs": [],
                     "owner": { "kind": OWNER_KIND, "pid": std::process::id() }
                 });
                 storage::write_json_file(&path, &snapshot)?;
@@ -256,6 +297,12 @@ impl WorkerJournal {
         Ok(Arc::new(Mutex::new(journal)))
     }
 
+    pub(crate) fn claim_audio(root: &Path, command: &str, primary: &str) -> AppResult<(JournalHandle, Value)> {
+        let claim = super::audio_jobs::claim(root, command, primary)?;
+        let journal = Self { root: root.into(), primary: claim.primary, jobs: claim.records.into_iter().map(|(snapshot, owner)| Job { snapshot, _owner: owner, saved: Some(Instant::now()) }).collect() };
+        Ok((Arc::new(Mutex::new(journal)), claim.payload))
+    }
+
     fn persist(&mut self, index: usize, force: bool) -> AppResult<()> {
         let job = &mut self.jobs[index];
         if !force
@@ -268,13 +315,20 @@ impl WorkerJournal {
         let id = job.snapshot["jobId"].as_str().unwrap();
         let _write = write_lock(&self.root, id)?;
         let path = job_path(&self.root, id)?;
-        if let Some(current) = read_job(&path) {
+        if let Some(current) = read_job(&path)? {
             // A cancel command may have won the terminal race while stdout was draining.
             if terminal(&current) {
+                let mut current = current;
+                if current["logs"] != job.snapshot["logs"] {
+                    current["logs"] = job.snapshot["logs"].clone();
+                    current["updatedAt"] = json!(now());
+                    storage::write_json_file(&path, &current)?;
+                }
                 job.snapshot = current;
                 return Ok(());
             }
         }
+        job.snapshot["updatedAt"] = json!(now());
         storage::write_json_file(&path, &job.snapshot)?;
         job.saved = Some(Instant::now());
         Ok(())
@@ -292,15 +346,20 @@ impl WorkerJournal {
             return self.persist(index, true);
         }
         job.snapshot["status"] = json!(status);
+        super::job_runtime::finish(&mut job.snapshot, status);
         job.snapshot["message"] = json!(message);
         job.snapshot["finishedAt"] = json!(now());
         if status == "completed" {
             job.snapshot["fraction"] = json!(1.0);
+            job.snapshot["error"] = Value::Null;
         }
         if status == "failed" || status == "interrupted" {
             job.snapshot["error"] = json!(message);
         }
         if let Some(result) = result {
+            let mut canonical = result.clone();
+            if canonical.get("outputs").is_some() { canonical.as_object_mut().unwrap().remove("files"); }
+            let result = &canonical;
             if status != "completed" {
                 if let (Some(previous), Some(incoming)) =
                     (job.snapshot["result"].as_object(), result.as_object())
@@ -330,6 +389,7 @@ impl WorkerJournal {
     pub(crate) fn running(&mut self, worker_pid: u32) -> AppResult<()> {
         for index in 0..self.jobs.len() {
             self.jobs[index].snapshot["status"] = json!("running");
+            self.jobs[index].snapshot["startedAt"] = json!(now());
             self.jobs[index].snapshot["message"] = json!("starting worker");
             self.jobs[index].snapshot["owner"]["workerPid"] = json!(worker_pid);
             self.persist(index, true)?;
@@ -356,6 +416,8 @@ impl WorkerJournal {
                 | "editor_mix_exported"
                 | "error"
                 | "task.cancelled"
+                | "task.log"
+                | "worker_log"
         ) {
             return Ok(());
         }
@@ -377,14 +439,26 @@ impl WorkerJournal {
         for index in 0..self.jobs.len() {
             let id = self.jobs[index].snapshot["jobId"].as_str().unwrap();
             if targeted.is_some_and(|target| target != id)
-                || (targeted.is_none() && kind != "error" && id != self.primary)
+                || (targeted.is_none() && !matches!(kind, "error" | "task.log" | "worker_log") && id != self.primary)
             {
+                continue;
+            }
+            if matches!(kind, "task.log" | "worker_log") {
+                super::job_runtime::log(&mut self.jobs[index].snapshot, event);
+                self.persist(index, false)?;
                 continue;
             }
             if terminal(&self.jobs[index].snapshot) {
                 continue;
             }
+            super::job_runtime::observe(&mut self.jobs[index].snapshot, event);
             if kind == "error" {
+                super::job_runtime::log(&mut self.jobs[index].snapshot, event);
+                if event.payload.get("recoverable").and_then(Value::as_bool) == Some(true) {
+                    self.jobs[index].snapshot["message"] = json!(message);
+                    self.persist(index, true)?;
+                    continue;
+                }
                 self.finish_job(index, "failed", message, Some(&event.payload))?;
             } else if kind == "task.cancelled" {
                 self.finish_job(index, "cancelled", message, Some(&event.payload))?;
@@ -434,7 +508,9 @@ impl WorkerJournal {
                 )?;
             } else {
                 if event.payload.get("outputs").is_some() {
-                    self.jobs[index].snapshot["result"] = event.payload.clone();
+                    let mut result = event.payload.clone();
+                    result.as_object_mut().unwrap().remove("files");
+                    self.jobs[index].snapshot["result"] = result;
                 }
                 let fraction = event
                     .payload
@@ -471,6 +547,7 @@ impl WorkerJournal {
     ) -> AppResult<()> {
         // A batch wrapper ID need not itself receive an event. Its children do;
         // finish the wrapper from all child terminals without inventing a failure.
+        if !self.jobs.iter().any(|job| job.snapshot.get("audio").is_some()) {
         if let Some(primary) = self
             .jobs
             .iter()
@@ -518,6 +595,7 @@ impl WorkerJournal {
                 )?;
             }
         }
+        }
         for index in 0..self.jobs.len() {
             if !terminal(&self.jobs[index].snapshot) {
                 self.finish_job(
@@ -541,24 +619,53 @@ impl WorkerJournal {
 }
 
 pub(crate) fn cancel(root: &Path, id: &str) -> AppResult<bool> {
+    let _catalog = catalog_lock(root)?;
+    read_all_unlocked(root)?;
     let _write = write_lock(root, id)?;
     let path = job_path(root, id)?;
-    let Some(mut value) = read_job(&path) else {
+    let Some(mut value) = read_job(&path)? else {
         return Ok(false);
     };
-    if !backend_owned(&value) || terminal(&value) {
+    if (value["source"] != "manual") || terminal(&value) {
         return Ok(false);
     }
     value["status"] = json!("cancelled");
     value["message"] = json!("Cancelled");
     value["finishedAt"] = json!(now());
+    value["updatedAt"] = json!(now());
+    super::job_runtime::finish(&mut value, "cancelled");
     storage::write_json_file(&path, &value)?;
     Ok(true)
 }
 
-/// Recover only our manual supervisors. MCP owners and legacy ownerless manual rows are untouched.
+pub(crate) fn cancel_queued(root: &Path, id: &str) -> AppResult<bool> {
+    if !valid_id(id) { return Err(AppError::Worker("invalid job id".into())); }
+    let _catalog = catalog_lock(root)?;
+    let rows = read_all_unlocked(root)?;
+    let Some(row) = rows.iter().find(|row| row["jobId"] == id) else { return Ok(false); };
+    if row["source"] != "manual" || row["status"] != "queued" || !row["owner"].is_null() { return Ok(false); }
+    let _write = write_lock(root, id)?;
+    let mut row = read_job(&job_path(root, id)?)?.ok_or_else(|| AppError::Worker("queued job disappeared".into()))?;
+    if row["status"] != "queued" || !row["owner"].is_null() { return Ok(false); }
+    row["status"] = json!("cancelled"); row["message"] = json!("Cancelled");
+    row["finishedAt"] = json!(now()); row["updatedAt"] = json!(now());
+    super::job_runtime::finish(&mut row, "cancelled");
+    storage::write_json_file(&job_path(root, id)?, &row)?;
+    Ok(true)
+}
+
+pub(crate) fn request_cancel(root: &Path, id: &str) -> AppResult<bool> {
+    if cancel_queued(root, id)? { return Ok(true); }
+    let _catalog = catalog_lock(root)?;
+    let rows = read_all_unlocked(root)?;
+    if !rows.iter().any(|row| row["jobId"] == id && !terminal(row)) { return Ok(false); }
+    fs::write(root.join("agent-jobs").join(format!("{id}.cancel")), b"cancel")?;
+    Ok(true)
+}
+
+/// A typed owner is live only while its shared lifetime lease remains held.
 fn recover(root: &Path, id: &str, value: Value) -> AppResult<Value> {
-    if !backend_owned(&value) || terminal(&value) {
+    if value["owner"].is_null() || terminal(&value) {
         return Ok(value);
     }
     let Ok(_owner) = FileLock::acquire(
@@ -569,58 +676,28 @@ fn recover(root: &Path, id: &str, value: Value) -> AppResult<Value> {
     };
     let _write = write_lock(root, id)?;
     let path = job_path(root, id)?;
-    let mut latest = read_job(&path).unwrap_or(value);
-    if backend_owned(&latest) && !terminal(&latest) {
+    let mut latest = read_job(&path)?.unwrap_or(value);
+    if !latest["owner"].is_null() && !terminal(&latest) {
         latest["status"] = json!("interrupted");
         latest["message"] = json!("应用退出时任务被中断");
-        latest["error"] = json!("manual worker supervisor exited before the job finished");
+        latest["error"] = json!("job owner exited before the job finished");
         latest["finishedAt"] = json!(now());
+        latest["updatedAt"] = json!(now());
+        super::job_runtime::finish(&mut latest, "interrupted");
         storage::write_json_file(&path, &latest)?;
     }
     Ok(latest)
 }
 
 pub(crate) fn list(root: &Path) -> AppResult<Vec<Value>> {
-    let directory = root.join("agent-jobs");
-    if !directory.is_dir() {
-        return Ok(Vec::new());
-    }
+    let _catalog = catalog_lock(root)?;
+    let rows = read_all_unlocked(root)?;
     let mut jobs = Vec::new();
-    for entry in fs::read_dir(directory)? {
-        let path = entry?.path();
-        let Some(id) = path
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .filter(|id| valid_id(id) && *id != "index")
-        else {
-            continue;
-        };
-        if path.extension().and_then(|name| name.to_str()) != Some("json") {
-            continue;
-        }
-        let Some(value) =
-            read_job(&path).filter(|value| value.get("jobId").and_then(Value::as_str) == Some(id))
-        else {
-            continue;
-        };
-        jobs.push(recover(root, id, value)?);
+    for value in rows {
+        let id = value["jobId"].as_str().unwrap().to_string();
+        jobs.push(recover(root, &id, value)?);
     }
-    jobs.sort_by(|a, b| {
-        b["createdAt"]
-            .as_f64()
-            .unwrap_or(0.0)
-            .partial_cmp(&a["createdAt"].as_f64().unwrap_or(0.0))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    // Active jobs must not disappear just because newer short tasks finished.
-    let mut retained_terminal = 0;
-    jobs.retain(|job| {
-        if !terminal(job) {
-            return true;
-        }
-        retained_terminal += 1;
-        retained_terminal <= 100
-    });
+    jobs.sort_by(|a, b| b["createdAt"].as_f64().unwrap().total_cmp(&a["createdAt"].as_f64().unwrap()));
     Ok(jobs)
 }
 
@@ -639,7 +716,7 @@ mod tests {
         }
     }
     fn snapshot(root: &Path, id: &str) -> Value {
-        read_job(&job_path(root, id).unwrap()).unwrap()
+        read_job(&job_path(root, id).unwrap()).unwrap().unwrap()
     }
     fn started(root: &Path, id: &str) -> JournalHandle {
         WorkerJournal::start(root, "audio_tools", id, &json!({"requestId": id, "operation": "media_video", "inputs": ["input.mp4"], "outputDir": "outputs", "params": {"crf": 17}})).unwrap()
@@ -668,6 +745,26 @@ mod tests {
         assert_eq!(stored["result"], result);
         assert!(stored["finishedAt"].as_f64().unwrap() >= queued["createdAt"].as_f64().unwrap());
         assert!(!root.path().join("agent-jobs/index.json").exists());
+    }
+
+    #[test]
+    fn native_runtime_nodes_and_structured_logs_survive_without_frontend_snapshots() {
+        let root = tempfile::tempdir().unwrap(); let journal = started(root.path(), "runtime_1");
+        let mut writer = journal.lock().unwrap(); writer.running(41).unwrap();
+        writer.observe(&event("task.stage", Some("runtime_1"), json!({"stage": "loading_model", "progress": 12, "message": "loading"}))).unwrap();
+        writer.observe(&event("workflow_execution", Some("runtime_1"), json!({"version": 1, "event": "node_started", "nodeId": "node-a", "nodeProgress": 0.25, "message": "active"}))).unwrap();
+        writer.observe(&event("task.progress", Some("runtime_1"), json!({"stage": "separating", "progress": 47, "done": 3, "total": 10, "unit": "seconds"}))).unwrap();
+        writer.observe(&event("worker_log", Some("runtime_1"), json!({"schemaVersion": 1, "id": "log-1", "level": "info", "message": "native log", "nodeId": "node-a"}))).unwrap();
+        writer.observe(&event("error", Some("runtime_1"), json!({"recoverable": true, "message": "retrying decoder"}))).unwrap();
+        assert_eq!(snapshot(root.path(), "runtime_1")["status"], "running");
+        writer.observe(&event("task.result", Some("runtime_1"), json!({"outputs": [{"path": "out.wav"}]}))).unwrap();
+        let row = snapshot(root.path(), "runtime_1");
+        assert_eq!(row["status"], "completed"); assert!(row["error"].is_null());
+        assert_eq!(row["runtime"]["progress"]["progress"], 47);
+        assert_eq!(row["runtime"]["nodes"]["node-a"]["progress"], 25.0);
+        assert_eq!(row["runtime"]["order"], json!(["node-a"]));
+        assert_eq!(row["logs"][0]["nodeId"], "node-a"); assert_eq!(row["logs"].as_array().unwrap().len(), 2);
+        assert!(row["logs"][0]["timestamp"].is_string());
     }
 
     #[test]
@@ -813,48 +910,47 @@ mod tests {
     }
 
     #[test]
-    fn live_owner_is_never_recovered_and_dead_manual_owner_does_not_affect_mcp() {
+    fn invalid_legacy_rows_block_recovery_without_rewriting_any_record() {
         let root = tempfile::tempdir().unwrap();
         let journal = started(root.path(), "live_1");
         journal.lock().unwrap().running(123).unwrap();
         assert_eq!(list(root.path()).unwrap()[0]["status"], "running");
-        let jobs = root.path().join("agent-jobs");
-        storage::write_json_file(&jobs.join("mcp_1.json"), &json!({"jobId": "mcp_1", "source": "agent", "status": "running", "owner": {"kernelId": "foreign"}})).unwrap();
-        storage::write_json_file(
-            &jobs.join("legacy_1.json"),
-            &json!({"jobId": "legacy_1", "source": "manual", "status": "running"}),
-        )
-        .unwrap();
         drop(journal);
-        let _ = list(root.path()).unwrap();
-        assert_eq!(snapshot(root.path(), "live_1")["status"], "interrupted");
-        assert_eq!(snapshot(root.path(), "mcp_1")["status"], "running");
-        assert_eq!(snapshot(root.path(), "legacy_1")["status"], "running");
+        let path = job_path(root.path(), "live_1").unwrap();
+        let before = fs::read(&path).unwrap();
+        let legacy = root.path().join("agent-jobs/legacy_1.json");
+        fs::write(&legacy, b"{\"jobId\":\"legacy_1\",\"status\":\"running\"}").unwrap();
+        assert!(list(root.path()).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_file(legacy).unwrap();
+        assert_eq!(list(root.path()).unwrap()[0]["status"], "interrupted");
     }
 
     #[test]
-    fn files_are_authoritative_even_when_shared_index_is_corrupt_or_stale() {
+    fn live_and_dead_operation_kernel_owners_use_the_same_lease_without_pid_guesses() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = started(root.path(), "kernel_1");
+        journal.lock().unwrap().running(42).unwrap();
+        let mut row = snapshot(root.path(), "kernel_1");
+        row["source"] = json!("agent");
+        row["owner"] = json!({"kind": "operation-kernel", "kernelId": "fixture-owner", "pid": std::process::id()});
+        storage::write_json_file(&job_path(root.path(), "kernel_1").unwrap(), &row).unwrap();
+        assert_eq!(list(root.path()).unwrap()[0]["status"], "running");
+        drop(journal);
+        let interrupted = list(root.path()).unwrap();
+        assert_eq!(interrupted[0]["status"], "interrupted");
+        assert!(interrupted[0]["finishedAt"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn unsupported_index_is_reported_and_preserved_without_a_fallback() {
         let root = tempfile::tempdir().unwrap();
         let journal = started(root.path(), "fresh_1");
         fs::write(root.path().join("agent-jobs/index.json"), b"not-json").unwrap();
-        assert_eq!(list(root.path()).unwrap()[0]["status"], "queued");
-        journal
-            .lock()
-            .unwrap()
-            .observe(&event(
-                "task.result",
-                None,
-                json!({"outputs": [{"path": "out.png"}]}),
-            ))
-            .unwrap();
-        assert_eq!(
-            list(root.path()).unwrap()[0]["status"],
-            "completed"
-        );
-        assert_eq!(
-            fs::read(root.path().join("agent-jobs/index.json")).unwrap(),
-            b"not-json"
-        );
+        assert!(list(root.path()).is_err());
+        journal.lock().unwrap().observe(&event("task.result", None, json!({"outputs": [{"path": "out.png"}]}))).unwrap();
+        assert_eq!(snapshot(root.path(), "fresh_1")["status"], "completed");
+        assert_eq!(fs::read(root.path().join("agent-jobs/index.json")).unwrap(), b"not-json");
     }
 
     #[test]
@@ -905,22 +1001,22 @@ mod tests {
     }
 
     #[test]
-    fn listing_retains_old_active_jobs_in_addition_to_the_newest_hundred_terminal_jobs() {
+    fn listing_returns_all_history_without_an_implicit_terminal_limit() {
         let root = tempfile::tempdir().unwrap();
         let journal = started(root.path(), "old_active_1");
+        let template = snapshot(root.path(), "old_active_1");
         for index in 0..105 {
-            let id = format!("finished_{index}");
-            storage::write_json_file(
-                &job_path(root.path(), &id).unwrap(),
-                &json!({"jobId": id, "status": "completed", "createdAt": now() + f64::from(index)}),
-            ).unwrap();
+            let mut row = template.clone();
+            row["jobId"] = json!(format!("finished_{index}"));
+            row["cancelTaskId"] = row["jobId"].clone();
+            row["status"] = json!("completed"); row["fraction"] = json!(1.0);
+            row["createdAt"] = json!(1_000_000_000.0 + index as f64); row["finishedAt"] = json!(now());
+            storage::write_json_file(&job_path(root.path(), row["jobId"].as_str().unwrap()).unwrap(), &row).unwrap();
         }
-        let listed = list(root.path()).unwrap();
-        let jobs = listed;
-        assert_eq!(jobs.len(), 101);
+        let jobs = list(root.path()).unwrap();
+        assert_eq!(jobs.len(), 106);
         assert!(jobs.iter().any(|job| job["jobId"] == "old_active_1"));
-        assert!(jobs.iter().any(|job| job["jobId"] == "finished_104"));
-        assert!(!jobs.iter().any(|job| job["jobId"] == "finished_0"));
+        assert!(jobs.iter().any(|job| job["jobId"] == "finished_0"));
         drop(journal);
     }
 

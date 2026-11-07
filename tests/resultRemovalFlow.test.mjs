@@ -7,7 +7,7 @@ import { parse } from 'vue/compiler-sfc'
 
 const descriptor = parse(readFileSync(new URL('../src/views/ResultsView.vue', import.meta.url), 'utf8')).descriptor
 const source = ts.createSourceFile('results.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true)
-const names = new Set(['removalItems', 'removeResultRecords', 'cleanupLinkedEditorProjects', 'ensureLinkedEditorProjectsClosed',
+const names = new Set(['removalItems', 'prepareResultRemoval', 'removeResultRecords', 'cleanupLinkedEditorProjects', 'ensureLinkedEditorProjectsClosed',
   'handleRemoveResult', 'handleRemoveSelected', 'handleClearResults', 'groupTaskIds', 'trashEmptyDirs',
   'trashTargetsForItems', 'trashEmptyDirsForItems'])
 const statements = source.statements.filter(statement => ts.isFunctionDeclaration(statement) && names.has(statement.name?.text))
@@ -16,7 +16,7 @@ const code = ts.transpileModule(statements.map(statement => statement.getText(so
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText
 
-function environment({ open = false, cleanupFailed = false, writeFailed = false, active = false, retained = 0 } = {}) {
+function environment({ open = false, cleanupFailed = false, writeFailed = false, leaseBusy = false, active = false, retained = 0 } = {}) {
   const calls = [], dialogs = [], messages = [], checks = []
   const items = [{ id: 'success' }, { id: 'failed-sibling' }]
   const group = { id: 'run', items: [items[0]] }
@@ -34,6 +34,7 @@ function environment({ open = false, cleanupFailed = false, writeFailed = false,
       },
     },
     task: {
+      async checkRemoval() { calls.push('preflight'); if (leaseBusy) throw new Error('runtime lease busy') },
       getRemovalTasks() { if (active) throw new Error('Batch is running'); return items },
       async removeResults(ids) { calls.push(['records', Array.from(ids)]); if (writeFailed) throw new Error('Disk write failed') },
       resultTrashTargets: item => [`D:/out/${item.id}.wav`], resultTrashEmptyDirs: () => [],
@@ -56,7 +57,7 @@ for (const action of ['handleRemoveResult', 'handleRemoveSelected', 'handleClear
     const env = environment()
     env.open(action)
     await env.confirm()
-    assert.deepEqual(env.calls, [['projects', ['success', 'failed-sibling']], ['records', ['success', 'failed-sibling']]])
+    assert.deepEqual(env.calls, ['preflight', ['projects', ['success', 'failed-sibling']], ['records', ['success', 'failed-sibling']]])
     assert.ok(env.messages.some(([level]) => level === 'success'))
   })
 
@@ -64,7 +65,7 @@ for (const action of ['handleRemoveResult', 'handleRemoveSelected', 'handleClear
     const env = environment()
     env.open(action)
     await env.confirm(true)
-    assert.deepEqual(env.calls, ['check-projects', ['trash', ['D:/out/success.wav', 'D:/out/failed-sibling.wav']],
+    assert.deepEqual(env.calls, ['preflight', 'check-projects', ['trash', ['D:/out/success.wav', 'D:/out/failed-sibling.wav']],
       ['projects', ['success', 'failed-sibling']], ['records', ['success', 'failed-sibling']]])
   })
 
@@ -79,7 +80,7 @@ for (const action of ['handleRemoveResult', 'handleRemoveSelected', 'handleClear
     const open = environment({ open: true })
     open.open(action)
     assert.equal(await open.confirm(true), false)
-    assert.deepEqual(open.calls, ['check-projects'])
+    assert.deepEqual(open.calls, ['preflight', 'check-projects'])
   })
 
   test(`${action} reports record persistence failure without reporting file recycling failure`, async () => {
@@ -102,6 +103,17 @@ for (const action of ['handleRemoveResult', 'handleRemoveSelected', 'handleClear
       assert.ok(!env.messages.some(([, key]) => key.startsWith('results.removeNoFiles')))
     }
   })
+}
+
+for(const action of ['handleRemoveResult','handleRemoveSelected','handleClearResults']) {
+ test(`${action} checks the backend lease before any editor or file action`,async()=>{
+  for(const files of [false,true]){
+   const env=environment({leaseBusy:true});env.open(action)
+   assert.equal(await env.confirm(files),false)
+   assert.deepEqual(env.calls,['preflight'])
+   assert.deepEqual(env.messages,[['warning','results.removeNotReady']])
+  }
+ })
 }
 
 test('an active batch is rejected before opening a deletion dialog', () => {

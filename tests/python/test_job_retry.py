@@ -9,6 +9,7 @@ import sys
 import unittest
 from pathlib import Path
 from unittest import mock
+from ._job_fixtures import job_record, write_record
 
 PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
@@ -106,14 +107,8 @@ class JobRetryToolTests(unittest.TestCase):
         job = mock.Mock()
         job.job_id = job_id
         job.command = "audio_tools"
-        job.snapshot.return_value = {
-            "jobId": job_id,
-            "command": "audio_tools",
-            "status": "failed",
-            "payload": PAYLOAD,
-            "result": FAILED_RESULT,
-            "error": "CUDA out of memory",
-        }
+        job.snapshot.return_value = job_record(job_id, status="failed", payload=PAYLOAD, result=FAILED_RESULT, error="CUDA out of memory")
+        write_record(self.bridge.jobs.jobs_root, job.snapshot.return_value)
         return job
 
     def test_unknown_job_is_refused(self) -> None:

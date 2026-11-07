@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createWorkflowBindings, prepareWorkbenchRun, visibleWorkflowNodeId, workflowOutputNodes, workbenchOutputDirectory, workflowExecutionSignature, workflowBindingsEqual } from '../src/workflows/workbench.ts'
+import { createWorkflowBindings, prepareWorkbenchRun, visibleWorkflowNodeId, workflowOutputNodes, workbenchOutputDirectory, workflowExecutionSignature, workbenchExecutionMatches } from '../src/workflows/workbench.ts'
 
 const graph = {
   nodes: [
@@ -124,11 +124,15 @@ test('graph camera, appearance and layering do not change its processing signatu
   assert.notEqual(workflowExecutionSignature(definition), workflowExecutionSignature(moved))
 })
 
-test('changing input files or output settings invalidates matching execution bindings', () => {
+test('effective execution matching ignores picker metadata and tracks input order or output changes', () => {
+  const definition = { version: 1, steps: [{ id: 'split', model: 'model', save: { Vocals: 'Default' } }] }
   const original = createWorkflowBindings()
-  original.inputs = { input: { files: ['first.wav', 'second.wav'] } }
-  original.outputDirectory = 'D:/selected'
-  assert.equal(workflowBindingsEqual(original, structuredClone(original)), true)
+  original.inputs = { input: { files: ['first.wav', 'second.wav'], folder: 'D:/picker' } }
+  const execution = prepareWorkbenchRun(definition, original, 'D:/default')
+  assert.equal(workbenchExecutionMatches(definition, original, execution.definition, execution.runs, 'D:/default'), true)
+  const picker = structuredClone(original)
+  picker.inputs.input.folder = 'D:/another-picker'
+  assert.equal(workbenchExecutionMatches(definition, picker, execution.definition, execution.runs, 'D:/default'), true)
   for (const change of [
     (value: typeof original) => { value.inputs.input.files.reverse() },
     (value: typeof original) => { value.outputDirectory = 'D:/next' },
@@ -136,6 +140,9 @@ test('changing input files or output settings invalidates matching execution bin
   ]) {
     const changed = structuredClone(original)
     change(changed)
-    assert.equal(workflowBindingsEqual(original, changed), false)
+    assert.equal(workbenchExecutionMatches(definition, changed, execution.definition, execution.runs, 'D:/default'), false)
   }
+  const missing = structuredClone(original)
+  missing.inputs = {}
+  assert.equal(workbenchExecutionMatches(definition, missing, execution.definition, execution.runs, 'D:/default'), false)
 })

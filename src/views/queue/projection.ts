@@ -31,20 +31,18 @@ function audioStatus(status: SeparationTask['status']) {
   return 'running'
 }
 
-/** Audio owns pending scheduling/history; the shared journal owns media/agent work. */
+/** Audio rows are a presentation of the same journal records with scheduler-aware cancellation. */
 export function mergeQueueJobs(records: readonly QueueJob[], audioTasks: readonly SeparationTask[]): QueueEntry[] {
   const jobs = new Map<string, QueueEntry>()
   for (const record of records) {
     if (!record.jobId) continue
-    // UI audio history can be removed independently of the backend journal.
-    // Reintroducing its old rows here would undo the user's clear-history action.
+    // The audio adapter below supplies these same jobs with audio cancellation and grouping.
     if (record.source === 'manual' && ['infer', 'infer_workflow'].includes(record.command)) continue
     jobs.set(record.jobId, { ...record, cancelOwner: 'backend' })
   }
   for (const task of audioTasks) {
     const status = audioStatus(task.status)
     jobs.delete(task.id)
-    if (task.taskHidden && !isQueueActive({ status })) continue
     jobs.set(task.id, {
       jobId: task.id,
       command: task.runConfig?.runMode === 'workflow' || task.runConfig?.workbench ? 'infer_workflow' : 'infer',
@@ -56,7 +54,7 @@ export function mergeQueueJobs(records: readonly QueueJob[], audioTasks: readonl
       message: task.message || task.stageLabel || '',
       createdAt: task.createdAt / 1000,
       finishedAt: task.finishedAt == null ? null : task.finishedAt / 1000,
-      payload: { input: task.input, inputs: [task.input], model: task.model, outputDir: task.output, batchId: task.jobId || task.batchId },
+      payload: { input: task.input, inputs: [task.input], model: task.model, outputDir: task.output },
       result: { outputs: task.outputs, files: task.files, ...(task.nodeValues ? { nodeValues: task.nodeValues } : {}) },
       error: task.error || null,
     })

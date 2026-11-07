@@ -16,12 +16,14 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 from core import failure_stats  # noqa: E402
+from core.job_store import JobStoreError
+from ._job_fixtures import job_record
 
 
 def write_job(root: Path, job_id: str, *, status: str, command: str, error: str | None = None) -> None:
     jobs = root / "agent-jobs"
     jobs.mkdir(parents=True, exist_ok=True)
-    record = {"jobId": job_id, "command": command, "status": status, "error": error}
+    record = job_record(job_id, command=command, status=status, error=error)
     (jobs / f"{job_id}.json").write_text(json.dumps(record), encoding="utf-8")
 
 
@@ -67,14 +69,15 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(stats["topIssues"][0]["count"], 2)
         self.assertEqual(stats["topIssues"][0]["code"], "input_missing")
 
-    def test_index_file_and_broken_files_are_ignored(self) -> None:
+    def test_index_and_broken_files_are_rejected_and_preserved(self) -> None:
         write_job(self.root, "ok", status="failed", command="infer", error="CUDA out of memory")
         jobs = self.root / "agent-jobs"
         (jobs / "index.json").write_text(json.dumps({"jobs": []}), encoding="utf-8")
         (jobs / "broken.json").write_text("{not json", encoding="utf-8")
-        stats = failure_stats.collect(self.root)
-        self.assertEqual(stats["scanned"], 1)
-        self.assertEqual(stats["failed"], 1)
+        before = {path.name: path.read_bytes() for path in jobs.glob("*.json")}
+        with self.assertRaises(JobStoreError):
+            failure_stats.collect(self.root)
+        self.assertEqual(before, {path.name: path.read_bytes() for path in jobs.glob("*.json")})
 
     def test_limit_keeps_the_most_recent_files(self) -> None:
         for index in range(5):

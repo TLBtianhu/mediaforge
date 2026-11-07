@@ -30,7 +30,7 @@ const vite = await createServer({
     resolveId(id) { return id === fixtureId || id.startsWith('\0media-param-stub:') ? id : null },
     load(id) {
       if (id.startsWith('\0media-param-stub:')) return stubs[id.slice('\0media-param-stub:'.length)]
-      if (id === fixtureId) return `export const calls = [], data = { capabilities: [] }; export async function invoke(command, args) { calls.push({command, args}); return command === 'media_capabilities' ? data : command === 'agent_jobs' ? {schemaVersion:1,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {} }`
+      if (id === fixtureId) return `export const calls = [], data = { capabilities: [] }; export async function invoke(command, args) { calls.push({command, args}); return command === 'media_capabilities' ? data : command === 'agent_jobs' ? {schemaVersion:2,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {} }`
       return null
     },
     async transform(code, id) {

@@ -1,0 +1,561 @@
+{
+  "description": "Shared schema-2 record conformance, not an executable model fixture. Leaf requests and the workflow are persisted once. Invalid cases contain only patches to avoid test-data duplication.",
+  "schemaVersion": 2,
+  "records": [
+    {
+      "schemaVersion": 2,
+      "jobId": "audio-primary",
+      "command": "infer_workflow",
+      "source": "manual",
+      "status": "queued",
+      "fraction": 0.0,
+      "message": "queued",
+      "error": null,
+      "result": null,
+      "createdAt": 1700000000.0,
+      "updatedAt": 1700000000.0,
+      "startedAt": null,
+      "finishedAt": null,
+      "owner": null,
+      "runtime": {
+        "stage": null,
+        "progress": null,
+        "nodes": {},
+        "order": []
+      },
+      "logs": [],
+      "cancelTaskId": "audio-primary",
+      "payload": {
+        "workflowName": "Contract fixture",
+        "workflow": {
+          "version": 0.4,
+          "nodes": [],
+          "links": [],
+          "extra": {
+            "fixtureToken": "ONE_GRAPH_ONLY"
+          }
+        },
+        "output": "C:/fixture/outputs",
+        "outputLayout": "folders",
+        "modelDir": null,
+        "source": "modelscope",
+        "downloadMethod": "aria2c",
+        "device": "cpu",
+        "deviceIds": [
+          0
+        ],
+        "outputFormat": "wav",
+        "useTta": false,
+        "debug": false,
+        "audioParams": {}
+      },
+      "presentation": {
+        "workflowId": "workflow-fixture",
+        "sourceUpdatedAt": 1700000000000,
+        "workbench": {
+          "nativeGraph": true
+        }
+      },
+      "audio": {
+        "groupId": "group-fixture",
+        "primaryJobId": "audio-primary",
+        "index": 0,
+        "memberJobIds": [
+          "audio-primary",
+          "audio-child"
+        ],
+        "request": {
+          "input": "C:/fixture/a.wav",
+          "output": "C:/fixture/outputs/a",
+          "inputIndex": 1
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "jobId": "audio-child",
+      "command": "infer_workflow",
+      "source": "manual",
+      "status": "queued",
+      "fraction": 0.0,
+      "message": "queued",
+      "error": null,
+      "result": null,
+      "createdAt": 1700000000.0,
+      "updatedAt": 1700000000.0,
+      "startedAt": null,
+      "finishedAt": null,
+      "owner": null,
+      "runtime": {
+        "stage": null,
+        "progress": null,
+        "nodes": {},
+        "order": []
+      },
+      "logs": [],
+      "cancelTaskId": "audio-primary",
+      "payloadRef": "audio-primary",
+      "audio": {
+        "groupId": "group-fixture",
+        "primaryJobId": "audio-primary",
+        "index": 1,
+        "request": {
+          "input": "C:/fixture/b.wav",
+          "output": "C:/fixture/outputs/b",
+          "inputIndex": 2
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "jobId": "agent-operation",
+      "command": "audio_tools",
+      "source": "agent",
+      "status": "completed",
+      "fraction": 1.0,
+      "message": "completed",
+      "error": null,
+      "result": {
+        "outputs": [
+          {
+            "path": "C:/fixture/output/result.flac"
+          }
+        ]
+      },
+      "createdAt": 1700000000.0,
+      "updatedAt": 1700000002.0,
+      "startedAt": 1700000001.0,
+      "finishedAt": 1700000002.0,
+      "owner": {
+        "kind": "operation-kernel",
+        "kernelId": "00000000000000000000000000000001",
+        "pid": 123456
+      },
+      "runtime": {
+        "stage": null,
+        "progress": null,
+        "nodes": {},
+        "order": []
+      },
+      "logs": [],
+      "payload": {
+        "operation": "convert",
+        "inputs": [
+          "C:/fixture/input.wav"
+        ],
+        "outputDir": "C:/fixture/output",
+        "format": "flac"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "jobId": "native-primary",
+      "command": "infer_workflow",
+      "source": "manual",
+      "status": "queued",
+      "fraction": 0.0,
+      "message": "queued",
+      "error": null,
+      "result": null,
+      "createdAt": 1700000000.0,
+      "updatedAt": 1700000000.0,
+      "startedAt": null,
+      "finishedAt": null,
+      "owner": null,
+      "runtime": {
+        "stage": null,
+        "progress": null,
+        "nodes": {},
+        "order": []
+      },
+      "logs": [],
+      "cancelTaskId": "native-primary",
+      "payload": {
+        "workflowName": "Contract fixture",
+        "workflow": {
+          "version": 0.4,
+          "nodes": [],
+          "links": [],
+          "extra": {
+            "fixtureToken": "NATIVE_INPUT_IS_IN_GRAPH"
+          }
+        },
+        "output": "C:/fixture/outputs",
+        "outputLayout": "folders",
+        "modelDir": null,
+        "source": "modelscope",
+        "downloadMethod": "aria2c",
+        "device": "cpu",
+        "deviceIds": [
+          0
+        ],
+        "outputFormat": "wav",
+        "useTta": false,
+        "debug": false,
+        "audioParams": {}
+      },
+      "presentation": {
+        "workflowId": "native-workflow",
+        "workbench": {
+          "nativeGraph": true
+        }
+      },
+      "audio": {
+        "groupId": "native-group",
+        "primaryJobId": "native-primary",
+        "index": 0,
+        "memberJobIds": [
+          "native-primary"
+        ],
+        "request": {
+          "input": null,
+          "output": "C:/fixture/native-output"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "jobId": "model-primary",
+      "command": "infer",
+      "source": "manual",
+      "status": "queued",
+      "fraction": 0.0,
+      "message": "queued",
+      "error": null,
+      "result": null,
+      "createdAt": 1700000000.0,
+      "updatedAt": 1700000000.0,
+      "startedAt": null,
+      "finishedAt": null,
+      "owner": null,
+      "runtime": {
+        "stage": null,
+        "progress": null,
+        "nodes": {},
+        "order": []
+      },
+      "logs": [],
+      "cancelTaskId": "model-primary",
+      "payload": {
+        "output": "C:/fixture/outputs",
+        "outputLayout": "folders",
+        "modelDir": null,
+        "source": "modelscope",
+        "downloadMethod": "aria2c",
+        "device": "cpu",
+        "deviceIds": [
+          0
+        ],
+        "outputFormat": "wav",
+        "useTta": false,
+        "debug": false,
+        "audioParams": {},
+        "model": "fixture-model",
+        "inferenceParamsVersion": 3,
+        "inferenceParams": {},
+        "selectedStems": [
+          "Vocals"
+        ]
+      },
+      "audio": {
+        "groupId": "model-group",
+        "primaryJobId": "model-primary",
+        "index": 0,
+        "memberJobIds": [
+          "model-primary"
+        ],
+        "request": {
+          "input": "C:/fixture/input.wav",
+          "output": "C:/fixture/model-output",
+          "inputIndex": 1
+        }
+      }
+    }
+  ],
+  "invalidRecords": [
+    {
+      "name": "missing schema",
+      "base": "agent-operation",
+      "remove": [
+        "schemaVersion"
+      ]
+    },
+    {
+      "name": "old schema",
+      "base": "agent-operation",
+      "set": {
+        "schemaVersion": 1
+      }
+    },
+    {
+      "name": "future schema",
+      "base": "agent-operation",
+      "set": {
+        "schemaVersion": 3
+      }
+    },
+    {
+      "name": "boolean schema",
+      "base": "agent-operation",
+      "set": {
+        "schemaVersion": true
+      }
+    },
+    {
+      "name": "unknown persistent copy",
+      "base": "agent-operation",
+      "set": {
+        "audioSnapshot": {}
+      }
+    },
+    {
+      "name": "invalid job id",
+      "base": "agent-operation",
+      "set": {
+        "jobId": "../outside"
+      }
+    },
+    {
+      "name": "unknown status",
+      "base": "agent-operation",
+      "set": {
+        "status": "done"
+      }
+    },
+    {
+      "name": "fraction out of range",
+      "base": "agent-operation",
+      "set": {
+        "fraction": 2
+      }
+    },
+    {
+      "name": "boolean timestamp",
+      "base": "agent-operation",
+      "set": {
+        "createdAt": true
+      }
+    },
+    {
+      "name": "zero timestamp",
+      "base": "agent-operation",
+      "set": {
+        "createdAt": 0
+      }
+    },
+    {
+      "name": "missing update timestamp",
+      "base": "agent-operation",
+      "remove": [
+        "updatedAt"
+      ]
+    },
+    {
+      "name": "terminal without end time",
+      "base": "agent-operation",
+      "set": {
+        "finishedAt": null
+      }
+    },
+    {
+      "name": "running without owner",
+      "base": "agent-operation",
+      "set": {
+        "status": "running",
+        "owner": null,
+        "finishedAt": null
+      }
+    },
+    {
+      "name": "unknown owner",
+      "base": "agent-operation",
+      "set": {
+        "owner": {
+          "kind": "legacy-owner",
+          "pid": 123456
+        }
+      }
+    },
+    {
+      "name": "invalid owner pid",
+      "base": "agent-operation",
+      "set": {
+        "owner": {
+          "kind": "operation-kernel",
+          "pid": 0,
+          "kernelId": "fixture"
+        }
+      }
+    },
+    {
+      "name": "scalar result",
+      "base": "agent-operation",
+      "set": {
+        "result": "old result"
+      }
+    },
+    {
+      "name": "string log copy",
+      "base": "agent-operation",
+      "set": {
+        "logs": [
+          "legacy log"
+        ]
+      }
+    },
+    {
+      "name": "missing payload",
+      "base": "agent-operation",
+      "remove": [
+        "payload"
+      ]
+    },
+    {
+      "name": "duplicate child request",
+      "base": "audio-child",
+      "set": {
+        "payload": {
+          "workflow": {
+            "fixtureToken": "COPIED_GRAPH"
+          }
+        }
+      }
+    },
+    {
+      "name": "duplicate child presentation",
+      "base": "audio-child",
+      "set": {
+        "presentation": {
+          "workflowId": "workflow-fixture"
+        }
+      }
+    },
+    {
+      "name": "runtime wrong container",
+      "base": "agent-operation",
+      "set": {
+        "runtime": {
+          "stage": null,
+          "progress": null,
+          "nodes": [],
+          "order": []
+        }
+      }
+    },
+    {
+      "name": "empty input is encoded as null instead",
+      "base": "audio-child",
+      "set": {
+        "audio": {
+          "groupId": "group-fixture",
+          "primaryJobId": "audio-primary",
+          "index": 1,
+          "request": {
+            "input": "",
+            "output": "C:/fixture/outputs/b",
+            "inputIndex": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "input index is one based",
+      "base": "audio-child",
+      "set": {
+        "audio": {
+          "groupId": "group-fixture",
+          "primaryJobId": "audio-primary",
+          "index": 1,
+          "request": {
+            "input": "C:/fixture/b.wav",
+            "output": "C:/fixture/outputs/b",
+            "inputIndex": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "inputs binding is not an array",
+      "base": "audio-child",
+      "set": {
+        "audio": {
+          "groupId": "group-fixture",
+          "primaryJobId": "audio-primary",
+          "index": 1,
+          "request": {
+            "input": "C:/fixture/b.wav",
+            "output": "C:/fixture/outputs/b",
+            "inputIndex": 2,
+            "inputs": []
+          }
+        }
+      }
+    },
+    {
+      "name": "output bindings contain string paths",
+      "base": "audio-child",
+      "set": {
+        "audio": {
+          "groupId": "group-fixture",
+          "primaryJobId": "audio-primary",
+          "index": 1,
+          "request": {
+            "input": "C:/fixture/b.wav",
+            "output": "C:/fixture/outputs/b",
+            "inputIndex": 2,
+            "workbenchOutputs": {
+              "save": "C:/out",
+              "bad": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "audio has manual source",
+      "base": "audio-child",
+      "set": {
+        "source": "agent"
+      }
+    },
+    {
+      "name": "audio has an inference command",
+      "base": "audio-child",
+      "set": {
+        "command": "media_tool"
+      }
+    },
+    {
+      "name": "workbench marker is typed",
+      "base": "audio-primary",
+      "set": {
+        "presentation": {
+          "workbench": {
+            "nativeGraph": "true"
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown presentation copy",
+      "base": "audio-primary",
+      "set": {
+        "presentation": {
+          "workflowDefinition": {}
+        }
+      }
+    },
+    {
+      "name": "explicit old inference params version",
+      "base": "model-primary",
+      "set": {
+        "payload": {
+          "model": "fixture-model",
+          "output": "C:/fixture/model-output",
+          "inferenceParamsVersion": 2,
+          "inferenceParams": {}
+        }
+      }
+    }
+  ]
+}

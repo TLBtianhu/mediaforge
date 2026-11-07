@@ -15,18 +15,27 @@ const vite = await createServer({
   } },
   plugins: [{
     name: 'media-jobs-native-boundaries', enforce: 'pre',
+    transform(_code, id) {
+      if (id.replaceAll('\\', '/').endsWith('/src/stores/settings.ts')) return 'export const useSettingsStore = () => ({developerMode:false})'
+    },
     resolveId(id) { return [fixtureId, '\0media-jobs-core', '\0media-jobs-event'].includes(id) ? id : null },
     load(id) {
       if (id === '\0media-jobs-core') return `export { invoke } from '${fixtureId}'`
       if (id === '\0media-jobs-event') return `export { listen } from '${fixtureId}'`
       if (id === fixtureId) return `
-        export const calls=[], timeline=[], listeners=new Map()
+        export const calls=[], timeline=[], listeners=new Map(), remote=new Map()
         let invokeHook, listenHook
-        export function reset(nextInvoke,nextListen) { calls.length=timeline.length=0; listeners.clear(); invokeHook=nextInvoke; listenHook=nextListen }
+        export function reset(nextInvoke,nextListen) { calls.length=timeline.length=0; listeners.clear(); remote.clear(); invokeHook=nextInvoke; listenHook=nextListen }
         export async function invoke(command,args) {
           calls.push({command,args}); timeline.push(command)
+          if(command==='start_audio_tool') {
+            const now=Date.now()/1000, id=args.payload.requestId
+            remote.set(id,{schemaVersion:2,jobId:id,command:'audio_tools',source:'manual',status:'running',cancelTaskId:id,
+              owner:{kind:'tauri-worker',pid:1},fraction:0,message:'',error:null,result:null,createdAt:now,updatedAt:now,startedAt:now,finishedAt:null,
+              runtime:{stage:null,progress:null,nodes:{},order:[]},logs:[],payload:JSON.parse(JSON.stringify(args.payload))})
+          }
           if(invokeHook) return invokeHook(command,args)
-          return command==='agent_jobs' ? {schemaVersion:1,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {started:true}
+          return command==='agent_jobs' ? {schemaVersion:2,jobs:[...remote.values()],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {started:true}
         }
         export async function listen(name,callback) {
           timeline.push('listen:start')
@@ -34,13 +43,24 @@ const vite = await createServer({
           listeners.set(name,callback); timeline.push('listen:ready')
           return ()=>listeners.delete(name)
         }
-        export function emit(event) { listeners.get('pymss://worker-event')?.({payload:event}) }
+        export function emit(event) {
+          const job=remote.get(event.taskId||event.requestId),payload=event.payload||{}
+          if(job){
+            job.updatedAt=Date.now()/1000
+            if(['task.result','error','task.cancelled'].includes(event.type)){
+              job.status=event.type==='error'||payload.failed?.length?'failed':event.type==='task.cancelled'?'cancelled':'completed'
+              job.finishedAt=job.updatedAt;job.result=payload
+            }
+          }
+          listeners.get('pymss://worker-event')?.({payload:event})
+        }
       `
       return null
     },
   }],
 })
 after(() => vite.close())
+globalThis.window={__TAURI_INTERNALS__:{}}
 const fixture = await vite.ssrLoadModule(fixtureId)
 const { useMediaJobsStore } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
 const { useMediaJob } = await vite.ssrLoadModule('/src/composables/useMediaJob.ts')
@@ -51,11 +71,12 @@ const deferred = () => {
 }
 const flush = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick() }
 const journal = (jobId, overrides = {}) => ({
-  jobId, command: 'audio_tools', source: 'manual', status: 'running', cancelTaskId: jobId,
-  owner: { kind: 'tauri-worker' },
-  fraction: 0, message: '', createdAt: 100, payload: { operation: 'media_image' }, result: null, ...overrides,
+  schemaVersion:2, jobId, command:'audio_tools', source:'manual', status:'running', cancelTaskId:jobId,
+  owner:{kind:'tauri-worker',pid:1},fraction:0,message:'',error:null,createdAt:100,updatedAt:100,startedAt:100,
+  finishedAt:['completed','failed','cancelled','interrupted'].includes(overrides.status)?101:null,
+  runtime:{stage:null,progress:null,nodes:{},order:[]},logs:[],payload:{operation:'media_image'},result:null,...overrides,
 })
-const response = jobs => ({ schemaVersion:1, jobs, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' })
+const response = jobs => ({schemaVersion:2,jobs,dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'})
 function setup(t, invokeHook, listenHook) {
   fixture.reset(invokeHook, listenHook)
   const pinia = createPinia()
@@ -212,22 +233,13 @@ test('only one manual job per operation can start while another operation remain
   assert.equal(store.active.length, 2)
 })
 
-test('legacy ownerless running records remain diagnostic history without blocking a new submission', async t => {
-  const stale = journal('legacy-running', { owner: undefined, createdAt: 200, payload: { operation: 'media_image', inputs: ['stale.png'] } })
-  const completed = journal('legacy-completed', {
-    owner: undefined, status: 'completed', result: { outputs: [{ path: 'old-result.png' }] },
-    payload: { operation: 'media_image', inputs: ['old.png'] },
-  })
-  const { store } = setup(t, command => command === 'agent_jobs' ? response([stale, completed]) : { started: true })
-  await store.initialize()
-  assert.equal(store.jobs.length, 2)
-  assert.equal(store.jobs.find(job => job.jobId === stale.jobId).status, 'running')
-  assert.equal(store.active.length, 0)
-  assert.equal(store.latest('media_image').jobId, completed.jobId)
-  await store.start({ operation: 'media_image', requestId: 'fresh-submission', inputs: ['fresh.png'] })
-  assert.equal(store.active.length, 1) // This session owns it before the backend journal arrives.
-  assert.equal(store.latest('media_image').jobId, 'fresh-submission')
-  assert.equal(fixture.calls.filter(call => call.command === 'start_audio_tool').length, 1)
+test('running records without the current typed owner are rejected without enabling a submission', async t => {
+ const {store}=setup(t,()=>response([journal('invalid-owner',{owner:null})]))
+ await store.initialize()
+ assert.equal(store.jobs.length,0)
+ assert.match(store.error,/Unsupported task journal schema/)
+ await assert.rejects(store.start({operation:'media_image'}),/Unsupported task journal schema/)
+ assert.equal(fixture.calls.some(call=>call.command==='start_audio_tool'),false)
 })
 
 test('backend-owned running records restore their request and still prevent duplicate operations', async t => {
@@ -310,6 +322,53 @@ test('operation runtime progress and named output terminals are consumed without
   fixture.emit({ taskId: 'graph', type: 'task.result', payload: { outputs: { score: { kind: 'scalar', value: 42 } } } })
   assert.equal(store.jobs[0].status, 'completed')
   assert.equal(store.jobs[0].result.outputs.score.value, 42)
+})
+
+test('a full snapshot removes confirmed jobs that are absent and rejects corrupt snapshots atomically', async t => {
+  let rows = [journal('confirmed')]
+  const {store} = setup(t, () => response(rows))
+  await store.initialize()
+  rows = [journal('replacement'), {...journal('corrupt'),schemaVersion:1}]
+  await store.refresh()
+  assert.match(store.error,/Unsupported task journal schema/)
+  assert.deepEqual(store.jobs.map(job=>job.jobId),['confirmed'])
+  rows = []
+  await store.refresh()
+  assert.equal(store.error,'')
+  assert.deepEqual(store.jobs,[])
+})
+
+test('a delayed snapshot cannot resurrect a deleted group or its primary payload', async t => {
+  const gate=deferred();let reads=0
+  const {store}=setup(t,()=>++reads===1?response([journal('deleted')]):gate.promise)
+  await store.initialize()
+  const pending=store.refresh()
+  store.forget(['deleted'])
+  gate.resolve(response([journal('deleted')]))
+  await pending
+  assert.deepEqual(store.jobs,[])
+})
+
+test('a missing pending submission survives until ACK while a later authoritative absence removes it',async t=>{
+  const gate=deferred()
+  const {store}=setup(t,command=>command==='agent_jobs'?response([]):gate.promise)
+  const submitted=store.start({operation:'media_image',requestId:'pending-ack'})
+  await flush()
+  await store.refresh()
+  assert.equal(store.jobs[0].jobId,'pending-ack')
+  gate.resolve({started:true});await submitted
+  await store.refresh()
+  assert.deepEqual(store.jobs,[])
+})
+
+test('equal timestamps cannot replace newly observed live progress with stale disk progress',async t=>{
+  t.mock.method(Date,'now',()=>100000)
+  const {store}=setup(t,()=>response([journal('same-time')]))
+  await store.initialize()
+  fixture.emit({taskId:'same-time',type:'task.progress',payload:{fraction:0.75,message:'new progress'}})
+  await store.refresh()
+  assert.equal(store.jobs[0].fraction,0.75)
+  assert.equal(store.jobs[0].message,'new progress')
 })
 
 const renderer = createRenderer({

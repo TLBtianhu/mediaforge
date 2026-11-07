@@ -42,9 +42,9 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   updater只写本次成功平台，stable版本通知单独验签且拒绝回退
 媒体任务          Rust supervisor在启动前写单job原子记录，owner lease判定中断；
                   Pinia mediaJobs常驻监听，四媒体页切走后继续更新、重进恢复提交快照
-持久真源          Kernel与Rust仅逐job文件，列表读取聚合，不再写index/workspace副本；
-                  音频history只落outputs，files为内存投影，native graph只存一份定义
-当前格式          history1/params3/workbench2/workflow wrapper1/Comfy0.4/editor4；
+持久真源          音频/媒体/Agent统一schema2逐job账本，无tasks.json/index/workspace副本；
+                  批次common payload/图只存primary，child引用，files/nodeLogs/耗时仅读时投影
+当前格式          jobs2/params3/workbench2/workflow wrapper1/Comfy0.4/editor4；
                   缺失/旧/未来结构拒绝且保留原文件，无backend回退/隐式迁移/升级备份
 ABI门禁           worker与安装器实际核对3.12；资产校验解释器/DLL/扩展/prefix，
                   不从bootstrap覆盖解释器；旧venv在任何恢复、pip或状态写入前拒绝
@@ -52,7 +52,7 @@ ABI门禁           worker与安装器实际核对3.12；资产校验解释器/D
                   venv及ensurepip专用隐藏控制台供孙进程继承，日志/退出码/取消保留
 流式进程回收      视频逐帧和媒体格式转换共用StreamProcess：并行排空stderr，正常/异常
                   都等待回收并关闭管道/线程；等待超时有界，截断帧拒绝，保留错误尾
-队列与产物        queue合并共享journal与音频待调度/执行任务，音频取消走调度器；
+队列与产物        音频durable enqueue ACK后调度、start仅jobId，后端持久状态/节点/日志；
                   results增加独立媒体/工具/Agent文件区，保留失败或取消的部分产物
 媒体方案          media-workflows独立版本库，命名保存/加载/更新/删除只保存方案；
                   Rust读改写事务与revision防止窗口覆盖，损坏库不按空库覆盖
@@ -71,10 +71,10 @@ Vue 拆分          已拆分簇的测试直接实例化下列工厂，其余部
 
 ```
 1. 调度与持久存储
-   音频task-history仍以settings/tasks.json聚合读写；共享journal按agent-jobs/<jobId>.json
-   逐job存储。已执行音频任务仍有重叠记录，UI已去重合流，跨进程并发配额/调度尚未统一。
-   媒体/Agent产物当前只读，未实现统一删除。旧index/workspace兼容读写及前端journal_job
-   镜像写入入口已删除；不把旧格式迁移列为后续任务。
+   持久存储已统一逐job/schema2，排队/运行/结果无音频history镜像；共享锁及引用组删除已落地。
+   UI与独立MCP进程的并发配额/调度仍未统一，媒体/Agent产物当前只读，未实现统一删除。
+   manual历史不受Kernel默认Agent保留策略清理；旧schema与遗留任务文件保留、不迁移。
+   当前完整原生UI、崩溃中途多文件事务恢复与跨平台后代监督仍需独立验收。
 
 2. 本地候选与正式分发
    Windows 0.0.33本地原生及安装/便携/更新包已生成；独立AppId的31→33升级、
@@ -100,8 +100,8 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
 ## 技术债
 
 ```
-巨文件（行数）   SettingsView.vue 1353 / ModelsView.vue 1511 / SeparateView.vue 2327 /
-                 DebugView.vue 1736 / stores/task.ts 1730 / stores/editor.ts 2026
+巨文件（行数）   SettingsView.vue 1349 / ModelsView.vue 1511 / SeparateView.vue 2285 /
+                 DebugView.vue 1736 / stores/task.ts 1160 / stores/editor.ts 2027
                  SeparateView 与 DebugView 已按工厂拆过一轮，剩下的先把有测试契约的簇外移。
 门面间接         已移除：worker_bootstrap.py 合并为普通模块，bootstrap_parts 分包已删除。
 测试稳定性       editorParameterSlider.test.mjs 已统一焦点、active 状态和生命周期拖拽准备；

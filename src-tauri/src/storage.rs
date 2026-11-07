@@ -347,7 +347,7 @@ pub fn app_paths_payload(app: &AppHandle) -> AppResult<AppPathsPayload> {
 fn store_file_name(name: &str) -> AppResult<&'static str> {
     match name {
         "app-settings" => Ok("app.json"),
-        "task-history" => Ok("tasks.json"),
+        "task-history" => Err(AppError::Worker("task-history is unsupported; use the schema-2 job store; original file preserved".into())),
         "model-state" => Ok("model-cache.json"),
         "editor-ui" => Ok("editor-ui.json"),
         "audio-tools" => Ok("audio-tools.json"),

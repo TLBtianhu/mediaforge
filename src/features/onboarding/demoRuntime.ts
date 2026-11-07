@@ -1,5 +1,7 @@
 import { createDemoAudio, createDemoModels, createDemoWorkflow } from './demoData.ts'
 import type { TutorialAdapter } from './demoContext'
+import { audioJobEvent } from '../tasks/audioJobs.ts'
+import type { JournalJob } from '../tasks/journal.ts'
 
 export type DemoConfig = { locale: string; themeMode: string; themeAccent: string; platform: string; progress: Record<string, unknown> }
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
@@ -34,9 +36,19 @@ export function createDemoRuntime(config: DemoConfig) {
       animationsEnabled: false, outputDir: output, modelDir: prefix + '/Models', defaultFormat: outputFormat,
       beginnerGuideProgress: { ...config.progress, status: 'active' } }],
     ['model-state', { models, categories: ['MSS'], categoriesCn: ['MSS'], modelDir: prefix + '/Models' }],
-    ['task-history', { version: 1, tasks: [task] }],
     ['workflow-state', { version: 1, workflows: [workflow], selectedWorkflowId: workflow.id }],
   ])
+  const jobs = new Map<string, JournalJob>([[task.id, {
+    schemaVersion: 2, jobId: task.id, command: 'infer', source: 'manual', status: 'completed', cancelTaskId: task.id,
+    fraction: 1, message: 'Done', error: null, result: { outputs, outputDir: output, outputRoot: output },
+    createdAt: now / 1000, updatedAt: now / 1000, startedAt: (now - 1200) / 1000, finishedAt: now / 1000, owner: null,
+    runtime: { stage: 'writing_output', progress: null, nodes: {}, order: [] }, logs: [],
+    payload: { model: task.model, modelDir: prefix + '/Models', output, source: 'modelscope', downloadMethod: 'aria2c',
+      outputLayout: 'flat', device: 'auto', deviceIds: [0], outputFormat: 'wav', selectedStems: ['Vocals','Instrumental'],
+      inferenceParamsVersion: 3, inferenceParams: {}, audioParams: {}, useTta: false, debug: false },
+    audio: { groupId: 'sample-job', primaryJobId: task.id, index: 0, memberJobIds: [task.id], request: { input, output, inputIndex: 1 } },
+  }]])
+  const journalResponse = (entries = [...jobs.values()]) => ({ schemaVersion: 2, jobs: copy(entries), dataRoot: prefix, jobsDir: prefix + '/agent-jobs' })
   const projects = new Map<string, any>([[initialProject.id, initialProject]])
   const callbacks = new Map<number, { handler?: (value: any) => void; once: boolean }>()
   const listeners = new Map<number, { event: string; handler: number }>()
@@ -72,12 +84,23 @@ export function createDemoRuntime(config: DemoConfig) {
     const timer = setTimeout(() => { timers.delete(timer); action() }, delay)
     timers.add(timer)
   }
-  const worker = (type: string, taskId: string, payload: unknown) => emit('pymss://worker-event', { type, taskId, payload })
+  function worker(type: string, taskId: string, payload: Record<string, unknown>) {
+    const job = jobs.get(taskId)
+    if (job?.audio) jobs.set(taskId, audioJobEvent(job, [...jobs.values()], { type, taskId, payload }))
+    emit('pymss://worker-event', { type, taskId, payload })
+  }
   function startTask(payload: any) {
-    for (let index = 1; index <= 5; index++) later(() => worker('task.progress', payload.taskId,
-      { stage: 'separating', done: index, total: 5, unit: 'seconds' }), index * 180)
-    later(() => worker('task.result', payload.taskId, { outputDir: output, outputRoot: output, outputs, files: outputs.map(item => item.path) }), 1100)
-    return { taskId: payload.taskId, started: true }
+    const selected = jobs.get(payload.jobId)
+    if (!selected?.audio || selected.status !== 'queued') throw new Error('Unknown queued tutorial job')
+    const primary = jobs.get(selected.audio.primaryJobId)!
+    const active = [...jobs.values()].filter(job => job.audio?.primaryJobId === primary.jobId && job.status === 'queued')
+    active.forEach(job => {
+      job.owner = { kind: 'tauri-worker', pid: 1 }; job.status = 'running'; job.startedAt = Date.now() / 1000; job.updatedAt = Date.now() / 1000
+      for (let index = 1; index <= 5; index++) later(() => worker('task.progress', job.jobId,
+        { stage: 'separating', done: index, total: 5, unit: 'seconds' }), index * 180)
+      later(() => worker('task.result', job.jobId, { outputDir: job.audio!.request.output, outputRoot: primary.payload!.output, outputs }), 1100)
+    })
+    return { taskId: selected.jobId, started: true }
   }
   function projectFor(id: string) {
     if (!projects.has(id)) projects.set(id, { ...copy(initialProject), id })
@@ -127,7 +150,35 @@ export function createDemoRuntime(config: DemoConfig) {
     if (command === 'scan_media_paths') return { files: [input], warnings: [] }
     if (['pick_input_folder', 'pick_output_folder', 'pick_output_dir', 'pick_model_dir'].includes(command)) return output
     if (command === 'start_separation' || command === 'start_workflow_inference') return startTask(payload)
-    if (command === 'cancel_task') { worker('task.cancelled', args.taskId, {}); return true }
+    if (command === 'agent_jobs') return journalResponse()
+    if (command === 'enqueue_audio_jobs') {
+      if (payload.schemaVersion !== 2) throw new Error('Unsupported tutorial job schema')
+      const accepted = payload.tasks.map((item: any, index: number) => {
+        if (jobs.has(item.jobId)) throw new Error('Tutorial task ID already exists')
+        const job: JournalJob = { schemaVersion: 2, jobId: item.jobId, command: payload.command, source: 'manual', status: 'queued',
+          cancelTaskId: payload.primaryJobId, fraction: 0, message: 'queued', error: null, result: null,
+          createdAt: Date.now()/1000, updatedAt: Date.now()/1000, startedAt: null, finishedAt: null, owner: null,
+          runtime: { stage: null, progress: null, nodes: {}, order: [] }, logs: [],
+          audio: { groupId: payload.groupId, primaryJobId: payload.primaryJobId, index, request: copy(item.request), ...(index === 0 ? {memberJobIds: payload.tasks.map((entry: any) => entry.jobId)} : {}) },
+          ...(index === 0 ? { payload: copy(payload.payload), ...(payload.presentation ? {presentation: copy(payload.presentation)} : {}) } : {payloadRef: payload.primaryJobId}) }
+        jobs.set(job.jobId,job); return job
+      })
+      return journalResponse(accepted)
+    }
+    if (command === 'remove_audio_jobs') {
+      const selected = new Set(args.jobIds)
+      const groups = new Set([...jobs.values()].filter(job => selected.has(job.jobId)).map(job => job.audio?.groupId))
+      const removing = [...jobs.values()].filter(job => job.audio && groups.has(job.audio.groupId))
+      if (removing.some(job => !['completed','failed','cancelled','interrupted'].includes(job.status))) throw new Error('Tutorial audio job is active')
+      removing.forEach(job => jobs.delete(job.jobId))
+      return {schemaVersion: 2, removedJobIds: removing.map(job => job.jobId)}
+    }
+    if (command === 'cancel_task') {
+      const selected = jobs.get(args.taskId)
+      if (!selected || ['completed','failed','cancelled','interrupted'].includes(selected.status)) return false
+      const targets = selected.status === 'queued' ? [selected] : [...jobs.values()].filter(job => job.audio?.primaryJobId === selected.audio?.primaryJobId && job.status === 'running')
+      targets.forEach(job => worker('task.cancelled', job.jobId, {})); return true
+    }
     if (command === 'get_workflow_editors') return { revision: 0, editors: [] }
     if (command === 'mutate_workflow_store') {
       const state = copy(stores.get('workflow-state') || { version: 1, workflows: [], selectedWorkflowId: '' })

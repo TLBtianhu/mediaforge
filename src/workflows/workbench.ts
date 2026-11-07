@@ -20,9 +20,10 @@ export type WorkflowWorkbenchSnapshot = {
   bindings: WorkflowRuntimeBindings
   inputs: Record<string, string>
   outputs: Record<string, string>
-} & ({ nativeGraph: true; sourceDefinition?: never } | { nativeGraph?: false; sourceDefinition: Record<string, unknown> })
+  nativeGraph: boolean
+}
 export function workflowSourceDefinition(config?: { workflowDefinition?: Record<string, unknown>; workbench?: WorkflowWorkbenchSnapshot }): Record<string, unknown> {
-  return config?.workbench?.nativeGraph ? config.workflowDefinition || {} : config?.workbench?.sourceDefinition || config?.workflowDefinition || {}
+  return config?.workflowDefinition || {}
 }
 export type WorkbenchRun = { input: string; inputs: Record<string, string>; outputs: Record<string, string> }
 
@@ -192,6 +193,15 @@ function canonical(value: unknown): unknown {
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]))
 }
 
-export function workflowBindingsEqual(first: WorkflowRuntimeBindings, second: WorkflowRuntimeBindings): boolean {
-  return JSON.stringify(canonical(first)) === JSON.stringify(canonical(second))
+/** Compare the effective request, rather than persisting a second copy of editor bindings. */
+export function workbenchExecutionMatches(
+  definition: Record<string, unknown>, bindings: WorkflowRuntimeBindings,
+  executionDefinition: Record<string, unknown>, executionRuns: readonly WorkbenchRun[], defaultDirectory: string,
+): boolean {
+  if (workflowExecutionSignature(definition) !== workflowExecutionSignature(executionDefinition)) return false
+  if (detectWorkflowFormat(definition) === 'graph') return true
+  try {
+    return JSON.stringify(canonical(prepareWorkbenchRun(definition, bindings, defaultDirectory).runs))
+      === JSON.stringify(canonical(executionRuns))
+  } catch { return false }
 }
