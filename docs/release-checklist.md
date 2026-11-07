@@ -30,6 +30,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -
 □ [5/6] 安装包生成
 □ [6/6] 输出路径正确；本机副本只在release/local生成，候选可用-SkipDownloadCopy省略
 □ stage EXE身份/版本、资源清单、归档哈希均已核对，不用EXE体积推断资源正确
+□ 基础Python版本变化时提供完整安装/便携介质；不含bootstrap的update.zip不能独立承担3.11→3.12升级
 □ 默认不含runtime-envs、模型、开发数据、日志和测试截图；数GB资产另行显式打包
 □ 正式签名前确认目标版本与ZIP内EXE一致；仅使用显式密钥路径和进程环境
 □ 不把密码放命令参数，不输出signer原始诊断，不在签名环境中执行signer help
