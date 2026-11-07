@@ -70,7 +70,7 @@ def isolated_environment(stage: Path) -> dict[str, str]:
 def run(python: Path, args: list[str], stage: Path, *, capture: bool = False) -> str:
     result = subprocess.run([str(python), "-B", *args], env=isolated_environment(stage),
                             cwd=ROOT, text=True, encoding="utf-8", errors="replace",
-                            stdout=subprocess.PIPE if capture else None, check=True)
+                            stdout=subprocess.PIPE if capture else None, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return result.stdout or ""
 
 

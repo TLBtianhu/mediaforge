@@ -52,20 +52,13 @@ fn operation_output_directory(payload: &Value, default: &Path) -> AppResult<Path
     Ok(std::path::absolute(directory)?)
 }
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 pub(crate) fn kill_process_tree(pid: u32) {
     #[cfg(windows)]
-    let _ = Command::new("taskkill")
+    let _ = crate::process_command::hidden_command("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .creation_flags(CREATE_NO_WINDOW)
         .status();
     #[cfg(not(windows))]
-    let _ = Command::new("pkill").args(["-TERM", "-P", &pid.to_string()]).status();
+    let _ = crate::process_command::hidden_command("pkill").args(["-TERM", "-P", &pid.to_string()]).status();
 }
 
 const PYTHON_TERMINAL_LOG_PREFIX: &str = "__PYMSS_STUDIO_TERMINAL_LOG__";
@@ -900,15 +893,13 @@ fn build_worker_command(
     })?;
     let python_for_log = python.clone();
     let worker_for_log = worker.clone();
-    let mut cmd = Command::new(&python);
+    let mut cmd = crate::process_command::hidden_command(&python);
     #[cfg(unix)]
     if command == "manage_plugin" {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
     isolate_python_environment(&mut cmd, &storage::temp_dir(app)?);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.arg(worker)
         .arg(command)
         .env("PYTHONIOENCODING", "utf-8")
@@ -2435,7 +2426,7 @@ mod tests {
 
     #[test]
     fn worker_python_environment_drops_host_python_and_conda_overrides() {
-        let mut command = std::process::Command::new("python");
+        let mut command = crate::process_command::hidden_command("python");
         for key in super::HOST_PYTHON_ENV_VARS {
             command.env(key, "host-runtime");
         }

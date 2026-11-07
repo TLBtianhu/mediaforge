@@ -352,13 +352,13 @@ fn restoring_during_a_scan_does_not_resurrect_its_previously_read_failure_cache(
 fn hanging_process() -> HostProcess {
     #[cfg(windows)]
     let mut command = {
-        let mut command = Command::new("cmd.exe");
+        let mut command = crate::process_command::hidden_command("cmd.exe");
         command.args(["/D", "/C", "ping -n 30 127.0.0.1 >nul"]);
         command
     };
     #[cfg(unix)]
     let mut command = {
-        let mut command = Command::new("sh");
+        let mut command = crate::process_command::hidden_command("sh");
         command.args(["-c", "exec sleep 30"]);
         command
     };
@@ -414,7 +414,7 @@ fn exited_leader_with_a_descendant_holding_stdout_is_killed_before_reaping() {
     let control = Arc::new(ScanControl::default());
     let run = control.start("descendant".into()).unwrap();
     let ticket = run.begin_item("descendant.vst3");
-    let mut command = Command::new("sh");
+    let mut command = crate::process_command::hidden_command("sh");
     command.args(["-c", "sleep 30 & exit 0"]);
     let process = HostProcess::spawn_command(command).unwrap();
     let child = process.control.clone();

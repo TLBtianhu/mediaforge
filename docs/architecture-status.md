@@ -48,6 +48,8 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   缺失/旧/未来结构拒绝且保留原文件，无backend回退/隐式迁移/升级备份
 ABI门禁           worker与安装器实际核对3.12；资产校验解释器/DLL/扩展/prefix，
                   不从bootstrap覆盖解释器；旧venv在任何恢复、pip或状态写入前拒绝
+后台控制台        worker/FFmpeg/探针与测试显式隐藏Windows子进程；Rust共享hidden_command，
+                  venv及ensurepip专用隐藏控制台供孙进程继承，日志/退出码/取消保留
 队列与产物        queue合并共享journal与音频待调度/执行任务，音频取消走调度器；
                   results增加独立媒体/工具/Agent文件区，保留失败或取消的部分产物
 媒体方案          media-workflows独立版本库，命名保存/加载/更新/删除只保存方案；

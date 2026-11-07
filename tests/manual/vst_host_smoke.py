@@ -51,6 +51,7 @@ class Host:
             errors="replace",
             bufsize=1,
             env=env,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.responses: queue.Queue[dict[str, Any] | Exception] = queue.Queue()
         self.errors: list[str] = []
@@ -245,7 +246,7 @@ def main() -> int:
 
     try:
         scanned = subprocess.run([str(host_path), "--plugin-scan", str(bundle)], capture_output=True,
-                                 text=True, encoding="utf-8", errors="replace", timeout=30)
+                                 text=True, encoding="utf-8", errors="replace", timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         assert scanned.returncode == 0, f"Plugin scan failed: {scanned.stderr}"
         plugins = json.loads(scanned.stdout)["plugins"]
         gain = next(plugin for plugin in plugins if plugin["name"] == "Fixture Gain")

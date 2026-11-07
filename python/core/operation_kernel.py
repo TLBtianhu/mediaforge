@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "worker.py"
@@ -357,6 +358,7 @@ class OperationKernel:
                     text=True,
                     encoding="utf-8",
                     errors="replace",
+                    **hidden_subprocess_kwargs(),
                 )
                 job.process = process
                 assert process.stdout is not None

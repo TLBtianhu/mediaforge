@@ -394,9 +394,9 @@ mod tests {
 
     #[test]
     fn installation_lock_survives_process_contention_and_releases_after_crash() {
-        use std::process::{Command, Stdio};
+        use std::process::Stdio;
         let root = tempfile::tempdir().unwrap();
-        let mut command = Command::new(std::env::current_exe().unwrap());
+        let mut command = crate::process_command::hidden_command(std::env::current_exe().unwrap());
         command
             .args([
                 "--exact",
@@ -406,11 +406,6 @@ mod tests {
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-        }
         let mut child = command.spawn().unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while !root.path().join("child-ready").is_file() && std::time::Instant::now() < deadline {
@@ -431,10 +426,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn helper_job_terminates_download_owner_and_releases_its_lock() {
-        use std::os::windows::process::CommandExt;
-        use std::process::{Command, Stdio};
+        use std::process::Stdio;
         let root = tempfile::tempdir().unwrap();
-        let mut child = Command::new(std::env::current_exe().unwrap())
+        let mut child = crate::process_command::hidden_command(std::env::current_exe().unwrap())
             .args([
                 "--exact",
                 "runtime_assets::transaction::tests::installation_lock_child",
@@ -443,7 +437,6 @@ mod tests {
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .creation_flags(0x08000000)
             .spawn()
             .unwrap();
         let job = crate::process_job::ProcessJob::attach(&child).unwrap();

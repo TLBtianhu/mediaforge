@@ -52,6 +52,7 @@ class ReleaseCoreResolutionTests(unittest.TestCase):
         run = subprocess.run
 
         def offline_run(command, **kwargs):
+            kwargs.setdefault("creationflags", getattr(subprocess, "CREATE_NO_WINDOW", 0))
             command = list(command)
             index = command.index("--index-url")
             command[index:index + 2] = ["--no-index", "--find-links", str(self.root)]

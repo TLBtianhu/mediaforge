@@ -156,7 +156,7 @@ class AudioToolModuleTests(unittest.TestCase):
             subprocess.run([
                 loudness._ffmpeg_path(), "-nostdin", "-loglevel", "error", "-f", "lavfi",
                 "-i", "aevalsrc=0.5*sgn(sin(2*PI*997*t)):s=44100:d=2", "-c:a", "libmp3lame", "-b:a", "128k", str(source),
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             with mock.patch.object(loudness, "emit"):
                 result = loudness._loudness_audio({
                     "inputs": [str(source)], "outputDir": str(root / "output"),
@@ -218,7 +218,7 @@ class AudioToolModuleTests(unittest.TestCase):
                 loudness._ffmpeg_path(), "-nostdin", "-hide_banner", "-loglevel", "error",
                 "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2",
                 "-c:a", "pcm_s16le", str(source),
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             with mock.patch.object(loudness, "emit"):
                 result = loudness._loudness_audio({
                     "inputs": [str(source)], "outputDir": str(root / "output"),
@@ -243,7 +243,7 @@ class AudioToolModuleTests(unittest.TestCase):
                 loudness._ffmpeg_path(), "-nostdin", "-loglevel", "error", "-f", "lavfi",
                 "-i", "sine=frequency=997:sample_rate=44100:duration=3", "-af", "volume=-12dB",
                 "-c:a", "libmp3lame", "-b:a", "128k", str(source),
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             for mode, unit in (("peak", "dB"), ("true-peak", "dBTP")):
                 with self.subTest(mode=mode), mock.patch.object(loudness, "emit"):
                     result = loudness._loudness_audio({
@@ -270,7 +270,7 @@ class AudioToolModuleTests(unittest.TestCase):
                 "-f", "lavfi", "-i", "sine=frequency=800:sample_rate=48000:duration=2",
                 "-filter_complex", "[1:a]aformat=channel_layouts=stereo[a1]", "-map", "0:a", "-map", "[a1]",
                 "-c:a", "aac", "-disposition:a:0", "0", "-disposition:a:1", "default", str(source),
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             for name, target in (("render", -30), ("copy", loudness._volume_stats(source)[0])):
                 with self.subTest(path=name), mock.patch.object(loudness, "emit"):
                     result = loudness._loudness_audio({
@@ -280,7 +280,7 @@ class AudioToolModuleTests(unittest.TestCase):
                     probe = subprocess.run([
                         loudness.ffprobe_path(), "-v", "error", "-select_streams", "a", "-show_entries",
                         "stream=sample_rate,channels", "-of", "json", result["outputPaths"][0],
-                    ], check=True, capture_output=True, text=True)
+                    ], check=True, capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                     self.assertEqual(json.loads(probe.stdout)["streams"], [{"sample_rate": "44100", "channels": 1}])
 
     def test_loudness_peak_tolerance_can_preserve_an_already_matching_file(self) -> None:

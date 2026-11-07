@@ -21,7 +21,7 @@ os_environ_target = ccm.os.environ
 
 def link_directory(link: Path, target: Path) -> None:
     if ccm.os.name == 'nt':
-        subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(link), str(target)], check=True, capture_output=True)
+        subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(link), str(target)], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     else:
         link.symlink_to(target, target_is_directory=True)
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from shared.worker_protocol import emit
+from shared.worker_subprocess import hidden_subprocess_kwargs
 from .common import _available_path, _ffmpeg_path, _require_directory, _require_file, _run_ffmpeg, _subprocess_detail, ffprobe_path, run_process
 
 
@@ -61,6 +62,7 @@ def _run_measurement(input_path: Path, filter_name: str) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
+        **hidden_subprocess_kwargs(),
     )
     if completed.returncode:
         detail = (completed.stderr or completed.stdout).strip()

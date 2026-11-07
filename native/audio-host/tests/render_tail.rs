@@ -2,7 +2,7 @@
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -29,7 +29,7 @@ fn fixture_bundle(root: &Path) -> PathBuf {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../vendor/soundcraft-vst3-host/tests/fixture/Cargo.toml");
         let target = Path::new(env!("CARGO_TARGET_TMPDIR")).join("audio-host-tail-fixture-target");
-        let status = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+        let status = test_process::command(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
             .args(["build", "--quiet", "--manifest-path"])
             .arg(manifest)
             .arg("--target-dir")
@@ -60,7 +60,7 @@ impl Host {
     }
 
     fn with_behavior(behavior: &str) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+        let mut child = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
             .arg("--audio-host")
             .env(
                 "PYMSS_VST_FIXTURE_BEHAVIOR",
@@ -253,7 +253,7 @@ fn offline_export_uses_configured_mode_without_replacing_preview() {
     std::fs::create_dir_all(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scan = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+    let scan = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
         .arg("--plugin-scan")
         .arg(&bundle)
         .output()
@@ -330,7 +330,7 @@ fn failed_timing_reactivation_cleans_exports_and_keeps_preview_instances() {
     std::fs::create_dir_all(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scan = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+    let scan = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
         .arg("--plugin-scan")
         .arg(&bundle)
         .output()
@@ -472,7 +472,7 @@ fn exports_refresh_tail_budgets_without_writing_silent_padding() {
     std::fs::create_dir_all(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scan = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+    let scan = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
         .arg("--plugin-scan")
         .arg(&bundle)
         .output()
@@ -532,7 +532,7 @@ fn bypass_updates_keep_live_instances_and_parameters_without_reloading_the_graph
     std::fs::create_dir_all(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scan = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+    let scan = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
         .arg("--plugin-scan")
         .arg(&bundle)
         .output()
@@ -602,7 +602,7 @@ fn startup_timing_changes_settle_each_insert_and_getter_notifications_remain_bou
     std::fs::create_dir_all(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scan = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+    let scan = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
         .arg("--plugin-scan")
         .arg(&bundle)
         .output()
@@ -691,7 +691,7 @@ fn reactivation_applies_parameter_latency_before_track_and_master_export_pdc() {
     }
     writer.finalize().unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scan = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+    let scan = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
         .arg("--plugin-scan")
         .arg(&bundle)
         .output()
@@ -797,7 +797,7 @@ fn legacy_effect_fields_are_ignored_and_export_updates_preserve_the_session() {
     }
     writer.finalize().unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scan = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host"))
+    let scan = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host"))
         .arg("--plugin-scan")
         .arg(&bundle)
         .output()
@@ -908,7 +908,7 @@ fn exports_trim_overreported_silence_but_keep_late_right_channel_echoes_and_late
     std::fs::create_dir_all(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let bundle = fixture_bundle(directory.path());
-    let scanned = Command::new(env!("CARGO_BIN_EXE_pymss-audio-host")).arg("--plugin-scan").arg(&bundle).output().unwrap();
+    let scanned = test_process::command(env!("CARGO_BIN_EXE_pymss-audio-host")).arg("--plugin-scan").arg(&bundle).output().unwrap();
     assert!(scanned.status.success());
     let catalog: Value = serde_json::from_slice(&scanned.stdout).unwrap();
     let effect = catalog["plugins"].as_array().unwrap().iter().find(|plugin| plugin["isInstrument"] == false).unwrap();
@@ -996,3 +996,6 @@ fn exports_trim_overreported_silence_but_keep_late_right_channel_echoes_and_late
         host.finish();
     }
 }
+
+#[path = "../../test_process.rs"]
+mod test_process;

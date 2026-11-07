@@ -87,7 +87,7 @@ def main() -> None:
     root.mkdir(parents=True, exist_ok=True)
     target = scan_target(args.plugin)
     scan = subprocess.run([str(args.host.resolve()), "--plugin-scan", target],
-                          capture_output=True, text=True, encoding="utf-8", timeout=30, check=True)
+                          capture_output=True, text=True, encoding="utf-8", timeout=30, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     descriptor = select_plugin(json.loads(scan.stdout)["plugins"], args.plugin_id)
     source = root / "input.wav"
     rate = 48000

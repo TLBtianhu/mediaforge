@@ -11,6 +11,7 @@ mod log_record;
 mod model_dir_migration;
 mod media_workflows;
 mod plugin_views;
+mod process_command;
 mod python;
 mod rba;
 mod session_log;

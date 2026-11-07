@@ -1706,7 +1706,7 @@ mod tests {
         let ffmpeg = std::env::var_os("PYMSS_TEST_FFMPEG")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("ffmpeg"));
-        if Command::new(&ffmpeg)
+        if test_process::command(&ffmpeg)
             .arg("-version")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -1747,7 +1747,7 @@ mod tests {
         let ffmpeg = std::env::var_os("PYMSS_TEST_FFMPEG")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("ffmpeg"));
-        if Command::new(&ffmpeg)
+        if test_process::command(&ffmpeg)
             .arg("-version")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -1807,3 +1807,7 @@ mod tests {
         assert!(timeline.ready.len() <= CACHE_CHUNKS);
     }
 }
+
+#[cfg(test)]
+#[path = "../../test_process.rs"]
+mod test_process;

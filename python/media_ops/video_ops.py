@@ -26,12 +26,14 @@ import numpy as np
 
 from . import ffmpeg
 from .image_ops import ImageRestorer
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 
 def _run(command: list[str], label: str) -> subprocess.CompletedProcess:
     proc = subprocess.run(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding="utf-8", errors="replace",
+        **hidden_subprocess_kwargs(),
     )
     if proc.returncode != 0:
         tail = "\n".join((proc.stderr or "").strip().splitlines()[-12:])
@@ -81,6 +83,7 @@ class _StreamProcess:
             stdout=subprocess.PIPE if want_stdout else subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             bufsize=0,
+            **hidden_subprocess_kwargs(),
         )
         self._drain = threading.Thread(target=self._drain_stderr, name=f"mf-{label}", daemon=True)
         self._drain.start()
@@ -123,7 +126,7 @@ def _extract_audio(source: Path, target: Path, seconds: float = 0.0) -> bool:
     if seconds and seconds > 0:
         command += ["-t", f"{float(seconds):.3f}"]
     command.append(str(target))
-    proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **hidden_subprocess_kwargs())
     return proc.returncode == 0 and target.exists() and target.stat().st_size > 500
 
 
@@ -470,6 +473,7 @@ def interpolate_video(
             [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
              "-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")],
             check=True, capture_output=True,
+            **hidden_subprocess_kwargs(),
         )
         frames = sorted(frames_dir.glob("f_*.png"))
         if len(frames) < 2:
@@ -504,7 +508,7 @@ def interpolate_video(
             "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-shortest", str(target),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         if progress:
             progress(1.0, "完成")
         return {
@@ -572,7 +576,7 @@ def inpaint_video(
         if preview_seconds > 0:
             command.extend(["-t", str(float(preview_seconds))])
         command.extend(["-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")])
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         frames = sorted(frames_dir.glob("f_*.png"))
         if not frames:
             raise ValueError("视频没有可处理的帧")
@@ -615,7 +619,7 @@ def inpaint_video(
             "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-shortest", str(destination),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         if progress:
             progress(1.0, "完成")
         return {
@@ -666,7 +670,7 @@ def upscale_video(
         if preview_seconds > 0:
             command.extend(["-t", str(float(preview_seconds))])
         command.extend(["-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")])
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         frames = sorted(frames_dir.glob("f_*.png"))
         if not frames:
             raise ValueError("视频没有可处理的帧")
@@ -688,7 +692,7 @@ def upscale_video(
             "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-shortest", str(destination),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         if progress:
             progress(1.0, "完成")
         return {

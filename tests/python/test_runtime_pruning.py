@@ -86,7 +86,7 @@ class RuntimePruningTests(unittest.TestCase):
             "-KeepScripts",
             "-KeepVenv",
         ]
-        subprocess.run(command, check=True, cwd=runtime, env={**os.environ, "OS": "Windows_NT"})
+        subprocess.run(command, check=True, cwd=runtime, env={**os.environ, "OS": "Windows_NT"}, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self._check_packaging_dependencies(site_packages)
 
         meta_dir = site_packages / "samplepkg-1.0.0.dist-info"
@@ -114,6 +114,7 @@ class RuntimePruningTests(unittest.TestCase):
             check=True,
             cwd=runtime,
             env=os.environ.copy(),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self._check_packaging_dependencies(site_packages)
 
@@ -149,6 +150,7 @@ class RuntimePruningTests(unittest.TestCase):
         result = subprocess.run(
             [bash, script.as_posix(), runtime.as_posix(), *(["--keep-venv"] if keep_venv else [])],
             capture_output=True, text=True, cwd=runtime,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((stdlib / "xmlrpc/client.py").is_file(), "pip install requires the retained xmlrpc package")
@@ -165,6 +167,7 @@ value = {'status': 'ready'}
 assert xmlrpc.client.loads(xmlrpc.client.dumps((value,)))[0] == (value,)
 print(json.dumps({'origin': xmlrpc.client.__file__}))
 """, str(stdlib)], capture_output=True, text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(probe.returncode, 0, probe.stderr)
         self.assertEqual(Path(json.loads(probe.stdout)["origin"]).resolve(), stdlib / "xmlrpc/client.py")
@@ -214,6 +217,7 @@ print(json.dumps({'origin': xmlrpc.client.__file__}))
         result = subprocess.run(
             [bash, script.as_posix(), runtime.as_posix(), *(["--keep-venv"] if keep_venv else [])],
             capture_output=True, text=True, cwd=runtime,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         for path in [*removed_files, *removed_directories]:

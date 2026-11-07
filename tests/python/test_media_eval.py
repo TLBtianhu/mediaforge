@@ -131,6 +131,7 @@ class VideoMetricsTests(unittest.TestCase):
             ],
             check=True,
             capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         result = media_eval.evaluate_file(clip)
         self.assertEqual(result["kind"], "video")

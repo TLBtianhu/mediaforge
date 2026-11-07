@@ -151,6 +151,7 @@ class NativePluginReleaseTests(unittest.TestCase):
             capture_output=True,
             check=True,
             timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(
             [call["args"] for call in self.calls()],
@@ -301,6 +302,7 @@ codesign() { "$TEST_PYTHON" "$SIGN_RECORDER" "$@"; }
                 text=True,
                 env=environment,
                 timeout=20,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             commands = [
@@ -385,6 +387,7 @@ class NativePluginBuildEntryTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 timeout=20,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("--bundles", result.stdout)

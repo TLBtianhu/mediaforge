@@ -72,7 +72,7 @@ class MainReleaseWorkflowTests(unittest.TestCase):
                 with self.subTest(step=step.get("name")):
                     # Binary stdin preserves LF on Windows; text=True translates
                     # it to CRLF and makes a valid Bash script fail spuriously.
-                    result = subprocess.run([shutil.which("bash"), "-n"], input=step["run"].encode("utf-8"), capture_output=True, timeout=10)
+                    result = subprocess.run([shutil.which("bash"), "-n"], input=step["run"].encode("utf-8"), capture_output=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
 
 

@@ -135,7 +135,7 @@ class MediaDependencyCheckTests(unittest.TestCase):
         self.assertIn("Static dependency check failed", error.getvalue())
 
     def test_the_real_repository_check_runs_in_an_isolated_stdlib_interpreter(self):
-        result = subprocess.run([sys.executable, "-I", "-S", "-B", str(SCRIPT)], capture_output=True, text=True, timeout=30)
+        result = subprocess.run([sys.executable, "-I", "-S", "-B", str(SCRIPT)], capture_output=True, text=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("0 missing", result.stdout)
 

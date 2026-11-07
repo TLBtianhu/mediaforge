@@ -49,6 +49,7 @@ def run(payload: dict, *, python: Path, models: Path, env: dict[str, str]) -> tu
         proc = subprocess.run(
             [str(python), "-B", str(WORKER), "media_tool", "--payload", str(path)],
             cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=900, env=env,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if proc.returncode != 0:
             return False, (proc.stderr or proc.stdout or f"worker exit {proc.returncode}")[-120:]

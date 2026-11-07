@@ -3,7 +3,7 @@
 use serde_json::{Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 fn fixture_bundle(root: &Path) -> PathBuf {
@@ -11,7 +11,7 @@ fn fixture_bundle(root: &Path) -> PathBuf {
         .join("../vendor/soundcraft-vst3-host/tests/fixture/Cargo.toml");
     let target = Path::new(env!("CARGO_TARGET_TMPDIR")).join("audio-host-stdout-fixture-target");
     assert!(
-        Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+        test_process::command(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
             .args(["build", "--locked", "--quiet", "--manifest-path"])
             .arg(manifest)
             .arg("--target-dir")
@@ -48,7 +48,7 @@ fn plugin_stdout_never_enters_scan_or_session_responses() {
     let directory = tempfile::tempdir().unwrap();
     let bundle = fixture_bundle(directory.path());
     let executable = env!("CARGO_BIN_EXE_pymss-audio-host");
-    let scan = Command::new(executable)
+    let scan = test_process::command(executable)
         .arg("--plugin-scan")
         .arg(&bundle)
         .env("PYMSS_FIXTURE_STDOUT_NOISE", "1")
@@ -67,7 +67,7 @@ fn plugin_stdout_never_enters_scan_or_session_responses() {
         .iter()
         .find(|plugin| plugin["name"] == "Fixture Gain")
         .unwrap();
-    let mut child = Command::new(executable)
+    let mut child = test_process::command(executable)
         .arg("--audio-host")
         .env("PYMSS_FIXTURE_STDOUT_NOISE", "1")
         .stdin(Stdio::piped())
@@ -120,3 +120,6 @@ fn plugin_stdout_never_enters_scan_or_session_responses() {
     }
     assert!(responses[2]["result"]["states"]["slot"].is_string());
 }
+
+#[path = "../../test_process.rs"]
+mod test_process;

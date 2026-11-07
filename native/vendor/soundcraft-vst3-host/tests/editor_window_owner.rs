@@ -75,8 +75,7 @@ fn main() {
     use soundcraft_vst3_host::{
         NativeEditorWindow, initialize_ui, pump_ui, set_editor_owner, shutdown_ui,
     };
-    use std::process::Command;
-    use std::time::{Duration, Instant};
+        use std::time::{Duration, Instant};
     initialize_ui().expect("initialize UI");
     if let Some(owner) = std::env::args().nth(1) {
         let owner: usize = owner.parse().expect("owner HWND");
@@ -121,7 +120,7 @@ fn main() {
     verify_minimization(&app);
 
     // The application and isolated audio helper own windows in different processes.
-    let mut child = Command::new(std::env::current_exe().expect("test executable"))
+    let mut child = test_process::command(std::env::current_exe().expect("test executable"))
         .arg(owner.to_string())
         .spawn()
         .expect("isolated window helper");
@@ -153,3 +152,6 @@ fn main() {
 fn main() {
     println!("editor_window_owner: Windows-only check");
 }
+
+#[path = "../../../test_process.rs"]
+mod test_process;

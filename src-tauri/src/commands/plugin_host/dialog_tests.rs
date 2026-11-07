@@ -110,13 +110,13 @@ impl Fixture {
     fn new() -> Self {
         #[cfg(windows)]
         let mut command = {
-            let mut command = Command::new("cmd.exe");
+            let mut command = crate::process_command::hidden_command("cmd.exe");
             command.args(["/D", "/C", "ping -n 30 127.0.0.1 >nul"]);
             command
         };
         #[cfg(unix)]
         let mut command = {
-            let mut command = Command::new("sh");
+            let mut command = crate::process_command::hidden_command("sh");
             command.args(["-c", "exec sleep 30"]);
             command
         };
@@ -442,7 +442,7 @@ fn real_plugin_authorization_keeps_its_owned_session_alive() {
         .into_owned();
     let ffmpeg = required("PYMSS_REAL_PLUGIN_FFMPEG");
     let root = tempfile::tempdir().unwrap();
-    let mut command = Command::new(executable);
+    let mut command = crate::process_command::hidden_command(executable);
     command
         .arg("--audio-host")
         .env("PYMSS_STUDIO_DATA_ROOT", root.path());

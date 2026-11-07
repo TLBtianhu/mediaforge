@@ -39,7 +39,7 @@ class DshIntegrationLayoutTest(unittest.TestCase):
                 'MEDIAFORGE_MODEL_DIR', 'PYMSS_MODEL_DIR', 'MEDIAFORGE_RUNTIME_ENVS_DIR'
             }}
             env.update(MEDIAFORGE_HOME=str(app), MEDIAFORGE_PYTHON=sys.executable, MEDIAFORGE_DATA_ROOT=str(root / 'isolated' / 'data'))
-            result = subprocess.run(['cmd', '/d', '/c', str(self.root / 'mediaforge-mcp.cmd')], env=env, capture_output=True, text=True, check=True, timeout=20)
+            result = subprocess.run(['cmd', '/d', '/c', str(self.root / 'mediaforge-mcp.cmd')], env=env, capture_output=True, text=True, check=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             actual = json.loads(result.stdout)
             self.assertEqual(actual['MEDIAFORGE_DATA_ROOT'], str(root / 'isolated' / 'data'))
             self.assertIsNone(actual['MEDIAFORGE_MODEL_DIR'])
@@ -61,7 +61,7 @@ class DshIntegrationLayoutTest(unittest.TestCase):
             }}
             weights = str(root / 'weights')
             env.update(MEDIAFORGE_HOME=str(app), MEDIAFORGE_PYTHON=sys.executable, PYMSS_MODEL_DIR=weights)
-            result = subprocess.run(['cmd', '/d', '/c', str(self.root / 'mediaforge-mcp.cmd')], env=env, capture_output=True, text=True, check=True, timeout=20)
+            result = subprocess.run(['cmd', '/d', '/c', str(self.root / 'mediaforge-mcp.cmd')], env=env, capture_output=True, text=True, check=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             actual = json.loads(result.stdout)
             self.assertEqual(actual['PYMSS_MODEL_DIR'], weights)
             self.assertIsNone(actual['MEDIAFORGE_MODEL_DIR'])

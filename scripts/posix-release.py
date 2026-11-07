@@ -24,7 +24,7 @@ def check_runtime_version(root: Path) -> None:
         raise ValueError("The release bootstrap Python is missing")
     result = subprocess.run([str(python), "-I", "-B", "-c",
                              "import json,sys; print(json.dumps({'python':'.'.join(map(str,sys.version_info[:2])),'selfContained':sys.prefix==sys.base_prefix}))"],
-                            capture_output=True, text=True, timeout=20, check=False)
+                            capture_output=True, text=True, timeout=20, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
         actual = json.loads(result.stdout)
     except (ValueError, TypeError):

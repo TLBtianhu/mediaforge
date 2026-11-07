@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Iterable
 
+from shared.worker_subprocess import hidden_subprocess_kwargs
+
 VIDEO_FORMATS = {"mp4", "mkv", "mov", "webm", "avi"}
 AUDIO_FORMATS = {"mp3", "wav", "flac", "m4a", "aac", "ogg"}
 IMAGE_FORMATS = {"jpg", "jpeg", "png", "webp", "gif"}
@@ -65,7 +67,7 @@ def _find_tool(name: str, root: Path | None = None) -> str:
 
 
 def _run_json(cmd: list[str]) -> dict:
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **hidden_subprocess_kwargs())
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or "").strip()[-1200:] or f"ffprobe failed ({proc.returncode})")
     return json.loads(proc.stdout or "{}")
@@ -230,6 +232,7 @@ def convert_one(
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding="utf-8", errors="replace", bufsize=1,
+        **hidden_subprocess_kwargs(),
     )
     duration = float(src_meta.get("duration") or 0.0)
     last_fraction = 0.0

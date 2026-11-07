@@ -81,7 +81,7 @@ fn peek(_child: &Child) -> io::Result<Option<String>> {
 mod tests {
     use super::*;
     use std::io::{BufRead, Read, Write};
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     #[test]
     #[ignore = "owned subprocess fixture; launched by the exit-observation tests"]
@@ -110,7 +110,7 @@ mod tests {
     }
 
     fn fixture() -> Child {
-        let mut command = Command::new(std::env::current_exe().unwrap());
+        let mut command = crate::process_command::hidden_command(std::env::current_exe().unwrap());
         command
             .args([
                 "--ignored",
@@ -122,11 +122,6 @@ mod tests {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-        }
         let mut child = command.spawn().unwrap();
         let mut output = child.stdout.take().unwrap();
         let (sender, ready) = std::sync::mpsc::channel();

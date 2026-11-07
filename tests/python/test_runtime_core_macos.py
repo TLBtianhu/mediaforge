@@ -87,7 +87,7 @@ class MacosCoreCheckTests(unittest.TestCase):
             result = subprocess.run([
                 sys.executable, "-m", "pip", "install", "--dry-run", "--ignore-installed", "--no-deps",
                 "--no-index", "--no-cache-dir", "--disable-pip-version-check", "--report", str(report), str(wheel),
-            ], capture_output=True, text=True, env=environment, timeout=60)
+            ], capture_output=True, text=True, env=environment, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["install"][0]["metadata"]["version"], "2.1.8")
 

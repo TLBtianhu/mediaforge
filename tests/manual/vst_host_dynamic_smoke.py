@@ -57,7 +57,7 @@ def main() -> int:
     shutil.copy2(args.fixture_dll.resolve(strict=True), binary)
     bundle = binary.parents[2]
     scan = subprocess.run([str(executable), "--plugin-scan", str(bundle)], check=True, capture_output=True,
-                          text=True, encoding="utf-8", timeout=20)
+                          text=True, encoding="utf-8", timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     descriptor = next(plugin for plugin in json.loads(scan.stdout)["plugins"] if plugin["name"] == "Fixture Gain")
     source = directory / "source.wav"
     with wave.open(str(source), "wb") as stream:

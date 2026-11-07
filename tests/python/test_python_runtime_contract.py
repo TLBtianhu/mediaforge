@@ -47,7 +47,7 @@ class PythonRuntimeContractTests(unittest.TestCase):
         with (source / "scripts/release-signing.ps1").open("a", encoding="utf-8") as stream:
             stream.write("\nfunction Get-ReleasePythonVersion { param($PythonPath) '3.11' }\n")
         result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-File", str(source / "scripts/prepare-python-runtime.ps1"),
-                                 "-Minimal", "-Python", sys.executable], env=self.env, capture_output=True, text=True, timeout=15)
+                                 "-Minimal", "-Python", sys.executable], env=self.env, capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Python 3.12 release contract", result.stderr)
         self.assertEqual((source / "python-runtime/keep.txt").read_text(), "existing bootstrap")
@@ -57,7 +57,7 @@ class PythonRuntimeContractTests(unittest.TestCase):
         source = self.source()
         for parameter in ("-InitialBackend", "-RewriteRuntimeEnvConfigs", "-TemplateRuntimeEnvConfigs"):
             result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-File", str(source / "scripts/prepare-python-runtime.ps1"),
-                                     "-Minimal", parameter, "cpu"], env=self.env, capture_output=True, text=True, timeout=15)
+                                     "-Minimal", parameter, "cpu"], env=self.env, capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("NamedParameterNotFound", result.stderr)
         self.assertEqual((source / "python-runtime/keep.txt").read_text(), "existing bootstrap")
@@ -70,7 +70,7 @@ class PythonRuntimeContractTests(unittest.TestCase):
         for destination in ("python-runtime", "other-assets", "release/runtime-envs"):
             result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-File", str(source / "scripts/prepare-python-runtime.ps1"),
                                      "-Minimal", "-Python", sys.executable, "-RuntimeDir", destination],
-                                    env=self.env, capture_output=True, text=True, timeout=15)
+                                    env=self.env, capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertNotEqual(result.returncode, 0)
             self.assertRegex(result.stderr, "fresh destination|exact release/bootstrap")
         self.assertEqual((source / "python-runtime/keep.txt").read_text(), "existing bootstrap")
@@ -84,7 +84,7 @@ class PythonRuntimeContractTests(unittest.TestCase):
         env = dict(self.env, PYTHON_BIN=Path(sys.executable).as_posix(), PBS_PYTHON_VERSION="3.11.9",
                    RUNTIME_DIR=(source / "python-runtime").as_posix())
         result = subprocess.run([bash, (source / "scripts/prepare-python-runtime.sh").as_posix(), "minimal"],
-                                cwd=source, env=env, capture_output=True, text=True, timeout=15)
+                                cwd=source, env=env, capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Python 3.12 release contract", result.stderr)
         self.assertEqual((source / "python-runtime/keep.txt").read_text(), "existing bootstrap")

@@ -24,6 +24,7 @@ from pip._vendor.packaging.version import Version
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 from shared import worker_paths
+from shared.worker_subprocess import HiddenVenvBuilder, hidden_subprocess_kwargs
 
 
 MANIFEST_PATH = Path(__file__).resolve().parents[1] / "runtime-manifest.json"
@@ -554,9 +555,7 @@ def _runtime_command_path(path: Path) -> Path:
 
 
 def _create_runtime_venv(env_dir: Path) -> None:
-    import venv
-
-    venv.EnvBuilder(with_pip=True, clear=True, symlinks=(os.name != "nt")).create(_normal_runtime_path(env_dir))
+    HiddenVenvBuilder(with_pip=True, clear=True, symlinks=(os.name != "nt")).create(_normal_runtime_path(env_dir))
 
 
 def _repair_runtime_venv_config(env_dir: Path) -> bool:
@@ -788,6 +787,7 @@ def _verify_runtime_audio(python_path: Path, overlay_path: Path | None = None, *
         errors="replace",
         timeout=60,
         env={**_probe_environment(overlay_path, python_path=python_path), "PYTHONDONTWRITEBYTECODE": "1"},
+        **hidden_subprocess_kwargs(),
     )
     if completed.returncode:
         lines = completed.stderr.strip().splitlines()
@@ -839,6 +839,7 @@ print(json.dumps(result, ensure_ascii=False))
         errors="replace",
         stderr=subprocess.PIPE,
         env=_probe_environment(overlay_path, python_path=python_path),
+        **hidden_subprocess_kwargs(),
     )
     result = json.loads(output)
     if (
@@ -886,6 +887,7 @@ print(json.dumps(result, ensure_ascii=False))
             encoding="utf-8",
             errors="replace",
             env=_probe_environment(overlay_path, python_path=python_path),
+            **hidden_subprocess_kwargs(),
         )
         data = json.loads(output.strip() or "{}")
         return {name: (str(data.get(name)) if data.get(name) else None) for name in package_names}
@@ -1121,6 +1123,7 @@ def _runtime_python_works(python_path: Path) -> bool:
             text=True,
             timeout=20,
             env=_probe_environment(python_path=python_path),
+            **hidden_subprocess_kwargs(),
         ).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -1169,6 +1172,7 @@ def _validate_install_python_versions(env_dir: Path, manifest: dict[str, Any]) -
                  "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
                 env=_probe_environment(python_path=python_path),
+                **hidden_subprocess_kwargs(),
             )
         except (OSError, subprocess.SubprocessError):
             reject("its interpreter version could not be verified")
@@ -1187,6 +1191,7 @@ def _runtime_pip_works(python_path: Path) -> bool:
             errors="replace",
             timeout=30,
             env=_probe_environment(python_path=python_path),
+            **hidden_subprocess_kwargs(),
         ).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -1663,6 +1668,7 @@ def _ensure_runtime_pip(
         errors="replace",
         timeout=120,
         env=_probe_environment(python_path=python_path),
+        **hidden_subprocess_kwargs(inherit_console=True),
     )
     for line in result.stdout.splitlines():
         message = line.rstrip()
@@ -2142,7 +2148,7 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
         command.extend(args)
         append_log(stage, "pip install " + " ".join(args))
         _emit("runtime_install_stage", {"stage": stage, "command": "pip install " + " ".join(args)}, task_id)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=_probe_environment())
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=_probe_environment(), **hidden_subprocess_kwargs())
         assert process.stdout is not None
         try:
             for line in process.stdout:
@@ -2555,6 +2561,7 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
                 encoding="utf-8",
                 errors="replace",
                 env=_probe_environment(python_path=python_path),
+                **hidden_subprocess_kwargs(),
             )
             assert process.stdout is not None
             try:

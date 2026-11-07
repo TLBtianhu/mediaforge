@@ -96,7 +96,7 @@ print('dependency-light workflow contract: ok')
 """
         result = subprocess.run([sys.executable, "-B", "-S", "-c", script,
                                  str(Path(__file__).resolve().parents[2] / "python")],
-                                capture_output=True, text=True, timeout=15, check=False)
+                                capture_output=True, text=True, timeout=15, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("dependency-light workflow contract: ok", result.stdout)
 

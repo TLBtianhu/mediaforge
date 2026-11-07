@@ -1311,7 +1311,6 @@ mod tests {
     use crate::commands::app::trash::{is_effectively_empty_dir, normalize_trash_empty_dirs};
     use crate::commands::app::editor::recording::{pcm_wav_header, validate_recording_id};
     use crate::python::worker::cleanup_editor_export_temp_files;
-    use std::process::Command;
     use crate::commands::app::scan::reveal_target_path;
     use crate::commands::app::editor::preview::decode_editor_preview_chunk;
     use crate::commands::app::editor::{editor_project_id_for_task_id, editor_project_ids_for_task_ids, orphaned_editor_projects, remove_editor_project_dirs, safe_file_name, validate_editor_project_id};
@@ -1592,7 +1591,7 @@ mod tests {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            let status = std::process::Command::new("cmd.exe")
+            let status = crate::process_command::hidden_command("cmd.exe")
                 .raw_arg(format!("/c mklink /J \"{}\" \"{}\"", link.display(), root.display()))
                 .output().expect("create directory junction");
             assert!(status.status.success());
@@ -1646,14 +1645,14 @@ mod tests {
     #[test]
     fn consecutive_chunks_match_a_full_decode_without_missing_or_repeating_samples() {
         let ffmpeg = Path::new("ffmpeg");
-        if Command::new(ffmpeg).arg("-version").output().is_err() {
+        if crate::process_command::hidden_command(ffmpeg).arg("-version").output().is_err() {
             eprintln!("FFmpeg not on PATH; skipping native codec check");
             return;
         }
         for source_rate in [44_100, 48_000, 96_000] {
             let path = preview_wave_fixture(source_rate);
             for rate in [44_100, 48_000] {
-                let full = Command::new(ffmpeg).args(["-v", "error", "-i"]).arg(&path)
+                let full = crate::process_command::hidden_command(ffmpeg).args(["-v", "error", "-i"]).arg(&path)
                     .arg("-ar").arg(rate.to_string())
                     .args(["-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"]).output().unwrap();
                 let pieces: Vec<_> = (0..3).map(|index| decode_editor_preview_chunk(ffmpeg, &path, index, rate, 2).unwrap()).collect();
@@ -1669,14 +1668,14 @@ mod tests {
     #[test]
     fn compressed_preview_chunks_keep_gapless_timing_and_sample_alignment() {
         let ffmpeg = Path::new("ffmpeg");
-        if Command::new(ffmpeg).arg("-version").output().is_err() {
+        if crate::process_command::hidden_command(ffmpeg).arg("-version").output().is_err() {
             eprintln!("FFmpeg not on PATH; skipping compressed codec check");
             return;
         }
         let wave = preview_wave_fixture(44_100);
         for (codec, extension) in [("libmp3lame", "mp3"), ("aac", "m4a"), ("aac", "aac"), ("libopus", "opus")] {
             let encoded = wave.with_extension(extension);
-            let mut encoder = Command::new(ffmpeg);
+            let mut encoder = crate::process_command::hidden_command(ffmpeg);
             encoder.args(["-v", "error", "-y", "-i"]).arg(&wave).arg("-c:a").arg(codec);
             // Make the AAC fixture deterministic, without random perceptual noise.
             if codec == "aac" { encoder.args(["-aac_pns", "0"]); }
@@ -1686,7 +1685,7 @@ mod tests {
                 continue;
             }
             for rate in [44_100, 48_000] {
-                let full = Command::new(ffmpeg).args(["-v", "error", "-threads", "1", "-i"]).arg(&encoded)
+                let full = crate::process_command::hidden_command(ffmpeg).args(["-v", "error", "-threads", "1", "-i"]).arg(&encoded)
                     .arg("-ar").arg(rate.to_string())
                     .args(["-ac", "2", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"])
                     .output().unwrap();

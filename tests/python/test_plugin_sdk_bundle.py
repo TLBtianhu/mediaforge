@@ -25,10 +25,10 @@ class PluginSdkBundleTests(unittest.TestCase):
                   "sys.argv=sys.argv[1:]; " \
                   "m['main'].__globals__['check_runtime_version']=mock.Mock(); m['main']()"
             result = subprocess.run([sys.executable, "-B", "-c", cli, str(helper), "stage", str(resources)],
-                                    capture_output=True, text=True, timeout=20)
+                                    capture_output=True, text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([sys.executable, "-B", "-c", cli, str(helper), "config", str(resources), "--platform", platform],
-                                    capture_output=True, text=True, timeout=20)
+                                    capture_output=True, text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertEqual(result.returncode, 0, result.stderr)
             return json.loads(result.stdout)["bundle"]["resources"], resources
 
@@ -75,7 +75,7 @@ class PluginSdkBundleTests(unittest.TestCase):
             result = subprocess.run([
                 powershell, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "scripts/stage-plugin-sdk.ps1"),
                 "-StagePath", str(stage),
-            ], capture_output=True, text=True, timeout=30)
+            ], capture_output=True, text=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertEqual(result.returncode, 0, result.stderr)
             for filename in ["pymss-sdk.js", "pymss-sdk.css"]:
                 source = ROOT / "src-tauri/resources/plugin-sdk" / filename

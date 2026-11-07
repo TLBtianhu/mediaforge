@@ -72,6 +72,7 @@ class PrepareRuntimeProbeTests(unittest.TestCase):
                     result = subprocess.run(
                         [bash, "-c", invocation], capture_output=True, text=True, check=True,
                         env={**os.environ, "OSTYPE": platform, "RUNTIME_HOME": "/standalone runtime", "PY": interpreter.as_posix(), "PYTHONHOME": "/inherited home"},
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
                     self.assertEqual(result.stdout.splitlines(), [expected_home, "1", "argument with spaces"])
 
@@ -170,6 +171,7 @@ finally:
         version = subprocess.run(
             [sys.executable, "-I", "-B", "-S", str(runner), str(library), "-m", "pip", "--version"],
             capture_output=True, text=True, env=environment,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         wrapper = '''
 runtime_python() {
@@ -191,6 +193,7 @@ bash() {
         result = subprocess.run(
             [bash, "-c", "set -euo pipefail\n" + wrapper + "\nEXPECTED_PYTHON=3.12\n" + version_helper.group(0) + "\n" + helper.group(0) + invocation],
             capture_output=True, text=True, env=environment,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         observations = [json.loads(line) for line in calls.read_text(encoding="utf-8").splitlines()]
         return version, result, observations, library

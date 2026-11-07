@@ -67,6 +67,7 @@ def main() -> int:
         scanned = subprocess.run(
             [str(executable), "--plugin-scan", str(bundle)], env=environment,
             capture_output=True, encoding="utf-8", errors="replace", timeout=15, check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         descriptor = next(p for p in json.loads(scanned.stdout)["plugins"] if not p["isInstrument"])
         slot = dict(id="effect", format="vst3", pluginId=descriptor["id"], name=descriptor["name"],

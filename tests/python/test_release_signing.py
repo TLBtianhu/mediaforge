@@ -54,7 +54,7 @@ try { . $Fixture } catch { [Console]::Error.WriteLine($_.Exception.Message); exi
         fixture.write_text(body, encoding="utf-8-sig")
         result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                                  "-File", str(self.runner), "-FixtureRoot", str(self.root), "-Fixture", str(fixture),
-                                 "-Repository", str(ROOT)], capture_output=True, text=True, env=self.env, timeout=25)
+                                 "-Repository", str(ROOT)], capture_output=True, text=True, env=self.env, timeout=25, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         # Never include raw process diagnostics in assertion failure output.
         self.assertEqual(result.returncode == 0, ok, f"fixture exit code {result.returncode}")
         return result

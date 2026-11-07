@@ -49,6 +49,7 @@ class RuntimeAudioProbeTests(unittest.TestCase):
             text=True,
             timeout=60,
             check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(json.loads(completed.stdout), {"sampleRate": 8000, "channels": 2, "frames": 160})
 
@@ -73,6 +74,7 @@ verify_audio_runtime()
             text=True,
             timeout=60,
             env={**os.environ, "PYTHONPATH": str(python_dir), "PYTHONNOUSERSITE": "1"},
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertIn("top-level import succeeded", result.stdout)
         self.assertNotEqual(result.returncode, 0)

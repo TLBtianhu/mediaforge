@@ -55,7 +55,7 @@ $outputFile = Join-Path $env:TEMP ("mediaforge-verify-" + [guid]::NewGuid().ToSt
 try {
     $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', $launcher) `
         -RedirectStandardInput $requestFile -RedirectStandardOutput $outputFile `
-        -RedirectStandardError ($outputFile + '.err') -NoNewWindow -PassThru -Wait
+        -RedirectStandardError ($outputFile + '.err') -WindowStyle Hidden -PassThru -Wait
     $output = @(Get-Content -LiteralPath $outputFile -ErrorAction SilentlyContinue)
     $errors = @(Get-Content -LiteralPath ($outputFile + '.err') -ErrorAction SilentlyContinue)
 } finally {

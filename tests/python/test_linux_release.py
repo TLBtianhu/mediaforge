@@ -81,6 +81,7 @@ class LinuxReleaseTests(unittest.TestCase):
                     [bash, (miniature / "AppRun").as_posix(), "startup-token"],
                     env={**os.environ, "APPDIR": miniature.as_posix()},
                     capture_output=True, text=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, "gtk:gstreamer:startup-token\n")

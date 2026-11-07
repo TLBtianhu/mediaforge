@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from shared.worker_protocol import emit
+from shared.worker_subprocess import hidden_subprocess_kwargs
 from .common import _available_path, _ffmpeg_path, _render_output, _require_directory, _require_file, _run_ffmpeg
 from .slicer_core import Slicer
 
@@ -21,6 +22,7 @@ def _decode_analysis_audio(input_path: Path, raw_path: Path) -> None:
              "-f", "f32le", "-acodec", "pcm_f32le", "-"],
             stdout=output,
             stderr=subprocess.PIPE,
+            **hidden_subprocess_kwargs(),
         )
     if completed.returncode:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()

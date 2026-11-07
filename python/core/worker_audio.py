@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from shared.worker_protocol import emit, emit_error
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 
 class _EditorExportCancelled(Exception):
@@ -304,7 +305,7 @@ def _read_editor_audio(path: Path, target_rate: int | None = None) -> tuple[Any,
         ffmpeg, "-nostdin", "-v", "error", "-threads", "1", "-i", str(path),
         "-map", "0:a:0", "-vn", "-ar", str(rate), "-ac", "2",
         "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1",
-    ], capture_output=True, check=False, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    ], capture_output=True, check=False, **hidden_subprocess_kwargs())
     if result.returncode:
         detail = result.stderr.decode("utf-8", errors="replace").strip()[-2000:]
         raise RuntimeError(f"Unable to decode multichannel audio: {detail or result.returncode}")

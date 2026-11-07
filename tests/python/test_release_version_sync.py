@@ -24,7 +24,7 @@ class ReleaseVersionSyncTests(unittest.TestCase):
 
     def run_sync(self, root, version):
         env = {key: value for key, value in os.environ.items() if not key.startswith("TAURI_SIGNING_")}
-        return subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(root / "scripts/sync-build-version.ps1"), "-Version", version], cwd=root, env=env, capture_output=True, text=True)
+        return subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(root / "scripts/sync-build-version.ps1"), "-Version", version], cwd=root, env=env, capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
     def test_all_four_files_change_without_updating_dependencies(self):
         with tempfile.TemporaryDirectory() as temp:

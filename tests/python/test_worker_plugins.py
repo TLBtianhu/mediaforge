@@ -273,7 +273,7 @@ def setup(plugin):
         environment = dict(os.environ, PYTHONPATH=str(Path(plugins.__file__).resolve().parents[1]))
         child = subprocess.Popen([sys.executable, "-u", "-c", script, str(self.root / ".lock")],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                 text=True, env=environment)
+                                 text=True, env=environment, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         try:
             self.assertEqual(child.stdout.readline().strip(), "locked")
             started = time.monotonic()

@@ -23,6 +23,7 @@ from typing import Any
 
 from shared.worker_protocol import emit, emit_error
 from shared import worker_paths
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 
 OPTIONAL_PACKAGES: dict[str, dict[str, str]] = {
@@ -191,6 +192,7 @@ def _environment_version(name: str, runtime: RuntimeContext | None = None) -> st
             encoding="utf-8",
             errors="replace",
             env=environment,
+            **hidden_subprocess_kwargs(),
         )
     except Exception:
         return None
@@ -262,6 +264,7 @@ def _run_process(
         encoding="utf-8",
         errors="replace",
         env=environment,
+        **hidden_subprocess_kwargs(),
     )
     assert process.stdout is not None
     recent: list[str] = []

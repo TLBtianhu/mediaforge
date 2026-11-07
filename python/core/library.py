@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Iterable
 
 from media_ops import ffmpeg
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 SUPPORTED_SUFFIXES = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".ts", ".mts", ".wmv", ".flv",
@@ -124,7 +125,7 @@ def _thumbnail(path: Path, meta: dict, kind: str) -> str:
         "-frames:v", "1", "-q:v", "3", str(target),
     ]
     try:
-        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60, **hidden_subprocess_kwargs())
     except Exception:  # noqa: BLE001
         return ""
     return str(target) if target.is_file() else ""

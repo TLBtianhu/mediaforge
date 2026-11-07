@@ -10,13 +10,8 @@
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -539,11 +534,6 @@ fn validate_native_tree(directory: &Path, abi: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn hide_console_window(command: &mut Command) {
-    #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
-}
-
 /// 装完立刻验证解释器能加载 C++ 运行库：失败时给出可操作的错误，
 /// 而不是等用户点任务才看到 "DLL load failed"。
 fn validate_probe(
@@ -582,7 +572,7 @@ fn verify_interpreter(root: &Path, descriptor: &RuntimeDescriptor) -> Result<(),
         .prefix("mediaforge-runtime-probe-")
         .tempdir()
         .map_err(|error| error.to_string())?;
-    let mut command = Command::new(root.join("Scripts/python.exe"));
+    let mut command = crate::process_command::hidden_command(root.join("Scripts/python.exe"));
     command.args([
         "-I", "-B", "-c",
         "import sys,json,ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); import torch,pymss,pymss_core,pymss.graph; backend='rocm' if getattr(torch.version,'hip',None) else 'cuda' if getattr(torch.version,'cuda',None) else 'cpu'; print(json.dumps({'python':'.'.join(map(str,sys.version_info[:2])),'prefix':sys.prefix,'basePrefix':sys.base_prefix,'imports':True,'torchBackend':backend}))",
@@ -626,7 +616,6 @@ fn verify_interpreter(root: &Path, descriptor: &RuntimeDescriptor) -> Result<(),
         .env("HF_HUB_OFFLINE", "1")
         .env("TRANSFORMERS_OFFLINE", "1")
         .env("MODELSCOPE_OFFLINE", "1");
-    hide_console_window(&mut command);
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command
         .spawn()
@@ -704,7 +693,7 @@ fn download(
 ) -> Result<(), String> {
     let aria2 = aria2_path(app).map_err(|error| error.to_string())?;
     emit(app, descriptor, "downloading", 0, "下载运行时");
-    let mut command = Command::new(&aria2);
+    let mut command = crate::process_command::hidden_command(&aria2);
     command
         .args([
             "-x4",
@@ -728,7 +717,6 @@ fn download(
         .args(&descriptor.urls)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    hide_console_window(&mut command);
     let mut child = command
         .spawn()
         .map_err(|error| format!("无法启动 aria2c：{error}"))?;

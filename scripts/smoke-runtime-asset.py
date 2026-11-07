@@ -78,7 +78,7 @@ def main() -> None:
     def invoke(mode: str, value: dict, success: bool) -> None:
         current = {**env, "MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR": json.dumps(value)}
         result = subprocess.run([str(app), mode], cwd=work, env=current, capture_output=True,
-                                text=True, encoding="utf-8", errors="replace", timeout=900)
+                                text=True, encoding="utf-8", errors="replace", timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         report["checks"].append({"mode": mode, "python": value["python"], "exitCode": result.returncode,
                                   "stdout": result.stdout[-2000:], "stderr": result.stderr[-2000:]})
         if (result.returncode == 0) != success:
@@ -114,7 +114,7 @@ assert sys.prefix==sys.base_prefix and Path(sys.prefix).resolve()==Path(sys.argv
 print(json.dumps({'python':sys.version.split()[0],'torch':torch.__version__,'cuda':torch.version.cuda,'selfContained':True}))
 """
         probe = subprocess.run([str(runtime / "Scripts/python.exe"), "-I", "-B", "-c", code, str(runtime)],
-                               env=env, cwd=work, capture_output=True, text=True, check=True, timeout=120)
+                               env=env, cwd=work, capture_output=True, text=True, check=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         report["installedRuntime"] = json.loads(probe.stdout)
         report["interpreterUnchanged"] = True
         report["status"] = "passed"

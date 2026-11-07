@@ -161,7 +161,7 @@ with sync_playwright() as playwright:
     payload_file = artifacts / 'request.json'
     payload_file.write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
     env = {**os.environ, 'PYTHONPATH': str(args.runtime.resolve()) if args.runtime else os.environ.get('PYTHONPATH', ''), 'PYTHONIOENCODING': 'utf-8'}
-    result = subprocess.run([sys.executable, str(root / 'python/worker.py'), 'infer_workflow', '--payload', str(payload_file)], capture_output=True, text=True, encoding='utf-8', env=env, timeout=60)
+    result = subprocess.run([sys.executable, str(root / 'python/worker.py'), 'infer_workflow', '--payload', str(payload_file)], capture_output=True, text=True, encoding='utf-8', env=env, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     (artifacts / 'worker-stdout.log').write_text(result.stdout, encoding='utf-8')
     (artifacts / 'worker-stderr.log').write_text(result.stderr, encoding='utf-8')
     assert result.returncode == 0, result.stdout + result.stderr
@@ -264,7 +264,7 @@ with sync_playwright() as playwright:
     expect(main_toolbar.get_by_role('button',name='撤销',exact=True)).to_be_enabled()
     canvas_state = main_canvas.evaluate('element=>({scale:element.data.ds.scale,offset:[...element.data.ds.offset],selected:Object.keys(element.data.selected_nodes)})')
     payload_file.write_text(json.dumps(advanced, ensure_ascii=False), encoding='utf-8')
-    result = subprocess.run([sys.executable, str(root / 'python/worker.py'), 'infer_workflow', '--payload', str(payload_file)], capture_output=True, text=True, encoding='utf-8', env=env, timeout=60)
+    result = subprocess.run([sys.executable, str(root / 'python/worker.py'), 'infer_workflow', '--payload', str(payload_file)], capture_output=True, text=True, encoding='utf-8', env=env, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     assert result.returncode == 0, result.stdout + result.stderr
     advanced_events = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
     for event in advanced_events:

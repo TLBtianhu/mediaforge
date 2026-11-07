@@ -38,7 +38,7 @@ fn disk_available_bytes(path: &Path) -> Option<u64> {
     {
         // `df -Pk` is POSIX-compatible and works on both GNU/Linux and macOS/BSD.
         // The `Available` column is reported in 1024-byte blocks.
-        let output = std::process::Command::new("df")
+        let output = crate::process_command::hidden_command("df")
             .arg("-Pk")
             .arg(check)
             .output()

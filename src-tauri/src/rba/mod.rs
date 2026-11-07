@@ -12,6 +12,7 @@ mod impact;
 mod keyfinder;
 mod thumbnail;
 
+use crate::process_command::hidden_command;
 use std::io::{Read, Result as IoResult};
 use std::path::Path;
 use std::process::{ChildStdout, Command, Stdio};
@@ -33,9 +34,6 @@ pub(super) fn check_cancelled(cancelled: &AtomicBool) -> Result<(), String> {
         Ok(())
     }
 }
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone)]
 pub struct Analysis {
@@ -105,17 +103,6 @@ pub fn analyze_file(
         return Err("No decodable audio in the input file".into());
     }
     analyze_samples_cancellable(&samples, SAMPLE_RATE, cancelled, include_key)
-}
-
-fn hidden_command(program: &Path) -> Command {
-    #[allow(unused_mut)]
-    let mut command = Command::new(program);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    command
 }
 
 /// Decode to mono f32 at [`SAMPLE_RATE`]. Downmixing is done here as a plain

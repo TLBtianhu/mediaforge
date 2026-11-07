@@ -65,11 +65,11 @@ class MediaSmokeIsolationTests(unittest.TestCase):
         for script in (SCRIPTS / "smoke-media-models.py", SCRIPTS / "check-media.py", ROOT / "tests/manual/advanced_workflow_real_smoke.py"):
             with self.subTest(script=script.name):
                 result = subprocess.run([str(self.python), "-B", str(script), "--help"],
-                                        env=clean_environment(), capture_output=True, text=True, timeout=15)
+                                        env=clean_environment(), capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("--data-root", result.stdout)
                 result = subprocess.run([str(self.python), "-B", str(script)],
-                                        env=clean_environment(), capture_output=True, text=True, timeout=15)
+                                        env=clean_environment(), capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertIn("--python", result.stderr)
         self.assertEqual(list(self.root.iterdir()), [self.models])

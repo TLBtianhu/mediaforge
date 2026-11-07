@@ -136,6 +136,14 @@ Remove-Item "$env:TEMP\MediaForge-clean-*" -Recurse -Force
 
 ## UI 测试与截图
 
+Windows后台测试必须为每层非交互子进程设置不创建控制台窗口；捕获stdout/stderr并不能阻止弹窗。
+Python用`CREATE_NO_WINDOW`，Node用`windowsHide: true`，Rust通过共享隐藏命令helper，
+PowerShell后台`Start-Process`加`-WindowStyle Hidden`。子进程的子进程也要单独覆盖。
+venv通过`shared.worker_subprocess.HiddenVenvBuilder`创建，专门让ensurepip及孙进程继承隐藏控制台；
+其余普通子进程仍不创建控制台。
+不要改用`pythonw.exe`或丢弃错误输出来隐藏问题。用户禁止桌面操作时只做文件/CLI检查，
+不启动GUI、不操作或关闭现有测试窗口；显式GUI用例不能因此被当作已验收。
+
 - 自动化 UI 测试使用一次性 Playwright 上下文；关闭即丢弃
 - 不把测试 localStorage 或测试 profile 写进真实 WebView2
 - 每次 UI 改动后保留截图用于对比，截图目录不进 Git

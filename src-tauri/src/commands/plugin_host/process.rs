@@ -213,7 +213,7 @@ pub(crate) struct HostProcess {
 
 impl HostProcess {
     pub(crate) fn spawn(args: &[&std::ffi::OsStr]) -> Result<Self, String> {
-        let mut command = Command::new(std::env::current_exe().map_err(|error| error.to_string())?);
+        let mut command = crate::process_command::hidden_command(std::env::current_exe().map_err(|error| error.to_string())?);
         command.args(args);
         Self::spawn_command(command)
     }
@@ -223,11 +223,7 @@ impl HostProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-        }
+        crate::process_command::hide_console_window(&mut command);
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;

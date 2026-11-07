@@ -21,7 +21,7 @@ SCRIPTS = ROOT / "scripts"
 
 def run(script: str, label: str, python: Path, env: dict[str, str], arguments: list[str]) -> bool:
     print(f"\n=== {label} ===")
-    completed = subprocess.run([str(python), "-B", str(SCRIPTS / script), *arguments], cwd=str(ROOT), env=env)
+    completed = subprocess.run([str(python), "-B", str(SCRIPTS / script), *arguments], cwd=str(ROOT), env=env, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return completed.returncode == 0
 
 

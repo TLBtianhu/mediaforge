@@ -94,7 +94,7 @@ def bundle_snapshot(app: Path) -> dict:
 
 def verify_signature(app: Path) -> None:
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)],
-                   capture_output=True, text=True, check=True, timeout=120)
+                   capture_output=True, text=True, check=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def replace_test_bundle(app: Path, source: Path, directory: Path) -> None:
@@ -175,6 +175,7 @@ def verify_runtime(app: Path, directory: Path, replacement_app: Path | None = No
         completed = subprocess.run(
             [str(python), "-B", str(worker_path), "update_runtime_core", "--payload", json.dumps(payload)],
             env=os.environ.copy(), cwd=directory, capture_output=True, text=True, timeout=120,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         result = protocol_payload(completed.stdout, event)
         completed.check_returncode()
@@ -193,6 +194,7 @@ def verify_runtime(app: Path, directory: Path, replacement_app: Path | None = No
             completed = subprocess.run(
                 [str(python), "-B", str(worker_path), command, "--payload", json.dumps(payload)],
                 env=environment, cwd=directory, capture_output=True, text=True, timeout=120, check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             result = protocol_payload(completed.stdout, event)
             if command == "env_info":
@@ -273,6 +275,7 @@ def verify_app(app: Path) -> None:
                 [str(python), "-B", str(Path(__file__).resolve()), str(installed),
                  "--verify-runtime", str(directory), "--replacement-app", str(app)],
                 env=environment, cwd=directory, capture_output=True, text=True, check=True, timeout=600,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             print(completed.stdout.strip())
             verify_signature(installed)

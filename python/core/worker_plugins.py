@@ -23,6 +23,7 @@ from typing import Any, Iterator
 
 from shared.worker_protocol import emit, emit_error, isolate_protocol_stdout
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}\Z")
 _PROBE_MARKER = "__STUDIO_PLUGIN_PROBE__"
@@ -180,6 +181,7 @@ print({_PROBE_MARKER!r} + json.dumps(reports))
     result = subprocess.run(
         [sys.executable, "-c", code, str(root), json.dumps(list(map(str, dependency_paths or [])))], capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=45, env=env,
+        **hidden_subprocess_kwargs(),
     )
     for line in reversed(result.stdout.splitlines()):
         if line.startswith(_PROBE_MARKER):
@@ -356,6 +358,7 @@ def _run_process(command: list[str], task_id: str | None, *, env: dict[str, str]
     process = subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", env=env,
+        **hidden_subprocess_kwargs(),
     )
     recent: list[str] = []
     try:

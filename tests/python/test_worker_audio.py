@@ -401,7 +401,7 @@ class EditorEffectTests(unittest.TestCase):
                 shutil.which("ffmpeg"), "-nostdin", "-v", "error", "-threads", "1",
                 "-i", str(source), "-map", "0:a:0", "-vn", "-ar", "48000", "-ac", "2",
                 "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1",
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             expected = np.frombuffer(reference.stdout, dtype="<f4").reshape(-1, 2)
             self.assertGreater(float(np.max(np.abs(expected))), .01)
             for pan in (0, -1, 1):

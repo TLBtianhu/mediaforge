@@ -51,7 +51,7 @@ def main() -> None:
                 timed_out = True
                 if os.name == 'nt':
                     subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 else:
                     try:
                         os.killpg(process.pid, signal.SIGKILL)
@@ -93,7 +93,7 @@ def main() -> None:
                 '--cfg', 'manual_behaviors', str(source), '-o', str(binary)]
             if missing:
                 command += ['--cfg', 'missing_sdk']
-            output = subprocess.run(command, env=environment, capture_output=True, timeout=60)
+            output = subprocess.run(command, env=environment, capture_output=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             assert output.returncode == 0, output.stderr.decode('utf-8', errors='replace')[-4000:]
             return package
 

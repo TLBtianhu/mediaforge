@@ -36,7 +36,7 @@ if args.dependency_overlay:
 env = {**os.environ, 'PYTHONPATH': os.pathsep.join(paths), 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'}
 probe = subprocess.run([str(args.python), '-c',
     'import json,pymss,pymss.graph as g;print(json.dumps({"source":pymss.__file__,"version":g.EXECUTION_EVENT_VERSION}))'],
-    env=env, capture_output=True, text=True, encoding='utf-8', check=True)
+    env=env, capture_output=True, text=True, encoding='utf-8', check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 runtime = json.loads(probe.stdout)
 assert Path(runtime['source']).resolve().is_relative_to(args.pymss_source.resolve()), runtime
 print('Runtime source:', runtime['source'], flush=True)
@@ -84,7 +84,7 @@ with sync_playwright() as playwright:
         payload_file = artifacts / (case + '-payload.json')
         payload_file.write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
         result = subprocess.run([str(args.python), str(root / 'python/worker.py'), 'infer_workflow', '--payload', str(payload_file)],
-                                env=env, capture_output=True, text=True, encoding='utf-8', timeout=180)
+                                env=env, capture_output=True, text=True, encoding='utf-8', timeout=180, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         (artifacts / (case + '-stdout.jsonl')).write_text(result.stdout, encoding='utf-8')
         (artifacts / (case + '-stderr.log')).write_text(result.stderr, encoding='utf-8')
         assert result.returncode == expected_exit, result.stdout[-3000:] + result.stderr[-1500:]

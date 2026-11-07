@@ -68,7 +68,7 @@ print(json.dumps({'partial': observed[0], 'result': str(result)}))
         env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[2] / 'python'),
                'PYMSS_STUDIO_AUDIO_TEMP_TOKEN': token, 'PYMSS_STUDIO_AUDIO_TEMP_STATE': str(record)}
         result = subprocess.run([sys.executable, '-c', worker, str(self.output)], env=env,
-                                capture_output=True, text=True, timeout=20)
+                                capture_output=True, text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertEqual(result.returncode, 0, result.stderr)
         observed = json.loads(result.stdout)
         self.assertTrue(observed['partial'].startswith(f'.pymss-audio-{token}-{os.getpid()}-'))
@@ -211,7 +211,7 @@ def render(temporary):
 _render_output(root / 'finished.wav', render)
 '''
         env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[2] / 'python')}
-        child = subprocess.Popen([sys.executable, '-c', worker, str(self.output)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        child = subprocess.Popen([sys.executable, '-c', worker, str(self.output)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         try:
             deadline = time.monotonic() + 10
             while not (self.output / 'ready').exists() and time.monotonic() < deadline:

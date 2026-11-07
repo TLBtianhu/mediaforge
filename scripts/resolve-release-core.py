@@ -55,7 +55,7 @@ def resolve_manifest(path: Path) -> dict[str, str]:
             "--index-url", "https://pypi.org/simple",
             "--python-version", manifest["python"],
             "--report", str(report_path), *candidates,
-        ], check=True, timeout=120)
+        ], check=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         report = json.loads(report_path.read_text(encoding="utf-8"))
 
     if report.get("version") != "1":

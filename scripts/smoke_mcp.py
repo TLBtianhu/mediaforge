@@ -39,6 +39,7 @@ def main() -> int:
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         try:
             initialized = send(

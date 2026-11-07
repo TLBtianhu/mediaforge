@@ -53,6 +53,7 @@ def call_worker(command: str, payload: dict, python: str) -> dict:
             text=True,
             encoding="utf-8",
             errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     finally:
         Path(path).unlink(missing_ok=True)

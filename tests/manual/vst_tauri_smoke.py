@@ -335,7 +335,7 @@ def main() -> int:
                                     "import json,sys,numpy as np,soundfile as sf; p=sys.argv[1]; info=sf.info(p); audio,_=sf.read(p); "
                                     "print(json.dumps({'format':info.format,'subtype':info.subtype,'sampleRate':info.samplerate,"
                                     "'channels':info.channels,'frames':info.frames,'duration':info.duration,'peak':float(np.max(np.abs(audio)))}))",
-                                    str(path)], capture_output=True, text=True, encoding="utf-8", timeout=30, check=True)
+                                    str(path)], capture_output=True, text=True, encoding="utf-8", timeout=30, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                                 return json.loads(probe.stdout)
 
                             input_peak = probe_audio(audio)["peak"]
@@ -392,7 +392,7 @@ def main() -> int:
                 except subprocess.TimeoutExpired:
                     report["forcedApplicationTermination"] = True
                     subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], timeout=15,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:

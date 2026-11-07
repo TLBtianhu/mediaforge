@@ -5,7 +5,6 @@ use crate::error::{AppError, AppResult};
 use crate::python::worker::{bundled_bin_dirs, run_worker_with_payload};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tauri::AppHandle;
 
 #[tauri::command]
@@ -29,7 +28,7 @@ pub(crate) fn decode_editor_preview_chunk(
     if !path.is_absolute() || !path.is_file() {
         return Err(AppError::Worker("Preview audio file is unavailable".into()));
     }
-    let mut command = Command::new(ffmpeg);
+    let mut command = crate::process_command::hidden_command(ffmpeg);
     let start = index * EDITOR_PREVIEW_CHUNK_SECONDS;
     let warm_start = start.saturating_sub(1);
     // Warm compressed decoders before the boundary, preserve original stream
@@ -59,11 +58,6 @@ pub(crate) fn decode_editor_preview_chunk(
         .arg("-ar").arg(sample_rate.to_string())
         .arg("-ac").arg(channels.to_string())
         .args(["-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"]);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
     let output = command.output()?;
     if !output.status.success() {
         return Err(AppError::Worker(format!(

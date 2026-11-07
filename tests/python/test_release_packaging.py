@@ -104,6 +104,7 @@ foreach ($statement in $ast.EndBlock.Statements) {
              "-PackagingScript", str(ROOT / "scripts/package-release.ps1"),
              "-FixtureScript", str(fixture), "-FixtureRoot", str(self.root)],
             capture_output=True, text=True, timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if ok:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -188,6 +189,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
              str(project / "scripts/package-release.ps1"), "-Version", version, "-SkipBuild", "-SkipSign",
              "-SkipDownloadCopy", "-OutputDir", "release/candidates/0.0.32", "-BootstrapDir", "release/bootstrap-selected"],
             cwd=project, env=env, capture_output=True, text=True, timeout=40,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         candidate = project / "release/candidates/0.0.32"
@@ -219,7 +221,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             stream.write("\nfunction Get-ReleasePythonVersion { param($PythonPath) '3.11' }\n")
         rejected = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                                    str(project / "scripts/package-release.ps1"), "-Version", version, "-SkipBuild", "-StageOnly", "-SkipSign",
-                                   "-OutputDir", "release/candidates/0.0.32", "-BootstrapDir", "release/bootstrap-selected"], cwd=project, env=env, capture_output=True, text=True, timeout=20)
+                                   "-OutputDir", "release/candidates/0.0.32", "-BootstrapDir", "release/bootstrap-selected"], cwd=project, env=env, capture_output=True, text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("Python 3.12 release contract", rejected.stderr)
         self.assertEqual((stage / "README.txt").read_bytes(), retained)
@@ -370,6 +372,7 @@ Compress-Folder -Source (Join-Path $FixtureRoot 'update') -Destination (Join-Pat
              "from shared.protocol_contract import load_protocol; "
              "print(load_protocol()['schemaVersion'])", str(self.root / "update/python")],
             cwd=self.root, env=env, capture_output=True, text=True, timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(int(result.stdout.strip()), json.loads(files["manifest/protocol.json"])["schemaVersion"])

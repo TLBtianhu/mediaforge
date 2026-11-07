@@ -10,7 +10,7 @@ fn main() {
         return;
     }
     for mode in ["strict-timing", "strict-timing,no-controller", "strict-timing,getter-notification", "strict-timing,deferred-latency", "strict-timing,deferred-latency,reject-reactivate", "strict-timing,deferred-latency,reject-stop"] {
-        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        let mut child = test_process::command(std::env::current_exe().unwrap())
             .args(["--child", mode]).env("PYMSS_VST_FIXTURE_BEHAVIOR", mode).spawn().unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         loop {
@@ -89,3 +89,6 @@ fn check(mode: &str) {
 fn mode_is_deferred() -> bool {
     std::env::var("PYMSS_VST_FIXTURE_BEHAVIOR").unwrap_or_default().contains("deferred-latency")
 }
+
+#[path = "../../../test_process.rs"]
+mod test_process;

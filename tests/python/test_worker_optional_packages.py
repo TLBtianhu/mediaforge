@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import venv
 import zipfile
 from pathlib import Path
 from unittest import mock
@@ -22,6 +21,7 @@ else:
     import _bootstrap as _worker_test_bootstrap
 
 from core import worker_optional_packages as optional_packages
+from shared.worker_subprocess import HiddenVenvBuilder
 
 
 class OptionalRuntimePackageTests(unittest.TestCase):
@@ -443,7 +443,7 @@ class OfflineOptionalPackageTests(unittest.TestCase):
     def check_offline_component(self, *, incompatible_torch: bool) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         base = root / "Installed.app/Contents/Resources/python-runtime"
-        venv.EnvBuilder(with_pip=True).create(base)
+        HiddenVenvBuilder(with_pip=True).create(base)
         python = base / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         wheels = root / "wheels"
         wheels.mkdir()
@@ -490,7 +490,7 @@ class OfflineOptionalPackageTests(unittest.TestCase):
         })
         subprocess.run([
             str(python), "-m", "pip", "install", "torch==2.7.1", "mlx==0.31.0",
-        ], env=environment, capture_output=True, text=True, timeout=60, check=True)
+        ], env=environment, capture_output=True, text=True, timeout=60, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
         def snapshot():
             return {
@@ -534,7 +534,7 @@ class OfflineOptionalPackageTests(unittest.TestCase):
                     "import funasr, component_helper, torchaudio, torch, mlx; "
                     "print(json.dumps({m.__name__: m.__file__ for m in (funasr, component_helper, torchaudio, torch, mlx)}))",
                     str(_worker_test_bootstrap.WORKER_DIR),
-                ], env=environment, capture_output=True, text=True, timeout=30, check=True)
+                ], env=environment, capture_output=True, text=True, timeout=30, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 paths = json.loads(loaded.stdout)
                 for name in ("funasr", "component_helper", "torchaudio"):
                     self.assertTrue(Path(paths[name]).resolve().is_relative_to(target.resolve()))

@@ -458,6 +458,7 @@ def main() -> int:
                         stderr=subprocess.DEVNULL,
                         timeout=15,
                         check=False,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
             try:
                 process.wait(timeout=10)

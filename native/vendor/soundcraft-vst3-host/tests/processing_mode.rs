@@ -11,7 +11,7 @@ fn main() {
         return;
     }
     for mode in ["", "mode-quality", "reject-offline", "reject-rollback", "only-ara", "only-offline", "only-rt", "only-rt,reject-reactivate", "no-offline"] {
-        let result = std::process::Command::new(std::env::current_exe().unwrap())
+        let result = test_process::command(std::env::current_exe().unwrap())
             .arg("--child")
             .arg(mode)
             .env("PYMSS_VST_FIXTURE_BEHAVIOR", mode)
@@ -141,3 +141,6 @@ fn check_realtime_only(descriptor: &soundcraft_vst3_host::Vst3Descriptor) {
     assert!(next.iter().flatten().all(|value| (*value - 0.3125).abs() < 1e-6));
     plugin.set_offline(false).unwrap();
 }
+
+#[path = "../../../test_process.rs"]
+mod test_process;

@@ -19,7 +19,7 @@ def run(python: Path, args: list[str], data: Path, models: Path | None = None) -
         if re.search(r"KEY|PASSWORD|TOKEN|SECRET", key, re.I) or key.startswith(("TAURI_", "VERSIONS_SIGNING_", "SIGNPATH_")):
             env.pop(key, None)
     process = subprocess.run([str(python), "-B", *args], cwd=data, env=env, capture_output=True,
-                             text=True, encoding="utf-8", errors="replace", timeout=180)
+                             text=True, encoding="utf-8", errors="replace", timeout=180, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     events = [json.loads(line) for line in process.stdout.splitlines() if line.startswith("{")]
     if process.returncode or any(event.get("type") == "error" for event in events):
         failures = [event for event in events if event.get("type") in {"error", "task.result"}]

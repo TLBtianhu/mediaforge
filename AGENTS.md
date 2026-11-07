@@ -22,6 +22,14 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - Python版本唯一目标来自`python/runtime-manifest.json`，当前为3.12；开发、bootstrap及独立资产均须实测一致。
 - 自包含运行时必须自带匹配解释器、DLL、stdlib和扩展。安装只验证/发布，不覆盖解释器修旧venv。
 
+## 强制规则：Windows后台测试不弹命令行窗口
+
+- 非交互测试、worker、FFmpeg、环境探针、下载与打包子进程必须隐藏控制台，不能仅靠重定向输出。
+- Python使用`CREATE_NO_WINDOW`，Node使用`windowsHide: true`，Rust复用隐藏命令helper；PowerShell后台`Start-Process`使用`-WindowStyle Hidden`。
+- 创建venv使用`HiddenVenvBuilder`：让ensurepip及孙进程继承隐藏控制台，不能只隐藏第一层进程。
+- 保留stdout/stderr日志、退出码、超时和取消能力，不用`pythonw.exe`丢弃诊断，也不全局monkeypatch subprocess。
+- 用户明确禁止ComputerUse/桌面操控；不为验收弹窗而启动GUI、操作现有窗口或强杀旧测试实例。
+
 ## Architecture
 
 Tauri desktop app for audio source separation. Three layers:

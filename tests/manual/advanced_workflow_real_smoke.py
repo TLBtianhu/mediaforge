@@ -117,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         process = subprocess.run(
             [str(python), "-B", str(project_root / "python/worker.py"), "infer_workflow", "--payload", str(path)],
             cwd=project_root, env=env, capture_output=True, text=True, encoding="utf-8", timeout=900,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     events = [json.loads(line) for line in process.stdout.splitlines() if line.startswith("{")]
     terminal = next((event for event in reversed(events) if event.get("type") in {"task.result", "error"}), {})

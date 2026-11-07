@@ -225,7 +225,7 @@ def main() -> int:
             shutil.copy2(args.fixture_dll.resolve(strict=True), binary)
             bundle = binary.parents[2]
             scanned = subprocess.run([str(executable), "--plugin-scan", str(bundle)], capture_output=True,
-                                     text=True, encoding="utf-8", errors="replace", timeout=min(10, budget()), check=True)
+                                     text=True, encoding="utf-8", errors="replace", timeout=min(10, budget()), check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             gain = next(plugin for plugin in json.loads(scanned.stdout)["plugins"] if plugin["name"] == "Fixture Gain")
             slot = {"id": "delayed-track", "format": "vst3", "pluginId": gain["id"],
                     "name": gain["name"], "path": str(bundle), "bypassed": False}

@@ -94,11 +94,11 @@ jobs:
           with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
               data = pathlib.Path(temporary)
               env = isolated_environment(data, bootstrap)
-              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
               probe = data / 'probe-venv'
-              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
-              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
-              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
           '@
           $verify | python -B - $stage
           if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }
@@ -260,11 +260,11 @@ jobs:
           with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
               data = pathlib.Path(temporary)
               env = isolated_environment(data, bootstrap)
-              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
               probe = data / 'probe-venv'
-              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
-              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
-              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
           '@
           $verify | python -B - $stage
           if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }
@@ -408,11 +408,11 @@ jobs:
           with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
               data = pathlib.Path(temporary)
               env = isolated_environment(data, bootstrap)
-              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
               probe = data / 'probe-venv'
-              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
-              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
-              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
           '@
           $verify | python -B - $stage
           if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }
@@ -563,11 +563,11 @@ jobs:
           with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
               data = pathlib.Path(temporary)
               env = isolated_environment(data, bootstrap)
-              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
               probe = data / 'probe-venv'
-              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
-              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
-              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
           '@
           $verify | python -B - $stage
           if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }

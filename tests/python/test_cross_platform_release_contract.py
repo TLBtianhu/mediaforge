@@ -67,7 +67,7 @@ class PosixResourceFixtureTests(unittest.TestCase):
                 command[1] = "import sys; sys.path.insert(0, sys.argv[1]); " + command[1]
                 command.append(str(resources / "python"))
             result = subprocess.run([sys.executable, "-B", "-S", *command], cwd=self.root,
-                                    env=environment, capture_output=True, text=True, timeout=20)
+                                    env=environment, capture_output=True, text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             if command[0] != "-c":
                 event = json.loads(result.stdout.strip().splitlines()[-1])
@@ -227,7 +227,7 @@ class CrossPlatformWorkflowTests(unittest.TestCase):
                 scripts += [step["run"] for step in job["steps"] if "run" in step]
         for script in scripts:
             script = re.sub(r"\$\{\{.*?\}\}", "fixture", script)
-            result = subprocess.run([bash, "-n"], input=script, capture_output=True, text=True, timeout=10)
+            result = subprocess.run([bash, "-n"], input=script, capture_output=True, text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertEqual(result.returncode, 0, result.stderr)
 
 

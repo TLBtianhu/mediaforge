@@ -54,5 +54,6 @@ class LinuxRuntimeTests(unittest.TestCase):
             env={"PATH": "/usr/bin:/bin", "PYTHON_BIN": sys.executable,
                  "MANIFEST_PATH": str(worker.MANIFEST_PATH), "MANIFEST_BACKEND": "rocm"},
             capture_output=True, text=True, check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(result.stdout.strip(), worker._manifest()["backends"]["rocm"]["torch"]["indexUrl"])

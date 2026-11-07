@@ -9,7 +9,6 @@
 use pymss_aax_probe::probe;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 // Local ABI fixtures only. These have no AAX processor or host acceptance claim.
 const FIXTURE: &str = include_str!("fixture/module.rs");
@@ -18,7 +17,7 @@ fn build(root: &Path, name: &str, configuration: Option<&str>) -> PathBuf {
     let source = root.join(format!("{name}.rs"));
     let binary = root.join(format!("{name}.aaxplugin"));
     fs::write(&source, FIXTURE).unwrap();
-    let mut command = Command::new("rustc");
+    let mut command = test_process::command("rustc");
     command.args([
         "--edition=2021",
         "--crate-type=cdylib",
@@ -87,3 +86,6 @@ fn non_loadable_binaries_report_the_loader_error() {
             .contains("Cannot load AAX module")
     );
 }
+
+#[path = "../../test_process.rs"]
+mod test_process;

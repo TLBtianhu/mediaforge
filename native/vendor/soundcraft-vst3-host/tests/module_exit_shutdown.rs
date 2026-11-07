@@ -25,7 +25,7 @@ fn child(exit_handler_only: bool) {
 }
 
 fn run(case: &str) -> Output {
-    Command::new(std::env::current_exe().expect("test binary")).arg(case).env("VST3_FIXTURE_LATE_STATE", "1").output().expect("run the child")
+    test_process::command(std::env::current_exe().expect("test binary")).arg(case).env("VST3_FIXTURE_LATE_STATE", "1").output().expect("run the child")
 }
 
 fn main() {
@@ -48,3 +48,6 @@ fn main() {
     }
     println!("module_exit_shutdown: ok");
 }
+
+#[path = "../../../test_process.rs"]
+mod test_process;

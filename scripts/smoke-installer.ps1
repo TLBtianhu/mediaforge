@@ -31,7 +31,7 @@ Write-Host "  installer: $installer"
 Write-Host "  data root: $DataRoot"
 
 # 1. 静默安装
-$install = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+$install = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru -WindowStyle Hidden
 Check '安装进程退出码为 0' ($install.ExitCode -eq 0) "exit=$($install.ExitCode)"
 Check '程序目录存在' (Test-Path (Join-Path $InstallDir 'MediaForge.exe'))
 Check '契约清单随包' (Test-Path (Join-Path $InstallDir 'manifest\runtime.json'))
@@ -56,7 +56,7 @@ try {
 Check 'worker health 在干净数据根上通过' $healthOk
 
 # 3. 启动应用（后台），确认进程活着并创建数据目录
-$app = Start-Process -FilePath (Join-Path $InstallDir 'MediaForge.exe') -PassThru
+$app = Start-Process -FilePath (Join-Path $InstallDir 'MediaForge.exe') -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds $LaunchSeconds
 Check '应用启动后保持运行' (-not $app.HasExited)
 Check '应用创建了数据根' (Test-Path (Join-Path $DataRoot 'settings'))
@@ -66,7 +66,7 @@ Start-Sleep -Seconds 2
 # 4. 卸载：程序目录消失，数据根保留
 $uninstaller = Join-Path $InstallDir 'unins000.exe'
 if (Test-Path $uninstaller) {
-    $un = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+    $un = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru -WindowStyle Hidden
     Check '卸载进程退出码为 0' ($un.ExitCode -eq 0) "exit=$($un.ExitCode)"
     Start-Sleep -Seconds 2
     Check '卸载后程序目录消失' (-not (Test-Path (Join-Path $InstallDir 'MediaForge.exe')))

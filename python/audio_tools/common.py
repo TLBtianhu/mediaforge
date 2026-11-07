@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.worker_audio import _publish_export_path
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 SUPPORTED_AUDIO_SUFFIXES = {
     ".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus",
@@ -128,6 +129,7 @@ def _run_ffmpeg(arguments: list[str]) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        **hidden_subprocess_kwargs(),
     )
 
 
@@ -146,6 +148,7 @@ def run_process(arguments: list[str]) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
+        **hidden_subprocess_kwargs(),
     )
 
 

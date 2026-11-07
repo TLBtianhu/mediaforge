@@ -133,7 +133,7 @@ def sign(path: Path, cli: Path | None = None) -> Path:
     signature = path.with_name(path.name + ".sig")
     signature.unlink(missing_ok=True)
     try:
-        result = subprocess.run(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+        result = subprocess.run(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.SubprocessError) as error:
         signature.unlink(missing_ok=True)
         raise SystemExit("版本清单签名进程未成功完成") from error

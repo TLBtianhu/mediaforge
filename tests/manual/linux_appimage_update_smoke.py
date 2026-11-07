@@ -55,10 +55,10 @@ int main(void) {
     if (rename(pending, path) != 0) return 86;
     for (;;) pause();
 }
-''', text=True)
+''', text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         filesystem = root / "probe.squashfs"
-        subprocess.run(["mksquashfs", str(miniature), str(filesystem), "-noappend", "-quiet", "-no-progress"], check=True)
-        offset = int(subprocess.check_output([str(image), "--appimage-offset"], text=True).strip())
+        subprocess.run(["mksquashfs", str(miniature), str(filesystem), "-noappend", "-quiet", "-no-progress"], check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        offset = int(subprocess.check_output([str(image), "--appimage-offset"], text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).strip())
         packaged = root / "probe.AppImage"
         with image.open("rb") as original, packaged.open("wb") as output, filesystem.open("rb") as contents:
             output.write(original.read(offset))
@@ -84,7 +84,7 @@ int main(void) {
             arguments = [str(packaged)] + (["--appimage-extract-and-run"] if mode == "cli" else [])
             with (root / f"{mode}.log").open("w+") as log:
                 process = subprocess.Popen(arguments, env=environment, pass_fds=(lock.fileno(),),
-                                           start_new_session=True, stdout=log, stderr=log)
+                                           start_new_session=True, stdout=log, stderr=log, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 try:
                     deadline = time.monotonic() + 20
                     while not ack.exists():

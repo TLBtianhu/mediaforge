@@ -979,9 +979,9 @@ mod tests {
 
     #[test]
     fn owner_lease_excludes_a_real_second_process_until_the_owner_is_killed() {
-        use std::process::{Command, Stdio};
+        use std::process::Stdio;
         let root = tempfile::tempdir().unwrap();
-        let mut command = Command::new(std::env::current_exe().unwrap());
+        let mut command = crate::process_command::hidden_command(std::env::current_exe().unwrap());
         command
             .args([
                 "--exact",
@@ -991,11 +991,6 @@ mod tests {
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-        }
         let mut child = command.spawn().unwrap();
         let deadline = Instant::now() + Duration::from_secs(8);
         while !root.path().join("ready").exists() && Instant::now() < deadline {
@@ -1030,7 +1025,7 @@ mod tests {
             .join("python");
         let script = "import json,sys; from pathlib import Path; sys.path.insert(0,sys.argv[2]); from core.operation_kernel import OperationKernel; root=Path(sys.argv[1]); kernel=OperationKernel(root); value=json.loads((root/'agent-jobs/interop_1.json').read_text(encoding='utf-8')); assert value['status']==sys.argv[3], value['status']";
         let run = |expected| {
-            std::process::Command::new("python")
+            crate::process_command::hidden_command("python")
                 .args(["-B", "-S", "-c", script])
                 .arg(root.path())
                 .arg(&python_source)

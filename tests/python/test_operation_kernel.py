@@ -111,6 +111,7 @@ sys.stdin.readline()
                 [sys.executable, "-B", "-c", script, str(root), str(PYTHON_DIR)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             try:
                 self.assertEqual(process.stdout.readline().strip(), "ready")
