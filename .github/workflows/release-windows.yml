@@ -35,9 +35,9 @@ jobs:
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
           echo "stage_artifact=$artifactName" >> $env:GITHUB_OUTPUT
 
-      - name: Prepare bootstrap runtime + CUDA environment seed
+      - name: Prepare minimal bootstrap runtime
         shell: pwsh
-        run: ./scripts/prepare-python-runtime.ps1 -Variant cuda -InitialBackend cuda
+        run: ./scripts/prepare-python-runtime.ps1 -Variant default -Minimal
 
       - name: Sync build version metadata
         shell: pwsh
@@ -57,7 +57,7 @@ jobs:
           PYMSS_BUILD_TARGET: windows-x64
           PYMSS_BUILD_VARIANT: windows-x64-cuda
           PYMSS_BUILD_UPDATE_SUPPORTED: 'true'
-          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'pymss-project/pymss-studio' && github.repository_owner == 'pymss-project' && 'true' || 'false' }}
+          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'TLBtianhu/mediaforge' && github.repository_owner == 'TLBtianhu' && 'true' || 'false' }}
         run: pnpm plugins:build --no-bundle
 
       - name: Prepare Windows bundled tools
@@ -70,64 +70,38 @@ jobs:
           # 以前这里直接下 ffmpeg-release-essentials.zip（浮动最新版），
           # 上游一发布新版本，构建出来的包就换了 ffmpeg，且无人察觉。
           ./scripts/fetch-third-party.ps1 -Destination $bin
+          ./scripts/fetch-vcrt.ps1 -Destination "$bin/vcrt"
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
 
 
-      - name: Stage portable directory
+      - name: Stage cuda bootstrap portable directory
         shell: pwsh
         run: |
           $version = '${{ steps.meta.outputs.version }}'
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
-          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
-          Copy-Item "python" "$stage/python" -Recurse
-          Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
-          Copy-Item "release/bin" "$stage/bin" -Recurse
+          ./scripts/package-release.ps1 -Version $version -SkipBuild -StageOnly -OutputDir release -StageName '${{ steps.meta.outputs.stage_name }}' -PackageSuffix windows-x64-cuda
+          # SDK staging is idempotent; retain the explicit release boundary check.
           ./scripts/stage-plugin-sdk.ps1 -StagePath $stage
-          ./scripts/prepare-python-runtime.ps1 -RewriteRuntimeEnvConfigs -RuntimeEnvsDir "$stage/python-runtime/runtime-envs" -RuntimeDir "$stage/python-runtime"
-          @"
-          Pymss Studio $version Windows x64 CUDA
-          Author: TheSmallHanCat
-
-          This package includes a base Python runtime and a CUDA environment.
-          NVIDIA driver is required for GPU acceleration.
-          Users can switch backends or install additional environments in Settings.
-          "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
-          $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
-          if (!(Test-Path $activeStatePath)) { throw "Staged CUDA active runtime state is missing" }
-          $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
-          if ($activeState.backend -ne "cuda") { throw "Staged CUDA active runtime backend is '$($activeState.backend)'" }
-          $activePython = Join-Path (Join-Path $stage "python-runtime/runtime-envs") $activeState.pythonPath
-          if (!(Test-Path $activePython)) { throw "Staged CUDA active runtime Python is missing: $activePython" }
-          if (!(Test-Path "$stage\python-runtime\runtime-envs\cuda\Scripts\python.exe")) { throw "Staged CUDA Python executable is missing" }
-          & "$stage\python-runtime\runtime-envs\cuda\Scripts\python.exe" -m pip --version
-          if ($LASTEXITCODE -ne 0) { throw "Staged CUDA pip is missing" }
-          $probeVenv = Join-Path $stage "python-runtime\runtime-envs\_pip-smoke"
-          & "$stage\python-runtime\python.exe" -m venv $probeVenv
-          if ($LASTEXITCODE -ne 0) { throw "Staged CUDA venv creation failed" }
-          & "$probeVenv\Scripts\python.exe" -m pip --version
-          if ($LASTEXITCODE -ne 0) { throw "Staged CUDA venv pip is missing" }
-          Remove-Item $probeVenv -Recurse -Force
-          & "$stage\python-runtime\runtime-envs\cuda\Scripts\python.exe" "$stage\python\worker.py" env_info
-          if ($LASTEXITCODE -ne 0) { throw "Staged CUDA env_info failed with exit code $LASTEXITCODE" }
-          & "$stage\python-runtime\runtime-envs\cuda\Scripts\python.exe" -c "import pymss.graph; print('pymss.graph ok')"
-          if ($LASTEXITCODE -ne 0) { throw "Staged CUDA pymss.graph import failed" }
-          & "$stage\python-runtime\runtime-envs\cuda\Scripts\python.exe" "$stage\python\worker.py" list_models --payload "{}"
-          if ($LASTEXITCODE -ne 0) { throw "Staged CUDA list_models failed with exit code $LASTEXITCODE" }
-          & "$stage\python-runtime\runtime-envs\cuda\Scripts\python.exe" "$stage\python\runtime_audio_probe.py" --check-core
-          if ($LASTEXITCODE -ne 0) { throw "Staged CUDA audio decoding failed with exit code $LASTEXITCODE" }
-          ./scripts/prepare-python-runtime.ps1 -RewriteRuntimeEnvConfigs -TemplateRuntimeEnvConfigs -RuntimeEnvsDir "$stage/python-runtime/runtime-envs" -RuntimeDir "$stage/python-runtime"
-          $workspacePattern = [regex]::Escape((Resolve-Path ".").Path)
-          $leakedConfig = Get-ChildItem "$stage/python-runtime/runtime-envs" -Recurse -File |
-            Where-Object { $_.Extension -in @('.cfg', '.json', '.txt', '.ini') } |
-            Select-String -Pattern $workspacePattern -List
-          if ($leakedConfig) { throw "CI workspace path leaked into staged CUDA runtime env config" }
+          $verify = @'
+          import pathlib, subprocess, sys, tempfile
+          sys.path.insert(0, 'scripts')
+          from media_smoke_env import isolated_environment
+          stage = pathlib.Path(sys.argv[1]).resolve()
+          bootstrap = stage / 'python-runtime/python.exe'
+          with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
+              data = pathlib.Path(temporary)
+              env = isolated_environment(data, bootstrap)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              probe = data / 'probe-venv'
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+          '@
+          $verify | python -B - $stage
+          if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }
 
       - name: Verify staged native plugin helper
         shell: pwsh
@@ -160,7 +134,7 @@ jobs:
           if (Test-Path "release/$stageName.7z") { Remove-Item "release/$stageName.7z" -Force }
           Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
            Push-Location "release"
-           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
+           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=64m -ms=on -mf=BCJ2 -mmt=2 "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the CUDA portable archive" }
            Pop-Location
 
@@ -227,9 +201,9 @@ jobs:
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
           echo "stage_artifact=$artifactName" >> $env:GITHUB_OUTPUT
 
-      - name: Prepare bootstrap runtime + CPU environment seed
+      - name: Prepare minimal bootstrap runtime
         shell: pwsh
-        run: ./scripts/prepare-python-runtime.ps1 -Variant default -InitialBackend cpu
+        run: ./scripts/prepare-python-runtime.ps1 -Variant default -Minimal
 
       - name: Sync build version metadata
         shell: pwsh
@@ -249,7 +223,7 @@ jobs:
           PYMSS_BUILD_TARGET: windows-x64
           PYMSS_BUILD_VARIANT: windows-x64-cpu
           PYMSS_BUILD_UPDATE_SUPPORTED: 'true'
-          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'pymss-project/pymss-studio' && github.repository_owner == 'pymss-project' && 'true' || 'false' }}
+          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'TLBtianhu/mediaforge' && github.repository_owner == 'TLBtianhu' && 'true' || 'false' }}
         run: pnpm plugins:build --no-bundle
 
       - name: Prepare Windows bundled tools
@@ -262,54 +236,38 @@ jobs:
           # 以前这里直接下 ffmpeg-release-essentials.zip（浮动最新版），
           # 上游一发布新版本，构建出来的包就换了 ffmpeg，且无人察觉。
           ./scripts/fetch-third-party.ps1 -Destination $bin
+          ./scripts/fetch-vcrt.ps1 -Destination "$bin/vcrt"
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
 
 
-      - name: Stage portable directory
+      - name: Stage cpu bootstrap portable directory
         shell: pwsh
         run: |
           $version = '${{ steps.meta.outputs.version }}'
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
-          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
-          Copy-Item "python" "$stage/python" -Recurse
-          Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
-          Copy-Item "release/bin" "$stage/bin" -Recurse
+          ./scripts/package-release.ps1 -Version $version -SkipBuild -StageOnly -OutputDir release -StageName '${{ steps.meta.outputs.stage_name }}' -PackageSuffix windows-x64-cpu
+          # SDK staging is idempotent; retain the explicit release boundary check.
           ./scripts/stage-plugin-sdk.ps1 -StagePath $stage
-           ./scripts/prepare-python-runtime.ps1 -RewriteRuntimeEnvConfigs -RuntimeEnvsDir "$stage/python-runtime/runtime-envs" -RuntimeDir "$stage/python-runtime"
-          @"
-          Pymss Studio $version Windows x64 CPU
-          Author: TheSmallHanCat
-
-          This package includes a base Python runtime and a CPU environment.
-          It is intended for users without NVIDIA CUDA GPUs.
-          Users can switch backends or install additional environments in Settings.
-          "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
-          $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
-          if (!(Test-Path $activeStatePath)) { throw "Staged CPU active runtime state is missing" }
-          $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
-          if ($activeState.backend -ne "cpu") { throw "Staged CPU active runtime backend is '$($activeState.backend)'" }
-          $activePython = Join-Path (Join-Path $stage "python-runtime/runtime-envs") $activeState.pythonPath
-          if (!(Test-Path $activePython)) { throw "Staged CPU active runtime Python is missing: $activePython" }
-          if (!(Test-Path "$stage\python-runtime\runtime-envs\cpu\Scripts\python.exe")) { throw "Staged CPU Python executable is missing" }
-          & "$stage\python-runtime\runtime-envs\cpu\Scripts\python.exe" "$stage\python\worker.py" env_info
-          if ($LASTEXITCODE -ne 0) { throw "Staged CPU env_info failed with exit code $LASTEXITCODE" }
-          & "$stage\python-runtime\runtime-envs\cpu\Scripts\python.exe" -c "import pymss.graph; print('pymss.graph ok')"
-          if ($LASTEXITCODE -ne 0) { throw "Staged CPU pymss.graph import failed" }
-          & "$stage\python-runtime\runtime-envs\cpu\Scripts\python.exe" "$stage\python\worker.py" list_models --payload "{}"
-          if ($LASTEXITCODE -ne 0) { throw "Staged CPU list_models failed with exit code $LASTEXITCODE" }
-           ./scripts/prepare-python-runtime.ps1 -RewriteRuntimeEnvConfigs -TemplateRuntimeEnvConfigs -RuntimeEnvsDir "$stage/python-runtime/runtime-envs" -RuntimeDir "$stage/python-runtime"
-          $workspacePattern = [regex]::Escape((Resolve-Path ".").Path)
-           $leakedConfig = Get-ChildItem "$stage/python-runtime/runtime-envs" -Recurse -File |
-            Where-Object { $_.Extension -in @('.cfg', '.json', '.txt', '.ini') } |
-            Select-String -Pattern $workspacePattern -List
-          if ($leakedConfig) { throw "CI workspace path leaked into staged CPU runtime env config" }
+          $verify = @'
+          import pathlib, subprocess, sys, tempfile
+          sys.path.insert(0, 'scripts')
+          from media_smoke_env import isolated_environment
+          stage = pathlib.Path(sys.argv[1]).resolve()
+          bootstrap = stage / 'python-runtime/python.exe'
+          with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
+              data = pathlib.Path(temporary)
+              env = isolated_environment(data, bootstrap)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              probe = data / 'probe-venv'
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+          '@
+          $verify | python -B - $stage
+          if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }
 
       - name: Verify staged native plugin helper
         shell: pwsh
@@ -341,7 +299,7 @@ jobs:
           if (Test-Path "release/$stageName.7z") { Remove-Item "release/$stageName.7z" -Force }
           Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
            Push-Location "release"
-           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
+           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=64m -ms=on -mf=BCJ2 -mmt=2 "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the CPU portable archive" }
            Pop-Location
 
@@ -419,7 +377,7 @@ jobs:
           PYMSS_BUILD_TARGET: windows-x64
           PYMSS_BUILD_VARIANT: windows-x64-managed
           PYMSS_BUILD_UPDATE_SUPPORTED: 'true'
-          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'pymss-project/pymss-studio' && github.repository_owner == 'pymss-project' && 'true' || 'false' }}
+          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'TLBtianhu/mediaforge' && github.repository_owner == 'TLBtianhu' && 'true' || 'false' }}
         run: pnpm plugins:build --no-bundle
       - name: Prepare Windows bundled tools
         shell: pwsh
@@ -428,37 +386,37 @@ jobs:
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
           # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取（见 scripts/fetch-third-party.ps1）
           ./scripts/fetch-third-party.ps1 -Destination $bin
+          ./scripts/fetch-vcrt.ps1 -Destination "$bin/vcrt"
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-      - name: Stage online portable directory
+      - name: Stage online bootstrap portable directory
         shell: pwsh
         run: |
+          $version = '${{ steps.meta.outputs.version }}'
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
-          Copy-Item "python" "$stage/python" -Recurse
-          Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
-          Copy-Item "release/bin" "$stage/bin" -Recurse
+          ./scripts/package-release.ps1 -Version $version -SkipBuild -StageOnly -OutputDir release -StageName '${{ steps.meta.outputs.stage_name }}' -PackageSuffix windows-x64-online
+          # SDK staging is idempotent; retain the explicit release boundary check.
           ./scripts/stage-plugin-sdk.ps1 -StagePath $stage
-          @"
-          Pymss Studio ${{ steps.meta.outputs.version }} Windows x64 Online
-          This package installs the selected CPU, CUDA, or ROCm environment on first start.
-          "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:PYTHONDONTWRITEBYTECODE = "1"
-          $probeVenv = Join-Path $stage "python-runtime\runtime-envs\_pip-smoke"
-          & "$stage\python-runtime\python.exe" -m venv $probeVenv
-          if ($LASTEXITCODE -ne 0) { throw "Online runtime venv creation failed" }
-          & "$probeVenv\Scripts\python.exe" -m pip --version
-          if ($LASTEXITCODE -ne 0) { throw "Online runtime venv pip is missing" }
-          Remove-Item $probeVenv -Recurse -Force
-          & "$stage\python-runtime\python.exe" "$stage\python\worker.py" runtime_info --payload "{}"
-           if ($LASTEXITCODE -ne 0) { throw "Online runtime bootstrap check failed" }
-           Get-ChildItem "$stage\python" -Recurse -Directory -Filter "__pycache__" |
-             Remove-Item -Recurse -Force
-           Get-ChildItem "$stage\python" -Recurse -File -Include "*.pyc", "*.pyo" |
-             Remove-Item -Force
+          $verify = @'
+          import pathlib, subprocess, sys, tempfile
+          sys.path.insert(0, 'scripts')
+          from media_smoke_env import isolated_environment
+          stage = pathlib.Path(sys.argv[1]).resolve()
+          bootstrap = stage / 'python-runtime/python.exe'
+          with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
+              data = pathlib.Path(temporary)
+              env = isolated_environment(data, bootstrap)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              probe = data / 'probe-venv'
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+          '@
+          $verify | python -B - $stage
+          if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }
+
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
@@ -486,13 +444,13 @@ jobs:
           Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
           $updateArchive = (Resolve-Path "release").Path + "\MediaForge-${{ needs.windows-online-prepare.outputs.version }}-windows-x64-update.zip"
            Push-Location release
-           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
+           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=64m -ms=on -mf=BCJ2 -mmt=2 "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the Online portable archive" }
            Pop-Location
 
            Push-Location "release/$stageName"
-           # Keep bundled tools in the portable archive only. Add bin here when a tool update needs to be distributed.
-           & "C:\Program Files\7-Zip\7z.exe" a -tzip $updateArchive "MediaForge.exe" "python"
+           # Keep the worker, tools, integration and manifest contract together.
+           & "C:\Program Files\7-Zip\7z.exe" a -tzip $updateArchive "MediaForge.exe" "python" "bin" "integrations" "manifest"
           if ($LASTEXITCODE -ne 0) { throw "Unable to create the managed update archive" }
           Pop-Location
           $updateSize = (Get-Item -LiteralPath $updateArchive).Length
@@ -554,9 +512,9 @@ jobs:
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "stage_name=$stageName" >> $env:GITHUB_OUTPUT
           echo "stage_artifact=$stageName-stage" >> $env:GITHUB_OUTPUT
-      - name: Prepare bootstrap runtime + ROCm environment seed
+      - name: Prepare minimal bootstrap runtime
         shell: pwsh
-        run: ./scripts/prepare-python-runtime.ps1 -Variant rocm -InitialBackend rocm
+        run: ./scripts/prepare-python-runtime.ps1 -Variant default -Minimal
       - name: Sync build version metadata
         shell: pwsh
         env:
@@ -574,7 +532,7 @@ jobs:
           PYMSS_BUILD_TARGET: windows-x64
           PYMSS_BUILD_VARIANT: windows-x64-rocm
           PYMSS_BUILD_UPDATE_SUPPORTED: 'true'
-          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'pymss-project/pymss-studio' && github.repository_owner == 'pymss-project' && 'true' || 'false' }}
+          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'TLBtianhu/mediaforge' && github.repository_owner == 'TLBtianhu' && 'true' || 'false' }}
         run: pnpm plugins:build --no-bundle
       - name: Prepare ROCm portable tools
         shell: pwsh
@@ -583,57 +541,37 @@ jobs:
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
           # 外部二进制按 .github/third-party.json 固定版本与 sha256 拉取（见 scripts/fetch-third-party.ps1）
           ./scripts/fetch-third-party.ps1 -Destination $bin
+          ./scripts/fetch-vcrt.ps1 -Destination "$bin/vcrt"
           $ffprobeOutput = & "$bin/ffprobe.exe" -version
           $ffprobeExitCode = $LASTEXITCODE
           $ffprobeOutput | Select-Object -First 1
           if ($ffprobeExitCode -ne 0) { throw "ffprobe.exe verification failed with exit code $ffprobeExitCode" }
-      - name: Stage ROCm portable directory
+      - name: Stage rocm bootstrap portable directory
         shell: pwsh
         run: |
+          $version = '${{ steps.meta.outputs.version }}'
           $stage = "release/${{ steps.meta.outputs.stage_name }}"
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/pymss-studio.exe" "$stage/MediaForge.exe"
-          Copy-Item "python" "$stage/python" -Recurse
-          Copy-Item "python-runtime" "$stage/python-runtime" -Recurse
-          Copy-Item "release/bin" "$stage/bin" -Recurse
+          ./scripts/package-release.ps1 -Version $version -SkipBuild -StageOnly -OutputDir release -StageName '${{ steps.meta.outputs.stage_name }}' -PackageSuffix windows-x64-rocm
+          # SDK staging is idempotent; retain the explicit release boundary check.
           ./scripts/stage-plugin-sdk.ps1 -StagePath $stage
-          ./scripts/prepare-python-runtime.ps1 -RewriteRuntimeEnvConfigs -RuntimeEnvsDir "$stage/python-runtime/runtime-envs" -RuntimeDir "$stage/python-runtime"
-          if (Test-Path "$stage\python-runtime\runtime-envs\rocm\Scripts\offload-arch.exe") { throw "Staged ROCm offload-arch launcher still embeds the build Python path" }
-          $rocmSdkPackage = Get-ChildItem "$stage\python-runtime\runtime-envs\rocm\Lib\site-packages" -Directory -Filter "_rocm_sdk_core*" |
-            Select-Object -First 1
-          if (-not $rocmSdkPackage) { throw "Staged ROCm SDK core package is missing" }
-          $rocmNativeTools = Join-Path $rocmSdkPackage.FullName "lib\llvm\bin"
-          $rocmRuntimeBin = Join-Path $rocmSdkPackage.FullName "bin"
-          if (!(Test-Path (Join-Path $rocmNativeTools "offload-arch.exe"))) { throw "Staged ROCm native offload-arch tool is missing" }
-          if (!(Test-Path $rocmRuntimeBin)) { throw "Staged ROCm runtime DLL directory is missing" }
-          $env:PATH = "$rocmNativeTools;$rocmRuntimeBin;$env:PATH"
-          @"
-          Pymss Studio ${{ steps.meta.outputs.version }} Windows x64 ROCm
-          This package includes a base Python runtime and a ROCm environment.
-          Requires Windows 11, a supported AMD GPU, and the matching AMD driver.
-          Users can switch backends or install additional environments in Settings.
-          "@ | Set-Content "$stage/README.txt" -Encoding UTF8
-          $env:MEDIAFORGE_RUNTIME_ENVS_DIR = (Resolve-Path "$stage/python-runtime/runtime-envs").Path
-          $env:MEDIAFORGE_ACTIVE_RUNTIME_FILE = (Join-Path $env:MEDIAFORGE_RUNTIME_ENVS_DIR "active-runtime.json")
-          $activeStatePath = Join-Path $stage "python-runtime/runtime-envs/active-runtime.json"
-          if (!(Test-Path $activeStatePath)) { throw "Staged ROCm active runtime state is missing" }
-          $activeState = Get-Content -Raw $activeStatePath | ConvertFrom-Json
-          if ($activeState.backend -ne "rocm") { throw "Staged ROCm active runtime backend is '$($activeState.backend)'" }
-          $activePython = Join-Path (Join-Path $stage "python-runtime/runtime-envs") $activeState.pythonPath
-          if (!(Test-Path $activePython)) { throw "Staged ROCm active runtime Python is missing: $activePython" }
-          if (!(Test-Path "$stage\python-runtime\runtime-envs\rocm\Scripts\python.exe")) { throw "Staged ROCm Python executable is missing" }
-          & "$stage\python-runtime\runtime-envs\rocm\Scripts\python.exe" "$stage\python\worker.py" env_info
-          if ($LASTEXITCODE -ne 0) { throw "Staged ROCm env_info failed" }
-          & "$stage\python-runtime\runtime-envs\rocm\Scripts\python.exe" -c "import pymss.graph; print('pymss.graph ok')"
-          if ($LASTEXITCODE -ne 0) { throw "Staged ROCm pymss.graph import failed" }
-          & "$stage\python-runtime\runtime-envs\rocm\Scripts\python.exe" "$stage\python\worker.py" list_models --payload "{}"
-          if ($LASTEXITCODE -ne 0) { throw "Staged ROCm list_models failed" }
-          ./scripts/prepare-python-runtime.ps1 -RewriteRuntimeEnvConfigs -TemplateRuntimeEnvConfigs -RuntimeEnvsDir "$stage/python-runtime/runtime-envs" -RuntimeDir "$stage/python-runtime"
-          $workspacePattern = [regex]::Escape((Resolve-Path ".").Path)
-          $leakedConfig = Get-ChildItem "$stage/python-runtime/runtime-envs" -Recurse -File |
-            Where-Object { $_.Extension -in @('.cfg', '.json', '.txt', '.ini') } |
-            Select-String -Pattern $workspacePattern -List
-          if ($leakedConfig) { throw "CI workspace path leaked into staged ROCm runtime env config" }
+          $verify = @'
+          import pathlib, subprocess, sys, tempfile
+          sys.path.insert(0, 'scripts')
+          from media_smoke_env import isolated_environment
+          stage = pathlib.Path(sys.argv[1]).resolve()
+          bootstrap = stage / 'python-runtime/python.exe'
+          with tempfile.TemporaryDirectory(prefix='MediaForge-stage-smoke-') as temporary:
+              data = pathlib.Path(temporary)
+              env = isolated_environment(data, bootstrap)
+              subprocess.run([str(bootstrap), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              probe = data / 'probe-venv'
+              subprocess.run([str(bootstrap), '-B', '-m', 'venv', str(probe)], env=env, check=True)
+              subprocess.run([str(probe / 'Scripts/python.exe'), '-B', '-m', 'pip', '--version'], env=env, check=True)
+              subprocess.run([str(bootstrap), '-B', str(stage / 'python/worker.py'), 'runtime_info', '--payload', '{}'], env=env, check=True)
+          '@
+          $verify | python -B - $stage
+          if ($LASTEXITCODE -ne 0) { throw "Isolated staged bootstrap verification failed" }
+
       - name: Verify staged native plugin helper
         shell: pwsh
         run: |
@@ -660,7 +598,7 @@ jobs:
           $stageName = '${{ needs.windows-rocm-prepare.outputs.stage_name }}'
           Set-Content "release/$stageName/mediaforge.portable" -Value "portable" -Encoding ASCII
            Push-Location release
-           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=768m -ms=on -mf=BCJ2 -mmt=on "$stageName.7z" "$stageName"
+           & "C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=5 -mfb=128 -md=64m -ms=on -mf=BCJ2 -mmt=2 "$stageName.7z" "$stageName"
            if ($LASTEXITCODE -ne 0) { throw "Unable to create the ROCm portable archive" }
            Pop-Location
 

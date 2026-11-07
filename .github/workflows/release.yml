@@ -4,13 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version"
+        description: "Release version (for example 0.0.32; enter explicitly)"
         required: true
-        default: "0.0.8"
       target:
         description: "Build target"
         required: true
-        default: "all"
+        default: "windows"
         type: choice
         options:
           - all
@@ -69,12 +68,13 @@ jobs:
         startsWith(github.ref, 'refs/tags/') ||
         (github.event_name == 'workflow_dispatch' && (inputs.publish == true || inputs.prerelease == true))
       ) &&
+      contains(needs.*.result, 'success') &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
     needs: [windows, macos, linux]
     # Release bodies and the shared updater channel must be published serially.
     concurrency:
-      group: pymss-studio-release-publish
+      group: mediaforge-release-publish
       cancel-in-progress: false
       queue: max
     runs-on: ubuntu-latest
@@ -84,8 +84,6 @@ jobs:
       RELEASE_VERSION_INPUT: ${{ github.event.inputs.version || github.ref_name }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       MODELSCOPE_API_TOKEN: ${{ secrets.MODELSCOPE_API_TOKEN }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -108,15 +106,13 @@ jobs:
           version="${version#v}"
           release_tag="v${version}"
           echo "RELEASE_TAG=${release_tag}" >> "$GITHUB_ENV"
-          echo "RELEASE_NAME=Pymss Studio v${version}" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=MediaForge v${version}" >> "$GITHUB_ENV"
           echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           windows_result="${{ needs.windows.result }}"
           macos_result="${{ needs.macos.result }}"
           linux_result="${{ needs.linux.result }}"
-          if [[ "$windows_result" != "success" && "$macos_result" != "success" && "$linux_result" != "success" ]]; then
-            echo "RELEASE_PRERELEASE=true" >> "$GITHUB_ENV"
-          elif [[ "$version" == *-* ]]; then
+          if [[ "${version%%+*}" == *-* ]]; then
             echo "RELEASE_PRERELEASE=true" >> "$GITHUB_ENV"
           else
             echo "RELEASE_PRERELEASE=${{ github.event_name == 'workflow_dispatch' && inputs.prerelease == true }}" >> "$GITHUB_ENV"
@@ -131,6 +127,13 @@ jobs:
             update_message="This release requires manual installation from GitHub because automatic updates were not enabled for this release."
           fi
           echo "RELEASE_UPDATE_MESSAGE=$update_message" >> "$GITHUB_ENV"
+      - name: Prepare isolated signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/mediaforge-signing-tools" --ignore-scripts --no-audit --no-fund @tauri-apps/cli@2.11.2
+          echo "TAURI_CLI=$RUNNER_TEMP/mediaforge-signing-tools/node_modules/@tauri-apps/cli/tauri.js" >> "$GITHUB_ENV"
+          python3 -m pip install --disable-pip-version-check PyNaCl==1.6.2
       - name: Download Windows portable artifacts
         if: needs.windows.result == 'success'
         uses: actions/download-artifact@v4
@@ -188,6 +191,8 @@ jobs:
           WINDOWS_BUILD_RESULT: ${{ needs.windows.result }}
           MACOS_BUILD_RESULT: ${{ needs.macos.result }}
           LINUX_BUILD_RESULT: ${{ needs.linux.result }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
@@ -229,16 +234,57 @@ jobs:
               echo "Managed update archive exceeds its platform size limit: $file" >&2
               exit 1
             fi
-            pnpm dlx @tauri-apps/cli@2.11.0 signer sign "$file"
+            # Keep signer diagnostics in memory: CLI errors/help can expose
+            # environment-backed credential options. Never echo that output.
+            python3 - "$TAURI_CLI" "$file" <<'PY'
+          import os, subprocess, sys
+          environment = {name: value for name, value in os.environ.items()
+                         if name in {"TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"}
+                         or not any(part in name.upper() for part in ("KEY", "PASSWORD", "TOKEN", "SECRET"))}
+          result = subprocess.run(["node", sys.argv[1], "signer", "sign", sys.argv[2]],
+                                  env=environment, stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+          if result.returncode:
+              raise SystemExit(f"Managed update signing failed (exit {result.returncode})")
+          PY
           done
       - name: Generate managed update metadata
         if: needs.windows.result == 'success' || needs.macos.result == 'success' || needs.linux.result == 'success'
+        env:
+          RELEASE_WINDOWS_BUILD_RESULT: ${{ needs.windows.result }}
+          RELEASE_MACOS_BUILD_RESULT: ${{ needs.macos.result }}
+          RELEASE_LINUX_BUILD_RESULT: ${{ needs.linux.result }}
         run: python3 scripts/generate-update-metadata.py
+      - name: Read current stable version notification
+        if: env.RELEASE_PRERELEASE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous="$RUNNER_TEMP/mediaforge-previous-version"
+          mkdir -p "$previous"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/versions"
+          status=$(curl --silent --show-error --location --max-time 60 --output "$previous/versions.json" --write-out '%{http_code}' "$base/versions.json")
+          if [[ "$status" == "404" ]]; then
+            rm -f "$previous/versions.json"
+          elif [[ "$status" == "200" ]]; then
+            curl --fail --silent --show-error --location --max-time 60 --output "$previous/versions.json.sig" "$base/versions.json.sig"
+          else
+            echo "Cannot read existing stable version metadata (HTTP $status)" >&2
+            exit 1
+          fi
+      - name: Sign and verify stable version notification
+        if: env.RELEASE_PRERELEASE != 'true'
+        shell: bash
+        env:
+          VERSIONS_SIGNING_PRIVATE_KEY: ${{ secrets.VERSIONS_SIGNING_PRIVATE_KEY }}
+          VERSIONS_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.VERSIONS_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python3 scripts/make-versions.py --out "$RUNNER_TEMP/mediaforge-version-notification" --version "$RELEASE_VERSION" --cli "$TAURI_CLI" --previous-dir "$RUNNER_TEMP/mediaforge-previous-version"
       - name: Prepare reviewed release notes
         id: release_notes
         shell: bash
         env:
-          RELEASE_NOTES_OUTPUT: ${{ runner.temp }}/pymss-release-notes.md
+          RELEASE_NOTES_OUTPUT: ${{ runner.temp }}/mediaforge-release-notes.md
           GH_TOKEN: ${{ github.token }}
         run: |
           if [[ -f ".github/release-notes/${RELEASE_VERSION}.md" ]]; then
@@ -259,7 +305,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          staging="pms/${RELEASE_VERSION}"
+          staging="release-mirror/${RELEASE_VERSION}"
           mkdir -p "$staging"
           shopt -s nullglob
           copied=0
@@ -285,16 +331,28 @@ jobs:
         if: needs.windows.result == 'success' || needs.macos.result == 'success' || needs.linux.result == 'success'
         with:
           tag_name: updater
-          name: Pymss Studio Update Channel
-          body: Managed update metadata for Pymss Studio. This release is managed by CI.
+          name: MediaForge Update Channel
+          body: Managed update metadata for MediaForge. This release is managed by CI.
           prerelease: true
           make_latest: false
           overwrite_files: true
           files: artifacts/*-v1-*-update.json
 
+      - uses: softprops/action-gh-release@v2
+        id: publish_versions
+        if: env.RELEASE_PRERELEASE != 'true'
+        with:
+          tag_name: versions
+          name: MediaForge Version Notifications
+          body: Signed stable application and runtime version metadata. Managed by CI.
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          files: ${{ runner.temp }}/mediaforge-version-notification/*
+
       - name: Set up uv
         id: setup_mirror_uploads
-        if: ${{ !cancelled() && steps.stage_mirrors.outcome == 'success' && steps.publish_release.outcome == 'success' && (env.HF_TOKEN != '' || env.MODELSCOPE_API_TOKEN != '') }}
+        if: ${{ !cancelled() && steps.stage_mirrors.outcome == 'success' && steps.publish_release.outcome == 'success' && (env.RELEASE_PRERELEASE == 'true' || steps.publish_versions.outcome == 'success') && (env.HF_TOKEN != '' || env.MODELSCOPE_API_TOKEN != '') }}
         uses: astral-sh/setup-uv@v6
 
       - name: Upload release files to HuggingFace dataset
@@ -302,8 +360,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Uploading pms/${RELEASE_VERSION}/ to HuggingFace dataset HuanLin/MediaForge-Dist:${RELEASE_VERSION}"
-          uvx --from "huggingface_hub[cli]" hf upload --type dataset HuanLin/MediaForge-Dist "pms/${RELEASE_VERSION}" "${RELEASE_VERSION}"
+          echo "Uploading MediaForge ${RELEASE_VERSION} to release/ in TLBtianhu/MediaForge-Dist"
+          uvx --from "huggingface_hub[cli]" hf upload --type dataset TLBtianhu/MediaForge-Dist "release-mirror/${RELEASE_VERSION}" release
+          if [[ "$RELEASE_PRERELEASE" != "true" ]]; then
+            uvx --from "huggingface_hub[cli]" hf upload --type dataset TLBtianhu/MediaForge-Dist "$RUNNER_TEMP/mediaforge-version-notification" versions
+          fi
           echo "HuggingFace dataset upload completed."
 
       - name: Upload release files to ModelScope dataset
@@ -311,6 +372,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Uploading pms/${RELEASE_VERSION}/ to ModelScope dataset huanlinoto/MediaForge-Dist:${RELEASE_VERSION}"
-          uvx modelscope upload --repo-type dataset huanlinoto/MediaForge-Dist "pms/${RELEASE_VERSION}" "${RELEASE_VERSION}"
+          echo "Uploading MediaForge ${RELEASE_VERSION} to release/ in TLBtianhu/MediaForge-Dist"
+          uvx modelscope upload --repo-type dataset TLBtianhu/MediaForge-Dist "release-mirror/${RELEASE_VERSION}" release
+          if [[ "$RELEASE_PRERELEASE" != "true" ]]; then
+            uvx modelscope upload --repo-type dataset TLBtianhu/MediaForge-Dist "$RUNNER_TEMP/mediaforge-version-notification" versions
+          fi
           echo "ModelScope dataset upload completed."

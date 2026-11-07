@@ -1,35 +1,90 @@
-# 唯一的打包入口。任何"临时脚本"都应该被删掉，只用这一个。
-#
-#   powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
-#   powershell ... -SkipBuild     # 复用已有二进制，只重打包
-#
-# 步骤与产物：
-#   1. pnpm tauri build --no-bundle        → target\release\pymss-studio.exe（生产上下文）
-#   2. staging                              → release\stage-<ver>\
-#   3. portable zip                         → release\MediaForge-<ver>-windows-x64-portable.zip
-#   4. Inno Setup                           → release\MediaForge-<ver>-windows-x64-cuda-setup.exe
-#   5. 复制安装包到 release\local           → 本机副本不依赖 Downloads
-#
-# 约定（见 docs/install-state.md）：
-#   * 安装目录固定为 {autopf}\MediaForge，向导不允许改
-#   * 集成包随安装包分发，也在更新包的覆盖范围内
-#   * 版本号只来自 package.json
+# Windows packaging entry point. Normal packages contain bootstrap Python and
+# tools; inference environments and models are separate managed assets.
+# Candidate example: -SkipBuild -SkipSign -SkipDownloadCopy -Version 0.0.32
+#   -OutputDir release/candidates/0.0.32
 param(
     [switch]$SkipBuild,
     [switch]$SkipZip,
     [switch]$SkipSign,
     [switch]$SkipDownloadCopy,
-    [string]$Version = ''
+    [switch]$StageOnly,
+    [switch]$BuildRuntimeAsset,
+    [string]$Version = '',
+    [string]$OutputDir = '',
+    [string]$StageName = '',
+    [ValidateSet('windows-x64-cuda', 'windows-x64-cpu', 'windows-x64-online', 'windows-x64-rocm')]
+    [string]$PackageSuffix = 'windows-x64-cuda'
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path "$PSScriptRoot\..").Path
+. "$PSScriptRoot\release-signing.ps1"
 if (-not $Version) {
     $Version = (Get-Content "$root\package.json" -Raw | ConvertFrom-Json).version
 }
-$stage = "$root\release\stage-$Version"
-$out = "$root\release"
-$iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+
+function Assert-ReleaseVersion([string]$Value) {
+    if ($Value -cnotmatch '\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?\z') {
+        throw "Invalid release version: $Value"
+    }
+}
+
+function Assert-NoReparsePath([string]$Path) {
+    $cursor = [IO.Path]::GetFullPath($Path)
+    while ($cursor) {
+        $entry = Get-Item -LiteralPath $cursor -Force -ErrorAction SilentlyContinue
+        if ($entry) {
+            if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "release path refuses reparse point: $cursor"
+            }
+        }
+        $parent = [IO.Path]::GetDirectoryName($cursor)
+        if ($parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+}
+
+function Get-ReleasePaths([string]$Root, [string]$Version, [string]$OutputDir, [string]$StageName, [string]$PackageSuffix) {
+    Assert-ReleaseVersion $Version
+    $releaseRoot = [IO.Path]::GetFullPath((Join-Path $Root 'release')).TrimEnd('\', '/')
+    $output = if (-not $OutputDir) { $releaseRoot } elseif ([IO.Path]::IsPathRooted($OutputDir)) {
+        [IO.Path]::GetFullPath($OutputDir)
+    } else { [IO.Path]::GetFullPath((Join-Path $Root $OutputDir)) }
+    $output = $output.TrimEnd('\', '/')
+    if ($output -ne $releaseRoot -and -not $output.StartsWith($releaseRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "OutputDir must be inside the repository release directory: $output"
+    }
+    Assert-NoReparsePath $output
+    if (-not $StageName) { $StageName = "stage-$Version" }
+    if ($StageName -cne "stage-$Version" -and $StageName -cne "MediaForge-$Version-$PackageSuffix") {
+        throw "Invalid stage directory for this version/package: $StageName"
+    }
+    [PSCustomObject]@{ Output = $output; Stage = (Join-Path $output $StageName); StageName = $StageName }
+}
+
+function Assert-ReleaseOwnedPath([string]$Path, [string]$OutputRoot, [string]$ExpectedName) {
+    $full = [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    $parent = [IO.Path]::GetDirectoryName($full)
+    if ($parent -ne [IO.Path]::GetFullPath($OutputRoot).TrimEnd('\', '/') -or [IO.Path]::GetFileName($full) -cne $ExpectedName -or $ExpectedName -in @('', '.', '..')) {
+        throw "Refusing release mutation outside its exact output path: $Path"
+    }
+    Assert-NoReparsePath $full
+    if (Test-Path -LiteralPath $full -PathType Container) {
+        $pending = New-Object 'Collections.Generic.Stack[string]'
+        $pending.Push($full)
+        while ($pending.Count) {
+            foreach ($entry in Get-ChildItem -LiteralPath ($pending.Pop()) -Force) {
+                if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "release cleanup refuses reparse point: $($entry.FullName)" }
+                if ($entry.PSIsContainer) { $pending.Push($entry.FullName) }
+            }
+        }
+    }
+}
+
+function Remove-ReleaseOwnedPath([string]$Path, [string]$OutputRoot, [string]$ExpectedName) {
+    Assert-ReleaseOwnedPath $Path $OutputRoot $ExpectedName
+    if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Recurse -Force }
+}
 
 function Compress-Folder([string]$Source, [string]$Destination, [string]$Label) {
     # 7-Zip 比 Compress-Archive 快一个量级（5 GB 目录：约 3 分钟 vs 10 分钟）。
@@ -45,13 +100,6 @@ function Compress-Folder([string]$Source, [string]$Destination, [string]$Label) 
         Compress-Archive -Path "$Source\*" -DestinationPath $Destination -CompressionLevel Optimal
     }
     Write-Host ("  {0}: {1} MB" -f $Label, [Math]::Round((Get-Item $Destination).Length/1MB,1))
-}
-
-function Get-SigningPassword {
-    # 新专用密钥默认无密码。若以后加密，只从当前进程显式读取，
-    # 不再回退到旧密钥可能留下的注册表密码。
-    if ($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { return [string]$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD }
-    return ''
 }
 
 function Assert-VersionConsistent([string]$Expected) {
@@ -74,8 +122,96 @@ function Invoke-Native([string]$Label, [scriptblock]$Block) {
     if ($LASTEXITCODE -ne 0) { throw "$Label failed with exit code $LASTEXITCODE" }
 }
 
+function Copy-ReleaseTree {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [string[]]$ExcludeRootDirectories = @()
+    )
+    Assert-NoReparsePath $Destination
+    # Filter before recursing/copying: copying runtime-envs and deleting it afterwards
+    # temporarily duplicates several GB even though the final bootstrap is small.
+    $sourceItem = Get-Item -LiteralPath $Source -Force
+    if ($sourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "staging refuses linked source: $Source"
+    }
+    if (-not $sourceItem.PSIsContainer) {
+        Copy-Item -LiteralPath $Source -Destination $Destination -Force
+        return
+    }
+    $sourcePath = [IO.Path]::GetFullPath($Source).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $destinationPath = [IO.Path]::GetFullPath($Destination).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    if ($destinationPath.StartsWith($sourcePath, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "staging destination must be outside its source: $Destination"
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    $cacheDirectories = @('__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.cache', '.git')
+    foreach ($entry in Get-ChildItem -LiteralPath $Source -Force) {
+        if ($entry.PSIsContainer -and (($ExcludeRootDirectories -contains $entry.Name) -or ($cacheDirectories -contains $entry.Name))) {
+            continue
+        }
+        Copy-ReleaseTree -Source $entry.FullName -Destination (Join-Path $Destination $entry.Name)
+    }
+}
+
+function Assert-ReleaseContract([string]$Stage) {
+    foreach ($name in @('protocol.json', 'runtime.json')) {
+        $path = Join-Path (Join-Path $Stage 'manifest') $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "staging is missing worker contract: $path"
+        }
+    }
+}
+
+function Copy-ReleaseUpdate([string]$Stage, [string]$Destination) {
+    # The worker and its entire manifest directory must change together.
+    Assert-ReleaseContract $Stage
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    foreach ($item in @('MediaForge.exe', 'python', 'bin', 'integrations', 'manifest')) {
+        Copy-ReleaseTree -Source (Join-Path $Stage $item) -Destination (Join-Path $Destination $item)
+    }
+    Assert-ReleaseContract $Destination
+}
+
+function Copy-ReleaseResources([string]$Root, [string]$Stage) {
+    # Copy allowlisted application surfaces only. Managed environments are
+    # excluded before recursion, including incoming archives under runtime-envs.
+    foreach ($item in @('python', 'python-runtime', 'integrations', 'manifest')) {
+        $source = Join-Path $Root $item
+        $target = Join-Path $Stage $item
+        if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Missing package source: $source" }
+        $exclude = if ($item -eq 'python-runtime') { @('runtime-envs') } else { @('data', 'models', '.dev-data', '.dev-webview') }
+        Copy-ReleaseTree -Source $source -Destination $target -ExcludeRootDirectories $exclude
+    }
+    Assert-ReleaseContract $Stage
+}
+
+function Assert-ReleaseStage([string]$Stage) {
+    Assert-ReleaseContract $Stage
+    foreach ($relative in @('MediaForge.exe', 'python/worker.py', 'python/core/runtime_audio_probe.py',
+            'python/shared/safe_fs.py', 'python/plugin-sdk/pymss-sdk.js', 'python/plugin-sdk/pymss-sdk.css',
+            'python/runtime-manifest.json', 'python-runtime/python.exe', 'bin/ffmpeg.exe', 'bin/ffprobe.exe',
+            'bin/aria2c.exe', 'bin/vcrt/msvcp140.dll', 'integrations/dsh-mediaforge/cordis.patch.yml')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Stage $relative) -PathType Leaf)) { throw "Stage contract is missing $relative" }
+    }
+    foreach ($relative in @('python-runtime/runtime-envs', 'models', 'data', '.dev-data', '.dev-webview', 'mediaforge.portable')) {
+        if (Test-Path -LiteralPath (Join-Path $Stage $relative)) { throw "Stage contains mutable user assets: $relative" }
+    }
+}
+
+$paths = Get-ReleasePaths -Root $root -Version $Version -OutputDir $OutputDir -StageName $StageName -PackageSuffix $PackageSuffix
+$stage = $paths.Stage
+$stageName = $paths.StageName
+$out = $paths.Output
+$iscc = if ($env:MEDIAFORGE_ISCC) { $env:MEDIAFORGE_ISCC } else { "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" }
+
 Write-Host "=== MediaForge $Version 打包 ==="
 Assert-VersionConsistent $Version
+if ($StageOnly -and -not $SkipBuild) { throw '-StageOnly requires -SkipBuild; compile the native EXE first.' }
+if (-not $StageOnly -and -not (Test-Path -LiteralPath $iscc -PathType Leaf)) { throw "Inno Setup compiler is missing: $iscc" }
+foreach ($relative in @('python-runtime/python.exe', 'release/bin/ffmpeg.exe', 'release/bin/ffprobe.exe', 'release/bin/aria2c.exe', 'release/bin/vcrt/msvcp140.dll')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing packaging input: $relative (prepare/fetch it explicitly first)" }
+}
 
 if (-not $SkipBuild) {
     Write-Host "[1/6] 生产构建"
@@ -88,65 +224,51 @@ if (-not $SkipBuild) {
 }
 
 Write-Host "[2/6] staging"
+$sourceExe = Join-Path $root 'src-tauri\target\release\pymss-studio.exe'
+# A stale -SkipBuild binary must be rejected before touching an existing stage.
+Assert-ReleaseExecutable -Path $sourceExe -ExpectedVersion $Version
+if (Test-Path -LiteralPath "$stage\MediaForge.exe" -PathType Leaf) {
+    Assert-ReleaseExecutable -Path "$stage\MediaForge.exe" -ExpectedVersion $Version
+}
+New-Item -ItemType Directory -Force -Path $out | Out-Null
+Remove-ReleaseOwnedPath -Path $stage -OutputRoot $out -ExpectedName $stageName
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
-Copy-Item "$root\src-tauri\target\release\pymss-studio.exe" "$stage\MediaForge.exe" -Force
-# manifest/ 是运行时契约（protocol/runtime/catalog 声明在运行时被读取），必须随包。
-foreach ($item in @('python', 'python-runtime', 'integrations', 'manifest')) {
-    $source = Join-Path $root $item
-    $target = Join-Path $stage $item
-    if (-not (Test-Path $source)) { throw "缺少 $item，无法打包" }
-    if (Test-Path $target) { Remove-Item $target -Recurse -Force }
-    Copy-Item $source $target -Recurse
-}
-# 运行时是独立资产包，不随安装包分发（5 GB，且可跨版本复用）。
-if (Test-Path "$stage\python-runtime\runtime-envs") {
-    Remove-Item "$stage\python-runtime\runtime-envs" -Recurse -Force
-    Write-Host "  staging 已剔除 python-runtime\runtime-envs"
-}
-if (-not (Test-Path "$stage\python\shared\safe_fs.py")) { throw "staging 缺少 python\shared\safe_fs.py" }
-if (-not (Test-Path "$stage\integrations\dsh-mediaforge\cordis.patch.yml")) { throw "staging 缺少 DSH 集成包" }
-if (-not (Test-Path "$root\release\bin")) { throw "缺少 release\bin（ffmpeg/aria2c）" }
+Copy-Item -LiteralPath $sourceExe -Destination "$stage\MediaForge.exe" -Force
+Assert-ReleaseExecutable -Path "$stage\MediaForge.exe" -ExpectedVersion $Version
+Copy-ReleaseResources -Root $root -Stage $stage
+& "$root\scripts\stage-plugin-sdk.ps1" -StagePath $stage
 # VC++ 运行库：per-user 安装没有管理员权限，不能依赖 vc_redist；
 # 这里把可再发行 DLL 放进 bin\vcrt（随安装包走），并由运行时装好后复制到
 # runtime-envs/<assetId>\Scripts。缺这一层时，torch/cv2 的 import 会直接失败。
 $vcrtSource = "$root\release\bin\vcrt"
-if (-not (Test-Path $vcrtSource)) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\fetch-vcrt.ps1"
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $vcrtSource)) { throw "缺少 VC++ 运行库（release\bin\vcrt）" }
-}
-if (Test-Path "$stage\bin") { Remove-Item "$stage\bin" -Recurse -Force }
-Copy-Item "$root\release\bin" "$stage\bin" -Recurse
+Copy-ReleaseTree -Source "$root\release\bin" -Destination "$stage\bin"
 # 引导解释器也一并带上：python.exe 本身自带 vcruntime，但 C++ 扩展需要 msvcp140。
 foreach ($dll in Get-ChildItem $vcrtSource -Filter '*.dll') {
     Copy-Item $dll.FullName "$stage\python-runtime\$($dll.Name)" -Force
 }
 Write-Host "  已把 VC++ 运行库放入 bin\vcrt 与 python-runtime"
 @"
-MediaForge $Version (Windows x64 CUDA)
+MediaForge $Version ($PackageSuffix)
 Author: TheSmallHanCat
 
-Includes a base Python runtime and a CUDA environment; an NVIDIA driver enables GPU.
-Switch or install backends under Settings -> Runtime.
+Includes bootstrap Python and local media tools. The processing runtime and models
+are downloaded separately from inside the app. Prepare the runtime under Settings
+and download the models you need from the model library.
 
 DeepSeek Harness integration
 ---------------------------
-Bundle: <install>\integrations\dsh-mediaforge
-DeepSeek Harness integration
----------------------------
-Bundle: <install>\integrations\dsh-mediaforge
-The installer writes the launcher and the install pointer. Registering the bundle
-is one step inside Harness (plugin_manager install_bundle on that folder), then a
-restart; verify.ps1 prints the launcher resolution and the MCP handshake result.
-Read DESIGN.md for why the bundle carries no absolute path.
-  verify.ps1   prints launcher resolution and the MCP handshake result
-  DESIGN.md    why the bundle carries no absolute path
+Bundle: <install-root>\integrations\dsh-mediaforge
+Load this folder through Harness's plugin manager if you want MCP integration.
+MediaForge's installer does not modify or restart Harness.
 "@ | Set-Content "$stage\README.txt" -Encoding UTF8
+Assert-ReleaseStage $stage
 Get-Item "$stage\MediaForge.exe" | ForEach-Object { Write-Host ("  exe: {0} MB" -f [Math]::Round($_.Length/1MB,1)) }
+if ($StageOnly) { Write-Host "Stage ready: $stage"; return }
 
 if (-not $SkipZip) {
     Write-Host "[3/6] 便携 zip"
     $zip = "$out\MediaForge-$Version-windows-x64-portable.zip"
-    if (Test-Path $zip) { Remove-Item $zip -Force }
+    Remove-ReleaseOwnedPath -Path $zip -OutputRoot $out -ExpectedName "MediaForge-$Version-windows-x64-portable.zip"
     # 便携版靠程序同目录的标记文件选择 <exe>\data；安装包不能带这个文件，
     # 所以只在压缩期间放进 stage，压缩完立即删掉。
     $portableMarker = Join-Path $stage 'mediaforge.portable'
@@ -161,13 +283,18 @@ if (-not $SkipZip) {
 }
 
 
-# 运行时资产包（独立于版本发布，按 sha256 寻址）
+# Runtime assets require an explicit opt-in and stay inside this output root.
+if ($BuildRuntimeAsset) {
 Write-Host "运行时资产包"
 $runtimeAssetId = if ($env:MEDIAFORGE_RUNTIME_ASSET_ID) { $env:MEDIAFORGE_RUNTIME_ASSET_ID } else { 'runtime-cuda-2026.11.4' }
+if ($runtimeAssetId -cnotmatch '\Aruntime-[a-z0-9]+-[0-9]+(?:\.[0-9]+)+\z') { throw "Invalid runtime asset ID: $runtimeAssetId" }
 $runtimeSrc = Join-Path $root 'python-runtime\runtime-envs\cuda'
-$runtimeOut = Join-Path $root 'release\runtime'
+$runtimeOut = Join-Path $out 'runtime'
+Assert-NoReparsePath $runtimeOut
 $runtimeZip = Join-Path $runtimeOut "$runtimeAssetId.zip"
 $runtimeManifest = Join-Path $runtimeOut "$runtimeAssetId.json"
+Assert-ReleaseOwnedPath -Path $runtimeZip -OutputRoot $runtimeOut -ExpectedName "$runtimeAssetId.zip"
+Assert-ReleaseOwnedPath -Path $runtimeManifest -OutputRoot $runtimeOut -ExpectedName "$runtimeAssetId.json"
 if (Test-Path $runtimeSrc) {
     New-Item -ItemType Directory -Force -Path $runtimeOut | Out-Null
     if (-not (Test-Path $runtimeZip)) {
@@ -191,68 +318,58 @@ if (Test-Path $runtimeSrc) {
 } else {
     Write-Host "  跳过（源码树里没有 python-runtime\runtime-envs\cuda）"
 }
+}
 
 Write-Host "[4/6] 更新包（不含运行时，签名可选）"
-$updateRoot = "$out\update-stage"
-if (Test-Path $updateRoot) { Remove-Item $updateRoot -Recurse -Force }
+$updateRoot = "$out\update-stage-$Version"
+Remove-ReleaseOwnedPath -Path $updateRoot -OutputRoot $out -ExpectedName "update-stage-$Version"
 New-Item -ItemType Directory -Force -Path $updateRoot | Out-Null
-foreach ($item in @('MediaForge.exe', 'python', 'bin', 'integrations')) {
-    Copy-Item (Join-Path $stage $item) $updateRoot -Recurse -Force
-}
+Copy-ReleaseUpdate -Stage $stage -Destination $updateRoot
 $updateZip = "$out\MediaForge-$Version-windows-x64-update.zip"
-if (Test-Path $updateZip) { Remove-Item $updateZip -Force }
+Remove-ReleaseOwnedPath -Path $updateZip -OutputRoot $out -ExpectedName "MediaForge-$Version-windows-x64-update.zip"
+foreach ($suffix in @('.sig', '.signature.b64')) {
+    Remove-ReleaseOwnedPath -Path "$updateZip$suffix" -OutputRoot $out -ExpectedName "MediaForge-$Version-windows-x64-update.zip$suffix"
+}
 Compress-Folder -Source $updateRoot -Destination $updateZip -Label "update.zip"
-Remove-Item $updateRoot -Recurse -Force
-$keyPath = Join-Path $env:USERPROFILE '.mediaforge-signing\mediaforge-minisign.key'
-$signingPassword = if ($SkipSign) { '' } else { Get-SigningPassword }
-$passwordArg = if ($signingPassword) { $signingPassword } else { '""' }
-if (-not $SkipSign -and (Test-Path $keyPath)) {
-    $signer = "$root\node_modules\.bin\tauri.cmd"
-    Push-Location $root
-    # tauri CLI 会把 TAURI_SIGNING_PRIVATE_KEY 环境变量也算作"已提供 key"，
-    # 与显式 -f/-p 同时出现会直接报冲突；这里只在子进程环境里摘掉它们。
-    $savedKey = $env:TAURI_SIGNING_PRIVATE_KEY
-    $savedPassword = $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-    Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
-    Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
-    try { Invoke-Native 'signer' { & $signer signer sign -f $keyPath -p $passwordArg $updateZip } }
-    finally {
-        Pop-Location
-        if ($savedKey) { $env:TAURI_SIGNING_PRIVATE_KEY = $savedKey }
-        if ($savedPassword) { $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $savedPassword }
-    }
-    if (Test-Path "$updateZip.sig") {
-        $b64 = (Get-Content "$updateZip.sig" -Raw).Trim()  # .sig 本身就是 base64，清单直接用
-        [System.IO.File]::WriteAllText("$updateZip.signature.b64", $b64, (New-Object System.Text.UTF8Encoding($false)))
-        Write-Host "  已签名；清单 signature 字段用 $updateZip.sig 的内容"
-    }
+Remove-ReleaseOwnedPath -Path $updateRoot -OutputRoot $out -ExpectedName "update-stage-$Version"
+if ($SkipSign) {
+    Write-Host '  跳过签名（-SkipSign，隔离验证不读取签名凭据）'
 } else {
-    if ($SkipSign) {
-        Write-Host '  跳过签名（-SkipSign，隔离验证不读取签名凭据）'
+    $keyPath = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PATH', 'Process')
+    if ($keyPath) {
+        Assert-ReleaseExecutable -Path "$stage\MediaForge.exe" -ExpectedVersion $Version
+        Invoke-ReleaseArchiveSigning -Archive $updateZip -ExpectedVersion $Version -Root $root -KeyPath $keyPath `
+            -Password ([Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'Process'))
+        Write-Host '  已签名'
     } else {
-        Write-Host "  跳过签名：设置 TAURI_SIGNING_PRIVATE_KEY_PASSWORD 后重跑即可（或单独跑 scripts\sign-update.ps1）"
+        Write-Host '  跳过签名：请显式设置 TAURI_SIGNING_PRIVATE_KEY_PATH 后签名'
     }
 }
 
 Write-Host "[5/6] 安装包"
 # 本机的 Inno 版本比 CI 旧，不认 SetupArchitecture；只对本地副本做剥离，
 # 仓库里的 .iss 保持原样。
-$localIss = "$out\mediaforge.local.iss"
+$localIss = "$out\mediaforge-$Version.local.iss"
+Assert-ReleaseOwnedPath -Path $localIss -OutputRoot $out -ExpectedName "mediaforge-$Version.local.iss"
 Get-Content "$root\installer\mediaforge.iss" |
     Where-Object { $_ -notmatch '^SetupArchitecture=' } |
     Set-Content $localIss -Encoding UTF8
 $env:MEDIAFORGE_VERSION = $Version
 $env:MEDIAFORGE_PORTABLE_DIR = $stage
 $env:MEDIAFORGE_INSTALLER_OUTPUT = $out
+$env:MEDIAFORGE_INSTALLER_ICON = Join-Path $root 'src-tauri\icons\icon.ico'
+$env:MEDIAFORGE_PACKAGE_SUFFIX = $PackageSuffix
+$setup = "$out\MediaForge-$Version-$PackageSuffix-setup.exe"
+Assert-ReleaseOwnedPath -Path $setup -OutputRoot $out -ExpectedName "MediaForge-$Version-$PackageSuffix-setup.exe"
 Invoke-Native 'ISCC' { & $iscc $localIss }
 
 Write-Host "[6/6] 安装包输出"
-$setup = "$out\MediaForge-$Version-windows-x64-cuda-setup.exe"
 if (-not (Test-Path $setup)) { throw "没有找到安装包: $setup" }
 if ($SkipDownloadCopy) {
     Write-Host '  跳过本机副本（-SkipDownloadCopy）'
 } else {
     $localOut = "$out\local"
+    Assert-NoReparsePath $localOut
     New-Item -ItemType Directory -Force -Path $localOut | Out-Null
     Copy-Item $setup (Join-Path $localOut (Split-Path $setup -Leaf)) -Force
     Write-Host "  已复制到 $localOut"

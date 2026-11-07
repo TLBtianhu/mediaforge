@@ -125,3 +125,13 @@ class ReleaseNotesTests(unittest.TestCase):
             NOTES.GitHubRedirectHandler().redirect_request(
                 Request("https://api.github.com/file"), None, 302, "Found", {}, "http://example.com/file",
             )
+
+    def test_candidate_summary_renders_offline_with_only_actual_platform_packages(self):
+        package = "MediaForge-0.0.32-windows-x64-cpu-setup.exe"
+        (self.artifacts / package).touch()
+        rendered = NOTES.render_release_notes(self.artifacts, ROOT / ".github/release-notes", "v0.0.32")
+        self.assertIn("0.0.32", rendered)
+        self.assertIn(package, rendered)
+        self.assertIn("| Windows x64 | CPU |", rendered)
+        self.assertNotIn("| macOS | Apple Silicon", rendered)
+        self.assertNotIn("| Linux x64 | AppImage", rendered)

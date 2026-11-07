@@ -5,31 +5,35 @@
 ## 1. 代码与版本
 
 ```
-□ package.json / tauri.conf.json / Cargo.toml 版本一致（打包脚本会断言）
+□ package.json / tauri.conf.json / Cargo.toml / Cargo.lock应用条目版本一致
+□ 源EXE与stage EXE的ProductName为MediaForge，ProductVersion等于目标版本
 □ git 工作区干净（没有未提交的临时脚本）
 □ cargo test 通过（至少 update_ 与 worker 相关用例）
-□ python 单测通过（tests/python，忽略 WSL/macOS 这类环境性失败）
+□ 相关Python单测通过；明确记录skip与未覆盖平台，不把环境失败算作通过
 ```
 
 ## 2. 打包（一条命令）
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1
-# 只做隔离验证时：不读取签名凭据、不复制到 Downloads，也不执行安装
-powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -SkipDownloadCopy
+# 隔离候选：不读取签名凭据、不另存本机副本，也不执行安装
+powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.32
 ```
 
 ```
 □ [1/6] 生产构建走 pnpm tauri build（不是 cargo build，否则前端资源不内嵌）
-□ [2/6] staging 断言通过（python\safe_fs.py、integrations\dsh-mediaforge、bin\）
+□ [2/6] staging断言通过：完整python分层、manifest、SDK、integrations、bin与bootstrap
 □ [3/6] 便携 zip 生成
 □ [4/6] update.zip 生成并**已签名**（.sig 与 .signature.b64 都在）
 □ [5/6] 安装包生成
-□ [6/6] 安装包已复制到 Downloads
-□ stage 里的 MediaForge.exe 体积 ≈ 34 MB（24 MB 说明是缺资源的 dev 构建）
+□ [6/6] 输出路径正确；本机副本只在release/local生成，候选可用-SkipDownloadCopy省略
+□ stage EXE身份/版本、资源清单、归档哈希均已核对，不用EXE体积推断资源正确
+□ 默认不含runtime-envs、模型、开发数据、日志和测试截图；数GB资产另行显式打包
+□ 正式签名前确认目标版本与ZIP内EXE一致；仅使用显式密钥路径和进程环境
+□ 不把密码放命令参数，不输出signer原始诊断，不在签名环境中执行signer help
 ```
 
-## 3. 真机验证（唯一不能自动化的一项）
+## 3. 隔离安装与原生界面验证
 
 在干净机器或新用户账户上：
 
@@ -40,13 +44,17 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -
 □ 下载一个 64 MB 级模型：有进度、完成后状态变「已下载」
 □ 图像页跑一次超分，输出文件存在且尺寸正确
 □ 设置 → 运行时显示 cuda（无 N 卡则 cpu）
-□ 数据在 %USERPROFILE%\.mediaforge，且里面**没有** junction
+□ 新安装数据在<安装根>/data，模型/运行时为同根兄弟目录，且没有junction
+□ 显式DATA_ROOT正确覆盖默认目录；测试数据与正式用户profile无交叉
+□ 独立AppId完成旧版→新版升级和静默卸载，配置/模型/运行时样本SHA保持一致
+□ 小资产headless首装、坏SHA拒绝、运行时A→B→A回滚通过
+□ 完整UI验收另记结果；禁止桌面操作时不启动普通GUI、不操作现有窗口
 ```
 
 ## 4. Harness 集成
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\verify.ps1"
+powershell -ExecutionPolicy Bypass -File "<安装根>\app\integrations\dsh-mediaforge\verify.ps1"
 ```
 
 ```

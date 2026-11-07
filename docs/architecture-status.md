@@ -1,4 +1,4 @@
-# 架构现状（2026-11-02 核对）
+# 架构现状（2026-11-07 核对）
 
 这份文件回答一个问题：**哪些地方已经只有一条路，哪些地方还有两条。**
 判断标准不是“看起来整齐”，而是“同一件事是否只有一个实现”。
@@ -30,10 +30,26 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   与 media_ops/media_catalog.json（含目录型 Depth/RMBG 文件清单）
 运行时            自包含嵌入式 Python 资产 runtime-cuda-2026.11.4，
                   sha256 ccbeb67d…021f，3618200716 字节，无 venv 启动器与 pyvenv.cfg
-分发隔离          开发=仓库 .dev-data，便携=<exe 目录>/data，安装=%USERPROFILE%/.mediaforge；
-                  开发/便携/首装/升级/A→B→A 回滚均有真实进程级 E2E 与 CI
-版本清单          GitHub 与魔搭 versions.json 均返回 200，runtime-cuda-2026.11.3、
-                  大小和 SHA-256 与本地及 manifest/runtime.json 一致，签名文件同步
+分发隔离          开发=仓库 .dev-data，便携=<exe 目录>/data，安装=<安装根>/data；
+                  安装模型/运行时为同根兄弟目录，显式DATA_ROOT隔离覆盖默认推导
+版本检查          每次从发布源刷新并验签；document/signature 单文件原子缓存，
+                  失败不把旧缓存报告为最新；缓存兼容旧格式并用于后续接受运行时
+运行时事务        runtime_assets/transaction.rs 持有跨进程锁，隔离解包/自检/标记，
+                  完成后发布目录、原子切换指针；失败恢复目录与指针，保留续传包
+本地打包          只带bootstrap、完整worker/manifest/SDK/tools，运行时另发；
+                  拷贝前检查源EXE产品/版本，候选输出限制在release内，更新包同源校验
+发布契约          Windows/macOS/Linux脚本统一MediaForge产物、manifest与隔离根；
+                  updater只写本次成功平台，stable版本通知单独验签且拒绝回退
+媒体任务          Rust supervisor在启动前写单job原子记录，owner lease判定中断；
+                  Pinia mediaJobs常驻监听，四媒体页切走后继续更新、重进恢复提交快照
+队列与产物        queue合并共享journal与音频待调度/执行任务，音频取消走调度器；
+                  results增加独立媒体/工具/Agent文件区，保留失败或取消的部分产物
+媒体方案          media-workflows独立版本库，命名保存/加载/更新/删除只保存方案；
+                  Rust读改写事务与revision防止窗口覆盖，损坏库不按空库覆盖
+串行支持          workflow_contract按模态声明真实支持/参数/单步约束；UI与worker
+                  共用字段，执行前校验全计划，RIFE/未接入能力留在单任务入口
+媒体验证隔离      smoke入口要求显式解释器/模型/数据，合成输入、临时输出与缓存；
+                  不自动发现已安装用户运行时，不为测试自动下载资产
 Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
                   makeInferenceDefaults / makePlayback / makeStemSelection / makeQueue /
                   makeOutputDirectory / makeExecutionLog / makeRuntimeDebugFiles
@@ -42,14 +58,17 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
 ## 还有两条的地方
 
 ```
-1. 已安装应用仍未同步
-   当前安装版桥为 61 工具，仓库为 70。隔离打包与产物验证已完成，
-   但用户选择不覆盖安装、不同步 DSH；注册表与 Harness 配置未改。
-   若以后执行覆盖安装，先备份注册表与 cordis.patch.yml，再验证安装版工具数。
+1. 调度与持久存储
+   音频 task-history与共享agent-jobs仍是两种物理存储；UI已合流，但跨进程并发
+   配额/调度尚未统一。媒体/Agent产物当前只读，未实现统一删除或完整历史迁移。
+   Python bridge仍维护兼容index；应用通过单job文件取最新状态，避免旧index遮盖终态。
 
-2. 运行时更新的协商
-   已刻意不做：没有“检查最新版本”，换运行时 = 发新版应用 + 新 sha256。
-   标记不匹配时提示“需要更新”，这是校验，不是协商。
+2. 本地候选与正式分发
+   Windows 0.0.32原生程序及安装/便携/更新包已生成；独立AppId的31→32升级、
+   静默卸载保留4项资产、headless首装及运行时A→B→A回滚均通过。
+   未覆盖用户安装版或同步DSH，未推送/打tag/发布；真实签名与远端CI仍未执行。
+   macOS/Linux仅发布契约与隔离fixture验证，原生包和完整桌面UI仍未验收。
+   用户禁止ComputerUse；后续保持文件/CLI操作，不触碰已打开的旧测试窗口。
 ```
 
 ## 死代码（明确保留，不删）

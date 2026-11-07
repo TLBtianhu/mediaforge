@@ -1,5 +1,8 @@
 name: Release macOS Packages
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
@@ -61,6 +64,9 @@ jobs:
 
       - name: Verify prepared macOS runtime
         run: |
+          PROBE_ROOT="$(mktemp -d)"
+          trap 'rm -rf "$PROBE_ROOT"' EXIT
+          source scripts/posix-release-isolation.sh "$PROBE_ROOT"
           test -f python-runtime/bin/python3
           test -d python-runtime/lib/python3.12
           if otool -L python-runtime/bin/python3 | grep -q '/Library/Frameworks/Python.framework/Versions/'; then
@@ -81,8 +87,7 @@ jobs:
         run: |
           mkdir -p src-tauri/resources
           rm -rf src-tauri/resources/python src-tauri/resources/python-runtime src-tauri/resources/bin
-          mkdir -p src-tauri/resources/python
-          rsync -a --exclude '__pycache__' --exclude '*.pyc' python/ src-tauri/resources/python/
+          python3 scripts/posix-release.py stage src-tauri/resources
           cp -R python-runtime src-tauri/resources/python-runtime
           bash scripts/prepare-macos-bundled-tools.sh src-tauri/resources/bin
           test -s src-tauri/resources/bin/THIRD_PARTY_TOOLS.txt
@@ -117,34 +122,15 @@ jobs:
           PYMSS_BUILD_UPDATE_SUPPORTED: 'true'
           PYMSS_BUILD_TARGET: macos-arm64
           PYMSS_BUILD_VARIANT: macos-arm64-mlx
-          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'pymss-project/pymss-studio' && github.repository_owner == 'pymss-project' && 'true' || 'false' }}
+          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'TLBtianhu/mediaforge' && github.repository_owner == 'TLBtianhu' && 'true' || 'false' }}
           MACOSX_DEPLOYMENT_TARGET: "14.0.0"
         run: |
-          python3 - <<'PY' > src-tauri/tauri.bundle.resources.json
-          import json
-          from pathlib import Path
-
-          root = Path.cwd()
-          print(json.dumps({
-              "bundle": {
-                  "resources": {
-                      str((root / "src-tauri" / "resources" / "python").resolve()): "python",
-                      str((root / "src-tauri" / "resources" / "python-runtime").resolve()): "python-runtime",
-                      str((root / "src-tauri" / "resources" / "bin").resolve()): "bin",
-                      str((root / "src-tauri" / "resources" / "plugin-sdk").resolve()): "resources/plugin-sdk",
-                  }
-              }
-          }))
-          PY
+          python3 scripts/posix-release.py config src-tauri/resources --platform macos > src-tauri/tauri.bundle.resources.json
           pnpm plugins:build --bundles app --config src-tauri/tauri.bundle.resources.json
 
       - name: Re-sign bundled macOS app after embedding runtime
         run: |
-          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
-          if [ -z "$APP" ]; then
-            echo "Pymss Studio.app not found"
-            exit 1
-          fi
+          APP="$(python3 scripts/posix-release.py mac-app src-tauri/target/release/bundle/macos)"
           RES="$APP/Contents/Resources"
           RESOURCE_ROOT="$RES"
           if [ ! -f "$RESOURCE_ROOT/python-runtime/runtime-envs/active-runtime.json" ]; then RESOURCE_ROOT="$RES/resources"; fi
@@ -163,11 +149,10 @@ jobs:
 
       - name: Verify bundled macOS resources
         run: |
-          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
-          if [ -z "$APP" ]; then
-            echo "Pymss Studio.app not found"
-            exit 1
-          fi
+          APP="$(python3 scripts/posix-release.py mac-app src-tauri/target/release/bundle/macos)"
+          PROBE_ROOT="$(mktemp -d)"
+          trap 'rm -rf "$PROBE_ROOT"' EXIT
+          source scripts/posix-release-isolation.sh "$PROBE_ROOT"
 
           RES="$APP/Contents/Resources"
           RESOURCE_ROOT="$RES"
@@ -229,7 +214,8 @@ jobs:
           PATH="$ISOLATED_PATH" "$BIN/ffmpeg" -version
           PATH="$ISOLATED_PATH" "$BIN/ffprobe" -version
           PATH="$ISOLATED_PATH" "$BIN/aria2c" --version
-          ARIA2_SMOKE_DIR="$(mktemp -d)"
+          ARIA2_SMOKE_DIR="$PROBE_ROOT/aria2"
+          mkdir -p "$ARIA2_SMOKE_DIR"
           ARIA2_SMOKE_SOURCE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/raw/$GITHUB_SHA/LICENSE"
           env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH -u DYLD_FRAMEWORK_PATH \
             PATH="$ISOLATED_PATH" "$BIN/aria2c" \
@@ -260,21 +246,20 @@ jobs:
         run: |
           VERSION="${MEDIAFORGE_VERSION#v}"
           mkdir -p release
-          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'Pymss Studio.app' | head -n 1)
-          if [ -z "$APP" ]; then
-            echo "Pymss Studio.app not found"
-            exit 1
-          fi
+          APP="$(python3 scripts/posix-release.py mac-app src-tauri/target/release/bundle/macos)"
           STAGE="$(mktemp -d)"
+          trap 'rm -rf "$STAGE"' EXIT
           cp -R "$APP" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           hdiutil create \
-            -volname "Pymss Studio" \
+            -volname "MediaForge" \
             -srcfolder "$STAGE" \
             -ov \
             -format UDZO \
             "release/MediaForge-${VERSION}-macos-${{ matrix.arch }}-mlx.dmg"
           rm -rf "$STAGE"
+          python3 scripts/posix-release.py mac-update "$APP" \
+            "release/MediaForge-${VERSION}-macos-${{ matrix.arch }}-update.app.tar.gz" --version "$VERSION"
           echo "MEDIAFORGE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Upload macOS artifact
@@ -283,3 +268,6 @@ jobs:
           name: MediaForge-${{ env.MEDIAFORGE_VERSION }}-macos-${{ matrix.arch }}-mlx
           path: |
             release/*.dmg
+            release/*-update.app.tar.gz
+            release/*-update.app.tar.gz.json
+          if-no-files-found: error

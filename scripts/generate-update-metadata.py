@@ -4,16 +4,24 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 
 def generate(artifacts: Path, environment: dict[str, str]) -> list[str]:
     tag = environment["RELEASE_TAG"]
     version = tag.removeprefix("v")
-    prerelease = environment.get("RELEASE_PRERELEASE", "false").lower() == "true"
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?", version):
+        raise ValueError("Release tag must contain a semantic version")
+    repository = environment.get("GITHUB_REPOSITORY", "TLBtianhu/mediaforge")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("Repository must be an owner/repository pair")
+    prerelease = "-" in version.split("+", 1)[0] or environment.get("RELEASE_PRERELEASE", "false").lower() == "true"
     channels = ("prerelease",) if prerelease else ("stable", "prerelease")
-    generated = []
+    pending = []
+    root_url = f"https://github.com/{repository}"
     for slug, target, suffix, capability in (
         ("windows-x64", "windows-x86_64", "zip", "RELEASE_AUTO_UPDATE_SUPPORTED"),
         ("macos-arm64", "darwin-aarch64", "app.tar.gz", "RELEASE_MACOS_AUTO_UPDATE_SUPPORTED"),
@@ -21,6 +29,9 @@ def generate(artifacts: Path, environment: dict[str, str]) -> list[str]:
     ):
         asset = f"MediaForge-{version}-{slug}{'' if slug == 'linux-x64' else '-update'}.{suffix}"
         if not (artifacts / asset).is_file():
+            platform = slug.split("-", 1)[0].upper()
+            if environment.get(f"RELEASE_{platform}_BUILD_RESULT") == "success":
+                raise ValueError(f"Successful {platform} build has no managed update archive: {asset}")
             continue
         signature = (artifacts / f"{asset}.sig").read_text(encoding="utf-8").strip()
         if not signature:
@@ -48,20 +59,24 @@ def generate(artifacts: Path, environment: dict[str, str]) -> list[str]:
                 "pymss_update_supported": supported,
                 "pymss_requires_manual_install": not supported,
                 "pymss_update_message": message,
-                "pymss_manual_install_url": f"https://github.com/TLBtianhu/mediaforge/releases/tag/{tag}",
+                "pymss_manual_install_url": f"{root_url}/releases/tag/{quote(tag, safe='')}",
                 "platforms": {
                     target: {
                         "signature": signature,
-                        "url": f"https://github.com/TLBtianhu/mediaforge/releases/download/{tag}/{asset}",
+                        "url": f"{root_url}/releases/download/{quote(tag, safe='')}/{quote(asset, safe='')}",
                     }
                 },
                 **extra,
             }
             name = f"{channel}-v1-{slug}-update.json"
-            (artifacts / name).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            generated.append(name)
-    if not generated:
+            pending.append((name, data))
+    if not pending:
         raise ValueError("No signed managed update archives were found")
+    # Reject all malformed/missing platform inputs before changing any channel.
+    generated = []
+    for name, data in pending:
+        (artifacts / name).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        generated.append(name)
     (artifacts / "managed-update-metadata.txt").write_text("\n".join(generated) + "\n", encoding="utf-8")
     return generated
 

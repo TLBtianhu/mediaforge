@@ -62,6 +62,11 @@ def pack_installed_distribution(name: str, destination: Path) -> Path:
             if path.parent == information and path.name in {"RECORD", "INSTALLER", "REQUESTED", "direct_url.json"}:
                 continue
             source = Path(distribution.locate_file(item)).resolve()
+            # Runtime pruning can remove WHEEL while RECORD still lists it.
+            # The compatible replacement is generated below; every other
+            # missing inventory entry must continue to fail verification.
+            if path.parent == information and path.name == "WHEEL" and source.is_relative_to(root) and not source.exists():
+                continue
             if not source.is_relative_to(root) or not source.is_file():
                 raise RuntimeError(f"The installed package has an invalid file entry: {name}/{path}")
             data = source.read_bytes()

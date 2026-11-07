@@ -8,6 +8,7 @@
 #define SourceDir GetEnv("MEDIAFORGE_PORTABLE_DIR")
 #define OutputDir GetEnv("MEDIAFORGE_INSTALLER_OUTPUT") == "" ? "..\release" : GetEnv("MEDIAFORGE_INSTALLER_OUTPUT")
 #define PackageSuffix GetEnv("MEDIAFORGE_PACKAGE_SUFFIX") == "" ? "windows-x64-cuda" : GetEnv("MEDIAFORGE_PACKAGE_SUFFIX")
+#define InstallerIcon GetEnv("MEDIAFORGE_INSTALLER_ICON") == "" ? "..\src-tauri\icons\icon.ico" : GetEnv("MEDIAFORGE_INSTALLER_ICON")
 
 #if SourceDir == ""
   #error MEDIAFORGE_PORTABLE_DIR is required. It must point to the staged portable directory.
@@ -22,7 +23,7 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppVerName={#MyAppName} {#MyAppVersion}
 DefaultDirName={localappdata}\Programs\{#MyAppName}
-; 用户不选目录：安装位置是常量，升级自然落在同一处。
+; Default remains stable for upgrades; /DIR allows isolated candidate validation.
 DisableDirPage=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
@@ -34,10 +35,12 @@ OutputDir={#OutputDir}
 OutputBaseFilename=MediaForge-{#MyAppVersion}-{#PackageSuffix}-setup
 Compression=lzma2/max
 LZMAUseSeparateProcess=yes
-LZMADictionarySize=1048576
+; Dictionary is in KiB. Bound compression memory on developer/CI machines.
+LZMADictionarySize=65536
+LZMANumBlockThreads=2
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=..\src-tauri\icons\icon.ico
+SetupIconFile={#InstallerIcon}
 UninstallDisplayIcon={app}\app\{#MyAppExeName}
 CloseApplications=yes
 RestartApplications=no
@@ -53,7 +56,7 @@ Name: "dshbridge"; Description: "附带 DSH 集成桥（由 DSH 插件管理器�
 
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion
-Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "python-runtime\runtime-envs\*,integrations\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "{#MyAppExeName},mediaforge.portable,python-runtime\runtime-envs\*,integrations\*,models\*,data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\integrations\*"; DestDir: "{app}\integrations"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Tasks: dshbridge
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 
