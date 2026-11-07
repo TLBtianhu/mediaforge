@@ -28,29 +28,37 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   测试专用 helper 与 imports 已用 cfg(test) 移出生产构建
 模型列表          core/model_hub.py 是唯一入口，合并 audio_catalog.json（326 条）
                   与 media_ops/media_catalog.json（含目录型 Depth/RMBG 文件清单）
-运行时            自包含嵌入式 Python 资产 runtime-cuda-2026.11.4，
-                  sha256 ccbeb67d…021f，3618200716 字节，无 venv 启动器与 pyvenv.cfg
+运行时            本地新资产runtime-cuda-py312-2026.11.7：实际Python3.12.13，
+                  torch2.7.1+cu128，3794089293字节，sha256 3a644265…ce84；未上传
 分发隔离          开发=仓库 .dev-data，便携=<exe 目录>/data，安装=<安装根>/data；
                   安装模型/运行时为同根兄弟目录，显式DATA_ROOT隔离覆盖默认推导
 版本检查          每次从发布源刷新并验签；document/signature 单文件原子缓存，
-                  失败不把旧缓存报告为最新；缓存兼容旧格式并用于后续接受运行时
+                  失败不把旧缓存报告为最新；仅当前原子cache envelope1与versions文档2
 运行时事务        runtime_assets/transaction.rs 持有跨进程锁，隔离解包/自检/标记，
                   完成后发布目录、原子切换指针；失败恢复目录与指针，保留续传包
-本地打包          只带bootstrap、完整worker/manifest/SDK/tools，运行时另发；
-                  拷贝前检查源EXE产品/版本，候选输出限制在release内，更新包同源校验
+本地打包          只带实际3.12 bootstrap与完整worker/manifest/SDK/tools，资产独立构建；
+                  源EXE及Python版本在stage变更前检查，fresh bootstrap不自动删除旧目录
 发布契约          Windows/macOS/Linux脚本统一MediaForge产物、manifest与隔离根；
                   updater只写本次成功平台，stable版本通知单独验签且拒绝回退
 媒体任务          Rust supervisor在启动前写单job原子记录，owner lease判定中断；
                   Pinia mediaJobs常驻监听，四媒体页切走后继续更新、重进恢复提交快照
+持久真源          Kernel与Rust仅逐job文件，列表读取聚合，不再写index/workspace副本；
+                  音频history只落outputs，files为内存投影，native graph只存一份定义
+当前格式          history1/params3/workbench2/workflow wrapper1/Comfy0.4/editor4；
+                  缺失/旧/未来结构拒绝且保留原文件，无backend回退/隐式迁移/升级备份
+ABI门禁           worker与安装器实际核对3.12；资产校验解释器/DLL/扩展/prefix，
+                  不从bootstrap覆盖解释器；旧venv在任何恢复、pip或状态写入前拒绝
 队列与产物        queue合并共享journal与音频待调度/执行任务，音频取消走调度器；
                   results增加独立媒体/工具/Agent文件区，保留失败或取消的部分产物
 媒体方案          media-workflows独立版本库，命名保存/加载/更新/删除只保存方案；
                   Rust读改写事务与revision防止窗口覆盖，损坏库不按空库覆盖
 串行支持          workflow_contract按模态声明真实支持/参数/单步约束；UI与worker
                   共用字段，执行前校验全计划，RIFE/未接入能力留在单任务入口
+媒体输入          GUI/MCP/CLI统一显式steps；旧mode/modelId/factor转换与旧图像
+                  process入口已删，不接受不支持参数的“旧默认值”例外
 媒体验证隔离      smoke入口要求显式解释器/模型/数据，合成输入、临时输出与缓存；
                   不自动发现已安装用户运行时，不为测试自动下载资产
-Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
+Vue 拆分          已拆分簇的测试直接实例化下列工厂，其余部分测试仍提取SFC实际函数：
                   makeInferenceDefaults / makePlayback / makeStemSelection / makeQueue /
                   makeOutputDirectory / makeExecutionLog / makeRuntimeDebugFiles
 ```
@@ -59,13 +67,15 @@ Vue 拆分          测试直接实例化工厂，不再从 SFC 取声明：
 
 ```
 1. 调度与持久存储
-   音频 task-history与共享agent-jobs仍是两种物理存储；UI已合流，但跨进程并发
-   配额/调度尚未统一。媒体/Agent产物当前只读，未实现统一删除或完整历史迁移。
-   Python bridge仍维护兼容index；应用通过单job文件取最新状态，避免旧index遮盖终态。
+   音频task-history仍以settings/tasks.json聚合读写；共享journal按agent-jobs/<jobId>.json
+   逐job存储。已执行音频任务仍有重叠记录，UI已去重合流，跨进程并发配额/调度尚未统一。
+   媒体/Agent产物当前只读，未实现统一删除。旧index/workspace兼容读写及前端journal_job
+   镜像写入入口已删除；不把旧格式迁移列为后续任务。
 
 2. 本地候选与正式分发
-   Windows 0.0.32原生程序及安装/便携/更新包已生成；独立AppId的31→32升级、
-   静默卸载保留4项资产、headless首装及运行时A→B→A回滚均通过。
+   Windows 0.0.33本地原生及安装/便携/更新包已生成；独立AppId的31→33升级、
+   静默卸载保留4项资产、真实3.12资产headless首装/拒旧ABI/坏哈希/离线复用、
+   小资产A→B→A回滚与CPU两步真实超分均通过。安装器保留文件不等于结构迁移。
    未覆盖用户安装版或同步DSH，未推送/打tag/发布；真实签名与远端CI仍未执行。
    macOS/Linux仅发布契约与隔离fixture验证，原生包和完整桌面UI仍未验收。
    用户禁止ComputerUse；后续保持文件/CLI操作，不触碰已打开的旧测试窗口。
@@ -97,7 +107,8 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
 ## 单点风险
 
 ```
-运行时包 3.45 GB，超过 GitHub Release 的 2 GiB 单文件上限，
-托管在 HF 镜像与魔搭。runtime-cuda-2026.11.4 为自包含嵌入式 Python，
-不含 venv 启动器与 pyvenv.cfg；真实解包、激活、ProPainter 导入和解释器启动均已验证。
+新3.12资产3794089293B（3.53GiB），仍需独立资产源托管，不能塞进程序安装包。
+本轮只本地生成并验证，未上传HF/魔搭、未签名或正式发布；完整UI与Mac/Linux原生未验。
+旧3.11生成源已从默认bootstrap移走，删除被工具策略拒绝，约5.4GiB仍在release/retained-*；
+无绕过删除，也未清除用户/狗粮及缓存的旧运行时资产。
 ```

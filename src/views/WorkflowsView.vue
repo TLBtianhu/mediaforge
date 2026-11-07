@@ -35,8 +35,7 @@ import {
 } from '@/utils/workflowSimple'
 import { WorkflowEditorInUseError } from '@/utils/workflowEditorState'
 import { themeIsDark } from '@/utils/theme'
-import { hasInvalidSimpleStructure, isGraphWorkflowDefinition, isSimpleWorkflowDefinition } from '@/workflows/formats'
-import { litegraphToComfy } from '@/litegraph/graphAdapter'
+import { hasInvalidSimpleStructure, isGraphWorkflowDefinition, isSimpleWorkflowDefinition, normalizeGraphWorkflowDefinition } from '@/workflows/formats'
 import {
   countWorkflowSaveOutputs,
   getWorkflowDefinitionIssue,
@@ -580,7 +579,7 @@ async function exportWorkflowDefinition(
 ) {
   try {
     const payload = isGraphWorkflowDefinition(definition)
-      ? { ...definition, ...litegraphToComfy(definition) }
+      ? normalizeGraphWorkflowDefinition(definition)
       : definition
     const suffix = isGraphWorkflowDefinition(definition)
       ? 'comfy-mss.json'

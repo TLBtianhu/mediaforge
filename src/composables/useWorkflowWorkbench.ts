@@ -12,7 +12,7 @@ import { isTerminalTaskStatus } from '@/features/tasks/lifecycle'
 import { launchTask } from '@/features/tasks/launch'
 import { detectWorkflowFormat } from '@/workflows/formats'
 import { initializeWorkbenchBridge, requestWorkbenchAction } from '@/utils/workbenchBridge'
-import { cloneWorkflow, prepareWorkbenchRun, visibleWorkflowNodeStates, workbenchOutputDirectory, workflowBindingsEqual, workflowExecutionSignature, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
+import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, visibleWorkflowNodeStates, workbenchOutputDirectory, workflowBindingsEqual, workflowExecutionSignature, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
 import { visibleWorkflowNodeLogs } from '@/workflows/nodeLogs'
 import { activeWorkflowTask, selectedWorkflowJob, workflowBatchExecution } from '@/workflows/batchExecution'
 
@@ -35,7 +35,7 @@ export function useWorkflowWorkbench(options: {
   const focusedJob = computed(() => selectedWorkflowJob(jobs.value, selectedJobId.value))
   const focusedTask = computed(() => activeWorkflowTask(focusedJob.value?.tasks || []) || focusedJob.value?.tasks.at(-1) || null)
   const batchExecution = computed(() => workflowBatchExecution(focusedJob.value?.tasks || []))
-  const executionDefinition = computed(() => focusedTask.value?.runConfig?.workbench?.sourceDefinition || null)
+  const executionDefinition = computed(() => focusedTask.value?.runConfig?.workbench ? workflowSourceDefinition(focusedTask.value.runConfig) : null)
   const executionMatchesDraft = computed(() => Boolean(executionDefinition.value)
     && workflowExecutionSignature(executionDefinition.value!) === workflowExecutionSignature(options.definition())
     && (focusedTask.value!.runConfig!.workbench!.nativeGraph
@@ -45,11 +45,12 @@ export function useWorkflowWorkbench(options: {
     const snapshot = target?.runConfig?.workbench
     if (!target || !snapshot) return {}
     const summary: Record<string, string> = {}
-    for (const node of workflowInputNodes(snapshot.sourceDefinition)) {
+    const definition = workflowSourceDefinition(target.runConfig)
+    for (const node of workflowInputNodes(definition)) {
       const path = snapshot.inputs[`studio_input_${node.id}`] || target.input
       summary[node.id] = path.split(/[\\/]/).pop() || path
     }
-    for (const node of workflowOutputNodes(snapshot.sourceDefinition)) summary[node.id] = snapshot.outputs[node.id] || ''
+    for (const node of workflowOutputNodes(definition)) summary[node.id] = snapshot.outputs[node.id] || ''
     summary.save = [...new Set(Object.values(snapshot.outputs))].join(' | ')
     return summary
   })

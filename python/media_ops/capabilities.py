@@ -68,17 +68,6 @@ def _catalog() -> dict[str, dict[str, Any]]:
     return {f"media:{item['id']}": {**item, "id": f"media:{item['id']}"} for item in data.get("models", [])}
 
 
-def _ensure_layout() -> Path:
-    """确保媒体权重都在 `<模型根>/media/` 下，并返回模型根。
-
-    老布局（权重直接躺在根目录）会在这里被搬一次；不搬的话，升级后的用户会看到
-    "模型未下载"，重下代价是几百 MB。迁移是幂等的，且只动 catalog 点名的文件。
-    """
-    root = worker_paths.model_root()
-    worker_paths.migrate_media_models(root, [str(record.get("name") or "") for record in _catalog().values()])
-    return root
-
-
 def model_dir() -> Path:
     """媒体权重的根目录。解析规则只有一份，在 `worker_paths.model_root()`。
 
@@ -97,7 +86,7 @@ def model_path(model_id: str) -> Path:
     name = str(record.get("name") or "")
     if not name:
         raise KeyError(f"model has no file name: {model_id}")
-    return _ensure_layout() / worker_paths.media_model_relpath(name)
+    return worker_paths.model_root() / worker_paths.media_model_relpath(name)
 
 
 def model_scale(model_id: str, fallback: int = 2) -> int:
@@ -162,13 +151,7 @@ def capability(capability_id: str) -> dict[str, Any]:
 
 def _layout_root(override_dir: Any = None) -> Path:
     """可用性检查也要认"用户选的模型目录"，否则界面上永远是"没有可用模型"。"""
-    if override_dir:
-        root = worker_paths.model_root(override_dir)
-        worker_paths.migrate_media_models(
-            root, [str(record.get("name") or "") for record in _catalog().values()]
-        )
-        return root
-    return _ensure_layout()
+    return worker_paths.model_root(override_dir)
 
 
 def list_capabilities(override_dir: Any = None) -> dict[str, Any]:
@@ -337,7 +320,7 @@ def default_bindings(capability_id: str) -> dict[str, str]:
     """每个角色的默认模型：取该能力声明的 `modelIds` 里第一个 task 匹配的。
 
     唯一真源是 `capabilities.json`——**不要在别处再硬编码 model id**。
-    2026-10-29 之前 `steps_from_mode()` 和 `agent_bridge.pipeline_plan()` 各写了一份，
+    Earlier callers duplicated this selection in mode and pipeline adapters,
     改一个 id 要记得改三处，漏一处就是"计划里说有、实际找不到"。
     """
     item = capability(capability_id)
@@ -364,64 +347,6 @@ def default_model_by_scale(capability_id: str, scale: int) -> str:
         if model_scale(model_id) == int(scale):
             return model_id
     raise KeyError(f"capability {capability_id} declares no model with scale {scale}")
-
-
-def steps_from_mode(mode: str) -> list[dict[str, Any]]:
-    """Compatibility bridge for existing UI modes."""
-    steps: list[dict[str, Any]] = []
-    if mode in {"video_inpaint", "video_inpainting"}:
-        steps.append({"capability": "video_inpainting", "bindings": default_bindings("video_inpainting"), "params": {}})
-    if mode in {"video_sr", "video_super_resolution"}:
-        steps.append({"capability": "video_super_resolution", "bindings": default_bindings("video_super_resolution"), "params": {}})
-    if mode in {"face", "face_restoration"}:
-        steps.append({"capability": "face_restoration", "bindings": default_bindings("face_restoration"), "params": {}})
-    if mode in {"matting"}:
-        steps.append({"capability": "matting", "bindings": default_bindings("matting"), "params": {}})
-    if mode in {"depth"}:
-        steps.append({"capability": "depth", "bindings": default_bindings("depth"), "params": {}})
-    if mode in {"detect"}:
-        steps.append(
-            {
-                "capability": "object_detection",
-                "bindings": default_bindings("object_detection"),
-                "params": {},
-            }
-        )
-    if mode in {"denoise"}:
-        steps.append(
-            {
-                "capability": "denoise",
-                "bindings": default_bindings("denoise"),
-                "params": {},
-            }
-        )
-    if mode in {"interpolate"}:
-        steps.append(
-            {
-                "capability": "frame_interpolation",
-                "bindings": default_bindings("frame_interpolation"),
-                "params": {},
-            }
-        )
-    if mode in {"watermark", "watermark_upscale"}:
-        steps.append(
-            {
-                "capability": "watermark_removal",
-                "bindings": default_bindings("watermark_removal"),
-                "params": {},
-            }
-        )
-    if mode in {"upscale", "watermark_upscale"}:
-        steps.append(
-            {
-                "capability": "upscale",
-                "bindings": default_bindings("upscale"),
-                "params": {},
-            }
-        )
-    if not steps:
-        raise ValueError(f"unsupported media mode: {mode}")
-    return steps
 
 
 def mode_for_steps(steps: list[dict[str, Any]]) -> str:

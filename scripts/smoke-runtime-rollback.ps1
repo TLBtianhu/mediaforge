@@ -1,7 +1,7 @@
 # 小资产运行时回滚端到端：A 安装 → B 安装 → 不下载直接激活 A。
 # 使用本地 HTTP 与隔离数据根；两个资产都保留，active-runtime.json 必须可逆切换。
 param(
-    [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.31\MediaForge.exe",
+    [Parameter(Mandatory = $true)][string]$AppExe,
     [int]$Port = 8766
 )
 
@@ -48,7 +48,8 @@ foreach ($name in @('runtime-a', 'runtime-b')) {
     & (Join-Path $PSScriptRoot 'make-fixture-runtime.ps1') -OutZip $zip -AssetId $name
     $assets[$name] = @{
         assetId = $name
-        backend = 'fixture'
+        backend = 'cuda'
+        python = '3.12'
         sha256 = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         size = (Get-Item $zip).Length
         urls = @("http://127.0.0.1:$Port/$name.zip")

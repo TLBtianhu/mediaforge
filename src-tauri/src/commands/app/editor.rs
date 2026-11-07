@@ -675,13 +675,16 @@ pub async fn create_editor_project_from_task(app: AppHandle, payload: Value) -> 
                 "muted": false,
                 "solo": false,
                 "fadeIn": 0,
-                "fadeOut": 0
+                "fadeOut": 0,
+                "pan": 0,
+                "clips": [],
+                "pluginChain": []
             })
         })
         .collect();
 
     let project = serde_json::json!({
-        "version": 2,
+        "version": 4,
         "id": project_id,
         "name": file_name_from_path(input),
         "sourceTaskId": task_id,
@@ -752,7 +755,7 @@ pub async fn create_blank_editor_project(app: AppHandle, payload: Value) -> AppR
     let timestamp = now_millis() as u64;
     let project_id = format!("edit_blank_{}", timestamp);
     let project = serde_json::json!({
-        "version": 2,
+        "version": 4,
         "id": project_id,
         "name": custom_name.unwrap_or(default_name),
         "masterVolume": 1,
@@ -898,6 +901,7 @@ pub async fn load_editor_project(app: AppHandle, project_id: String) -> AppResul
     let path = editor_project_path(&app, &project_id)?;
     let content = std::fs::read_to_string(path)?;
     let mut project: Value = serde_json::from_str(&content)?;
+    storage::validate_editor_project(&project)?;
     if enrich_editor_project_sources(&mut project) {
         write_editor_project(&app, &project)?;
     }
@@ -926,6 +930,7 @@ pub async fn relink_editor_sources(
     let path = editor_project_path(&app, project_id)?;
     let content = std::fs::read_to_string(&path)?;
     let mut project: Value = serde_json::from_str(&content)?;
+    storage::validate_editor_project(&project)?;
     enrich_editor_project_sources(&mut project);
 
     let sources = project

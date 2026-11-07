@@ -20,12 +20,12 @@ export function createDemoRuntime(config: DemoConfig) {
   const now = Date.now()
   const task = { id: 'sample-separation', jobId: 'sample-job', model: models[0]!.name, input, output, status: 'done',
     progress: 100, createdAt: now, updatedAt: now, startedAt: now - 1200, finishedAt: now, durationMs: 1200,
-    message: 'Done', stageLabel: 'Done', logs: [], outputs, files: outputs.map(item => item.path),
+    message: 'Done', stageLabel: 'Done', logs: [], outputs,
     runConfig: { runMode: 'model', modelDir: prefix + '/Models', outputLayout: 'flat', device: 'auto',
-      outputFormat: 'wav', selectedStems: ['Vocals', 'Instrumental'], audioParams: {}, inferenceParams: {} } }
+      outputFormat: 'wav', selectedStems: ['Vocals', 'Instrumental'], audioParams: {}, inferenceParams: {}, inferenceParamsVersion: 3 } }
   const workflow = { id: 'sample-workflow', name: config.locale === 'en' ? 'Vocal separation' : '人声与伴奏分离',
     description: '', definition: createDemoWorkflow(models[0]!.name), format: 'simple', formatVersion: 1, createdAt: now, updatedAt: now }
-  const initialProject = { id: 'edit_sample-separation', name: config.locale === 'en' ? 'Sample audio' : '示例音频',
+  const initialProject = { version: 4, id: 'edit_sample-separation', name: config.locale === 'en' ? 'Sample audio' : '示例音频',
     sourceTaskId: task.id, sourceResultDir: output, masterVolume: 0.8, masterPan: 0,
     sources: waveform.sources.map((source, index) => ({ ...source, path: outputs[index]!.path })),
     tracks: waveform.tracks, createdAt: now, updatedAt: now }
@@ -34,8 +34,8 @@ export function createDemoRuntime(config: DemoConfig) {
       animationsEnabled: false, outputDir: output, modelDir: prefix + '/Models', defaultFormat: outputFormat,
       beginnerGuideProgress: { ...config.progress, status: 'active' } }],
     ['model-state', { models, categories: ['MSS'], categoriesCn: ['MSS'], modelDir: prefix + '/Models' }],
-    ['task-history', { tasks: [task] }],
-    ['workflow-state', { workflows: [workflow], selectedWorkflowId: workflow.id }],
+    ['task-history', { version: 1, tasks: [task] }],
+    ['workflow-state', { version: 1, workflows: [workflow], selectedWorkflowId: workflow.id }],
   ])
   const projects = new Map<string, any>([[initialProject.id, initialProject]])
   const callbacks = new Map<number, { handler?: (value: any) => void; once: boolean }>()
@@ -130,7 +130,7 @@ export function createDemoRuntime(config: DemoConfig) {
     if (command === 'cancel_task') { worker('task.cancelled', args.taskId, {}); return true }
     if (command === 'get_workflow_editors') return { revision: 0, editors: [] }
     if (command === 'mutate_workflow_store') {
-      const state = copy(stores.get('workflow-state') || { workflows: [], selectedWorkflowId: '' })
+      const state = copy(stores.get('workflow-state') || { version: 1, workflows: [], selectedWorkflowId: '' })
       if (payload.action === 'upsert') {
         const entry = { ...payload.entry, updatedAt: Date.now() }
         state.workflows = [entry, ...state.workflows.filter((item: any) => item.id !== entry.id)]

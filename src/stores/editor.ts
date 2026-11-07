@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { STEM_NAME_KEYS, LEGACY_STEM_NAMES, EXACT_STEM_KEYS, stemKeyFromOutput, normalizedDefaultName, recordingTrackIndex, isLegacyAutoTrackName, trackColor, duplicatedTrackColor, fileName, stripExt, COLOR_BY_STEM } from '@/stores/editorStems'
-import { makeId, clamp, cloneLegacyTrackEffects, cloneTracks, normalizeSource, normalizeClip, normalizeTrack, normalizeSession, toPersistedSession } from '@/stores/editorNormalize'
+import { STEM_NAME_KEYS, LEGACY_STEM_NAMES, EXACT_STEM_KEYS, stemKeyFromOutput, normalizedDefaultName, recordingTrackIndex, trackColor, duplicatedTrackColor, fileName, stripExt, COLOR_BY_STEM } from '@/stores/editorStems'
+import { makeId, clamp, cloneTracks, normalizeSource, normalizeClip, normalizeTrack, normalizeSession, toPersistedSession } from '@/stores/editorNormalize'
 import { masterLimiterRenderRate, normalizeMasterLimiter } from '@/utils/masterLimiter'
 import { createLogger } from '@/utils/logger'
 import { clonePluginChain, hasEditorPlugins, neutralPluginRenderProject, normalizePluginChain, pluginProcessingProject, projectPluginSlots, pluginProjectVersion } from '@/utils/editorPlugins'
@@ -158,7 +158,7 @@ export class EditorExportCancelledError extends Error {
   }
 }
 
-export type PersistedSession = EditorSession & { version?: number }
+export type PersistedSession = EditorSession & { version: 4 }
 
 const HISTORY_LIMIT = 80
 const AUTO_SAVE_DELAY = 420
@@ -1797,6 +1797,7 @@ export const useEditorStore = defineStore('editor', () => {
           fileName: normalized.fileName,
           audioParams: normalized.audioParams || {},
           project: {
+            version: pluginProjectVersion(project),
             id: project.id,
             name: project.name,
             masterVolume: project.masterVolume,

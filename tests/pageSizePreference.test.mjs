@@ -58,7 +58,7 @@ function browserStorage(initial = {}, options = {}) {
   const values = new Map(
     Object.entries(initial).map(([name, value]) => [
       `pymss-studio:${name}`,
-      JSON.stringify(value),
+      JSON.stringify(name === 'separate-state' || name === 'task-history' ? {version:1,...value} : value),
     ]),
   )
   const writes = []
@@ -71,7 +71,7 @@ function browserStorage(initial = {}, options = {}) {
       writes.push({ key, value: JSON.parse(value) })
     },
   }
-  return { writes }
+  return { writes, values }
 }
 
 function newModelStore() {
@@ -87,6 +87,23 @@ function newTaskStore() {
 }
 
 const waitForDebouncedSave = () => new Promise(resolve => setTimeout(resolve, 180))
+
+test('unsupported history is preserved and cannot be replaced by default state or a new run', async () => {
+  for (const raw of ['{broken', JSON.stringify({ tasks: [] }), JSON.stringify({ version: 2, tasks: [] })]) {
+    const storage = browserStorage()
+    storage.values.set('pymss-studio:task-history', raw)
+    const store = newTaskStore()
+    await assert.rejects(store.initialize())
+    assert.equal(store.initialized, false)
+    assert.ok(store.loadError)
+    await assert.rejects(store.startSeparation())
+    store.clearHistory()
+    await waitForDebouncedSave()
+    assert.equal(storage.values.get('pymss-studio:task-history'), raw)
+    assert.equal(storage.writes.length, 0)
+    store.$dispose()
+  }
+})
 
 test('model library restores and persists its page size preference', async () => {
   const storage = browserStorage({ 'model-state': { modelPageSize: 48 } })

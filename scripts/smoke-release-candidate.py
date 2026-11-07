@@ -446,10 +446,10 @@ def execute(args: argparse.Namespace) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage-a", type=Path, default=ROOT / "release/stage-0.0.31")
-    parser.add_argument("--stage-b", type=Path, default=ROOT / "release/candidates/0.0.32/stage-0.0.32")
-    parser.add_argument("--version-a", default="0.0.31")
-    parser.add_argument("--version-b", default="0.0.32")
+    parser.add_argument("--stage-a", type=Path)
+    parser.add_argument("--stage-b", type=Path)
+    parser.add_argument("--version-a")
+    parser.add_argument("--version-b")
     parser.add_argument("--iscc", type=Path, default=Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Inno Setup 6/ISCC.exe")
     parser.add_argument("--report", type=Path, help="Small JSON evidence file; defaults to the repository .tmp directory")
     parser.add_argument("--keep-installed", action="store_true", help="Retain the B test identity for isolated UI checks")
@@ -462,6 +462,8 @@ def main(argv: list[str] | None = None) -> int:
         report = json.loads(args.cleanup_report.read_text(encoding="utf-8"))
         cleanup(args.cleanup_report, report)
     else:
+        if not all((args.stage_a, args.stage_b, args.version_a, args.version_b)):
+            parser.error("Provide both explicit source stages and their versions")
         execute(args)
     return 0
 

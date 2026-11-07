@@ -26,7 +26,7 @@ from typing import Any, Iterable
 
 from shared import worker_paths
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class RuntimeManifestError(ValueError):
@@ -59,6 +59,9 @@ def load_manifest() -> dict[str, Any]:
         )
     if not data.get("runtimes"):
         raise RuntimeManifestError("RUNTIME_MANIFEST_INVALID", "runtime.json 没有任何 runtimes")
+    target = json.loads(Path(__file__).resolve().parents[1].joinpath("runtime-manifest.json").read_text(encoding="utf-8")).get("python")
+    if target != "3.12" or any(item.get("python") != target for item in data["runtimes"]):
+        raise RuntimeManifestError("RUNTIME_PYTHON_MISMATCH", "运行时必须声明目标 Python 3.12，不能沿用旧 ABI")
     return data
 
 

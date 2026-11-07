@@ -1,6 +1,6 @@
 import type { SeparationJob, SeparationTask } from '../stores/task.ts'
 import { isTerminalTaskStatus, resolveJobStatus } from '../features/tasks/lifecycle.ts'
-import { visibleWorkflowNodeStates, workflowOutputNodes, type WorkflowNodeState } from './workbench.ts'
+import { workflowSourceDefinition, visibleWorkflowNodeStates, workflowOutputNodes, type WorkflowNodeState } from './workbench.ts'
 import { visibleWorkflowNodeLogs, type WorkflowNodeLogs } from './nodeLogs.ts'
 
 export function workflowTaskLabel(task: SeparationTask): string {
@@ -32,7 +32,7 @@ export function workflowVisibleNodes(definition: Record<string, unknown>): Workf
 /** Derive display data without merging or mutating individual task snapshots. */
 export function workflowBatchExecution(tasks: readonly SeparationTask[]) {
   const executions = tasks.map(task => {
-    const definition = task.runConfig?.workbench?.sourceDefinition || task.runConfig?.workflowDefinition || {}
+    const definition = workflowSourceDefinition(task.runConfig)
     const nodes = workflowVisibleNodes(definition)
     if (Array.isArray(definition.nodes) && task.nodeExecutionOrder?.length) {
       // Graph serialization follows editing order, not the kernel's execution order.

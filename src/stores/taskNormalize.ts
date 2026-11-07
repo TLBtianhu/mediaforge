@@ -1,5 +1,5 @@
 /**
- * 运行配置规范化：输出布局、输出命名、runConfig 的版本化默认值与旧参数兼容。
+ * 当前运行配置与历史文件校验；不转换旧格式或吞并未来版本。
  *
  * 纯函数，不碰 store 状态；类型从 task.ts 引入（import type 擦除，无运行时循环）。
  */
@@ -7,9 +7,29 @@ import type { OutputLayout, OutputNamingConfig, SeparationRunConfig, SeparationT
 import type { TaskStatus } from '../features/tasks/lifecycle.ts'
 import { isInterruptedTaskStatus, isTerminalTaskStatus } from '../features/tasks/lifecycle.ts'
 import { normalizeStemOutputs } from '../utils/stemOutputs.ts'
-import { normalizeOutputPath, outputsFromFiles } from './taskOutputPaths.ts'
+import { normalizeOutputPath } from './taskOutputPaths.ts'
 
 export const CURRENT_INFERENCE_PARAMS_VERSION = 3
+export const TASK_HISTORY_VERSION = 1
+const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+const incompatible = (name: string): never => { throw new Error(`Unsupported ${name} schema; the original file was preserved`) }
+
+export function readTaskHistory(value: unknown, windows = false): SeparationTask[] {
+  if (value === null) return []
+  if (!record(value) || value.version !== TASK_HISTORY_VERSION || !Array.isArray(value.tasks)) return incompatible('task-history')
+  return value.tasks.map(item => {
+    if (!record(item) || typeof item.id !== 'string' || !item.id.trim() || typeof item.status !== 'string' || !(item.status in STAGE_META)
+      || !record(item.runConfig) || !Array.isArray(item.outputs) || 'files' in item || !Array.isArray(item.logs)
+      || typeof item.input !== 'string' || typeof item.output !== 'string' || typeof item.model !== 'string'
+      || typeof item.createdAt !== 'number' || !Number.isFinite(item.createdAt) || typeof item.updatedAt !== 'number' || !Number.isFinite(item.updatedAt)) return incompatible('task-history')
+    return normalizeTask(item as Partial<SeparationTask>, windows)
+  })
+}
+
+export function validateSeparateState<T>(value: T): T {
+  if (value !== null && (!record(value) || value.version !== 1)) return incompatible('separate-state')
+  return value
+}
 
 export function normalizeOutputLayout(value: unknown): OutputLayout {
   return value === 'flat' ? 'flat' : 'folders'
@@ -31,6 +51,9 @@ export function normalizeOutputNaming(value: unknown): OutputNamingConfig | unde
 
 export function normalizeRunConfig(runConfig?: SeparationRunConfig): SeparationRunConfig | undefined {
   if (!runConfig) return undefined
+  if (runConfig.inferenceParamsVersion !== CURRENT_INFERENCE_PARAMS_VERSION) return incompatible('inference parameters')
+  if (runConfig.workbench && runConfig.workbench.version !== 2) return incompatible('workbench snapshot')
+  if (runConfig.workbench?.nativeGraph && ('sourceDefinition' in runConfig.workbench || !record(runConfig.workflowDefinition))) return incompatible('workbench definition')
   const next: SeparationRunConfig = {
     ...runConfig,
     downloadMethod: runConfig.downloadMethod || 'aria2c',
@@ -42,33 +65,6 @@ export function normalizeRunConfig(runConfig?: SeparationRunConfig): SeparationR
     audioParams: { ...(runConfig.audioParams || {}) },
     inferenceParams: { ...(runConfig.inferenceParams || {}) },
   }
-  const version = next.inferenceParamsVersion || 0
-  if (version >= CURRENT_INFERENCE_PARAMS_VERSION) {
-    next.inferenceParamsVersion = CURRENT_INFERENCE_PARAMS_VERSION
-    return next
-  }
-
-  const params = { ...(next.inferenceParams || {}) }
-  const hasStandardize = Object.prototype.hasOwnProperty.call(params, 'standardize')
-  const hasNormalize = Object.prototype.hasOwnProperty.call(params, 'normalize')
-
-  if (!hasStandardize && !hasNormalize) {
-    // Legacy desktop only omitted `normalize` when the old input-standardize
-    // checkbox was enabled. Preserve that behavior on retry/history restore.
-    params.standardize = true
-    params.normalize = false
-  } else if (!hasStandardize && hasNormalize) {
-    // Legacy desktop used `normalize` to mean input standardization.
-    params.standardize = Boolean(params.normalize)
-    params.normalize = false
-  } else if (hasStandardize && !hasNormalize) {
-    // First compatibility pass already switched to `standardize`, but output
-    // normalize had not been made explicit yet.
-    params.normalize = false
-  }
-
-  next.inferenceParams = params
-  next.inferenceParamsVersion = CURRENT_INFERENCE_PARAMS_VERSION
   return next
 }
 
@@ -109,11 +105,9 @@ export function normalizeTask(task: Partial<SeparationTask>, windows = /^[A-Za-z
   }
   const normalizedRunConfig = normalizeRunConfig(task.runConfig)
   const normalizedOutput = normalizeOutputPath(task.output)
-  const normalizedFiles = task.files || []
   const workerOutputs = normalizeStemOutputs(task.outputs, task.input, windows)
-  const normalizedOutputs = workerOutputs.length
-    ? workerOutputs
-    : outputsFromFiles(normalizedOutput, normalizedFiles, normalizedRunConfig?.outputFormat || 'wav', task.outputPrefix, task.input, windows)
+  const normalizedFiles = workerOutputs.map(output => output.path)
+  const normalizedOutputs = workerOutputs
   const meta = STAGE_META[status]
   const startedAt = normalizeTimestamp(task.startedAt)
   const finishedAt = normalizeTimestamp(task.finishedAt)

@@ -99,7 +99,8 @@ class VideoSuperResolutionTests(unittest.TestCase):
                  mock.patch.object(video_worker.video_ops, "upscale_video", side_effect=lambda *_args, **_kwargs: {"path": str(output), "size": 1}) as upscale, \
                  mock.patch.object(video_worker, "emit", side_effect=lambda kind, payload, **kwargs: events.append((kind, payload))):
                 code = video_worker.cmd_media_video({
-                    "mode": "video_super_resolution", "inputs": [str(source)], "outputDir": str(root / "out"), "requestId": "vsr-test",
+                    "steps": [{"capability": "video_super_resolution", "bindings": {"upscaler": "media:basicvsrpp"}, "params": {}}],
+                    "inputs": [str(source)], "outputDir": str(root / "out"), "requestId": "vsr-test",
                 })
             self.assertEqual(code, 0)
             model_path.assert_called_once_with("media:basicvsrpp")
@@ -109,7 +110,7 @@ class VideoSuperResolutionTests(unittest.TestCase):
 
     def test_sequence_capability_is_registered_without_becoming_a_frame_step(self) -> None:
         self.assertIn("video_super_resolution", video_step.SEQUENCE_CAPABILITIES)
-        steps = capabilities.normalize_steps(capabilities.steps_from_mode("video_super_resolution"))
+        steps = capabilities.normalize_steps([{"capability": "video_super_resolution", "bindings": {"upscaler": "media:basicvsrpp"}, "params": {}}])
         self.assertEqual(steps[0]["bindings"], {"upscaler": "media:basicvsrpp"})
         self.assertEqual(capabilities.mode_for_steps(steps), "video_super_resolution")
         self.assertNotIn("video_super_resolution", video_step.registered())

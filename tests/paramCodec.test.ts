@@ -64,14 +64,13 @@ describe('decode / encode 往返', () => {
     assert.deepEqual(values, ['song.wav', '', false, 10])
   })
 
-  it('超出 spec 长度的旧值不丢失', () => {
+  it('超出当前声明的旧值被拒绝且不改原数组', () => {
     const legacy = ['song.wav', 'lead', true, 5, 'legacy-extra']
-    const decoded = decodeWidgets(node, legacy)
-    assert.equal(decoded.params.audio, 'song.wav')
-    assert.deepEqual(decoded.extra, ['legacy-extra'])
+    assert.throws(() => decodeWidgets(node, legacy), /Unsupported widget schema/)
+    assert.deepEqual(legacy, ['song.wav', 'lead', true, 5, 'legacy-extra'])
   })
 
-  it('缺失的尾部值回落默认值（老图缺新控件）', () => {
+  it('省略的可选参数使用当前默认值', () => {
     const decoded = decodeWidgets(node, ['song.wav'])
     assert.equal(decoded.params.audio, 'song.wav')
     assert.equal(decoded.params.recursive, false)
@@ -140,10 +139,10 @@ describe('按名字读写节点', () => {
       { name: 'folder', default: '' },
       { name: 'recursive', type: 'toggle', default: false },
     ])
-    const info = { type: 'TestNode', widgets_values: ['/music', false, 'legacy'] }
+    const info = { type: 'TestNode', widgets_values: ['/music', false] }
     const next = withWidgetValue(node, info, 'recursive', true)
-    assert.deepEqual(info.widgets_values, ['/music', false, 'legacy'])
-    assert.deepEqual(next.widgets_values, ['/music', true, 'legacy'])
+    assert.deepEqual(info.widgets_values, ['/music', false])
+    assert.deepEqual(next.widgets_values, ['/music', true])
   })
 
   it('withWidgetValues 批量写', () => {

@@ -1,4 +1,16 @@
 # Shared release guards. Importing this file never reads signing credentials.
+function Get-ReleasePythonVersion([string]$PythonPath) {
+    $output = @(& $PythonPath -I -B -c "import sys; assert sys.prefix == sys.base_prefix, 'Bootstrap must be self-contained'; print('.'.join(map(str, sys.version_info[:2])))")
+    if ($LASTEXITCODE -ne 0) { throw 'Python version probe failed' }
+    ($output -join "`n").Trim()
+}
+
+function Assert-ReleasePython([string]$PythonPath, [string]$ExpectedVersion) {
+    if ($ExpectedVersion -cne '3.12' -or (Get-ReleasePythonVersion $PythonPath) -cne $ExpectedVersion) {
+        throw 'Python runtime must match the Python 3.12 release contract'
+    }
+}
+
 function Get-ReleaseExecutableInfo([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'Release executable is missing' }
     [Diagnostics.FileVersionInfo]::GetVersionInfo([IO.Path]::GetFullPath($Path))

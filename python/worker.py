@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 import sys
 
 from shared.worker_protocol import debug_log, emit_error, load_payload, protocol_logging
@@ -20,13 +22,33 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv[1:])
 
 
+def _check_python_runtime() -> bool:
+    try:
+        target = json.loads(Path(__file__).with_name("runtime-manifest.json").read_text(encoding="utf-8"))["python"]
+        if target != "3.12":
+            raise ValueError("unsupported Python contract")
+    except (OSError, ValueError, KeyError, TypeError):
+        emit_error("RUNTIME_PYTHON_CONTRACT_INVALID", "Worker requires a valid Python 3.12 runtime manifest")
+        return False
+    actual = ".".join(map(str, sys.version_info[:2]))
+    if actual != target:
+        emit_error("RUNTIME_PYTHON_MISMATCH", f"Worker requires Python {target}; current interpreter is {actual}")
+        return False
+    return True
+
+
 def run_command(command: str, payload: dict) -> int:
     """保留这个名字：测试与内嵌调用用它替换执行体。"""
+    if not _check_python_runtime():
+        return 1
     return dispatch_run(command, payload)
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    # Refuse the old interpreter before payload handling or persistent logging.
+    if not _check_python_runtime():
+        return 1
     debug_log("worker.start", command=args.command)
     try:
         payload = load_payload(args.payload)

@@ -17,12 +17,14 @@
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1
 # 隔离候选：不读取签名凭据、不另存本机副本，也不执行安装
-powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.32
+powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.33
 ```
 
 ```
 □ [1/6] 生产构建走 pnpm tauri build（不是 cargo build，否则前端资源不内嵌）
 □ [2/6] staging断言通过：完整python分层、manifest、SDK、integrations、bin与bootstrap
+□ bootstrap、worker及推理资产的实际Python均为runtime-manifest指定的3.12；旧ABI在改目录/状态前拒绝
+□ runtime描述符为当前schema且含python；自包含资产不含pyvenv.cfg，不覆盖解释器修复旧环境
 □ [3/6] 便携 zip 生成
 □ [4/6] update.zip 生成并**已签名**（.sig 与 .signature.b64 都在）
 □ [5/6] 安装包生成
@@ -48,6 +50,8 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -
 □ 显式DATA_ROOT正确覆盖默认目录；测试数据与正式用户profile无交叉
 □ 独立AppId完成旧版→新版升级和静默卸载，配置/模型/运行时样本SHA保持一致
 □ 小资产headless首装、坏SHA拒绝、运行时A→B→A回滚通过
+□ 完整3.12资产通过真实下载/哈希/安装/离线复用；打包worker用显式steps完成真实推理
+□ 旧/缺失/未来数据schema拒绝且原文件保留；不迁移、不双写、不把读取失败写成空库
 □ 完整UI验收另记结果；禁止桌面操作时不启动普通GUI、不操作现有窗口
 ```
 
@@ -70,6 +74,8 @@ powershell -ExecutionPolicy Bypass -File "<安装根>\app\integrations\dsh-media
 □ 每个文件都用**匿名** HEAD 回读，状态 200 且大小一致
 □ GitHub Release 已发布，正文含魔搭裸链接
 □ update.zip 与其签名已放到更新源（若启用自动更新）
+□ 3.12独立资产已单独上传，匿名回读大小/SHA与manifest一致；本地存在不代表公网可安装
+□ versions文档schemaVersion=2，签名覆盖的runtime包含python、assetId、size、sha256与urls
 ```
 
 ## 6. 发布后
@@ -79,6 +85,11 @@ powershell -ExecutionPolicy Bypass -File "<安装根>\app\integrations\dsh-media
 □ 群里/README 的下载链接指向新版本
 □ 记录本次发布：版本、产物大小、签名指纹、已知问题
 ```
+
+2026-11-07本地核对：0.0.33候选通过Windows构建、完整逻辑回归、独立AppId升级/静默卸载、
+真实3.12资产headless安装及CPU两步超分。未签名、未上传资产、未运行远端CI或正式发布；
+完整原生UI与macOS/Linux原生包尚未验收。精确计数、哈希和证据见
+`release/candidates/0.0.33/verification.json`。用户禁止桌面操作，不以CLI检查替代完整UI结论。
 
 ---
 

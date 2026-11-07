@@ -19,10 +19,15 @@ class PluginSdkBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="mf-sdk-bundle-fixture-") as directory:
             resources = Path(directory) / "resources"
             helper = ROOT / "scripts/posix-release.py"
-            result = subprocess.run([sys.executable, "-B", str(helper), "stage", str(resources)],
+            # Native interpreter validation has its own ABI tests. This fixture
+            # exercises the real stage/config entry point for SDK placement.
+            cli = "import runpy,sys; from unittest import mock; m=runpy.run_path(sys.argv[1]); " \
+                  "sys.argv=sys.argv[1:]; " \
+                  "m['main'].__globals__['check_runtime_version']=mock.Mock(); m['main']()"
+            result = subprocess.run([sys.executable, "-B", "-c", cli, str(helper), "stage", str(resources)],
                                     capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stderr)
-            result = subprocess.run([sys.executable, "-B", str(helper), "config", str(resources), "--platform", platform],
+            result = subprocess.run([sys.executable, "-B", "-c", cli, str(helper), "config", str(resources), "--platform", platform],
                                     capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stderr)
             return json.loads(result.stdout)["bundle"]["resources"], resources

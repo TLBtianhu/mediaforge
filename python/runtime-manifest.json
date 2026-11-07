@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "baseGeneration": 1,
-  "manifestVersion": "2026.10.3",
+  "baseGeneration": 2,
+  "manifestVersion": "2026.11.7",
   "python": "3.12",
   "bootstrap": {
     "requests": "requests[socks]>=2.32,<3"

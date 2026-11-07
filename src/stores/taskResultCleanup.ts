@@ -2,7 +2,7 @@ import type { SeparationTask } from './task.ts'
 import { cleanupDirChain, parentDir, pathKey, samePath } from './taskOutputPaths.ts'
 import { isTerminalTaskStatus, taskJobId } from '../features/tasks/lifecycle.ts'
 import { specFor, widgetValue } from '../litegraph/paramCodec.ts'
-import { workflowInputNodes } from '../workflows/workbench.ts'
+import { workflowInputNodes, workflowSourceDefinition } from '../workflows/workbench.ts'
 
 /** Result removal includes the whole batch and must never race an active sibling. */
 export function getRemovalTasks(sourceTasks: readonly SeparationTask[], ids: readonly string[], runningMessage: string): SeparationTask[] {
@@ -23,7 +23,7 @@ export function resultTrashTargetsForTasks(sourceTasks: readonly SeparationTask[
     for (const input of Object.values(item.runConfig?.workbench?.inputs || {})) {
       if (input) protectedPaths.add(pathKey(input, windows))
     }
-    const definition = item.runConfig?.workflowDefinition || item.runConfig?.workbench?.sourceDefinition
+    const definition = workflowSourceDefinition(item.runConfig)
     if (definition) {
       for (const node of workflowInputNodes(definition)) {
         if (node.embeddedPath) protectedPaths.add(pathKey(node.embeddedPath, windows))

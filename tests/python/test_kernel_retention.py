@@ -1,7 +1,7 @@
 """作业文件的保留策略。
 
 每个作业一个 json、永不覆盖，所以 `agent-jobs/` 会一直攒下去。几千个小文件之后：
-启动扫描、`_absorb_foreign_jobs` 的 iterdir、资源管理器打开都会变慢。
+启动扫描、队列读取和资源管理器打开都会变慢。
 
 规则：默认保留 **30 天 / 最多 500 个终态作业**，可用
 `MEDIAFORGE_JOB_RETENTION_DAYS` / `MEDIAFORGE_JOB_RETENTION_COUNT` 覆盖；
@@ -76,22 +76,22 @@ class JobRetentionTests(unittest.TestCase):
         self.assertEqual(self.remaining(), {"fresh"})
 
     def test_running_and_queued_are_never_pruned(self) -> None:
-        self.seed("alive", status="running", age_days=100)
-        self.seed("waiting", status="queued", age_days=100)
-        with mock.patch.dict(
-            os.environ,
-            {"MEDIAFORGE_JOB_RETENTION_DAYS": "0", "MEDIAFORGE_JOB_RETENTION_COUNT": "0"},
-            clear=False,
-        ):
-            kernel = OperationKernel(self.root)
-        # 启动恢复会把 queued/running 改写成 interrupted（那是另一条逻辑）。这里把状态摆回去，
-        # 单独验证清理规则本身不碰运行中的作业。
-        kernel._index["alive"]["status"] = "running"
-        kernel._index["waiting"]["status"] = "queued"
+        kernel = self.kernel(MEDIAFORGE_JOB_RETENTION_DAYS="0", MEDIAFORGE_JOB_RETENTION_COUNT="0")
+        # Seed after startup recovery, so this isolates retention against the
+        # real authoritative files rather than altering a secondary cache.
+        active = {"alive": "running", "waiting": "queued"}
+        for job_id, status in active.items():
+            self.seed(job_id, status=status, age_days=100)
+        expired = self.seed("expired", age_days=100)
         with mock.patch("core.operation_kernel._retention_limits", return_value=(30.0, 0)):
-            kernel._prune_history()
-        self.assertTrue((self.jobs / "alive.json").is_file())
-        self.assertTrue((self.jobs / "waiting.json").is_file())
+            self.assertEqual(kernel._prune_history(), 1)
+        for job_id, status in active.items():
+            path = self.jobs / f"{job_id}.json"
+            self.assertTrue(path.is_file())
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["status"], status)
+            self.assertEqual(kernel.get(job_id).snapshot()["status"], status)
+        self.assertFalse(expired.exists())
+        self.assertIsNone(kernel.get("expired"))
 
     def test_entries_without_a_timestamp_survive(self) -> None:
         self.seed("undated", stamp=False)
@@ -112,11 +112,14 @@ class JobRetentionTests(unittest.TestCase):
         self.assertEqual(kernel.pruned, 0)
         self.assertTrue((self.jobs / "ancient.json").is_file())
 
-    def test_index_entry_is_dropped_with_the_file(self) -> None:
-        self.seed("gone", age_days=100)
+    def test_pruned_terminal_job_is_unreadable_from_the_single_file_store(self) -> None:
+        gone = self.seed("gone", age_days=100)
         with mock.patch.dict(os.environ, {"MEDIAFORGE_JOB_RETENTION_COUNT": "0"}, clear=False):
             kernel = OperationKernel(self.root)
-        self.assertNotIn("gone", kernel._index)
+        self.assertEqual(kernel.pruned, 1)
+        self.assertFalse(gone.exists())
+        self.assertIsNone(kernel.get("gone"))
+        self.assertIsNone(self.kernel().get("gone"))
 
     def test_pruning_is_idempotent(self) -> None:
         for index in range(3):

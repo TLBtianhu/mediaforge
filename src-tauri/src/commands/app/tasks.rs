@@ -81,12 +81,12 @@ pub async fn media_capabilities(app: AppHandle, payload: Option<Value>) -> AppRe
 #[tauri::command]
 pub async fn agent_jobs(app: AppHandle) -> AppResult<Value> {
     let root = storage::data_root_dir(&app)?;
-    let index = task_journal::index(&root)?;
+    let jobs = task_journal::list(&root)?;
     Ok(serde_json::json!({
-        "ok": true,
+        "schemaVersion": 1,
         "dataRoot": root,
-        "workspace": root.join("agent-workspace.json"),
-        "index": index,
+        "jobsDir": root.join("agent-jobs"),
+        "jobs": jobs,
     }))
 }
 
@@ -103,13 +103,6 @@ pub async fn cancel_agent_job(app: AppHandle, job_id: String) -> AppResult<Value
     let cancel_path = root.join("agent-jobs").join(format!("{job_id}.cancel"));
     std::fs::write(&cancel_path, b"cancel")?;
     Ok(serde_json::json!({ "ok": true, "jobId": job_id, "cancelPath": cancel_path }))
-}
-
-#[tauri::command]
-pub async fn journal_job(app: AppHandle, job: Value) -> AppResult<Value> {
-    let root = storage::data_root_dir(&app)?;
-    let job = task_journal::legacy_write(&root, job)?;
-    Ok(serde_json::json!({ "ok": true, "jobId": job["jobId"], "index": task_journal::index(&root)? }))
 }
 
 #[tauri::command]

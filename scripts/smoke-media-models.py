@@ -83,23 +83,28 @@ def verify_models(python: Path, models: Path, outputs: Path, source: Path | None
     available = [item for item in catalog["models"] if item.get("status") == "available"]
     sample = sample_image(outputs, source)
     results = []
-    modes = {"denoise": "denoise", "depth": "depth", "matting": "matting", "object_detection": "detect", "frame_interpolation": "interpolate"}
+    image_tasks = {"super_resolution", "denoise", "depth", "matting", "object_detection", "frame_interpolation"}
+    declarations = None
     for item in available:
         model_id = f"media:{item['id']}"
         task = item.get("task")
-        payload = {"operation": "media_image", "inputs": [str(sample)], "outputDir": str(outputs / item["id"]), "modelId": model_id}
-        if task == "super_resolution":
-            payload.update(mode="upscale", steps=[{"capability": "upscale", "bindings": {"upscaler": model_id}, "params": {"scale": 4}}])
-            payload.pop("modelId")
-        elif task in modes:
-            payload["mode"] = modes[task]
-            if task == "frame_interpolation":
-                payload["inputs"] = [str(sample), str(sample)]
-        else:
+        if task not in image_tasks:
             # The former watermark combo implicitly selected two models and no
             # longer satisfies the single-model task contract. Do not run it here.
             results.append((item["id"], "skip", f"Requires a separate adapter/workflow smoke: {task}"))
             continue
+        if declarations is None:
+            declarations = json.loads((ROOT / "python/media_ops/capabilities.json").read_text(encoding="utf-8"))["capabilities"]
+        candidates = [(cap, next(iter(cap["roles"]))) for cap in declarations
+                      if "image" in cap["modalities"] and model_id in cap["modelIds"] and len(cap["roles"]) == 1
+                      and next(iter(cap["roles"].values())).get("task") == task]
+        if len(candidates) != 1:
+            raise ValueError(f"Expected one image capability/binding for {model_id}")
+        capability, role = candidates[0]
+        payload = {"operation": "media_image", "inputs": [str(sample)], "outputDir": str(outputs / item["id"]),
+                   "steps": [{"capability": capability["id"], "bindings": {role: model_id}, "params": {}}]}
+        if task == "frame_interpolation":
+            payload["inputs"] = [str(sample), str(sample)]
         ok, detail = run(payload, python=python, models=models, env=env)
         results.append((item["id"], "pass" if ok else "FAIL", detail))
     width = max((len(row[0]) for row in results), default=1)

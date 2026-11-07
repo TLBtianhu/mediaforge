@@ -54,7 +54,7 @@ afterEach(async () => {
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial).map(([key, value]) => [
-    `pymss-studio:${key}`, JSON.stringify(value),
+    `pymss-studio:${key}`, JSON.stringify(key === 'separate-state' || key === 'task-history' ? {version:1,...value} : value),
   ]))
   globalThis.window = {}
   globalThis.localStorage = {
@@ -130,9 +130,10 @@ for (const selectedDirectory of [undefined, 'E:/WorkflowOutput']) {
     storage()
     const task = await newStore()
     const definition = {
+      version: 0.4,
       nodes: [
         { id: 1, type: 'pymss_load_audio_batch', widgets_values: ['D:/Music', true, false, ''] },
-        { id: 2, type: 'pymss_save_audio', widgets_values: ['', 'stems', '44100'] },
+        { id: 2, type: 'pymss_save_audio', widgets_values: ['', '44100', 'FLOAT', 'PCM_24', '320k'] },
       ], links: [[1, 1, 0, 2, 0, 'AUDIO']],
     }
     const saved = structuredClone(definition)
@@ -153,7 +154,8 @@ for (const selectedDirectory of [undefined, 'E:/WorkflowOutput']) {
     assert.deepEqual(original.runConfig.workflowDefinition, saved)
     assert.deepEqual(original.runConfig.workbench.outputs, {})
     definition.nodes[0].widgets_values[0] = 'D:/Changed'
-    assert.deepEqual(original.runConfig.workbench.sourceDefinition, saved)
+    assert.equal(Object.hasOwn(original.runConfig.workbench,'sourceDefinition'),false)
+    assert.deepEqual(original.runConfig.workflowDefinition,saved)
     original.status = 'failed'
     settings.outputDir = 'F:/NextRun'
     bindings.outputDirectory = 'G:/NextSelection'
@@ -166,7 +168,7 @@ for (const selectedDirectory of [undefined, 'E:/WorkflowOutput']) {
 test('clearing the native graph directory restores the current default for new runs', async () => {
   storage()
   const task = await newStore()
-  const graph = { ...workflow, definition: { nodes: [{ id: 1, type: 'pymss_save_audio' }], links: [] } }
+  const graph = { ...workflow, definition: { version: 0.4, nodes: [{ id: 1, type: 'pymss_save_audio' }], links: [] } }
   const bindings = { inputs: {}, outputs: {}, primaryInput: '', outputLayout: 'flat', outputDirectory: 'E:/Selected' }
   const first = await task.startWorkbenchInference(graph, bindings)
   delete bindings.outputDirectory
@@ -463,7 +465,7 @@ for (const count of [0, 2]) {
   test(`separation rejects a graph with ${count} inputs before creating tasks`, async () => {
     storage()
     const task = await newStore()
-    const definition = { nodes: [
+    const definition = { version: 0.4, nodes: [
       ...Array.from({ length: count }, (_, index) => ({ id: index + 1, type: 'pymss_load_audio', widgets_values: ['input.wav', 'same'] })),
       { id: 10, type: 'pymss_save_audio' },
     ], links: [] }
@@ -477,7 +479,7 @@ for (const count of [0, 2]) {
 test('multi-input graphs retain native execution through the workflow workbench', async () => {
   storage()
   const task = await newStore()
-  const definition = { nodes: [
+  const definition = { version: 0.4, nodes: [
     { id: 1, type: 'pymss_load_audio', widgets_values: ['D:/first.wav', ''] },
     { id: 2, type: 'pymss_load_audio', widgets_values: ['D:/second.wav', ''] },
     { id: 3, type: 'pymss_save_audio' },
@@ -509,15 +511,15 @@ function queuedWorkflowSnapshots(count, inputCounts, workbench = false) {
   return Array.from({ length: count }, (_, index) => ({
     id: `restored-${index}`, jobId: 'restored-workflow', model: 'Workflow',
     input: `D:/Audio/${index}.wav`, jobOutput: 'D:/Outputs', output: `D:/Outputs/${index}`,
-    status: 'queued', createdAt: index + 1, updatedAt: index + 1, files: [], outputs: [], logs: [],
+    status: 'queued', createdAt: index + 1, updatedAt: index + 1, outputs: [], logs: [],
     runConfig: {
       runMode: 'workflow', workflowId: workflow.id, workflowName: workflow.name,
       workflowDefinition: { nodes: [
         ...Array.from({ length: inputCounts[index] }, (_, node) => ({ id: node + 1, type: 'pymss_load_audio' })),
         { id: 10, type: 'pymss_save_audio' },
       ], links: [] },
-      outputLayout: 'folders', device: 'cpu', outputFormat: 'wav', inferenceParams: {},
-      ...(workbench ? { workbench: { version: 1, nativeGraph: true } } : {}),
+      outputLayout: 'folders', device: 'cpu', outputFormat: 'wav', inferenceParamsVersion:3, inferenceParams: {},
+      ...(workbench ? { workbench: { version: 2, nativeGraph: true, inputs:{},outputs:{},bindings:{},sourceUpdatedAt:1 } } : {}),
     },
   }))
 }
@@ -653,27 +655,12 @@ for (const platform of ['linux', 'darwin']) {
     assert.deepEqual(retried.runConfig.workbench.outputs, original.runConfig.workbench.outputs)
   })
 
-  test(`legacy ${platform} files-only responses preserve native paths and filenames`, async () => {
-    const values = storage()
-    const task = await newStore(platform)
-    task.clearInputFiles()
-    task.addInputFiles(['/audio/song.mix.wav'])
-    const root = '/tmp/results\\'
-    const original = (await task.startWorkflowInference(workflow, { outputDir: root, outputLayout: 'folders' })).tasks[0]
-    original.outputPrefix = undefined
-    task.handleWorkerEvent({ type: 'task.result', taskId: original.id,
-      payload: { outputDir: root, outputRoot: root, files: ['vocals.wav', 'parts/voice.flac', 'tail.wav ', 'AC\\DC.wav', 'song.mix_vocals.wav', '../input.wav'], outputs: [] } })
-    const expected = [`${root}/vocals.wav`, `${root}/parts/voice.flac`, `${root}/tail.wav `, `${root}/AC\\DC.wav`, `${root}/song.mix_vocals.wav`]
-    assert.deepEqual(original.outputs.map(output => output.path), expected)
-    assert.equal(original.outputs.at(-1).stem, 'vocals')
-    assert.deepEqual(task.resultTrashTargets(original), expected)
-    await waitForSave()
-    const restored = (await newStore(platform)).getTaskById(original.id)
-    assert.deepEqual(restored.outputs.map(output => output.path), expected)
-    const data = JSON.parse(values.get('pymss-studio:task-history'))
-    data.tasks.find(item => item.id === original.id).outputs = []
-    globalThis.localStorage.setItem('pymss-studio:task-history', JSON.stringify(data))
-    const legacyRestored = (await newStore(platform)).getTaskById(original.id)
-    assert.deepEqual(legacyRestored.outputs.map(output => output.path), expected)
+  test(`obsolete ${platform} files-only responses do not manufacture canonical output descriptors`, async () => {
+    storage()
+    const task=await newStore(platform)
+    const original=(await task.startWorkflowInference(workflow)).tasks[0]
+    task.handleWorkerEvent({type:'task.result',taskId:original.id,payload:{files:['vocals.wav'],outputs:[]}})
+    assert.deepEqual(original.outputs,[])
+    assert.deepEqual(original.files,[])
   })
 }

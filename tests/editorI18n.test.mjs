@@ -66,11 +66,13 @@ const track = (id, sourceId, role, name) => ({
   solo: false,
   fadeIn: 0,
   fadeOut: 0,
+  autoName: false,
+  clips: [],
 })
 
-test('editor localizes legacy default labels while preserving custom track names', async () => {
+test('editor localizes explicitly automatic labels while preserving custom track names', async () => {
   const project = {
-    version: 3,
+    version: 4,
     id: 'legacy-project',
     name: 'Song',
     masterVolume: 1,
@@ -82,10 +84,10 @@ test('editor localizes legacy default labels while preserving custom track names
       source('recording-source', 'recording', null, 'recording'),
     ],
     tracks: [
-      track('vocals-track', 'vocals-source', 'stem', '人声'),
+      { ...track('vocals-track', 'vocals-source', 'stem', '人声'), autoName: true },
       track('custom-track', 'custom-source', 'stem', 'Lead Harmony'),
       { ...track('back-vocal-track', 'back-vocal-source', 'stem', 'back-vocal'), autoName: true },
-      track('recording-track', 'recording-source', 'recording', '录音 2'),
+      { ...track('recording-track', 'recording-source', 'recording', '录音 2'), autoName: true },
     ],
     createdAt: 1,
     updatedAt: 1,

@@ -36,9 +36,5 @@
       },
       "license": "GPL-2.0-or-later"
     }
-  },
-  "pythonRuntime": {
-    "_comment": "基础 Python 用 actions/setup-python 提供，版本必须与此处一致；运行时目录整体复制到 python-runtime/",
-    "version": "3.11.9"
   }
 }

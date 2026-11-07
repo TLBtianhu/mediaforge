@@ -153,7 +153,6 @@ fn main() {
             commands::app::tasks::start_model_hub_download,
             commands::app::tasks::agent_jobs,
             commands::app::tasks::cancel_agent_job,
-            commands::app::tasks::journal_job,
             commands::app::tasks::media_precheck,
         commands::app::tasks::start_audio_tool,
             commands::tempo_key::start_tempo_key_analysis,

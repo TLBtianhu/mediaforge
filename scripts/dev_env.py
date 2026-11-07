@@ -26,7 +26,7 @@ class MissingToken(RuntimeError):
 
 
 def _registry_env(name: str) -> str:
-    """读用户级环境变量（HKCU\Environment）。
+    r"""读用户级环境变量（HKCU\Environment）。
 
     为什么：`setx NAME value` 写的是注册表，已经在跑的 DSH 进程不会继承新值，
     所以"我在终端里 setx 了"这种最常见操作对我们不可见。直接读注册表就绕开重启。

@@ -44,10 +44,9 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(saved["status"], "interrupted")
             self.assertIn("finishedAt", saved)
             self.assertTrue(saved["message"])
-            index = read_json(jobs / "index.json")
-            self.assertEqual([entry["jobId"] for entry in index["jobs"]], ["job_stale"])
-            self.assertEqual(index["jobs"][0]["status"], "interrupted")
-            self.assertTrue((root / "agent-workspace.json").is_file())
+            self.assertEqual(kernel.get("job_stale").snapshot()["status"], "interrupted")
+            self.assertFalse((jobs / "index.json").exists())
+            self.assertFalse((root / "agent-workspace.json").exists())
 
     def test_finished_jobs_are_left_alone(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -158,10 +157,8 @@ sys.stdin.readline()
             observer = OperationKernel(root)
             self.assertEqual(observer.pruned, 1)
             self.assertIsNone(observer.get(job.job_id))
-            owner._flush_indexes(force=True)
-            self.assertNotIn(job.job_id, owner._index)
             self.assertIsNone(owner.get(job.job_id))
-            self.assertEqual(read_json(root / "agent-jobs" / "index.json")["jobs"], [])
+            self.assertFalse((root / "agent-jobs/index.json").exists())
 
     def test_completed_payload_is_queryable_after_restart_without_running_a_worker(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -242,8 +239,8 @@ class PersistTests(unittest.TestCase):
             self.assertEqual(saved["status"], "completed")
             self.assertEqual(saved["fraction"], 1.0)
             self.assertEqual(saved["result"], {"outputs": []})
-            index = read_json(root / "agent-jobs" / "index.json")
-            self.assertEqual(index["jobs"][0]["status"], "completed")
+            self.assertEqual(kernel.get("job_progress").snapshot()["status"], "completed")
+            self.assertFalse((root / "agent-jobs/index.json").exists())
 
     def test_status_change_is_written_without_waiting(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -257,67 +254,59 @@ class PersistTests(unittest.TestCase):
             self.assertEqual(saved["status"], "running")
 
 
-class IndexTests(unittest.TestCase):
-    def test_known_foreign_job_changes_refresh_and_deleted_files_disappear(self) -> None:
+class SingleFileHistoryTests(unittest.TestCase):
+    def test_foreign_job_changes_and_deletions_are_read_directly(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             kernel = OperationKernel(root)
             path = kernel.jobs_root / "manual_1.json"
             snapshot = {"jobId": "manual_1", "source": "manual", "status": "running", "createdAt": time.time()}
             path.write_text(json.dumps(snapshot), encoding="utf-8")
-            kernel._flush_indexes(force=True)
-            self.assertEqual(kernel._index["manual_1"]["status"], "running")
+            self.assertEqual(kernel.get("manual_1").snapshot()["status"], "running")
             snapshot.update(status="completed", result={"outputs": ["done.wav"]})
             path.write_text(json.dumps(snapshot), encoding="utf-8")
-            kernel._flush_indexes(force=True)
-            self.assertEqual(kernel._index["manual_1"]["result"], snapshot["result"])
-            self.assertEqual(kernel.get("manual_1").snapshot()["source"], "manual")
+            self.assertEqual(kernel.get("manual_1").snapshot()["result"], snapshot["result"])
             path.unlink()
-            kernel._flush_indexes(force=True)
-            self.assertNotIn("manual_1", kernel._index)
             self.assertIsNone(kernel.get("manual_1"))
 
-    def test_unchanged_foreign_job_is_not_reparsed_on_every_flush(self) -> None:
+    def test_persist_never_scans_history_or_writes_duplicate_indexes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            kernel = OperationKernel(root)
+            legacy_index = kernel.jobs_root / "index.json"
+            legacy_workspace = root / "agent-workspace.json"
+            legacy_index.write_bytes(b"leave previous index untouched")
+            legacy_workspace.write_bytes(b"leave previous workspace untouched")
+            job = Job("new_job", "audio_tools", {}, root / "bridge-jobs/new_job")
+            with mock.patch.object(Path, "glob", side_effect=AssertionError("progress must not scan history")):
+                kernel._persist(job, force=True)
+                job.update(status="completed", result={"outputs": ["done.wav"]})
+                kernel._persist(job)
+            self.assertEqual(kernel.get("new_job").snapshot()["status"], "completed")
+            self.assertEqual(legacy_index.read_bytes(), b"leave previous index untouched")
+            self.assertEqual(legacy_workspace.read_bytes(), b"leave previous workspace untouched")
+
+    def test_existing_manual_job_is_not_rewritten_by_another_jobs_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            kernel = OperationKernel(root)
+            manual = kernel.jobs_root / "manual_1.json"
+            value = {"jobId": "manual_1", "source": "manual", "command": "ui_task", "status": "completed", "createdAt": time.time()}
+            manual.write_text(json.dumps(value), encoding="utf-8")
+            before = manual.read_bytes()
+            job = Job("job_a", "audio_tools", {}, root / "bridge-jobs/job_a")
+            kernel._persist(job, force=True)
+            self.assertEqual(manual.read_bytes(), before)
+            self.assertEqual(kernel.get("manual_1").snapshot()["source"], "manual")
+            self.assertFalse((kernel.jobs_root / "index.json").exists())
+            self.assertFalse((root / "agent-workspace.json").exists())
+
+    def test_reserved_index_id_cannot_be_started(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             kernel = OperationKernel(Path(raw))
-            path = kernel.jobs_root / "foreign.json"
-            path.write_text(json.dumps({"jobId": "foreign", "status": "completed"}), encoding="utf-8")
-            kernel._flush_indexes(force=True)
-            with mock.patch("core.operation_kernel._read_json", wraps=__import__("core.operation_kernel", fromlist=["_read_json"])._read_json) as read:
-                kernel._flush_indexes(force=True)
-                kernel._flush_indexes(force=True)
-            read.assert_not_called()
-
-    def test_flush_keeps_job_files_written_by_another_writer(self) -> None:
-        """Rust 的 journal_job 也会写 agent-jobs/*.json，索引不能把它们挤掉。"""
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            kernel = OperationKernel(root)
-            manual = root / "agent-jobs" / "manual_1.json"
-            manual.write_text(
-                json.dumps({"jobId": "manual_1", "command": "ui_task", "status": "completed", "createdAt": time.time()}),
-                encoding="utf-8",
-            )
-            job = Job("job_a", "audio_tools", {}, root / "bridge-jobs" / "job_a")
-            job.workdir.mkdir(parents=True, exist_ok=True)
-            kernel._persist(job, force=True)
-
-            index = read_json(root / "agent-jobs" / "index.json")
-            self.assertEqual({entry["jobId"] for entry in index["jobs"]}, {"job_a", "manual_1"})
-
-    def test_index_is_capped_and_newest_first(self) -> None:
-        with tempfile.TemporaryDirectory() as raw:
-            root = Path(raw)
-            kernel = OperationKernel(root)
-            for order in range(105):
-                job = Job(f"job_{order:03d}", "audio_tools", {}, root / "bridge-jobs" / f"job_{order:03d}")
-                job.workdir.mkdir(parents=True, exist_ok=True)
-                job.update(created_at=float(order))
-                kernel._persist(job, force=True)
-
-            index = read_json(root / "agent-jobs" / "index.json")
-            self.assertEqual(len(index["jobs"]), 100)
-            self.assertEqual(index["jobs"][0]["jobId"], "job_104")
+            for invalid in ("index", "INDEX", "CON", "nul.json", "COM1", "LPT9.log", "../escape"):
+                with self.subTest(job_id=invalid), self.assertRaisesRegex(ValueError, "invalid job id"):
+                    kernel.start("fixture", {"requestId": invalid})
 
 
 class CancelTests(unittest.TestCase):
@@ -398,13 +387,13 @@ class EventTests(unittest.TestCase):
             root = Path(raw)
             kernel = OperationKernel(root)
             for terminal, result in (
-                ("operation_result", {"operation": "test", "outputs": {"audio": {"path": "result.wav"}}}),
+                ("task.result", {"operation": "test", "outputs": {"audio": {"path": "result.wav"}}}),
                 ("asset.done", {"modelId": "media:test", "downloaded": ["model.bin"], "skipped": []}),
             ):
                 with self.subTest(terminal=terminal):
                     job = Job(terminal.replace(".", "_"), "fixture", {}, root / "bridge-jobs" / terminal)
                     job.update(status="running")
-                    progress = "operation_progress" if terminal == "operation_result" else "asset.progress"
+                    progress = "task.progress" if terminal == "task.result" else "asset.progress"
                     kernel._consume(job, {"type": progress, "payload": {"fraction": 0.5, "message": "half"}})
                     self.assertEqual(job.fraction, 0.5)
                     kernel._consume(job, {"type": terminal, "payload": result})
@@ -427,7 +416,7 @@ class EventTests(unittest.TestCase):
             for status in ("cancelled", "failed"):
                 job = Job(status, "fixture", {}, Path(raw))
                 job.update(status=status, error="original error")
-                kernel._consume(job, {"type": "operation_result", "payload": {"outputs": {}}})
+                kernel._consume(job, {"type": "task.result", "payload": {"outputs": {}}})
                 self.assertEqual(job.status, status)
                 self.assertEqual(job.error, "original error")
 

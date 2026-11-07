@@ -152,56 +152,6 @@ function createWidgets(node: AnyNode, specs: WidgetSpec[]) {
   }
 }
 
-function normalizeBuiltinWidgetLayout(spec: NodeSpec, info: any) {
-  const values = Array.isArray(info?.widgets_values) ? info.widgets_values : []
-  let next: unknown[] | null = null
-
-  if (spec.type === 'SaveAudio' && values.length === 0) {
-    next = ['audio']
-  } else if (spec.type === 'SaveAudioMP3' && values.length === 1) {
-    next = ['audio', values[0]]
-  } else if (spec.type === 'SaveAudioOpus' && values.length === 1) {
-    next = ['audio', values[0]]
-  } else if (spec.type === 'SaveAudioAdvanced' && values.length >= 5) {
-    const format = String(values[0] || 'flac').toLowerCase()
-    const quality = format === 'mp3'
-      ? values[4] || '320k'
-      : format === 'opus'
-        ? '128k'
-        : ''
-    next = ['audio', format, quality]
-  } else if (spec.type === 'AudioConcat' && values.length === 1) {
-    const direction = String(values[0] || '').toLowerCase()
-    if (direction === 'front' || direction === 'back') {
-      next = [direction === 'front' ? 'before' : 'after']
-    }
-  } else if (spec.type === 'StringTrim' && values.length === 1) {
-    const modes: Record<string, string> = { both: 'Both', left: 'Left', right: 'Right' }
-    next = ['', modes[String(values[0] || '').toLowerCase()] || 'Both']
-  } else if (spec.type === 'CaseConverter' && values.length === 1) {
-    const modes: Record<string, string> = {
-      upper: 'UPPERCASE',
-      lower: 'lowercase',
-      title: 'Title Case',
-      capitalize: 'Capitalize',
-    }
-    next = ['', modes[String(values[0] || '').toLowerCase()] || 'UPPERCASE']
-  } else if (spec.type === 'RegexExtract' && values.length === 1) {
-    const modes: Record<string, string> = { first: 'First Match', all: 'All Matches' }
-    next = ['', '', modes[String(values[0] || '').toLowerCase()] || 'First Match', 1]
-  }
-
-  let normalized = next ? { ...info, widgets_values: next } : info
-  if (spec.type === 'SaveAudioAdvanced'
-    && (!Array.isArray(normalized?.outputs) || normalized.outputs.length === 0)) {
-    normalized = {
-      ...normalized,
-      outputs: spec.outputs.map(output => ({ ...output, links: null })),
-    }
-  }
-  return normalized
-}
-
 if (typeof window !== 'undefined') {
   const proto = (LGraphCanvas as any)?.prototype
   if (proto && !proto.__pymssI18nPatched) {
@@ -593,23 +543,12 @@ function makeNodeClass(spec: NodeSpec): any {
     }
 
     configure(info: any) {
-      const normalizedInfo = normalizeBuiltinWidgetLayout(spec, info)
+      const normalizedInfo = info
       const incomingTitle = typeof normalizedInfo.title === 'string' ? normalizedInfo.title : ''
       const defaultTitle = !incomingTitle
         || incomingTitle === spec.title
         || incomingTitle === translateNodeTitle(spec)
-      let widgets = spec.widgets
-      if (spec.type === 'pymss_save_audio') {
-        const values = Array.isArray(normalizedInfo.widgets_values) ? normalizedInfo.widgets_values : []
-        // The rate sits at index 2 in legacy graphs, including numeric folder names.
-        // A trailing ComfyUI button value does not add an output-folder widget.
-        const hasFolder = /^\d+$/.test(String(values[2] ?? ''))
-          || (values.length >= 6 && !/^\d+$/.test(String(values[1] ?? '')))
-        if (hasFolder) {
-          widgets = [widgets[0]!, { name: 'output_folder', type: 'text', default: 'Default' }, ...widgets.slice(1)]
-        }
-      }
-      createWidgets(this, widgets)
+      createWidgets(this, spec.widgets)
       super.configure(normalizedInfo)
       ;(this as AnyNode)[DEFAULT_TITLE_FLAG] = defaultTitle
       for (const widget of this.widgets || []) this.properties[widget.name] = widget.value

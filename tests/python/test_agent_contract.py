@@ -110,6 +110,7 @@ class ResultContractTests(unittest.TestCase):
         self.assertEqual(tools["system.health"]["resultEvent"], "health")
         self.assertEqual(tools["system.contract"]["resultEvent"], "agent_contract")
         self.assertEqual(tools["media.image.upscale"]["resultEvent"], "task.result")
+        self.assertEqual(tools["graph.run_operation"]["resultEvent"], "task.result")
         self.assertEqual(tools["model.hub"]["resultEvent"], "model_hub_result")
 
     def test_declared_result_event_matches_what_dispatch_returns(self) -> None:

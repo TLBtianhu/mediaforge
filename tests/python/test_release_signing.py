@@ -119,7 +119,7 @@ if ($env:GITHUB_TOKEN -cne 'fixture-token' -or $env:TAURI_SIGNING_PRIVATE_KEY -c
 
     def test_stale_source_is_rejected_before_any_existing_stage_changes(self):
         for name, version in (("MediaForge", "0.0.31"), ("Pymss Studio", "0.0.32")):
-            result = self.run_fixture("""
+            result = self.run_fixture(r"""
 function Get-ReleaseExecutableInfo { param($Path) [PSCustomObject]@{ProductName='%NAME%'; ProductVersion='%VERSION%'} }
 $root = $FixtureRoot; $Version = '0.0.32'; $out = Join-Path $FixtureRoot 'release'; $stageName = 'stage-0.0.32'; $stage = Join-Path $out $stageName
 [IO.Directory]::CreateDirectory($stage) | Out-Null
@@ -140,13 +140,13 @@ $staging = ($staging -split 'Copy-ReleaseResources -Root', 2)[0]
         self.assertIn("identity/version mismatch", result.stderr)
         self.assertFalse((self.root / "mock-record.json").exists())
         self.assertEqual(Path(str(archive) + ".sig").read_text(), "retained signature")
-        self.run_fixture("""
+        self.run_fixture(r"""
 function Get-ReleaseExecutableInfo { param($Path) [PSCustomObject]@{ProductName='MediaForge'; ProductVersion='0.0.31'} }
 Assert-ReleaseExecutable -Path (Join-Path $FixtureRoot 'stage/MediaForge.exe') -ExpectedVersion '0.0.32'
 """, ok=False)
 
     def test_existing_mismatched_stage_is_rejected_before_deletion(self):
-        result = self.run_fixture("""
+        result = self.run_fixture(r"""
 function Get-ReleaseExecutableInfo {
     param($Path)
     $version = if ($Path -like '*src-tauri*') { '0.0.32' } else { '0.0.31' }
@@ -172,7 +172,7 @@ $staging = ($staging -split 'Copy-ReleaseResources -Root', 2)[0]
         self.assertFalse((self.root / "mock-record.json").exists())
 
     def test_skip_sign_branch_never_resolves_credentials_or_invokes_signer(self):
-        self.run_fixture("""
+        self.run_fixture(r"""
 $SkipSign = $true
 function Invoke-ReleaseArchiveSigning { throw 'SkipSign invoked a signer' }
 $text = Get-Content (Join-Path $Repository 'scripts/package-release.ps1') -Raw
@@ -184,12 +184,13 @@ if (Get-Variable keyPath -ErrorAction SilentlyContinue) { throw 'SkipSign resolv
 
     def test_existing_real_source_and_candidate_pe_have_expected_identity_without_running_them(self):
         source = ROOT / "src-tauri/target/release/pymss-studio.exe"
-        stage = ROOT / "release/candidates/0.0.32/stage-0.0.32/MediaForge.exe"
+        version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+        stage = ROOT / f"release/candidates/{version}/stage-{version}/MediaForge.exe"
         if not source.is_file() or not stage.is_file():
-            self.skipTest("Existing 0.0.32 candidate PE is unavailable")
-        self.run_fixture("""
-Assert-ReleaseExecutable -Path (Join-Path $Repository 'src-tauri/target/release/pymss-studio.exe') -ExpectedVersion '0.0.32'
-Assert-ReleaseExecutable -Path (Join-Path $Repository 'release/candidates/0.0.32/stage-0.0.32/MediaForge.exe') -ExpectedVersion '0.0.32'
+            self.skipTest("A built candidate for the current checkout version is unavailable")
+        self.run_fixture(f"""
+Assert-ReleaseExecutable -Path (Join-Path $Repository 'src-tauri/target/release/pymss-studio.exe') -ExpectedVersion '{version}'
+Assert-ReleaseExecutable -Path (Join-Path $Repository 'release/candidates/{version}/stage-{version}/MediaForge.exe') -ExpectedVersion '{version}'
 """)
 
     def test_standalone_signer_has_no_legacy_key_registry_or_password_argument(self):

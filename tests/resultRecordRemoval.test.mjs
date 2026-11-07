@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { isTerminalTaskStatus, taskJobId } from '../src/features/tasks/lifecycle.ts'
 import { getRemovalTasks as getRemovalTasksFromState } from '../src/stores/taskResultCleanup.ts'
+import { TASK_HISTORY_VERSION } from '../src/stores/taskNormalize.ts'
 
 const source = ts.createSourceFile('task.ts', readFileSync(new URL('../src/stores/task.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true)
 const names = new Set(['persistTasks', 'hasResultPresence', 'getRemovalTasks', 'removeResults', 'removeResult', 'clearResults', 'removeWorkflowRun', 'removeSeparationRuns'])
@@ -26,7 +27,7 @@ function environment(items) {
   const writes = []
   let saveHandler, retries = 0
   const state = {
-    tasks: ref(items), initialized: ref(true), isTerminalTaskStatus, taskJobId, getRemovalTasksFromState,
+    tasks: ref(items), initialized: ref(true), isTerminalTaskStatus, taskJobId, getRemovalTasksFromState, TASK_HISTORY_VERSION,
     activeTaskId: ref(items[0]?.id), focusedTaskId: ref(items[0]?.id), focusedResultTaskId: ref(items[0]?.id),
     sessionTaskIds: ref(new Set(items.map(item => item.id))),
     i18n: { global: { t: key => key } }, queuePersist: () => { retries++ },

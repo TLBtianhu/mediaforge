@@ -14,7 +14,8 @@ test('an older runtime only prompts for confirmation and model preloading waits 
 })
 
 test('runtime overlay releases declare a stable base generation and exact core versions', () => {
-  assert.equal(manifest.baseGeneration, 1)
+  assert.equal(manifest.baseGeneration, 2)
+  assert.equal(manifest.python, '3.12')
   assert.match(manifest.common.pymss, /==\d+\.\d+\.\d+$/)
   assert.match(manifest.common['pymss-core'], /==\d+\.\d+\.\d+$/)
 })

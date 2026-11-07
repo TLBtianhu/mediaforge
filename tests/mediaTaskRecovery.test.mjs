@@ -41,6 +41,7 @@ const vite = await createServer({
           calls.push({ command, args })
           if (hook) return hook(command, args)
           if (command === 'runtime_asset_status') return { installed: false, size: 0 }
+          if (command === 'agent_jobs') return {schemaVersion:1,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'}
           return {}
         }
         export async function listen(name, callback) { if (listenHook) await listenHook(name); listeners.set(name, callback); return () => listeners.delete(name) }

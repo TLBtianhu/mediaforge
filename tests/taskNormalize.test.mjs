@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTask, CURRENT_INFERENCE_PARAMS_VERSION } from '../src/stores/taskNormalize.ts'
+import { normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTask, readTaskHistory, validateSeparateState, CURRENT_INFERENCE_PARAMS_VERSION } from '../src/stores/taskNormalize.ts'
 
 test('output layout and naming normalize their shapes', () => {
   assert.equal(normalizeOutputLayout('flat'), 'flat')
@@ -16,27 +16,21 @@ test('output layout and naming normalize their shapes', () => {
 })
 
 test('runConfig fills defaults and clones nested params', () => {
-  const config = normalizeRunConfig({})
+  const config = normalizeRunConfig({ inferenceParamsVersion: CURRENT_INFERENCE_PARAMS_VERSION })
   assert.equal(config.downloadMethod, 'aria2c')
   assert.equal(config.outputLayout, 'folders')
   assert.deepEqual(config.selectedStems, [])
-  // 空 params 也走版本迁移：补 standardize=true、normalize=false。
-  assert.deepEqual(config.inferenceParams, { standardize: true, normalize: false })
+  assert.deepEqual(config.inferenceParams, {})
   assert.equal(config.inferenceParamsVersion, CURRENT_INFERENCE_PARAMS_VERSION)
 })
 
-test('legacy configs migrate inferenceParams to standardize/normalize', () => {
-  // 两个键都缺：旧桌面默认开 input standardize、关 output normalize。
-  const legacy = normalizeRunConfig({ inferenceParams: {} })
-  assert.equal(legacy.inferenceParams.standardize, true)
-  assert.equal(legacy.inferenceParams.normalize, false)
-  // 只有 normalize：旧字段名作 input standardization 用。
-  const withNormalize = normalizeRunConfig({ inferenceParams: { normalize: true } })
-  assert.equal(withNormalize.inferenceParams.standardize, true)
-  assert.equal(withNormalize.inferenceParams.normalize, false)
-  // 只有 standardize：已经迁过一轮，只补 normalize=false。
-  const withStandardize = normalizeRunConfig({ inferenceParams: { standardize: true } })
-  assert.equal(withStandardize.inferenceParams.normalize, false)
+test('missing, old and future inference schemas are rejected without mutating the input', () => {
+  for (const version of [undefined, 0, 1, 2, 4, 99]) {
+    const input = { inferenceParamsVersion: version, inferenceParams: { normalize: true } }
+    const original = JSON.stringify(input)
+    assert.throws(() => normalizeRunConfig(input), /Unsupported/)
+    assert.equal(JSON.stringify(input), original)
+  }
 })
 
 test('current-version configs are not migrated again', () => {
@@ -71,8 +65,20 @@ test('normalizeTask fills defaults and marks interrupted runs as failed', () => 
   assert.equal(done.progress, 100)
 })
 
-test('normalizeTask infers outputs from files when the worker sent none', () => {
+test('task restore never manufactures missing output metadata from old filename lists', () => {
   const task = normalizeTask({ output: 'D:/out', files: ['vocals.wav'], outputs: [] }, true)
-  assert.equal(task.outputs.length, 1)
-  assert.equal(task.outputs[0].path, 'D:/out/vocals.wav')
+  assert.equal(task.outputs.length, 0)
+})
+
+test('history and separate settings accept only their current envelopes', () => {
+  assert.deepEqual(readTaskHistory(null), [])
+  assert.deepEqual(readTaskHistory({ version: 1, tasks: [] }), [])
+  for (const state of [{ tasks: [] }, { version: 0, tasks: [] }, { version: 2, tasks: [] }, { version: 1, tasks: [{}] }]) {
+    const original = JSON.stringify(state)
+    assert.throws(() => readTaskHistory(state), /Unsupported/)
+    assert.equal(JSON.stringify(state), original)
+  }
+  assert.equal(validateSeparateState(null), null)
+  assert.deepEqual(validateSeparateState({ version: 1 }), { version: 1 })
+  for (const state of [{}, { version: 0 }, { version: 2 }]) assert.throws(() => validateSeparateState(state), /Unsupported/)
 })

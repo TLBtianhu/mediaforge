@@ -9,20 +9,17 @@ function project(): EditorSession {
 }
 const slot = { id: 'slot', format: 'vst3', pluginId: 'gain', name: 'Gain', path: 'gain.vst3', bypassed: false, state: 'sha256:old' }
 
-test('legacy track effects do not change the audio graph or strip opaque plugin metadata', () => {
+test('current processing preserves opaque plugin metadata and observes actual graph edits', () => {
   const session = project()
   session.tracks = [{ id: 'track', sourceId: 'source', role: 'stem', name: 'Track',
     volume: 1, pan: 0, muted: false, solo: false, fadeIn: 0, fadeOut: 0,
-    effects: { reverb: 0.4 }, pluginChain: [{ ...slot, effects: { vendorState: 'preserve' } }] }]
+    autoName: false, clips: [], pluginChain: [{ ...slot, effects: { vendorState: 'preserve' } }] }]
   const signature = pluginProjectSignature(session)
   const processing = pluginProcessingProject(session)
   assert.equal('effects' in processing.tracks[0], false)
   assert.deepEqual(processing.tracks[0].pluginChain![0].effects, { vendorState: 'preserve' })
-  session.tracks[0].effects!.reverb = 0.8
-  assert.equal(pluginProjectSignature(session), signature)
   session.tracks[0].volume = 0.5
   assert.notEqual(pluginProjectSignature(session), signature)
-  assert.deepEqual(session.tracks[0].effects, { reverb: 0.8 })
 })
 
 test('library families merge one matching VST2/VST3 pair and prefer VST3 without rewriting descriptors', () => {
@@ -64,9 +61,9 @@ test('Audio Units keep separate identities beside a merged VST pair', () => {
   assert.deepEqual(pluginDescriptorFamilies([legacy, au2, modern, au3]), [[modern, legacy], [au2], [au3]])
 })
 
-test('projects without plugins keep version 3 and track/master chains require version 4', () => {
+test('all current projects use version 4 regardless of whether plugins are present', () => {
   const session = project()
-  assert.equal(pluginProjectVersion(session), 3)
+  assert.equal(pluginProjectVersion(session), 4)
   session.pluginChain = [slot]
   assert.equal(hasEditorPlugins(session), true)
   assert.equal(pluginProjectVersion(session), 4)
@@ -153,8 +150,7 @@ test('project block reasons only check active plugin formats across master and t
   const session = project()
   session.pluginChain = [slot]
   session.tracks = [{ id: 'track', sourceId: 'source', name: 'Track', role: 'stem', volume: 1,
-    pan: 0, muted: false, solo: false, fadeIn: 0, fadeOut: 0, pluginChain: [{ ...slot, id: 'track-slot' }],
-    ...{ effects: { reverb: 0.2, delay: 0.3, delayTime: 0.4, clarity: 0.5, compressor: 0.6 } } }]
+    pan: 0, muted: false, solo: false, fadeIn: 0, fadeOut: 0, autoName: false, clips: [], pluginChain: [{ ...slot, id: 'track-slot' }] }]
   assert.equal(pluginProjectBlockReason(session), null)
   assert.equal(pluginProjectBlockReason(session, ['vst3']), null)
   assert.equal(pluginProjectBlockReason(session, ['vst2']), 'format')

@@ -4,19 +4,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  cloneLegacyTrackEffects, cloneTracks, normalizeSource, normalizeClip,
+  cloneTracks, normalizeSource, normalizeClip,
   normalizeTrack, normalizeSession, toPersistedSession, clamp,
 } from '../src/stores/editorNormalize.ts'
 
 const localizedName = (name) => `L:${name}`
 
-test('cloneLegacyTrackEffects and cloneTracks deep-clone effects and chains', () => {
-  assert.equal(cloneLegacyTrackEffects(undefined), undefined)
-  assert.deepEqual(cloneLegacyTrackEffects({ a: 1 }), { a: 1 })
-  assert.equal(cloneLegacyTrackEffects([1, 2]), undefined)
-  const tracks = cloneTracks([{ effects: { a: 1 }, pluginChain: [], clips: [{ id: 'c' }] }])
-  assert.deepEqual(tracks[0].effects, { a: 1 })
-  assert.deepEqual(tracks[0].clips, [{ id: 'c' }])
+test('cloneTracks deep-clones current plugin chains and clips', () => {
+  const original = [{ pluginChain: [{ id:'plugin', state:{value:1} }], clips:[{id:'clip'}] }]
+  const tracks = cloneTracks(original)
+  tracks[0].pluginChain[0].state.value=2
+  tracks[0].clips[0].id='changed'
+  assert.equal(original[0].pluginChain[0].state.value,1)
+  assert.equal(original[0].clips[0].id,'clip')
 })
 
 test('normalizeSource fills defaults and computes channels from peaks', () => {
@@ -44,7 +44,7 @@ test('normalizeClip clamps offset, duration, volume and fades', () => {
 
 test('normalizeTrack builds clips and respects autoName and canonical fades', () => {
   const sources = new Map([['s1', { id: 's1', role: 'stem', stemKey: 'vocals', duration: 10, name: 'Vocals' }]])
-  const track = normalizeTrack({ sourceId: 's1', name: 'vocals', volume: 1 }, sources, true, localizedName)
+  const track = normalizeTrack({ sourceId: 's1', name: 'vocals', volume: 1, autoName: true, clips: [{assetId:'s1',duration:10}] }, sources, localizedName)
   assert.equal(track.role, 'stem')
   assert.equal(track.name, 'L:vocals')
   assert.equal(track.autoName, true)
@@ -54,8 +54,9 @@ test('normalizeTrack builds clips and respects autoName and canonical fades', ()
 
 test('normalizeSession normalizes sources, tracks and master volume', () => {
   const session = normalizeSession({
+    version: 4,
     sources: [{ path: 'a.wav', duration: 5 }],
-    tracks: [{ sourceId: 'a', name: 'a' }],
+    tracks: [{ sourceId: 'a', name: 'a', autoName:false, clips:[] }],
     masterVolume: 3,
   }, localizedName)
   assert.equal(session.masterVolume, 2)
@@ -72,5 +73,18 @@ test('toPersistedSession clears peaks and stamps a version', () => {
   })
   assert.deepEqual(persisted.sources[0].peaks, [])
   assert.deepEqual(persisted.sources[0].channelPeaks, [])
-  assert.ok('version' in persisted)
+  assert.equal(persisted.version,4)
+})
+
+test('old, missing, future and legacy-effect project schemas are rejected without mutation', () => {
+  for (const version of [undefined,0,1,2,3,5,99]) {
+    const project={version,sources:[],tracks:[]}
+    const raw=JSON.stringify(project)
+    assert.throws(()=>normalizeSession(project,localizedName),/Unsupported/)
+    assert.equal(JSON.stringify(project),raw)
+  }
+  const project={version:4,sources:[],tracks:[{autoName:false,clips:[],effects:{eq:{}}}]}
+  const raw=JSON.stringify(project)
+  assert.throws(()=>normalizeSession(project,localizedName),/Unsupported/)
+  assert.equal(JSON.stringify(project),raw)
 })

@@ -132,54 +132,9 @@ def normalize_output_dir(value: Any) -> str:
 # 音频权重保持 pymss 的分类相对路径（cleanup/… vocal/…），两套布局并列不冲突。
 MEDIA_SUBDIR = "media"
 
-_MIGRATED_ROOTS: set[str] = set()
-
-
 def media_model_relpath(name: str) -> str:
     """媒体权重在模型根下的相对路径：`media/<文件名>`。"""
     text = str(name or "").strip().replace("\\", "/").lstrip("/")
     if not text:
         raise ValueError("media model name is empty")
     return f"{MEDIA_SUBDIR}/{text}"
-
-
-def migrate_media_models(root: Any, names: Any) -> list[str]:
-    """把老布局（权重直接放在模型根下）搬进 `media/`。幂等、只动点名的文件。
-
-    为什么必须有迁移：0.0.13 之前下载的模型就躺在根目录。布局一改，那些文件会
-    **看起来消失**（列表显示"未下载"），用户重下的代价是几百 MB 和一脸问号。
-    迁移在第一次解析模型根时跑一次，之后靠进程内标记跳过。
-
-    只搬 `names` 里点名的文件：模型根是应用管理的，但用户可能往里放过别的东西，
-    不该顺手搬家。
-    """
-    base = Path(root)
-    key = str(base).lower()
-    if key in _MIGRATED_ROOTS:
-        return []
-    _MIGRATED_ROOTS.add(key)
-
-    moved: list[str] = []
-    for name in names or ():
-        text = str(name or "").strip()
-        # 带路径分隔符的（音频那套分类相对路径）本来就在子目录里，不用搬
-        if not text or "/" in text or "\\" in text:
-            continue
-        source = base / text
-        target = base / MEDIA_SUBDIR / text
-        if target.exists() or not source.is_file():
-            continue
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            source.replace(target)
-        except OSError:
-            # 迁移失败不是致命错误：退回旧位置仍然能被旧路径读到，
-            # 让下一次解析再试（标记已置位，本进程不再重试）。
-            continue
-        moved.append(text)
-    return moved
-
-
-def reset_migration_cache() -> None:
-    """测试用：清掉"这个根已经迁移过"的进程内标记。"""
-    _MIGRATED_ROOTS.clear()

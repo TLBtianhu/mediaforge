@@ -29,7 +29,7 @@ def load_script():
 class VersionsManifestTests(unittest.TestCase):
     def test_document_carries_the_two_live_axes(self) -> None:
         doc = load_script().build()
-        self.assertEqual(doc["schemaVersion"], 1)
+        self.assertEqual(doc["schemaVersion"], 2)
         self.assertIn("version", doc["app"])
         self.assertIn("assetId", doc["runtime"])
         # catalog 轴已删除：catalog 随应用发布，没有独立更新通道
@@ -42,6 +42,22 @@ class VersionsManifestTests(unittest.TestCase):
         self.assertEqual(doc["runtime"]["sha256"], entry["sha256"])
         self.assertEqual(doc["runtime"]["size"], entry["size"])
         self.assertEqual(doc["runtime"]["urls"], entry["urls"])
+        self.assertEqual(doc["runtime"]["python"], "3.12")
+
+    def test_runtime_version_and_schema_must_match_before_publishing(self) -> None:
+        module = load_script()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "manifest").mkdir()
+            (root / "python").mkdir()
+            (root / "python/runtime-manifest.json").write_text('{"python":"3.12"}', encoding="utf-8")
+            entry = {"assetId": "runtime-test", "backend": "cuda", "python": "3.11"}
+            for schema in (1, 2):
+                (root / "manifest/runtime.json").write_text(json.dumps({
+                    "schemaVersion": schema, "fallbackAssetId": "runtime-test", "runtimes": [entry]}), encoding="utf-8")
+                with self.subTest(schema=schema), mock.patch.object(module, "ROOT", root):
+                    with self.assertRaises(ValueError):
+                        module.load_runtime()
 
     def test_runtime_descriptor_is_complete_enough_to_download(self) -> None:
         runtime = load_script().build()["runtime"]

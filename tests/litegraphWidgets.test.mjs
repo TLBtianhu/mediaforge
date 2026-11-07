@@ -96,9 +96,7 @@ test('object-format links survive comfyLinksToLitegraph round-trip', () => {
   assert.equal(g3.links.size, 1, 'configure must restore the link')
 })
 
-// Regression: stored workflows come in two link shapes — comfy array tuples
-// (real comfy-mss export) and numeric-key objects (older litegraphToComfy
-// output). comfyLinksToLitegraph must restore links from both.
+// Current Comfy tuple links adapt to LiteGraph memory objects; historical numeric-key objects are rejected.
 function twoLoadGraph() {
   return [
     { id: 1, type: 'pymss_load_audio', pos: [0, 0], size: [200, 80], flags: {}, order: 0, mode: 0,
@@ -129,17 +127,9 @@ test('comfy array-tuple links restore all links', () => {
   assert.equal(g4.links.size, 2, 'all links restored after configure')
 })
 
-test('numeric-key object links (old litegraphToComfy output) restore all links', () => {
-  const nodes = twoLoadGraph()
-  const links = [
-    { 0: 1, 1: 1, 2: 0, 3: 3, 4: 0, 5: 'AUDIO' },
-    { 0: 2, 1: 2, 2: 0, 3: 4, 4: 0, 5: 'AUDIO' },
-  ]
-  const g5 = new LGraph()
-  g5.configure({
-    nodes: nodes.map(n => ({ ...n, inputs: n.inputs || [], outputs: n.outputs || [] })),
-    links: comfyLinksToLitegraph(links),
-    last_node_id: 4, last_link_id: 2, groups: [], version: 1,
-  })
-  assert.equal(g5.links.size, 2, 'all stored links restored')
+test('historical numeric-key object links are rejected without mutation', () => {
+  const links=[{0:1,1:1,2:0,3:3,4:0,5:'AUDIO'}]
+  const raw=JSON.stringify(links)
+  assert.throws(()=>comfyLinksToLitegraph(links),/Unsupported graph link schema/)
+  assert.equal(JSON.stringify(links),raw)
 })

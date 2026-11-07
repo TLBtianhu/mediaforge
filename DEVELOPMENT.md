@@ -15,12 +15,18 @@
 5. **`src-tauri/target/{debug,release}` 都是开发构建。**
    应用会把它们识别为 development executable；狗粮和干净包验证必须使用**安装后的 exe**。
 6. **配置分四类：**
-   - 设置：小 JSON，带 schema/version，支持迁移
+   - 设置：小JSON，带明确schema/version；1.0前只接收当前格式，不写结构迁移
    - 模型/索引/缓存：可重建，放用户数据目录
    - 密钥：系统 keyring，不放 JSON
    - 日志/临时文件：可轮转、可清理
 7. **模型权重不进仓库、不进安装包。**
    通过 manifest + 下载器准备；模型目录必须和程序本体 `app/` 分离。
+8. **不向下兼容不等于清空用户文件。**
+   遇到旧、缺失或未来schema必须报错并保留原文件，加载失败后不得把空默认值写回。
+   删除历史兼容读取/迁移/双写分支；临时事务文件与UI内存投影不作为永久数据副本。
+9. **Python目标唯一且强制一致。**
+   `python/runtime-manifest.json`当前声明3.12。开发、bootstrap、独立推理资产和发布验证
+   都核对实际major.minor；禁止跟随PATH复制3.11后只把清单写成3.12。
 
 ## 三套环境
 
@@ -58,7 +64,7 @@ MEDIAFORGE_RUNTIME_ENVS_DIR
 ```text
 .dev-data/
 .dev-webview/
-data/          # 旧开发数据，仅兼容
+data/          # 历史开发产物，不作为当前默认数据根
 ```
 
 清理：
@@ -120,6 +126,8 @@ Remove-Item "$env:TEMP\MediaForge-clean-*" -Recurse -Force
 ```
 
 ## 端口与预览
+
+音频节点工作流的持久格式为 Comfy `version: 0.4` 与六元组 `links`；外层 `workflow-state.version` 和条目 `formatVersion` 都独立为 `1`。LiteGraph 的内存图使用 `version: 1` 与对象链接，只通过适配器投影，不另存一份图。新建、保存、导出和导入必须使用同一持久格式；缺失或其它版本、旧数字键链接及旧控件布局报错并保留原文件，禁止修版号或迁移数据。
 
 - 开发服务器固定 **1420**，`strictPort: true`
 - `http://localhost:1420` 只适合看布局；浏览器没有 Tauri IPC/worker
@@ -226,17 +234,16 @@ external jobs every ten seconds while visible. Audio cancellation goes through
 the audio store scheduler; other manual tasks use `cancel_task` and agent jobs
 use `cancel_agent_job`.
 
-Old ownerless manual `running` records have unknown liveness. They remain in
-the queue for diagnosis but do not lock a media page or block a new submission.
 Only a current-session submission or a backend-owned lease record restores
-an active media page. Terminal legacy results can still be restored.
+an active media page. Records without a recognized owner never acquire a page
+lock or get treated as proof that a task is still running.
 
 Results include a separate read-only media/tool/Agent file area alongside the
 existing audio area. Manual audio journal mirrors are excluded so clearing audio
 history cannot resurrect it. The physical audio history and journal remain
 separate; media result deletion and a shared cross-process scheduler are not
-implemented. `journal_job` remains a guarded compatibility path for older tool
-components; the four media pages no longer write their own lifecycle records.
+implemented. The old frontend journal mirror and `journal_job` write command
+are removed; the backend owns task lifecycle records.
 
 The stdio and HTTP bridge modes write the same state, so DSH and the app see
 the same task list when they use the same `MEDIAFORGE_DATA_DIR`.
@@ -288,8 +295,9 @@ Pipelines are ordered capability steps with explicit model bindings:
 }
 ```
 
-The legacy `mode` names remain as compatibility presets, but new callers should
-use steps. Image and video workers both accept `steps`; image/video UI exposes
+Image and video workers require explicit `steps`; the GUI, MCP and verification
+CLI use the same current input shape. Old mode/modelId/factor inputs are rejected.
+Image/video UI exposes
 the model bindings directly through `ProcessingPlan`. `/media-workflow` composes
 ordered media steps. `workflow_contract.py` declares serial support separately
 from single-task support and exports it in `media_capabilities.workflow` per
@@ -360,11 +368,14 @@ they do not claim cross-tab transactional storage.
 ```powershell
 $env:CARGO_BUILD_JOBS = '4'
 pnpm tauri build --no-bundle --ci
-.\scripts\package-release.ps1 -Version 0.0.32 -SkipBuild -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.32
+.\scripts\package-release.ps1 -Version 0.0.33 -SkipBuild -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.33
 ```
 
 `-SkipBuild`仍校验源EXE的ProductName/ProductVersion；三个源码版本与Cargo.lock须由
-`scripts/sync-build-version.ps1`一起同步。运行时资产只有显式`-BuildRuntimeAsset`才打包。
+`scripts/sync-build-version.ps1`一起同步。程序打包不再兼做推理资产构建。
+`BootstrapDir`明确选择工作区内已准备好的3.12最小解释器，源或旧stage的实际版本不符就拒绝。
+bootstrap准备仅接受全新目录，不自动删除旧内容。工作区当前`python-runtime`已是实际3.12.13；
+若在`release/bootstrap-*`准备另一份新源，使用显式`BootstrapDir`选择，不能默默回退旧源。
 签名仅使用显式路径/进程环境，`-SkipSign`不读取签名凭据；不要在有签名环境变量时
 运行signer的help，某些CLI版本可能把环境默认值打印到终端。禁止记录私钥或密码。
 
@@ -376,6 +387,16 @@ pnpm tauri build --no-bundle --ci
 校验、解包、指针激活与回滚，不证明真实PyTorch或模型兼容。当前Tauri 2.11.2的三个
 `--smoke-*`分支在`app.run()`之前退出，不创建配置WebView。普通exe启动会进入GUI；
 用户禁止桌面操作时只允许已确认的headless分支，不调用ComputerUse或操控已有窗口。
+
+独立Windows资产由`scripts/build-runtime-asset.py`构建：显式选择非venv的3.12宿主，
+在`.dev-data/runtime-envs/<新assetId>`只创建一份自包含环境，再生成单个ZIP及hash描述符。
+解释器、python312.dll、stdlib与cp312扩展必须同源；安装原样验证和发布，不修补旧venv。
+Windows布局按[Python模块搜索路径规则](https://docs.python.org/3.12/library/sys_path_init.html)验证，
+解释器实际prefix必须位于资产内，不能借用源安装或用户site-packages。
+
+`pnpm test:python`从当前资产或显式`MEDIAFORGE_RUNTIME_PYTHON`选择解释器，先强制核对3.12，
+再以一次性profile/cache运行测试；不下载依赖。签名测试依赖PyNaCl，仅安装在测试工具目录或CI，
+不进入推理资产。旧格式拒绝与资产不删是两条规则；升级保留文件不代表应用会迁移其结构。
 
 - [ ] `data/` 不存在或已清理
 - [ ] `.dev-data/`、`.dev-webview/` 不进入安装包

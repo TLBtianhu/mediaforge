@@ -15,13 +15,14 @@ export type WorkflowRuntimeBindings = {
 }
 export type WorkflowBindingNode = { id: string; label: string; embeddedPath?: string; subdirectory?: string }
 export type WorkflowWorkbenchSnapshot = {
-  version: 1
-  nativeGraph?: true
+  version: 2
   sourceUpdatedAt: number
-  sourceDefinition: Record<string, unknown>
   bindings: WorkflowRuntimeBindings
   inputs: Record<string, string>
   outputs: Record<string, string>
+} & ({ nativeGraph: true; sourceDefinition?: never } | { nativeGraph?: false; sourceDefinition: Record<string, unknown> })
+export function workflowSourceDefinition(config?: { workflowDefinition?: Record<string, unknown>; workbench?: WorkflowWorkbenchSnapshot }): Record<string, unknown> {
+  return config?.workbench?.nativeGraph ? config.workflowDefinition || {} : config?.workbench?.sourceDefinition || config?.workflowDefinition || {}
 }
 export type WorkbenchRun = { input: string; inputs: Record<string, string>; outputs: Record<string, string> }
 

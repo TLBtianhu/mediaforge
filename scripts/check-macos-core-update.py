@@ -34,22 +34,25 @@ def bundle_paths(app: Path) -> tuple[Path, Path, Path]:
 def pack_installed_distribution(name: str, destination: Path) -> Path:
     """Reuse the shipped package bytes so verification needs no package index."""
     distribution = metadata.distribution(name)
-    files = distribution.files
-    if files is None:
+    inventory = distribution.read_text("RECORD")
+    if inventory is None:
         raise RuntimeError(f"The installed package has no file inventory: {name}")
+    # Python 3.12's Distribution.files silently drops missing RECORD entries.
+    # Validation must inspect the complete declared inventory instead.
+    rows = list(csv.reader(io.StringIO(inventory)))
+    if not rows or any(len(row) != 3 or not row[0] for row in rows):
+        raise RuntimeError(f"The installed package has an invalid file inventory: {name}")
+    files = [PurePosixPath(row[0]) for row in rows]
     package_metadata = next((item for item in files if str(item).endswith(".dist-info/METADATA")), None)
     if package_metadata is None:
         raise RuntimeError(f"The installed package has no distribution metadata: {name}")
     information = PurePosixPath(str(package_metadata)).parent
     wheel_text = distribution.read_text("WHEEL")
-    if wheel_text:
-        tag = next(line.removeprefix("Tag: ") for line in wheel_text.splitlines() if line.startswith("Tag: "))
-    else:
-        # Release pruning removes WHEEL but keeps METADATA and RECORD. The
-        # reconstructed wheel is only consumed by this exact bundled interpreter.
-        from pip._vendor.packaging.tags import sys_tags
-        tag = str(next(sys_tags()))
-        wheel_text = f"Wheel-Version: 1.0\nRoot-Is-Purelib: false\nTag: {tag}\n"
+    if not wheel_text or information / "WHEEL" not in files:
+        raise RuntimeError(f"The installed package is missing WHEEL metadata: {name}")
+    tag = next((line.removeprefix("Tag: ") for line in wheel_text.splitlines() if line.startswith("Tag: ")), None)
+    if not tag:
+        raise RuntimeError(f"The installed package has invalid WHEEL metadata: {name}")
     destination.mkdir(parents=True, exist_ok=True)
     output = destination / f"{name.replace('-', '_')}-{distribution.version}-{tag}.whl"
     root = Path(distribution.locate_file("")).resolve()
@@ -62,11 +65,6 @@ def pack_installed_distribution(name: str, destination: Path) -> Path:
             if path.parent == information and path.name in {"RECORD", "INSTALLER", "REQUESTED", "direct_url.json"}:
                 continue
             source = Path(distribution.locate_file(item)).resolve()
-            # Runtime pruning can remove WHEEL while RECORD still lists it.
-            # The compatible replacement is generated below; every other
-            # missing inventory entry must continue to fail verification.
-            if path.parent == information and path.name == "WHEEL" and source.is_relative_to(root) and not source.exists():
-                continue
             if not source.is_relative_to(root) or not source.is_file():
                 raise RuntimeError(f"The installed package has an invalid file entry: {name}/{path}")
             data = source.read_bytes()
@@ -75,12 +73,6 @@ def pack_installed_distribution(name: str, destination: Path) -> Path:
             archive.writestr(information_entry, data)
             digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
             records.append((str(path), f"sha256={digest}", str(len(data))))
-        if not any(path == str(information / "WHEEL") for path, _, _ in records):
-            wheel_data = wheel_text.encode()
-            wheel_path = str(information / "WHEEL")
-            archive.writestr(wheel_path, wheel_data)
-            digest = base64.urlsafe_b64encode(hashlib.sha256(wheel_data).digest()).decode().rstrip("=")
-            records.append((wheel_path, f"sha256={digest}", str(len(wheel_data))))
         record_path = str(information / "RECORD")
         record = io.StringIO()
         csv.writer(record).writerows([*records, (record_path, "", "")])

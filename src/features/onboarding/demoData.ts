@@ -29,7 +29,7 @@ export function createDemoAudio(): { sources: EditorSource[]; tracks: EditorTrac
       Math.abs(Math.sin(sample * 0.13 + index) * Math.cos(sample * 0.037)) * 0.7 + Math.abs(Math.sin(sample * 1.71)) * 0.15)),
   }))
   const tracks: EditorTrack[] = sources.map((source, index) => ({
-    id: 'track-' + index, sourceId: source.id, role: 'stem', name: source.name, volume: 1, pan: 0,
+    id: 'track-' + index, sourceId: source.id, role: 'stem', name: source.name, autoName: true, volume: 1, pan: 0,
     muted: false, solo: false, fadeIn: 0, fadeOut: 0, color: index ? '#88b8ad' : '#8daee2',
     clips: [{ id: 'clip-' + index, assetId: source.id, start: 0, offset: 0, duration: 12, volume: 1, fadeIn: 0, fadeOut: 0, muted: false, locked: false }],
   }))

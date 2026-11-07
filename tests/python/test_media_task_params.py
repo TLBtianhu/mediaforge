@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import os
+import importlib.util
 from pathlib import Path
 import sys
 import tempfile
@@ -63,7 +64,7 @@ class MediaTaskParamTests(unittest.TestCase):
 
         payload = self._payload("upscale", {"upscaler": "media:real-esrgan-x4"}, {
             "target": "custom", "width": 192, "height": 128, "fit": "pad", "scale": 3, "tile": 128,
-        }, width=64, height=64, tile=512, modelId="media:real-esrgan-x2")
+        })
         with mock.patch.object(image_ops, "RealESRGANUpscaler", Upscaler):
             self.assertEqual(image_worker.cmd_media_image(payload), 0)
         self.assertEqual(self.errors, [])
@@ -99,16 +100,11 @@ class MediaTaskParamTests(unittest.TestCase):
         self.assertEqual(self.events[-1][1]["failed"], [])
         self.assertEqual(detector.detect.call_args.kwargs, {"conf": 0, "expand": 0})
 
-    def test_denoise_steps_and_legacy_model_alias_select_the_requested_model(self) -> None:
+    def test_denoise_step_binding_selects_the_requested_model(self) -> None:
         model = "media:esrgan-1x-denoise-realplksr"
-        payloads = [self._payload("denoise", {"denoiser": model}), {
-            "mode": "denoise", "denoiserModelId": model, "inputs": [str(self.source)],
-            "outputDir": str(self.root / "out"), "device": "cpu",
-        }]
-        for payload in payloads:
-            with self.subTest(legacy="mode" in payload), mock.patch.object(image_ops, "run_scale1_model", side_effect=lambda _model, image, **kw: image) as denoise:
-                self.assertEqual(image_worker.cmd_media_image(payload), 0)
-                self.assertTrue(str(denoise.call_args.args[0]).endswith(model.replace(":", "_")))
+        with mock.patch.object(image_ops, "run_scale1_model", side_effect=lambda _model, image, **kw: image) as denoise:
+            self.assertEqual(image_worker.cmd_media_image(self._payload("denoise", {"denoiser": model})), 0)
+            self.assertTrue(str(denoise.call_args.args[0]).endswith(model.replace(":", "_")))
 
     def test_image_interpolation_preserves_timestep_zero_and_endpoints(self) -> None:
         for timestep in (0, 0.25, 1):
@@ -120,7 +116,7 @@ class MediaTaskParamTests(unittest.TestCase):
     def test_video_custom_size_scale_fit_and_tile_reach_processing(self) -> None:
         payload = self._payload("upscale", {"upscaler": "media:real-esrgan-x4"}, {
             "target": "custom", "width": 1920, "height": 1080, "scale": 3, "fit": "cover", "tile": 256,
-        }, width=64, height=64, scale=1, crf=0)
+        }, crf=0)
         with mock.patch.object(image_ops, "ImageRestorer") as restorer, \
              mock.patch.object(video_worker.video_ops, "process_video", return_value={"path": "out.mp4"}) as process:
             self.assertEqual(video_worker.cmd_media_video(payload), 0)
@@ -134,7 +130,7 @@ class MediaTaskParamTests(unittest.TestCase):
         self.assertEqual(kwargs["crf"], 0)
 
     def test_video_watermark_uses_step_detection_settings_including_zero(self) -> None:
-        payload = self._payload("watermark_removal", capabilities.default_bindings("watermark_removal"), {"conf": 0, "expand": 0, "detectMode": "per_frame", "tile": 128}, conf=0.8, expand=20)
+        payload = self._payload("watermark_removal", capabilities.default_bindings("watermark_removal"), {"conf": 0, "expand": 0, "detectMode": "per_frame", "tile": 128})
         with mock.patch.object(image_ops, "ImageRestorer"), mock.patch.object(video_worker.video_ops, "process_video", return_value={"path": "out.mp4"}) as process:
             self.assertEqual(video_worker.cmd_media_video(payload), 0)
         self.assertEqual(process.call_args.kwargs["conf"], 0)
@@ -142,20 +138,21 @@ class MediaTaskParamTests(unittest.TestCase):
         self.assertEqual(process.call_args.kwargs["detect_mode"], "per_frame")
 
     def test_video_interpolation_uses_multiplier_and_preserves_encoding_settings(self) -> None:
-        payload = self._payload("frame_interpolation", {"interpolator": "media:rife-v46"}, {"multiplier": 4}, factor=8, crf=0, preset="slow")
+        payload = self._payload("frame_interpolation", {"interpolator": "media:rife-v46"}, {"multiplier": 4}, crf=0, preset="slow")
         with mock.patch.object(video_worker.video_ops, "interpolate_video", return_value={"path": "out.mp4"}) as interpolate:
             self.assertEqual(video_worker.cmd_media_video(payload), 0)
         self.assertEqual(interpolate.call_args.kwargs["factor"], 4)
         self.assertEqual(interpolate.call_args.kwargs["crf"], 0)
         self.assertEqual(interpolate.call_args.kwargs["preset"], "slow")
 
-    def test_legacy_video_params_are_normalized_before_execution(self) -> None:
-        payload = {"mode": "upscale", "modelId": "media:real-esrgan-x4", "target": "custom", "width": 192, "height": 128, "tile": 128, "inputs": [str(self.source)], "outputDir": str(self.root / "out")}
+    def test_video_supported_defaults_are_normalized_before_execution(self) -> None:
+        payload = self._payload("upscale", {"upscaler": "media:real-esrgan-x4"},
+                                {"target": "custom", "width": 192, "height": 128, "tile": 128})
         with mock.patch.object(image_ops, "ImageRestorer") as restorer, mock.patch.object(video_worker.video_ops, "process_video", return_value={"path": "out.mp4"}) as process:
             self.assertEqual(video_worker.cmd_media_video(payload), 0)
         self.assertEqual(restorer.call_args.kwargs["tile"], 128)
         self.assertEqual(process.call_args.kwargs["target"], (192, 128))
-        self.assertEqual(process.call_args.kwargs["scale"], 4, "model defaults remain authoritative when a parameter is unset")
+        self.assertEqual(process.call_args.kwargs["scale"], 4)
 
     def test_inpainting_step_settings_reach_the_sequence_adapter(self) -> None:
         payload = self._payload("video_inpainting", {"primary": "media:propainter"}, {"conf": 0, "expand": 0, "detectMode": "per_frame", "subvideoLength": 24})
@@ -193,11 +190,63 @@ class MediaTaskParamTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(detector.detect.call_args.kwargs, {"conf": 0, "expand": 0})
 
-    def test_legacy_factor_alias_and_dormant_defaults_remain_compatible(self) -> None:
-        steps = task_params.normalize_steps({"mode": "interpolate", "factor": 4}, modality="video")
-        self.assertEqual(steps[0]["params"]["multiplier"], 4)
-        steps = task_params.normalize_steps({"steps": [{"capability": "video_super_resolution", "bindings": {"upscaler": "media:basicvsrpp"}, "params": {"tile": 0}}]}, modality="video")
-        self.assertEqual(steps[0]["params"]["tile"], 0)
+    def test_explicit_unsupported_params_are_rejected_even_at_their_defaults(self) -> None:
+        for capability, bindings, params, modality in (
+            ("video_super_resolution", {"upscaler": "media:basicvsrpp"}, {"tile": 0}, "video"),
+            ("frame_interpolation", {"interpolator": "media:rife-v46"}, {"timestep": 0.5}, "video"),
+            ("frame_interpolation", {"interpolator": "media:rife-v46"}, {"multiplier": 2}, "image"),
+        ):
+            with self.subTest(capability=capability, params=params), self.assertRaisesRegex(ValueError, "not available"):
+                task_params.normalize_steps(self._payload(capability, bindings, params), modality=modality)
+
+    def test_omitted_unsupported_defaults_do_not_reject_current_empty_params(self) -> None:
+        cases = (
+            ("video_super_resolution", {"upscaler": "media:basicvsrpp"}, "video", {}),
+            ("frame_interpolation", {"interpolator": "media:rife-v46"}, "video", {"multiplier": 2}),
+            ("frame_interpolation", {"interpolator": "media:rife-v46"}, "image", {"timestep": 0.5}),
+        )
+        for capability, bindings, modality, expected in cases:
+            with self.subTest(capability=capability, modality=modality):
+                raw = self._payload(capability, bindings)
+                self.assertEqual(task_params.normalize_steps(raw, modality=modality)[0]["params"], expected)
+                self.assertEqual(raw["steps"][0]["params"], {})
+
+    def test_missing_steps_and_legacy_aliases_are_rejected_before_adapter_or_output_creation(self) -> None:
+        current = self._payload("upscale", {"upscaler": "media:real-esrgan-x2"})
+        missing = {key: value for key, value in current.items() if key != "steps"}
+        invalid = [missing, {**missing, "mode": "upscale", "modelId": "media:real-esrgan-x2"}]
+        invalid.extend({**current, alias: value} for alias, value in
+                       (("mode", "upscale"), ("modelId", "media:real-esrgan-x2"), ("denoiserModelId", "media:denoiser"), ("factor", 4)))
+        with mock.patch.object(image_ops, "ImageRestorer") as restorer:
+            for payload in invalid:
+                with self.subTest(payload=payload):
+                    self.assertEqual(image_worker.cmd_media_image(payload), 1)
+        restorer.assert_not_called()
+        self.assertFalse((self.root / "out").exists())
+
+    def test_process_file_no_longer_generates_steps_from_a_mode(self) -> None:
+        restorer = object.__new__(image_ops.ImageRestorer)
+        with self.assertRaisesRegex(ValueError, "explicit steps"):
+            restorer.process_file(self.source, self.root / "out", mode="upscale")
+        self.assertFalse((self.root / "out").exists())
+
+    def test_cli_smoke_emits_only_explicit_single_step_payloads_for_current_models(self) -> None:
+        scripts = Path(__file__).resolve().parents[2] / "scripts"
+        with mock.patch.object(sys, "path", [str(scripts), *sys.path]):
+            spec = importlib.util.spec_from_file_location("explicit_media_smoke", scripts / "smoke-media-models.py")
+            smoke = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(smoke)
+        captured = []
+        with mock.patch.object(smoke, "sample_image", return_value=self.source), \
+                mock.patch.object(smoke, "run", side_effect=lambda payload, **kwargs: (captured.append(payload) or True, "fixture")):
+            self.assertEqual(smoke.verify_models(Path(sys.executable), self.root / "models", self.root / "outputs", self.source, {}), 0)
+        self.assertTrue(captured)
+        for payload in captured:
+            with self.subTest(payload=payload):
+                self.assertFalse(set(payload) & {"mode", "modelId", "denoiserModelId", "factor"})
+                self.assertEqual(len(payload["steps"]), 1)
+                self.assertIn("params", payload["steps"][0])
+                self.assertEqual(len(task_params.normalize_steps(payload, modality="image")), 1)
 
 
 if __name__ == "__main__":

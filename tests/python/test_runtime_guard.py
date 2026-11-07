@@ -38,7 +38,7 @@ class RuntimeManifestTests(unittest.TestCase):
 
 class CapabilityGateTests(unittest.TestCase):
     def test_describe_falls_back_when_there_is_no_pointer(self) -> None:
-        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(runtime_guard, "active_asset_id", return_value=None), mock.patch.object(
             runtime_guard, "data_root", return_value=Path(tempfile.gettempdir()) / "mediaforge-no-such-root"
         ):
             described = runtime_guard.describe()

@@ -21,6 +21,7 @@ COMMON_PACKAGES = ("av", "librosa", "numpy", "pymss", "pymss-core")
 
 MANIFEST = {
     "manifestVersion": "test-1",
+    "python": "3.12",
     "common": {name: name for name in COMMON_PACKAGES},
     "backends": {
         "cpu": {"platforms": ["win32", "linux", "darwin"]},
@@ -138,7 +139,7 @@ class ManifestRequirementTests(unittest.TestCase):
         self.assertIn("[socks]", manifest["bootstrap"]["requests"])
         for name in ("prepare-python-runtime.ps1", "prepare-python-runtime.sh"):
             content = (root / "scripts" / name).read_text(encoding="utf-8")
-            self.assertIn("BootstrapRequirements" if name.endswith(".ps1") else "BOOTSTRAP_REQUIREMENTS", content)
+            self.assertIn("$manifest.bootstrap" if name.endswith(".ps1") else "BOOTSTRAP_REQUIREMENTS", content)
             self.assertIn("import requests", content)
             self.assertIn("socks", content)
 
@@ -1000,6 +1001,93 @@ class ActiveEnvironmentReportsLiveFactsTests(unittest.TestCase):
         self.assertEqual(entry["torchVersion"], "2.7.1+cu128")
 
 
+class InstallPythonVersionTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="mediaforge-install-python-"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.envs = self.root / "runtime-envs"
+        self.env = self.envs / "cpu"
+        self.env.mkdir(parents=True)
+        self.active = self.envs / "active-runtime.json"
+        self.active.write_bytes(b'{"preserve":"active selection"}')
+
+    def _snapshot(self):
+        return {
+            str(path.relative_to(self.envs)): path.read_bytes() if path.is_file() else None
+            for path in self.envs.rglob("*") if path.name != ".runtime-management.lock"
+        }
+
+    def _reject_install(self, stdout="3.12\n", returncode=0):
+        before = self._snapshot()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.envs))
+            stack.enter_context(mock.patch.object(worker_bootstrap, "ACTIVE_RUNTIME_FILE", self.active))
+            stack.enter_context(mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST))
+            stack.enter_context(mock.patch.object(sys, "platform", "win32"))
+            actions = [stack.enter_context(mock.patch.object(worker_bootstrap, name)) for name in (
+                "_recover_runtime_transactions", "_resolve_pypi_mirror", "_repair_runtime_venv_config",
+                "_create_runtime_venv", "_ensure_runtime_pip", "_write_runtime_state", "_atomic_write_json",
+            )]
+            pip = stack.enter_context(mock.patch.object(worker_bootstrap.subprocess, "Popen"))
+            probe = stack.enter_context(mock.patch.object(worker_bootstrap.subprocess, "run", return_value=
+                mock.Mock(returncode=returncode, stdout=stdout)))
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                result = worker_bootstrap.cmd_install_runtime({"backend": "cpu", "taskId": "version-check"})
+        self.assertNotEqual(result, 0)
+        event = json.loads(output.getvalue())
+        self.assertEqual(event["payload"]["code"], "RUNTIME_PYTHON_MISMATCH")
+        self.assertEqual(event["taskId"], "version-check")
+        for action in [*actions, pip]:
+            action.assert_not_called()
+        self.assertEqual(self._snapshot(), before)
+        return event["payload"], probe
+
+    def test_old_venv_is_rejected_before_any_recovery_or_pip(self):
+        (self.env / "pyvenv.cfg").write_text("home = old-python\nversion = 3.11.9\n", encoding="utf-8")
+        (self.env / "preserved-model-record.json").write_bytes(b"unchanged")
+        payload, probe = self._reject_install()
+        probe.assert_not_called()
+        self.assertIn("3.11.9", payload["message"])
+        self.assertIn("preserved", payload["message"])
+
+    def test_actual_interpreter_version_is_checked_even_if_config_claims_312(self):
+        (self.env / "pyvenv.cfg").write_text("version = 3.12.13\n", encoding="utf-8")
+        (self.env / "Scripts").mkdir()
+        (self.env / "Scripts" / "python.exe").write_bytes(b"old executable")
+        payload, probe = self._reject_install(stdout="3.11\n")
+        self.assertIn("3.11", payload["message"])
+        self.assertEqual(probe.call_args.args[0][1:4], ["-I", "-S", "-B"])
+        self.assertNotIn("PYTHONHOME", probe.call_args.kwargs["env"])
+        self.assertNotIn("PYTHONPATH", probe.call_args.kwargs["env"])
+
+    def test_unverifiable_existing_interpreter_is_preserved(self):
+        (self.env / "Scripts").mkdir()
+        (self.env / "Scripts" / "python.exe").write_bytes(b"broken executable")
+        self._reject_install(stdout="", returncode=1)
+
+    def test_old_recovery_copy_is_rejected_before_it_can_be_moved_or_deleted(self):
+        for suffix in ("reinstalling", "core-backup", "core-updating"):
+            with self.subTest(suffix=suffix):
+                backup = self.envs / f".cpu.{suffix}"
+                backup.mkdir()
+                config = backup / "pyvenv.cfg"
+                config.write_text("version_info = 3.11.9\n", encoding="utf-8")
+                self._reject_install()
+                config.unlink()
+                backup.rmdir()
+
+    def test_old_bootstrap_cannot_create_a_new_wrong_version_environment(self):
+        with mock.patch.object(sys, "version_info", mock.Mock(major=3, minor=11)):
+            self._reject_install()
+
+    def test_fresh_current_version_environment_passes_the_preflight(self):
+        with mock.patch.object(sys, "platform", "win32"), \
+             mock.patch.object(worker_bootstrap.subprocess, "run") as probe:
+            worker_bootstrap._validate_install_python_versions(self.env, MANIFEST)
+        probe.assert_not_called()
+        self.assertEqual(list(self.env.iterdir()), [])
+
+
 class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
     """Regression guard for the root cause: the install used _runtime_info_payload(), which
     probes the *active* runtime — still the previous environment at that point."""
@@ -1050,7 +1138,7 @@ class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
              mock.patch.object(worker_bootstrap, "_manifest", return_value=manifest), \
              mock.patch.object(worker_bootstrap, "_probe_python_runtime", side_effect=self._probe), \
              mock.patch.object(worker_bootstrap, "_create_runtime_venv", side_effect=self._create_stub_venv), \
-             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0)) as run, \
+             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="3.12\n")) as run, \
              mock.patch.object(worker_bootstrap.subprocess, "Popen", pip), \
              mock.patch.dict(os.environ, {"PYTHONHOME": "bundle-home", "PYTHONPATH": "bundle-overlay"}), \
              mock.patch.object(sys, "platform", "win32"), \
@@ -1127,6 +1215,7 @@ class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
              mock.patch.object(worker_bootstrap, "_runtime_pip_works", return_value=True), \
              mock.patch.object(worker_bootstrap, "_verify_runtime_audio", return_value=None) as verify_audio, \
              mock.patch.object(worker_bootstrap, "_create_runtime_venv", side_effect=self._create_stub_venv), \
+             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="3.12\n")), \
              mock.patch.object(worker_bootstrap.subprocess, "Popen", pip), \
              mock.patch.object(sys, "platform", "win32"), \
              contextlib.redirect_stdout(io.StringIO()):
@@ -1158,6 +1247,7 @@ class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
              mock.patch.object(worker_bootstrap, "_manifest", return_value=manifest), \
              mock.patch.object(worker_bootstrap, "_create_runtime_venv", side_effect=self._create_stub_venv), \
              mock.patch.object(worker_bootstrap, "_runtime_pip_works", return_value=True), \
+             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="3.12\n")), \
              mock.patch.object(worker_bootstrap.subprocess, "Popen", failed_pip), \
              mock.patch.object(sys, "platform", "win32"), \
              contextlib.redirect_stdout(io.StringIO()):

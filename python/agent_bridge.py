@@ -31,7 +31,7 @@ from surfaces import agent_contract  # noqa: E402
 from core import media_eval  # noqa: E402
 from core import model_hub  # noqa: E402
 from shared import worker_paths  # noqa: E402
-from media_ops import capabilities  # noqa: E402
+from media_ops import capabilities, task_params  # noqa: E402
 
 
 def _data_root(override: str = "") -> Path:
@@ -203,7 +203,7 @@ class Bridge:
         if modality not in {"image", "video"}:
             return {"ok": False, "error": "modality must be image or video"}
         try:
-            normalized = capabilities.normalize_steps(steps)
+            normalized = task_params.normalize_steps({"steps": steps}, modality=modality)
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
         if len(normalized) != 1:
@@ -224,19 +224,15 @@ class Bridge:
             "steps": normalized,
         }
         if modality == "video":
-            watermark = next((step for step in normalized if step["capability"] == "watermark_removal"), None)
-            upscale = next((step for step in normalized if step["capability"] == "upscale"), None)
             payload.update(
                 {
-                    "scale": 2 if upscale else 1,
-                    "previewSeconds": float(options.get("previewSeconds") or 0),
-                    "crf": int(options.get("crf") or 18),
-                    "preset": str(options.get("preset") or "fast"),
-                    "detectMode": str((watermark or {}).get("params", {}).get("detectMode") or "fixed"),
-                    "conf": float((watermark or {}).get("params", {}).get("conf") or 0.25),
-                    "expand": int((watermark or {}).get("params", {}).get("expand") or 8),
+                    "previewSeconds": float(task_params.value(options, "previewSeconds", 0)),
+                    "crf": int(task_params.value(options, "crf", 18)),
+                    "preset": str(task_params.value(options, "preset", "fast")),
                 }
             )
+        if "tile" in options:
+            payload["tile"] = task_params.value(options, "tile", 0)
         job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
@@ -261,7 +257,7 @@ class Bridge:
         if modality not in {"image", "video"}:
             return {"ok": False, "error": "modality must be image or video"}
         try:
-            normalized = capabilities.normalize_steps(steps)
+            normalized = task_params.normalize_steps({"steps": steps}, modality=modality)
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
         if not normalized:
@@ -281,13 +277,12 @@ class Bridge:
             "outputDir": output_dir,
             "modelDir": str(self.model_root),
             "steps": normalized,
-            "previewSeconds": float(options.get("previewSeconds") or 0),
-            "crf": int(options.get("crf") or 18),
-            "preset": str(options.get("preset") or "fast"),
-            "width": int(options.get("width") or 0),
-            "height": int(options.get("height") or 0),
-            "fit": str(options.get("fit") or "contain"),
+            "previewSeconds": float(task_params.value(options, "previewSeconds", 0)),
+            "crf": int(task_params.value(options, "crf", 18)),
+            "preset": str(task_params.value(options, "preset", "fast")),
         }
+        if "tile" in options:
+            payload["tile"] = task_params.value(options, "tile", 0)
         job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 

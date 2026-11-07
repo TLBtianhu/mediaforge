@@ -351,10 +351,8 @@ impl WorkerJournal {
             "task.started"
                 | "task.stage"
                 | "task.progress"
-                | "operation_progress"
                 | "workflow_execution"
                 | "task.result"
-                | "operation_result"
                 | "editor_mix_exported"
                 | "error"
                 | "task.cancelled"
@@ -392,7 +390,7 @@ impl WorkerJournal {
                 self.finish_job(index, "cancelled", message, Some(&event.payload))?;
             } else if matches!(
                 kind,
-                "task.result" | "operation_result" | "editor_mix_exported"
+                "task.result" | "editor_mix_exported"
             ) {
                 let failed = event
                     .payload
@@ -582,10 +580,10 @@ fn recover(root: &Path, id: &str, value: Value) -> AppResult<Value> {
     Ok(latest)
 }
 
-pub(crate) fn index(root: &Path) -> AppResult<Value> {
+pub(crate) fn list(root: &Path) -> AppResult<Vec<Value>> {
     let directory = root.join("agent-jobs");
     if !directory.is_dir() {
-        return Ok(json!({"version": 1, "updatedAt": now(), "jobs": []}));
+        return Ok(Vec::new());
     }
     let mut jobs = Vec::new();
     for entry in fs::read_dir(directory)? {
@@ -623,46 +621,9 @@ pub(crate) fn index(root: &Path) -> AppResult<Value> {
         retained_terminal += 1;
         retained_terminal <= 100
     });
-    Ok(json!({"version": 1, "updatedAt": now(), "jobs": jobs}))
+    Ok(jobs)
 }
 
-pub(crate) fn legacy_write(root: &Path, mut value: Value) -> AppResult<Value> {
-    let id = value
-        .get("jobId")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .ok_or_else(|| AppError::Worker("missing journal job id".into()))?
-        .to_string();
-    let path = job_path(root, &id)?;
-    let _write = write_lock(root, &id)?;
-    if let Some(current) = read_job(&path) {
-        if terminal(&current) || backend_owned(&current) {
-            return Ok(current);
-        }
-        if current.get("source").and_then(Value::as_str) == Some("agent") {
-            return Err(AppError::Worker(
-                "cannot overwrite an agent-owned job".into(),
-            ));
-        }
-        let mut merged = current;
-        if let (Some(target), Some(patch)) = (merged.as_object_mut(), value.as_object()) {
-            target.extend(patch.clone());
-        }
-        value = merged;
-    }
-    value["jobId"] = json!(id);
-    if value.get("source").is_none() {
-        value["source"] = json!("manual");
-    }
-    if value.get("createdAt").and_then(Value::as_f64).is_none() {
-        value["createdAt"] = json!(now());
-    }
-    if terminal(&value) && value.get("finishedAt").and_then(Value::as_f64).is_none() {
-        value["finishedAt"] = json!(now());
-    }
-    storage::write_json_file(&path, &value)?;
-    Ok(value)
-}
 
 #[cfg(test)]
 mod tests {
@@ -695,14 +656,14 @@ mod tests {
         assert_eq!(queued["payload"]["params"]["crf"], 17);
         assert!(queued["createdAt"].as_f64().unwrap() > 1_000_000_000.0);
         journal.lock().unwrap().running(123).unwrap();
-        assert_eq!(index(root.path()).unwrap()["jobs"][0]["status"], "running");
+        assert_eq!(list(root.path()).unwrap()[0]["status"], "running");
         let result = json!({"outputs": [{"path": "outputs/output.mp4", "metadata": {"frames": 90}}], "completed": 1, "failed": [], "custom": {"retain": true}});
         journal
             .lock()
             .unwrap()
             .observe(&event("task.result", None, result.clone()))
             .unwrap();
-        let stored = index(root.path()).unwrap()["jobs"][0].clone();
+        let stored = list(root.path()).unwrap()[0].clone();
         assert_eq!(stored["status"], "completed");
         assert_eq!(stored["result"], result);
         assert!(stored["finishedAt"].as_f64().unwrap() >= queued["createdAt"].as_f64().unwrap());
@@ -757,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn operation_result_and_partial_failure_keep_the_full_worker_payload() {
+    fn operation_task_result_keeps_the_full_worker_payload() {
         let root = tempfile::tempdir().unwrap();
         let journal = WorkerJournal::start(
             root.path(),
@@ -770,7 +731,7 @@ mod tests {
         journal
             .lock()
             .unwrap()
-            .observe(&event("operation_result", None, result.clone()))
+            .observe(&event("task.result", None, result.clone()))
             .unwrap();
         assert_eq!(snapshot(root.path(), "op_1")["result"], result);
         let journal = started(root.path(), "partial_2");
@@ -852,48 +813,11 @@ mod tests {
     }
 
     #[test]
-    fn legacy_writes_cannot_replace_backend_payload_or_reverse_any_terminal() {
-        let root = tempfile::tempdir().unwrap();
-        let journal = started(root.path(), "protected_1");
-        legacy_write(root.path(), json!({"jobId": "protected_1", "status": "completed", "payload": {}, "result": {"outputs": ["fake"]}})).unwrap();
-        assert_eq!(snapshot(root.path(), "protected_1")["status"], "queued");
-        journal
-            .lock()
-            .unwrap()
-            .observe(&event("task.result", None, json!({"outputs": ["real"]})))
-            .unwrap();
-        legacy_write(
-            root.path(),
-            json!({"jobId": "protected_1", "status": "running"}),
-        )
-        .unwrap();
-        assert_eq!(
-            snapshot(root.path(), "protected_1")["result"]["outputs"][0],
-            "real"
-        );
-        for status in ["completed", "failed", "cancelled", "interrupted"] {
-            let id = format!("legacy_{status}");
-            legacy_write(
-                root.path(),
-                json!({"jobId": id, "status": status, "result": {"outputs": ["kept"]}}),
-            )
-            .unwrap();
-            legacy_write(
-                root.path(),
-                json!({"jobId": id, "status": "running", "result": null}),
-            )
-            .unwrap();
-            assert_eq!(snapshot(root.path(), &id)["status"], status);
-            assert_eq!(snapshot(root.path(), &id)["result"]["outputs"][0], "kept");
-        }
-    }
-
-    #[test]
     fn live_owner_is_never_recovered_and_dead_manual_owner_does_not_affect_mcp() {
         let root = tempfile::tempdir().unwrap();
         let journal = started(root.path(), "live_1");
         journal.lock().unwrap().running(123).unwrap();
-        assert_eq!(index(root.path()).unwrap()["jobs"][0]["status"], "running");
+        assert_eq!(list(root.path()).unwrap()[0]["status"], "running");
         let jobs = root.path().join("agent-jobs");
         storage::write_json_file(&jobs.join("mcp_1.json"), &json!({"jobId": "mcp_1", "source": "agent", "status": "running", "owner": {"kernelId": "foreign"}})).unwrap();
         storage::write_json_file(
@@ -902,7 +826,7 @@ mod tests {
         )
         .unwrap();
         drop(journal);
-        let _ = index(root.path()).unwrap();
+        let _ = list(root.path()).unwrap();
         assert_eq!(snapshot(root.path(), "live_1")["status"], "interrupted");
         assert_eq!(snapshot(root.path(), "mcp_1")["status"], "running");
         assert_eq!(snapshot(root.path(), "legacy_1")["status"], "running");
@@ -913,7 +837,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let journal = started(root.path(), "fresh_1");
         fs::write(root.path().join("agent-jobs/index.json"), b"not-json").unwrap();
-        assert_eq!(index(root.path()).unwrap()["jobs"][0]["status"], "queued");
+        assert_eq!(list(root.path()).unwrap()[0]["status"], "queued");
         journal
             .lock()
             .unwrap()
@@ -924,7 +848,7 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(
-            index(root.path()).unwrap()["jobs"][0]["status"],
+            list(root.path()).unwrap()[0]["status"],
             "completed"
         );
         assert_eq!(
@@ -986,14 +910,13 @@ mod tests {
         let journal = started(root.path(), "old_active_1");
         for index in 0..105 {
             let id = format!("finished_{index}");
-            legacy_write(
-                root.path(),
-                json!({"jobId": id, "status": "completed", "createdAt": now() + f64::from(index)}),
-            )
-            .unwrap();
+            storage::write_json_file(
+                &job_path(root.path(), &id).unwrap(),
+                &json!({"jobId": id, "status": "completed", "createdAt": now() + f64::from(index)}),
+            ).unwrap();
         }
-        let listed = index(root.path()).unwrap();
-        let jobs = listed["jobs"].as_array().unwrap();
+        let listed = list(root.path()).unwrap();
+        let jobs = listed;
         assert_eq!(jobs.len(), 101);
         assert!(jobs.iter().any(|job| job["jobId"] == "old_active_1"));
         assert!(jobs.iter().any(|job| job["jobId"] == "finished_104"));
@@ -1082,15 +1005,15 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         let ready = root.path().join("ready").exists();
-        let live = index(root.path());
+        let live = list(root.path());
         let duplicate = WorkerJournal::start(root.path(), "infer", "process_1", &json!({}));
         let _ = child.kill();
         child.wait().unwrap();
         assert!(ready);
-        assert_eq!(live.unwrap()["jobs"][0]["status"], "running");
+        assert_eq!(live.unwrap()[0]["status"], "running");
         assert!(duplicate.is_err());
         assert_eq!(
-            index(root.path()).unwrap()["jobs"][0]["status"],
+            list(root.path()).unwrap()[0]["status"],
             "interrupted"
         );
     }

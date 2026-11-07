@@ -1,27 +1,9 @@
-"""Shared Operation Kernel for MediaForge jobs.
+"""Shared job lifecycle backed only by agent-jobs/<jobId>.json.
 
-This module owns the job lifecycle, persistence, and the shared
-`agent-jobs/index.json` + `agent-workspace.json` surface. It is intentionally
-independent of the MCP transport and the UI so both callers can share one
-implementation.
-
-2026-10-29 重写（三个已在现场暴露的问题）：
-
-1. **落盘是 O(帧数 × 作业数)**。旧实现每收到一条 worker 事件就 glob 整个
-   agent-jobs/ 目录、逐个 json.loads、再重写 index.json 与 agent-workspace.json。
-   而 video_ops 是**逐帧**发进度事件的——一条十分钟 30fps 的视频就是 18000 次
-   全目录扫描。现在改成：内存索引 + 节流落盘（索引 4 次/秒、单作业文件 5 次/秒，
-   状态变化与终态强制落盘）。
-2. **重启即失忆**。`_jobs` 只在内存，进程一重启，磁盘上还写着 `running` 的作业
-   会永远停在 running，而 `job_status` 对它们返回 unknown。现在初始化时扫一遍
-   磁盘，把上一进程遗留的 queued/running 标成 `interrupted`（诚实，而不是假装
-   还在跑）。
-3. **取消有两条道，互不可见**。Rust 侧 `cancel_agent_job` 写的是
-   `agent-jobs/<id>.cancel`，而这里只盯 `bridge-jobs/<id>/cancel`。现在两处都看，
-   并且同进程取消走 `threading.Event` 立刻醒（不再每 0.2s 摸一次文件）。
-
-Rust 的 `journal_job` 和其它 bridge 实例共享账本。作业持有生命周期文件锁，
-恢复前必须取得同一把锁；外部作业按文件版本增量刷新，查询历史不需要重启 worker。
+Each owner holds a lifetime lease and atomically writes its job snapshot.
+Progress writes are throttled; status changes and terminal payloads are durable
+immediately. Readers query job files directly, so restarted MCP clients and
+other processes see the same records without secondary indexes or workspaces.
 """
 from __future__ import annotations
 
@@ -43,13 +25,10 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "worker.py"
 
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "interrupted"})
-INDEX_LIMIT = 100
-INDEX_FLUSH_SECONDS = 0.25
 JOB_FILE_SECONDS = 0.2
 CANCEL_POLL_SECONDS = 1.0
 # 作业文件保留策略（每个作业一个 json，永不覆盖，所以会一直攒）。
-# 目录里攒到几千个小文件之后：启动扫描、`_absorb_foreign_jobs` 的 iterdir、
-# 资源管理器打开都会变慢。默认 30 天 / 最多 500 个终态作业。
+# Startup and queue listing scan these records; retain 30 days / 500 terminal jobs.
 RETENTION_DAYS = 30.0
 RETENTION_COUNT = 500
 
@@ -72,7 +51,7 @@ def _json_text(value: Any) -> str:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    # Different bridge processes may flush the same shared index simultaneously.
+    # Writers publish a whole job snapshot with one atomic replacement.
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         temporary.write_text(text, encoding="utf-8")
@@ -90,15 +69,23 @@ def _read_json(path: Path) -> Any:
 
 
 def _valid_job_id(job_id: str) -> bool:
-    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,199}", job_id))
+    device = job_id.split(".", 1)[0].upper()
+    return (
+        job_id.casefold() != "index"
+        and device not in {"CON", "PRN", "AUX", "NUL"}
+        and not re.fullmatch(r"(?:COM|LPT)[1-9]", device)
+        and bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,199}", job_id))
+    )
 
 
-def _file_version(path: Path) -> tuple[int, int] | None:
-    try:
-        info = path.stat()
-        return info.st_mtime_ns, info.st_size
-    except OSError:
+def _read_job(path: Path) -> dict[str, Any] | None:
+    value = _read_json(path)
+    if not isinstance(value, dict):
         return None
+    job_id = value.get("jobId")
+    if not isinstance(job_id, str) or not _valid_job_id(job_id) or path.stem != job_id:
+        return None
+    return value
 
 
 class Job:
@@ -175,11 +162,6 @@ class OperationKernel:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._persist_lock = threading.Lock()
-        self._flush_lock = threading.Lock()
-        self._index: dict[str, dict[str, Any]] = {}
-        self._index_lock = threading.Lock()
-        self._last_flush = 0.0
-        self._disk_versions: dict[str, tuple[int, int] | None] = {}
         self._owner_id = uuid.uuid4().hex
         self.recovered = self._recover_from_disk()
         self.pruned = self._prune_history()
@@ -190,23 +172,19 @@ class OperationKernel:
         """Recover abandoned agent jobs, never a job owned by a live kernel/UI."""
         recovered = 0
         for path in self.jobs_root.glob("*.json"):
-            if path.name == "index.json" or path.name.endswith(".json.tmp"):
+            value = _read_job(path)
+            if value is None:
                 continue
-            value = _read_json(path)
-            if not isinstance(value, dict):
-                continue
-            job_id = value.get("jobId")
-            if not isinstance(job_id, str) or not _valid_job_id(job_id) or path.stem != job_id:
-                continue
+            job_id = value["jobId"]
             if value.get("status") in {"queued", "running"} and (
                 value.get("source") != "manual" or isinstance(value.get("owner"), dict)
             ):
                 try:
                     with runtime_lock(self._lease_path(job_id), timeout=0):
                         # The owner may have finished while we were opening its lock.
-                        latest = _read_json(path)
-                        if isinstance(latest, dict):
-                            value = latest
+                        value = _read_job(path)
+                        if value is None:
+                            continue
                         if value.get("status") in {"queued", "running"}:
                             value["status"] = "interrupted"
                             value["message"] = "进程重启时被中断（未完成）"
@@ -218,11 +196,8 @@ class OperationKernel:
                     # Busy means another kernel still owns this job. An inaccessible
                     # lock is also insufficient evidence that its owner has died.
                     pass
-            self._index[str(job_id)] = value
-            self._disk_versions[job_id] = _file_version(path)
         if recovered:
             print(f"[kernel] 恢复 {recovered} 个被中断的作业（queued/running -> interrupted）", file=sys.stderr)
-        self._flush_indexes(force=True)
         return recovered
 
     def _prune_history(self) -> int:
@@ -236,17 +211,16 @@ class OperationKernel:
             return 0
         cutoff = (time.time() - days * 86400.0) if days > 0 else None
         dated: list[tuple[float, str]] = []
-        with self._index_lock:
-            for job_id, snapshot in self._index.items():
-                if str(snapshot.get("status") or "") not in TERMINAL_STATES:
-                    continue
-                try:
-                    created = float(snapshot.get("createdAt") or 0.0)
-                except (TypeError, ValueError):
-                    continue
-                if created <= 0:
-                    continue
-                dated.append((created, str(job_id)))
+        for path in self.jobs_root.glob("*.json"):
+            snapshot = _read_job(path)
+            if snapshot is None or str(snapshot.get("status") or "") not in TERMINAL_STATES:
+                continue
+            try:
+                created = float(snapshot.get("createdAt") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if created > 0:
+                dated.append((created, str(snapshot["jobId"])))
         dated.sort(reverse=True)
 
         removed = 0
@@ -258,8 +232,8 @@ class OperationKernel:
             try:
                 with runtime_lock(self._lease_path(job_id), timeout=0):
                     path = self.jobs_root / f"{job_id}.json"
-                    latest = _read_json(path)
-                    # A different owner may have reused the ID since the index scan.
+                    latest = _read_job(path)
+                    # A different owner may have reused the ID since the startup scan.
                     # Never delete an active job or apply an old retention rank to it.
                     if (
                         not isinstance(latest, dict)
@@ -270,11 +244,8 @@ class OperationKernel:
                     path.unlink(missing_ok=True)
             except (RuntimeLockBusy, OSError, TypeError, ValueError):
                 continue
-            with self._index_lock:
-                self._index.pop(job_id, None)
             removed += 1
         if removed:
-            self._flush_indexes(force=True)
             print(
                 f"[kernel] 清理 {removed} 个过期作业文件（保留 {days:g} 天 / 最多 {count} 个）",
                 file=sys.stderr,
@@ -282,60 +253,10 @@ class OperationKernel:
         return removed
 
     def _write_job_file(self, snapshot: dict[str, Any]) -> None:
+        if not _valid_job_id(str(snapshot["jobId"])):
+            raise ValueError("invalid job id")
         path = self.jobs_root / f"{snapshot['jobId']}.json"
         _atomic_write(path, _json_text(snapshot))
-        self._disk_versions[str(snapshot["jobId"])] = _file_version(path)
-
-    def _absorb_foreign_jobs(self) -> None:
-        """Refresh added/changed/deleted foreign jobs without reparsing unchanged JSON."""
-        try:
-            paths = list(self.jobs_root.glob("*.json"))
-        except OSError:
-            return
-        with self._lock:
-            local_ids = {job_id for job_id, job in self._jobs.items() if job.status not in TERMINAL_STATES}
-        seen: set[str] = set()
-        for path in paths:
-            job_id = path.stem
-            if path.name == "index.json" or not _valid_job_id(job_id):
-                continue
-            seen.add(job_id)
-            version = _file_version(path)
-            if job_id in local_ids or (version is not None and self._disk_versions.get(job_id) == version):
-                continue
-            value = _read_json(path)
-            if isinstance(value, dict) and value.get("jobId") == job_id:
-                with self._index_lock:
-                    self._index[job_id] = value
-                self._disk_versions[job_id] = version
-        with self._index_lock:
-            for job_id in set(self._disk_versions) - seen - local_ids:
-                self._index.pop(job_id, None)
-                self._disk_versions.pop(job_id, None)
-
-    def _flush_indexes(self, *, force: bool) -> None:
-        now = time.monotonic()
-        if not force and (now - self._last_flush) < INDEX_FLUSH_SECONDS:
-            return
-        with self._flush_lock:
-            if not force and (time.monotonic() - self._last_flush) < INDEX_FLUSH_SECONDS:
-                return
-            self._absorb_foreign_jobs()
-            with self._index_lock:
-                entries = sorted(
-                    self._index.values(),
-                    key=lambda value: float(value.get("createdAt") or 0),
-                    reverse=True,
-                )[:INDEX_LIMIT]
-            stamp = time.time()
-            index = {"version": 1, "updatedAt": stamp, "jobs": entries}
-            workspace = {"version": 1, "updatedAt": stamp, "jobs": entries}
-            try:
-                _atomic_write(self.jobs_root / "index.json", _json_text(index))
-                _atomic_write(self.data_root / "agent-workspace.json", _json_text(workspace))
-            except OSError as exc:
-                print(f"[kernel] 索引落盘失败: {exc}", file=sys.stderr)
-            self._last_flush = time.monotonic()
 
     def _persist(self, job: Job, *, force: bool = False) -> None:
         snapshot = job.snapshot()
@@ -356,9 +277,6 @@ class OperationKernel:
                     job.persisted_status = str(snapshot.get("status") or "")
                 except OSError as exc:
                     print(f"[kernel] 作业落盘失败 {job_id}: {exc}", file=sys.stderr)
-            with self._index_lock:
-                self._index[job_id] = snapshot
-        self._flush_indexes(force=force or terminal)
 
     # ── 查询 ────────────────────────────────────────────────────────────────
 
@@ -373,7 +291,7 @@ class OperationKernel:
             return local
         if not _valid_job_id(job_id):
             return None
-        value = _read_json(self.jobs_root / f"{job_id}.json")
+        value = _read_job(self.jobs_root / f"{job_id}.json")
         if not isinstance(value, dict) or value.get("jobId") != job_id:
             return None
         try:
@@ -497,7 +415,7 @@ class OperationKernel:
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
         if job.status in TERMINAL_STATES:
             return  # Late worker output cannot reverse cancellation/failure.
-        if kind in {"task.progress", "operation_progress", "asset.progress"}:
+        if kind in {"task.progress", "asset.progress"}:
             fraction = payload.get("fraction")
             if fraction is None and kind == "asset.progress":
                 fraction = float(payload.get("progress") or 0) / 100.0
@@ -505,7 +423,7 @@ class OperationKernel:
                 fraction=float(fraction or 0),
                 message=str(payload.get("current") or payload.get("message") or "running"),
             )
-        elif kind in {"task.result", "operation_result", "asset.done"}:
+        elif kind in {"task.result", "asset.done"}:
             failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
             if failed:
                 first = failed[0] if isinstance(failed[0], dict) else {"error": str(failed[0])}

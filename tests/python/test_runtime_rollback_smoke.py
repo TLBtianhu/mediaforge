@@ -23,6 +23,17 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         self.assertIn("激活指针回滚到 A", script)
         self.assertIn("回滚后 B 仍保留", script)
         self.assertIn("http://127.0.0.1:$Port", script)
+        self.assertIn("python = '3.12'", script)
+        self.assertIn("backend = 'cuda'", script)
+        self.assertNotIn("backend = 'fixture'", script)
+
+    def test_fixture_satisfies_real_probe_schema_without_production_bypass(self) -> None:
+        source = (ROOT / "scripts/make-fixture-runtime.ps1").read_text(encoding="utf-8")
+        for required in ("python312.dll", "Lib/encodings/__init__.py", "Lib/site-packages", "torchBackend", "basePrefix"):
+            self.assertIn(required, source)
+        installer = (ROOT / "src-tauri/src/runtime_assets.rs").read_text(encoding="utf-8")
+        self.assertNotIn("repair_embedded_python_from", installer)
+        self.assertNotIn('backend == "fixture"', installer)
 
     def test_script_captures_child_process_output_for_ci_failures(self) -> None:
         script = (ROOT / "scripts/smoke-runtime-rollback.ps1").read_text(encoding="utf-8")

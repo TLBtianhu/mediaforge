@@ -32,7 +32,7 @@ const vite = await createServer({
         export const calls=[], messages=[]
         let cancelHook
         export const task = reactive({ tasks:[], async cancelTask(id) { calls.push(['audio', id]); return cancelHook ? cancelHook(id) : true } })
-        export const media = reactive({ jobs:[], dataRoot:'/isolated', workspace:'/isolated/agent-workspace.json', loading:false, error:'',
+        export const media = reactive({ jobs:[], dataRoot:'/isolated', jobsDir:'/isolated/agent-jobs', loading:false, error:'',
           async initialize() { calls.push(['initialize']) }, async refresh() { calls.push(['refresh']) } })
         export function reset(hook) { calls.length=messages.length=0; task.tasks=[]; media.jobs=[]; media.error=''; media.loading=false; cancelHook=hook }
         export const useTaskStore = () => task

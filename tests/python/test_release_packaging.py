@@ -42,8 +42,8 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertIn('GetEnv("MEDIAFORGE_INSTALLER_ICON")', installer)
         self.assertIn("SetupIconFile={#InstallerIcon}", installer)
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
-        self.assertIn("if ($BuildRuntimeAsset) {", script)
-        self.assertIn("$runtimeOut = Join-Path $out 'runtime'", script)
+        self.assertNotIn("BuildRuntimeAsset", script)
+        self.assertNotIn("$runtimeOut", script)
 
     def test_isolated_packaging_opt_outs_are_explicit(self) -> None:
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
@@ -149,7 +149,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
         files = {
             "scripts/package-release.ps1": (ROOT / "scripts/package-release.ps1").read_bytes(),
             "scripts/release-signing.ps1": (ROOT / "scripts/release-signing.ps1").read_bytes() +
-                b"\nfunction Get-ReleaseExecutableInfo { param($Path) [PSCustomObject]@{ProductName='MediaForge'; ProductVersion='0.0.32'} }\n",
+                b"\nfunction Get-ReleaseExecutableInfo { param($Path) [PSCustomObject]@{ProductName='MediaForge'; ProductVersion='0.0.32'} }\nfunction Get-ReleasePythonVersion { param($PythonPath) '3.12' }\n",
             "scripts/stage-plugin-sdk.ps1": (ROOT / "scripts/stage-plugin-sdk.ps1").read_bytes(),
             "installer/mediaforge.iss": (ROOT / "installer/mediaforge.iss").read_bytes(),
             "package.json": json.dumps({"version": version}).encode(),
@@ -160,9 +160,10 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             "src-tauri/resources/plugin-sdk/pymss-sdk.js": b"SDK JS",
             "src-tauri/resources/plugin-sdk/pymss-sdk.css": b"SDK CSS",
             "python/worker.py": b"never executed worker", "python/core/runtime_audio_probe.py": b"probe",
-            "python/shared/safe_fs.py": b"safe fs", "python/runtime-manifest.json": b"{}",
+            "python/shared/safe_fs.py": b"safe fs", "python/runtime-manifest.json": b'{"python":"3.12"}',
             "manifest/protocol.json": b"{}", "manifest/runtime.json": b"{}",
             "python-runtime/python.exe": b"never executed bootstrap",
+            "release/bootstrap-selected/python.exe": b"explicit selected bootstrap",
             "python-runtime/runtime-envs/cuda/retained.dll": b"separate runtime asset",
             "release/bin/ffmpeg.exe": b"tool", "release/bin/ffprobe.exe": b"tool",
             "release/bin/aria2c.exe": b"tool", "release/bin/vcrt/msvcp140.dll": b"vcrt",
@@ -185,7 +186,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
         result = subprocess.run(
             [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
              str(project / "scripts/package-release.ps1"), "-Version", version, "-SkipBuild", "-SkipSign",
-             "-SkipDownloadCopy", "-OutputDir", "release/candidates/0.0.32"],
+             "-SkipDownloadCopy", "-OutputDir", "release/candidates/0.0.32", "-BootstrapDir", "release/bootstrap-selected"],
             cwd=project, env=env, capture_output=True, text=True, timeout=40,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -200,6 +201,8 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
         stage = candidate / "stage-0.0.32"
         self.assertFalse((stage / "mediaforge.portable").exists())
         self.assertFalse((stage / "python-runtime/runtime-envs").exists())
+        self.assertEqual((stage / "python-runtime/python.exe").read_bytes(), b"explicit selected bootstrap")
+        self.assertEqual((project / "python-runtime/python.exe").read_bytes(), b"never executed bootstrap")
         with zipfile.ZipFile(candidate / "MediaForge-0.0.32-windows-x64-portable.zip") as archive:
             self.assertIn("mediaforge.portable", archive.namelist())
         with zipfile.ZipFile(candidate / "MediaForge-0.0.32-windows-x64-update.zip") as archive:
@@ -208,6 +211,19 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             self.assertIn("manifest/runtime.json", names)
             self.assertIn("python/plugin-sdk/pymss-sdk.js", names)
             self.assertFalse(any(name.startswith("python-runtime/") for name in names))
+        # A later invocation with the wrong bootstrap must preserve this exact
+        # already-produced candidate before staging or signing can change it.
+        retained = (stage / "README.txt").read_bytes()
+        update_before = (candidate / f"MediaForge-{version}-windows-x64-update.zip").read_bytes()
+        with (project / "scripts/release-signing.ps1").open("a", encoding="utf-8") as stream:
+            stream.write("\nfunction Get-ReleasePythonVersion { param($PythonPath) '3.11' }\n")
+        rejected = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+                                   str(project / "scripts/package-release.ps1"), "-Version", version, "-SkipBuild", "-StageOnly", "-SkipSign",
+                                   "-OutputDir", "release/candidates/0.0.32", "-BootstrapDir", "release/bootstrap-selected"], cwd=project, env=env, capture_output=True, text=True, timeout=20)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("Python 3.12 release contract", rejected.stderr)
+        self.assertEqual((stage / "README.txt").read_bytes(), retained)
+        self.assertEqual((candidate / f"MediaForge-{version}-windows-x64-update.zip").read_bytes(), update_before)
         for relative in ("release/stage-0.0.31/keep.bin", "release/local/previous-setup.exe",
                          "release/runtime/runtime-cuda-2026.11.4.zip", "python-runtime/runtime-envs/cuda/retained.dll"):
             self.assertEqual((project / relative).read_bytes(), files[relative])

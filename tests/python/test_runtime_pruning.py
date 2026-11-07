@@ -12,6 +12,15 @@ from pathlib import Path
 
 
 class RuntimePruningTests(unittest.TestCase):
+    def _bash(self):
+        git = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+        if os.name == "nt" and not git.is_file():
+            self.skipTest("Git Bash is required for native Windows fixture paths")
+        bash = str(git) if os.name == "nt" else shutil.which("bash")
+        if not bash:
+            self.skipTest("Bash is required for POSIX runtime fixtures")
+        return bash
+
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(self.root, True))
@@ -83,7 +92,7 @@ class RuntimePruningTests(unittest.TestCase):
         meta_dir = site_packages / "samplepkg-1.0.0.dist-info"
         self.assertTrue((meta_dir / "METADATA").exists())
         self.assertTrue((meta_dir / "RECORD").exists())
-        self.assertFalse((meta_dir / "WHEEL").exists())
+        self.assertTrue((meta_dir / "WHEEL").exists())
         self.assertTrue((meta_dir / "entry_points.txt").exists())
         self.assertTrue((meta_dir / "INSTALLER").exists())
         self.assertTrue((meta_dir / "REQUESTED").exists())
@@ -92,18 +101,16 @@ class RuntimePruningTests(unittest.TestCase):
         core_meta_dir = site_packages / "pymss_core-0.1.6.dist-info"
         self.assertTrue((core_meta_dir / "METADATA").exists())
         self.assertTrue((core_meta_dir / "RECORD").exists())
-        self.assertFalse((core_meta_dir / "WHEEL").exists())
+        self.assertTrue((core_meta_dir / "WHEEL").exists())
         self.assertFalse((site_packages / "cachepkg" / "__pycache__").exists())
         self.assertFalse((site_packages / "cachepkg" / "tests").exists())
 
     def test_posix_prune_keeps_runtime_versions_and_records(self) -> None:
         runtime, site_packages = self._write_sample_runtime(windows=False)
-        bash = shutil.which("bash")
-        if bash is None:
-            self.skipTest("bash is required for the POSIX pruning script test")
+        bash = self._bash()
         script = Path(__file__).resolve().parents[2] / "scripts" / "prune-python-runtime.sh"
         subprocess.run(
-            [bash, str(script), str(runtime), "--keep-venv"],
+            [bash, script.as_posix(), runtime.as_posix(), "--keep-venv"],
             check=True,
             cwd=runtime,
             env=os.environ.copy(),
@@ -113,7 +120,7 @@ class RuntimePruningTests(unittest.TestCase):
         meta_dir = site_packages / "samplepkg-1.0.0.dist-info"
         self.assertTrue((meta_dir / "METADATA").exists())
         self.assertTrue((meta_dir / "RECORD").exists())
-        self.assertFalse((meta_dir / "WHEEL").exists())
+        self.assertTrue((meta_dir / "WHEEL").exists())
         self.assertTrue((meta_dir / "entry_points.txt").exists())
         self.assertTrue((meta_dir / "INSTALLER").exists())
         self.assertTrue((meta_dir / "REQUESTED").exists())
@@ -122,14 +129,12 @@ class RuntimePruningTests(unittest.TestCase):
         core_meta_dir = site_packages / "pymss_core-0.1.6.dist-info"
         self.assertTrue((core_meta_dir / "METADATA").exists())
         self.assertTrue((core_meta_dir / "RECORD").exists())
-        self.assertFalse((core_meta_dir / "WHEEL").exists())
+        self.assertTrue((core_meta_dir / "WHEEL").exists())
         self.assertFalse((site_packages / "cachepkg" / "__pycache__").exists())
         self.assertFalse((site_packages / "cachepkg" / "tests").exists())
 
     def _check_posix_xmlrpc_survives_pruning(self, *, keep_venv: bool) -> None:
-        bash = shutil.which("bash")
-        if bash is None:
-            self.skipTest("bash is required for the POSIX pruning script test")
+        bash = self._bash()
         runtime = (self.root / "xmlrpc-runtime").resolve()
         stdlib = runtime / "lib" / "python3.12"
         shutil.copytree(
@@ -142,7 +147,7 @@ class RuntimePruningTests(unittest.TestCase):
             (package / "__init__.py").touch()
         script = Path(__file__).resolve().parents[2] / "scripts/prune-python-runtime.sh"
         result = subprocess.run(
-            [bash, str(script), str(runtime), *(["--keep-venv"] if keep_venv else [])],
+            [bash, script.as_posix(), runtime.as_posix(), *(["--keep-venv"] if keep_venv else [])],
             capture_output=True, text=True, cwd=runtime,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -175,9 +180,7 @@ print(json.dumps({'origin': xmlrpc.client.__file__}))
         self._check_posix_xmlrpc_survives_pruning(keep_venv=True)
 
     def _check_posix_native_tk_pruning(self, *, keep_venv: bool) -> None:
-        bash = shutil.which("bash")
-        if bash is None:
-            self.skipTest("bash is required for the POSIX pruning script test")
+        bash = self._bash()
         runtime, site_packages = self._write_sample_runtime(windows=False)
         library = runtime / "lib"
         stdlib = library / "python3.12"
@@ -209,7 +212,7 @@ print(json.dumps({'origin': xmlrpc.client.__file__}))
             path.write_bytes(b"runtime fixture")
         script = Path(__file__).resolve().parents[2] / "scripts/prune-python-runtime.sh"
         result = subprocess.run(
-            [bash, str(script), str(runtime), *(["--keep-venv"] if keep_venv else [])],
+            [bash, script.as_posix(), runtime.as_posix(), *(["--keep-venv"] if keep_venv else [])],
             capture_output=True, text=True, cwd=runtime,
         )
         self.assertEqual(result.returncode, 0, result.stderr)

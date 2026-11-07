@@ -48,7 +48,7 @@ describe('app store persistence', () => {
     })
   })
 
-  it('falls back to local storage for update state on an older backend', async () => {
+  it('surfaces an incompatible backend without reading or overwriting preview preferences', async () => {
     const invoke = async () => {
       throw 'worker error: unknown app store: update-state'
     }
@@ -58,10 +58,10 @@ describe('app store persistence', () => {
     })
     values.set('pymss-studio:update-state', JSON.stringify({ deferredVersion: '0.0.14' }))
 
-    assert.deepEqual(await loadAppStore('update-state'), { deferredVersion: '0.0.14' })
-    await saveAppStore('update-state', { lastAcceptedVersion: '0.0.14' })
+    await assert.rejects(loadAppStore('update-state'))
+    await assert.rejects(saveAppStore('update-state', { lastAcceptedVersion: '0.0.14' }))
     assert.deepEqual(JSON.parse(values.get('pymss-studio:update-state') || 'null'), {
-      lastAcceptedVersion: '0.0.14',
+      deferredVersion: '0.0.14',
     })
   })
 

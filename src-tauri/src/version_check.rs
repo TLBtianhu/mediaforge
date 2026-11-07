@@ -30,19 +30,19 @@ const VERSIONS_URLS: [&str; 2] = [
     "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/versions/versions.json",
 ];
 
-const CACHE_FILE: &str = "versions.json";
-const CACHE_SIG_FILE: &str = "versions.json.sig";
 const SIGNED_CACHE_FILE: &str = "versions-cache.json";
 
 /// Keep the original signed bytes together: replacing one file commits both halves.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SignedVersions {
+    schema_version: u32,
     document: String,
     signature: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VersionsDoc {
     pub schema_version: u32,
     pub app: AppAxis,
@@ -50,7 +50,7 @@ pub struct VersionsDoc {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppAxis {
     pub version: String,
 }
@@ -112,37 +112,34 @@ fn verify(doc: &str, signature: &str) -> AppResult<()> {
 
 fn parse_and_verify(doc: &str, signature: &str) -> AppResult<VersionsDoc> {
     verify(doc, signature)?;
-    let parsed: VersionsDoc = serde_json::from_str(doc)
+    parse_document(doc)
+}
+
+fn parse_document(doc: &str) -> AppResult<VersionsDoc> {
+    let value: Value = serde_json::from_str(doc)
         .map_err(|error| AppError::Worker(format!("versions.json 解析失败：{error}")))?;
-    if parsed.schema_version != 1 {
+    if value.get("schemaVersion").and_then(Value::as_u64) != Some(2) {
         return Err(AppError::Worker(format!(
-            "versions.json schemaVersion={}，本程序支持 1",
-            parsed.schema_version
+            "versions.json schemaVersion={}，本程序支持 2",
+            value.get("schemaVersion").unwrap_or(&Value::Null)
         )));
     }
-    if parsed.runtime.asset_id.trim().is_empty() || parsed.runtime.sha256.trim().is_empty() {
-        return Err(AppError::Worker(
-            "versions.json 的 runtime 缺少 assetId/sha256".into(),
-        ));
-    }
+    let parsed: VersionsDoc = serde_json::from_value(value)
+        .map_err(|error| AppError::Worker(format!("versions.json 解析失败：{error}")))?;
+    semver::Version::parse(parsed.app.version.trim())
+        .map_err(|error| AppError::Worker(format!("versions.json app.version 无效：{error}")))?;
+    runtime_assets::validate_runtime_descriptor(&parsed.runtime).map_err(AppError::Worker)?;
     Ok(parsed)
 }
 
 fn read_cached(dir: &Path) -> Option<SignedVersions> {
-    if let Some(cached) = fs::read_to_string(dir.join(SIGNED_CACHE_FILE))
+    let cached: SignedVersions = fs::read_to_string(dir.join(SIGNED_CACHE_FILE))
         .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-    {
-        return Some(cached);
+        .and_then(|text| serde_json::from_str(&text).ok())?;
+    if cached.schema_version != 1 || cached.document.trim().is_empty() || cached.signature.trim().is_empty() {
+        return None;
     }
-    // Older releases stored two files. They remain readable, but new checks only
-    // publish the atomic envelope and never rewrite the legacy pair separately.
-    let doc = fs::read_to_string(dir.join(CACHE_FILE)).ok()?;
-    let sig = fs::read_to_string(dir.join(CACHE_SIG_FILE)).ok()?;
-    Some(SignedVersions {
-        document: doc,
-        signature: sig,
-    })
+    Some(cached)
 }
 
 fn versions_urls() -> Vec<String> {
@@ -158,6 +155,7 @@ fn versions_urls() -> Vec<String> {
 async fn fetch_remote(
     client: &reqwest::Client,
     urls: &[String],
+    validate: fn(&str, &str) -> AppResult<VersionsDoc>,
 ) -> AppResult<(SignedVersions, VersionsDoc)> {
     let mut last_error = String::from("没有可用的版本源");
     for url in urls {
@@ -207,10 +205,11 @@ async fn fetch_remote(
         };
         // A reachable but invalid mirror must not poison the cache or prevent
         // another configured mirror from supplying a valid signed document.
-        match parse_and_verify(&doc, &signature) {
+        match validate(&doc, &signature) {
             Ok(parsed) => {
                 return Ok((
                     SignedVersions {
+                        schema_version: 1,
                         document: doc,
                         signature,
                     },
@@ -230,7 +229,16 @@ async fn refresh_versions(
     client: &reqwest::Client,
     urls: &[String],
 ) -> AppResult<VersionsDoc> {
-    let (signed, parsed) = fetch_remote(client, urls).await?;
+    refresh_versions_validated(dir, client, urls, parse_and_verify).await
+}
+
+async fn refresh_versions_validated(
+    dir: &Path,
+    client: &reqwest::Client,
+    urls: &[String],
+    validate: fn(&str, &str) -> AppResult<VersionsDoc>,
+) -> AppResult<VersionsDoc> {
+    let (signed, parsed) = fetch_remote(client, urls, validate).await?;
     // Verification happens before persistence. Failed refreshes leave the last
     // verified pair available for acceptance, but never report it as up-to-date.
     // Surface persistence failures too: accepting must use the version just shown.
@@ -289,6 +297,7 @@ mod tests {
             "ew0KICAic2NoZW1hVmVyc2lvbiI6IDEsDQogICJhcHAiOiB7DQogICAgInZlcnNpb24iOiAiMC4wLjMxIg0KICB9LA0KICAicnVudGltZSI6IHsNCiAgICAiYXNzZXRJZCI6ICJydW50aW1lLWN1ZGEtMjAyNi4xMS40IiwNCiAgICAiYmFja2VuZCI6ICJjdWRhIiwNCiAgICAic2hhMjU2IjogImNjYmViNjdkMDExMGRjMWI2YWJjMTkwNmQwNmU3NjM2Yzk5NDVlMzMzNjcyODc0YjQzNzM4ZjUzYjI5ZDAyMWYiLA0KICAgICJzaXplIjogMzYxODIwMDcxNiwNCiAgICAidXJscyI6IFsNCiAgICAgICJodHRwczovL2hmLW1pcnJvci5jb20vZGF0YXNldHMvVExCdGlhbmh1L01lZGlhRm9yZ2UtRGlzdC9yZXNvbHZlL21haW4vcnVudGltZS9ydW50aW1lLWN1ZGEtMjAyNi4xMS40LnppcCIsDQogICAgICAiaHR0cHM6Ly93d3cubW9kZWxzY29wZS5jbi9kYXRhc2V0cy9UTEJ0aWFuaHUvTWVkaWFGb3JnZS1EaXN0L3Jlc29sdmUvbWFzdGVyL3J1bnRpbWUvcnVudGltZS1jdWRhLTIwMjYuMTEuNC56aXAiDQogICAgXQ0KICB9DQp9DQo="
         );
         SignedVersions {
+            schema_version: 1,
             document: String::from_utf8(base64::engine::general_purpose::STANDARD.decode(encoded).unwrap()).unwrap(),
             signature: concat!(
                 "untrusted comment: signature from tauri secret key\n",
@@ -424,13 +433,14 @@ mod tests {
 
     fn doc(runtime: &str, app: &str) -> VersionsDoc {
         VersionsDoc {
-            schema_version: 1,
+            schema_version: 2,
             app: AppAxis {
                 version: app.into(),
             },
             runtime: RuntimeDescriptor {
                 asset_id: runtime.into(),
                 backend: "cuda".into(),
+                python: "3.12".into(),
                 sha256: "0".repeat(64),
                 size: 1,
                 urls: vec!["https://example.invalid/runtime.zip".into()],
@@ -466,20 +476,50 @@ mod tests {
     }
 
     #[test]
-    fn public_signed_fixture_verifies_and_modified_document_is_rejected() {
+    fn public_signature_verifies_but_previous_document_schema_is_rejected() {
         let signed = signed_fixture();
-        assert_eq!(
-            parse_and_verify(&signed.document, &signed.signature)
-                .unwrap()
-                .app
-                .version,
-            "0.0.31"
-        );
-        assert!(parse_and_verify(
-            &signed.document.replace("0.0.31", "0.0.32"),
-            &signed.signature
-        )
-        .is_err());
+        verify(&signed.document, &signed.signature).unwrap();
+        assert!(parse_and_verify(&signed.document, &signed.signature).unwrap_err().to_string().contains("schemaVersion"));
+        assert!(verify(&signed.document.replace("0.0.31", "0.0.32"), &signed.signature).is_err());
+    }
+
+    // No test creates a signing key or signs new bytes. Public signature
+    // verification and current-schema semantics are independent tests. The
+    // transport/cache seam returns a separately validated current document;
+    // production always calls parse_and_verify without this test validator.
+    fn public_transport_fixture(document: &str, signature: &str) -> AppResult<VersionsDoc> {
+        verify(document, signature)?;
+        parse_document(&serde_json::to_string(&doc("runtime-cuda-2026.11.5", "0.0.32"))?)
+    }
+
+    async fn refresh_fixture(dir: &Path, client: &reqwest::Client, urls: &[String]) -> AppResult<VersionsDoc> {
+        refresh_versions_validated(dir, client, urls, public_transport_fixture).await
+    }
+
+    #[test]
+    fn current_document_requires_current_python_and_exact_schema() {
+        let value = serde_json::to_value(doc("runtime-cuda-2026.11.5", "0.0.32")).unwrap();
+        parse_document(&value.to_string()).unwrap();
+        for field in ["python", "assetId", "sha256", "size", "urls"] {
+            let mut invalid = value.clone();
+            invalid["runtime"].as_object_mut().unwrap().remove(field);
+            assert!(parse_document(&invalid.to_string()).is_err(), "missing {field}");
+        }
+        for invalid in [
+            { let mut v = value.clone(); v["runtime"]["python"] = json!("3.11"); v },
+            { let mut v = value.clone(); v["runtime"]["legacy"] = json!(true); v },
+            { let mut v = value.clone(); v["legacy"] = json!(true); v },
+            { let mut v = value.clone(); v["schemaVersion"] = json!(1); v },
+            { let mut v = value.clone(); v["app"]["version"] = json!("not-semver"); v },
+        ] { assert!(parse_document(&invalid.to_string()).is_err(), "{invalid}"); }
+    }
+
+    #[test]
+    fn production_refresh_rejects_signed_previous_python_descriptor_without_caching_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let server = TestServer::new(routes("", &signed_fixture()));
+        assert!(tauri::async_runtime::block_on(refresh_versions(dir.path(), &client(), &[server.url("")])).is_err());
+        assert!(!dir.path().join(SIGNED_CACHE_FILE).exists());
     }
 
     #[test]
@@ -489,7 +529,7 @@ mod tests {
         let server = TestServer::new(routes("", &signed));
         let client = client();
         for _ in 0..2 {
-            tauri::async_runtime::block_on(refresh_versions(
+            tauri::async_runtime::block_on(refresh_fixture(
                 dir.path(),
                 &client,
                 &[server.url("")],
@@ -508,8 +548,8 @@ mod tests {
         let cached = read_cached(dir.path()).unwrap();
         assert_eq!(cached.document, signed.document);
         assert_eq!(cached.signature, signed.signature);
-        assert!(!dir.path().join(CACHE_FILE).exists());
-        assert!(!dir.path().join(CACHE_SIG_FILE).exists());
+        assert!(!dir.path().join("versions.json").exists());
+        assert!(!dir.path().join("versions.json.sig").exists());
     }
 
     #[test]
@@ -519,37 +559,41 @@ mod tests {
             fs::write(dir.path().join(SIGNED_CACHE_FILE), corrupt).unwrap();
             let signed = signed_fixture();
             let server = TestServer::new(routes("", &signed));
-            tauri::async_runtime::block_on(refresh_versions(
+            tauri::async_runtime::block_on(refresh_fixture(
                 dir.path(),
                 &client(),
                 &[server.url("")],
             ))
             .unwrap();
             let cached = read_cached(dir.path()).unwrap();
-            parse_and_verify(&cached.document, &cached.signature).unwrap();
+            verify(&cached.document, &cached.signature).unwrap();
         }
     }
 
     #[test]
-    fn legacy_cache_is_compatible_and_atomic_cache_never_mixes_legacy_halves() {
+    fn loose_cache_files_are_ignored_and_never_mixed_with_the_current_envelope() {
         let dir = tempfile::tempdir().unwrap();
         let signed = signed_fixture();
-        fs::write(dir.path().join(CACHE_FILE), &signed.document).unwrap();
-        fs::write(dir.path().join(CACHE_SIG_FILE), &signed.signature).unwrap();
-        let legacy = read_cached(dir.path()).unwrap();
-        parse_and_verify(&legacy.document, &legacy.signature).unwrap();
-        let server = TestServer::new(routes("", &signed));
-        tauri::async_runtime::block_on(refresh_versions(dir.path(), &client(), &[server.url("")]))
-            .unwrap();
-        // Simulate an old release subsequently writing incompatible loose files.
-        fs::write(dir.path().join(CACHE_FILE), "legacy document").unwrap();
-        fs::write(dir.path().join(CACHE_SIG_FILE), "legacy signature").unwrap();
+        fs::write(dir.path().join("versions.json"), &signed.document).unwrap();
+        fs::write(dir.path().join("versions.json.sig"), &signed.signature).unwrap();
+        assert!(read_cached(dir.path()).is_none());
+        storage::write_json_file(&dir.path().join(SIGNED_CACHE_FILE), &serde_json::to_value(&signed).unwrap()).unwrap();
         let cached = read_cached(dir.path()).unwrap();
-        parse_and_verify(&cached.document, &cached.signature).unwrap();
-        assert_eq!(
-            fs::read_to_string(dir.path().join(CACHE_SIG_FILE)).unwrap(),
-            "legacy signature"
-        );
+        assert_eq!(cached.document, signed.document);
+        assert_eq!(cached.signature, signed.signature);
+        for invalid in [
+            json!({"document": signed.document, "signature": signed.signature}),
+            json!({"schemaVersion": 2, "document": signed.document, "signature": signed.signature}),
+            json!({"schemaVersion": 1, "document": signed.document, "signature": signed.signature, "legacy": true}),
+            json!({"schemaVersion": 1, "document": "", "signature": signed.signature}),
+            json!({"schemaVersion": 1, "document": signed.document, "signature": 123}),
+            Value::Null,
+        ] {
+            fs::write(dir.path().join(SIGNED_CACHE_FILE), invalid.to_string()).unwrap();
+            assert!(read_cached(dir.path()).is_none(), "{invalid}");
+        }
+        assert_eq!(fs::read_to_string(dir.path().join("versions.json")).unwrap(), signed.document);
+        assert_eq!(fs::read_to_string(dir.path().join("versions.json.sig")).unwrap(), signed.signature);
     }
 
     #[test]
@@ -563,7 +607,7 @@ mod tests {
         responses.push(("/offline/versions.json".into(), 503, "offline".into()));
         let server = TestServer::new(responses);
         let client = client();
-        tauri::async_runtime::block_on(refresh_versions(
+        tauri::async_runtime::block_on(refresh_fixture(
             dir.path(),
             &client,
             &[server.url("/good")],
@@ -571,7 +615,7 @@ mod tests {
         .unwrap();
         let before = fs::read(dir.path().join(SIGNED_CACHE_FILE)).unwrap();
         for prefix in ["/bad", "/offline"] {
-            assert!(tauri::async_runtime::block_on(refresh_versions(
+            assert!(tauri::async_runtime::block_on(refresh_fixture(
                 dir.path(),
                 &client,
                 &[server.url(prefix)]
@@ -593,7 +637,7 @@ mod tests {
         let mut responses = routes("/invalid", &invalid);
         responses.extend(routes("/good", &signed));
         let server = TestServer::new(responses);
-        tauri::async_runtime::block_on(refresh_versions(
+        tauri::async_runtime::block_on(refresh_fixture(
             dir.path(),
             &client(),
             &[server.url("/invalid"), server.url("/good")],
@@ -601,7 +645,7 @@ mod tests {
         .unwrap();
         assert_eq!(server.requests.lock().unwrap().len(), 4);
         let cached = read_cached(dir.path()).unwrap();
-        parse_and_verify(&cached.document, &cached.signature).unwrap();
+        verify(&cached.document, &cached.signature).unwrap();
     }
 
     #[test]
@@ -610,7 +654,7 @@ mod tests {
         let blocked = dir.path().join("file-instead-of-directory");
         fs::write(&blocked, "keep").unwrap();
         let server = TestServer::new(routes("", &signed_fixture()));
-        assert!(tauri::async_runtime::block_on(refresh_versions(
+        assert!(tauri::async_runtime::block_on(refresh_fixture(
             &blocked,
             &client(),
             &[server.url("")]

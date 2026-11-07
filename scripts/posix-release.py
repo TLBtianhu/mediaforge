@@ -6,11 +6,31 @@ import json
 from pathlib import Path
 import plistlib
 import shutil
+import subprocess
 import tarfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_NAMES = {"__pycache__", ".cache", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+
+
+def check_runtime_version(root: Path) -> None:
+    expected = json.loads((root / "python/runtime-manifest.json").read_text(encoding="utf-8"))["python"]
+    if expected != "3.12":
+        raise ValueError("The release runtime target must be Python 3.12")
+    candidates = (root / "python-runtime/bin/python3", root / "python-runtime/python.exe")
+    python = next((path for path in candidates if path.is_file()), None)
+    if python is None:
+        raise ValueError("The release bootstrap Python is missing")
+    result = subprocess.run([str(python), "-I", "-B", "-c",
+                             "import json,sys; print(json.dumps({'python':'.'.join(map(str,sys.version_info[:2])),'selfContained':sys.prefix==sys.base_prefix}))"],
+                            capture_output=True, text=True, timeout=20, check=False)
+    try:
+        actual = json.loads(result.stdout)
+    except (ValueError, TypeError):
+        raise ValueError("Release Python version probe failed") from None
+    if result.returncode or actual.get("python") != expected or actual.get("selfContained") is not True:
+        raise ValueError("Release bootstrap must be self-contained Python 3.12")
 
 
 def verify_resources(resources: Path) -> None:
@@ -28,6 +48,11 @@ def verify_resources(resources: Path) -> None:
 
 def stage_resources(source: Path, destination: Path) -> None:
     source, destination = source.resolve(), destination.resolve()
+    for name in ("python", "manifest"):
+        origin, target = source / name, destination / name
+        if target == origin or target.is_relative_to(origin) or origin.is_relative_to(target):
+            raise ValueError("Release staging must not overwrite its source")
+    check_runtime_version(source)
     for name in ("python", "manifest"):
         origin, target = source / name, destination / name
         if target == origin or target.is_relative_to(origin) or origin.is_relative_to(target):
@@ -51,6 +76,7 @@ def stage_resources(source: Path, destination: Path) -> None:
 def bundle_config(resources: Path, platform: str) -> dict:
     resources = resources.resolve()
     verify_resources(resources)
+    check_runtime_version(resources)
     bundle = {"resources": {str(resources / name): name for name in ("python", "manifest", "python-runtime", "bin")}}
     bundle["resources"][str(resources / "plugin-sdk")] = "resources/plugin-sdk"
     if platform == "linux":
@@ -72,6 +98,7 @@ def mac_app(directory: Path, config: dict) -> Path:
     if not executable.is_file() or not executable.resolve().is_relative_to(app.resolve()):
         raise ValueError("The declared macOS executable is missing or escapes its bundle")
     verify_resources(app / "Contents/Resources")
+    check_runtime_version(app / "Contents/Resources")
     return app.resolve()
 
 

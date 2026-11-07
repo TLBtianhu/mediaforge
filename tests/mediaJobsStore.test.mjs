@@ -26,7 +26,7 @@ const vite = await createServer({
         export async function invoke(command,args) {
           calls.push({command,args}); timeline.push(command)
           if(invokeHook) return invokeHook(command,args)
-          return command==='agent_jobs' ? {index:{jobs:[]},dataRoot:'/fixture',workspace:'/fixture/agent-workspace.json'} : {started:true}
+          return command==='agent_jobs' ? {schemaVersion:1,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {started:true}
         }
         export async function listen(name,callback) {
           timeline.push('listen:start')
@@ -55,7 +55,7 @@ const journal = (jobId, overrides = {}) => ({
   owner: { kind: 'tauri-worker' },
   fraction: 0, message: '', createdAt: 100, payload: { operation: 'media_image' }, result: null, ...overrides,
 })
-const response = jobs => ({ index: { jobs }, dataRoot: '/fixture', workspace: '/fixture/agent-workspace.json' })
+const response = jobs => ({ schemaVersion:1, jobs, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' })
 function setup(t, invokeHook, listenHook) {
   fixture.reset(invokeHook, listenHook)
   const pinia = createPinia()
@@ -63,6 +63,26 @@ function setup(t, invokeHook, listenHook) {
   t.after(() => store.$dispose())
   return { pinia, store }
 }
+
+test('journal schema and worker events accept only the current contract', async t => {
+  const {store}=setup(t,async command=>command==='agent_jobs'?response([journal('current')]):{started:true})
+  await store.initialize()
+  fixture.emit({taskId:'current',type:'operation_progress',payload:{progress:0.8}})
+  fixture.emit({taskId:'current',type:'operation_result',payload:{outputs:[{path:'obsolete.png'}]}})
+  assert.equal(store.jobs[0].status,'running')
+  assert.equal(store.jobs[0].fraction,0)
+  assert.equal(store.jobs[0].result,null)
+  fixture.emit({taskId:'current',type:'task.result',payload:{outputs:[{path:'current.png'}]}})
+  assert.equal(store.jobs[0].status,'completed')
+  assert.equal(store.jobs[0].result.outputs[0].path,'current.png')
+  const before=JSON.stringify(store.jobs)
+  fixture.reset(async()=>({index:{jobs:[journal('obsolete')]},dataRoot:'/fixture',workspace:'/fixture/agent-workspace.json'}))
+  await store.refresh()
+  assert.match(store.error,/Unsupported.*journal.*schema/i)
+  assert.equal(JSON.stringify(store.jobs),before)
+  await assert.rejects(store.start({operation:'media_image',inputs:['current.png']}),/Unsupported.*journal.*schema/i)
+  assert.equal(fixture.calls.some(call=>call.command==='start_audio_tool'),false)
+})
 
 test('start waits for its event listener and registers the local job before native invocation', async t => {
   const listening = deferred()
@@ -285,9 +305,9 @@ test('a failed journal refresh retains existing work and the next refresh clears
 test('operation runtime progress and named output terminals are consumed without waiting for polling', async t => {
   const { store } = setup(t, () => response([journal('graph', { command: 'run_operation' })]))
   await store.initialize()
-  fixture.emit({ taskId: 'graph', type: 'operation_progress', payload: { fraction: 0.5, message: 'rendering' } })
+  fixture.emit({ taskId: 'graph', type: 'task.progress', payload: { fraction: 0.5, message: 'rendering' } })
   assert.equal(store.jobs[0].fraction, 0.5)
-  fixture.emit({ taskId: 'graph', type: 'operation_result', payload: { outputs: { score: { kind: 'scalar', value: 42 } } } })
+  fixture.emit({ taskId: 'graph', type: 'task.result', payload: { outputs: { score: { kind: 'scalar', value: 42 } } } })
   assert.equal(store.jobs[0].status, 'completed')
   assert.equal(store.jobs[0].result.outputs.score.value, 42)
 })

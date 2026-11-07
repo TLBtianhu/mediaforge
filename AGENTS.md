@@ -14,6 +14,14 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 不自动清理狗粮数据；升级测试必须保留配置和模型
 - 模型/日志/索引/测试截图不进仓库，也不进安装包
 
+## 强制规则：1.0前当前格式与Python版本
+
+- 1.0之前不做向下兼容：结构变了直接换格式，不写历史数据迁移、旧入口回退或双写副本。
+- 只接受当前schema；旧、缺失或未来schema明确报错并保留原文件，不能把加载失败当空数据写回。
+- 同类持久数据只有一个真源。任务以单job文件为准，列表在读取时聚合；UI内存投影不另存副本。
+- Python版本唯一目标来自`python/runtime-manifest.json`，当前为3.12；开发、bootstrap及独立资产均须实测一致。
+- 自包含运行时必须自带匹配解释器、DLL、stdlib和扩展。安装只验证/发布，不覆盖解释器修旧venv。
+
 ## Architecture
 
 Tauri desktop app for audio source separation. Three layers:
@@ -57,14 +65,14 @@ Install it for local development with `python -m pip install pymss`.
 Windows builds come in two variants: **CUDA** and **CPU** (different PyTorch builds).
 
 Build stages:
-1. **Prepare**: Run `scripts/prepare-python-runtime.ps1` to embed Python + deps → `python-runtime/`
+1. **Prepare**: Run `scripts/prepare-python-runtime.ps1 -Minimal -Python <explicit-3.12-python>` → `python-runtime/`; version mismatch must fail before replacing any output.
 2. **Build**: `pnpm tauri build --no-bundle` produces exe
 3. **Stage**: Assemble portable directory with exe, worker, embedded Python runtime, and tools (ffmpeg, VC redist)
 4. **Package**: Create 7z archive or Inno Setup installer
 
 CI splits jobs: `prepare` → `7z` / `exe` for each variant to parallelize compression.
 
-Key script: `scripts/prepare-python-runtime.ps1 -Variant cuda|default -TorchVersion ... -TorchIndexUrl ...`
+Inference assets are built separately with `scripts/build-runtime-asset.py`, using an explicit non-venv Python 3.12 host and a fresh asset ID. It stages one self-contained runtime under `.dev-data/runtime-envs/`, installs the locked backend without persistent download caches, and produces one ZIP plus its hash descriptor under `release/runtime/`. Existing runtime assets are never rewritten.
 
 Staged build verification runs `python worker.py env_info` and `list_models` to confirm Python environment.
 
@@ -84,9 +92,9 @@ GitHub releases may split files >2GB using `split` (workflow auto-handles). See 
 ## Important Files
 
 - `python/worker.py`: JSON-based worker protocol for model ops, separation, audio processing
-- `python/requirements.txt`: Documents runtime deps (actual deps installed by prepare script)
+- `python/requirements.txt`: Documents runtime deps; inference assets are built separately from the minimal bootstrap
 - `src-tauri/tauri.conf.json`: Bundles `python/*` as resources, defines asset protocol scope
-- `scripts/prepare-python-runtime.ps1`: Stages portable Python with PyTorch + deps
+- `scripts/prepare-python-runtime.ps1`: Prepares a fresh minimal Python 3.12 bootstrap; `scripts/build-runtime-asset.py` builds the independent inference asset
 - `.gitignore`: Excludes `*.md` and `docs/` — this file is an exception
 
 ## Testing

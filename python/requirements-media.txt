@@ -8,7 +8,8 @@
 #
 # 版本取自开发运行时 `pip freeze`（2026-10-30），与 torch 2.7.1+cu128 配套。
 
-opencv-python-headless==5.0.0.93
+# Ultralytics/GFPGAN require opencv-python; keep one cv2 distribution.
+opencv-python==5.0.0.93
 spandrel==0.4.2
 ultralytics==8.4.192
 pillow==13.0.0

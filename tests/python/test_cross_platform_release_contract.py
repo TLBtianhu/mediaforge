@@ -13,6 +13,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -46,6 +47,10 @@ class PosixResourceFixtureTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix="mf-posix-release-fixture-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        # These tests isolate staging/contract I/O from native bootstrap execution.
+        patch = mock.patch.object(RELEASE, "check_runtime_version")
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def test_whole_worker_and_manifest_are_usable_outside_the_checkout_without_dependencies(self):
         resources = self.root / "installed/Resources"
@@ -120,6 +125,9 @@ class MacReleaseFixtureTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix="mf-macos-contract-fixture-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        patch = mock.patch.object(RELEASE, "check_runtime_version")
+        patch.start()
+        self.addCleanup(patch.stop)
         self.config = {"productName": "MediaForge", "identifier": "studio.mediaforge.desktop"}
         self.app = self.root / "MediaForge.app"
         self.resources = self.app / "Contents/Resources"

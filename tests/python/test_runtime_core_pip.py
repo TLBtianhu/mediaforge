@@ -39,7 +39,6 @@ class OfflineCoreUpdateTests(unittest.TestCase):
         alias.symlink_to(physical, target_is_directory=True)
         self.run_offline_update(bundled=True, temporary_parent=alias)
 
-    @unittest.skipUnless(shutil.which("bash"), "Bash is required for runtime pruning")
     def test_pruned_bundled_runtime_preserves_torch_dependencies_for_offline_updates(self):
         self.run_offline_update(bundled=True, pruned=True)
 
@@ -99,9 +98,15 @@ class OfflineCoreUpdateTests(unittest.TestCase):
         ], env=child_env, capture_output=True, text=True, timeout=90)
         self.assertEqual(seed.returncode, 0, seed.stderr)
         if pruned:
+            git = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+            if os.name == "nt" and not git.is_file():
+                self.skipTest("Git Bash is required for native Windows fixture paths")
+            bash = str(git) if os.name == "nt" else shutil.which("bash")
+            if not bash:
+                self.skipTest("Bash is required for runtime pruning")
             subprocess.run([
-                shutil.which("bash"), str(Path(__file__).resolve().parents[2] / "scripts/prune-python-runtime.sh"),
-                str(base), "--keep-venv",
+                bash, (Path(__file__).resolve().parents[2] / "scripts/prune-python-runtime.sh").as_posix(),
+                base.as_posix(), "--keep-venv",
             ], env=child_env, capture_output=True, text=True, timeout=60, check=True)
             # The release check only supplies core wheels; base dependencies
             # must remain installed rather than being fetched again.

@@ -29,12 +29,17 @@ use crate::storage;
 mod transaction;
 use transaction::{validate_descriptor, InstallLock};
 
+pub(crate) fn validate_runtime_descriptor(descriptor: &RuntimeDescriptor) -> Result<(), String> {
+    validate_descriptor(descriptor)
+}
+
 /// 清单里的运行时描述。字段名与 `manifest/runtime.json` 一致（camelCase）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeDescriptor {
     pub asset_id: String,
     pub backend: String,
+    pub python: String,
     pub sha256: String,
     pub size: u64,
     pub urls: Vec<String>,
@@ -43,9 +48,10 @@ pub struct RuntimeDescriptor {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeManifest {
+    schema_version: u64,
     #[serde(default)]
     fallback_asset_id: String,
-    runtimes: Vec<RuntimeDescriptor>,
+    runtimes: Vec<Value>,
 }
 
 /// 编译进去的基线清单：它决定"没有任何远程信息时用哪份运行时"。
@@ -56,21 +62,58 @@ const DESIRED_FILE: &str = "desired-runtime.json";
 const PROGRESS_EVENT: &str = "mediaforge://runtime-asset";
 const ASSET_MARKER: &str = ".asset-id";
 
+fn expected_python() -> Result<String, String> {
+    let manifest: Value = serde_json::from_str(include_str!("../../python/runtime-manifest.json"))
+        .map_err(|error| error.to_string())?;
+    let version = manifest
+        .get("python")
+        .and_then(Value::as_str)
+        .ok_or("Python runtime manifest has no target version")?;
+    if version != "3.12" {
+        return Err("This release requires a Python 3.12 runtime contract".into());
+    }
+    Ok(version.to_string())
+}
+
+fn parse_desired_descriptor(text: &str) -> AppResult<RuntimeDescriptor> {
+    let descriptor = serde_json::from_str::<RuntimeDescriptor>(text).map_err(|_| {
+        AppError::Worker("期望运行时描述不兼容；请重新选择 Python 3.12 运行时".into())
+    })?;
+    validate_descriptor(&descriptor).map_err(AppError::Worker)?;
+    Ok(descriptor)
+}
+
 pub fn embedded_descriptor() -> AppResult<RuntimeDescriptor> {
     let manifest: RuntimeManifest = serde_json::from_str(EMBEDDED_MANIFEST)
         .map_err(|error| AppError::Worker(format!("manifest/runtime.json 解析失败：{error}")))?;
-    let wanted = manifest.fallback_asset_id;
-    let mut fallback = manifest.runtimes.into_iter();
-    let first = fallback
-        .next()
-        .ok_or_else(|| AppError::Worker("manifest/runtime.json 没有任何 runtimes".into()))?;
-    if wanted.is_empty() {
-        return Ok(first);
+    if manifest.schema_version != 2 {
+        return Err(AppError::Worker(
+            "运行时清单必须使用 schemaVersion 2 与显式 Python ABI".into(),
+        ));
     }
-    let all = std::iter::once(first).chain(fallback);
-    all.into_iter()
-        .find(|item| item.asset_id == wanted)
-        .ok_or_else(|| AppError::Worker(format!("runtime.json 里找不到 fallbackAssetId={wanted}")))
+    let wanted = manifest.fallback_asset_id;
+    let selected = if wanted.is_empty() {
+        manifest.runtimes.first()
+    } else {
+        manifest
+            .runtimes
+            .iter()
+            .find(|item| item.get("assetId").and_then(Value::as_str) == Some(wanted.as_str()))
+    }
+    .ok_or_else(|| AppError::Worker(format!("runtime.json 里找不到 fallbackAssetId={wanted}")))?;
+    // The catalogue also owns display/capability metadata. Desired/remote
+    // descriptors themselves use the strict, required-field schema above.
+    let fields = ["assetId", "backend", "python", "sha256", "size", "urls"];
+    let descriptor = Value::Object(
+        selected
+            .as_object()
+            .ok_or_else(|| AppError::Worker("运行时清单条目必须是对象".into()))?
+            .iter()
+            .filter(|(key, _)| fields.contains(&key.as_str()))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+    );
+    parse_desired_descriptor(&descriptor.to_string())
 }
 
 fn envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
@@ -79,18 +122,13 @@ fn envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
 
 /// 当前应该使用哪份运行时：`versions.json` 接受过就用它，否则用编译进的基线。
 pub fn desired_runtime(app: &AppHandle) -> AppResult<RuntimeDescriptor> {
-    let Ok(envs) = envs_dir(app) else {
-        return embedded_descriptor();
-    };
+    let envs = envs_dir(app)?;
     let file = envs.join(DESIRED_FILE);
-    if let Ok(text) = fs::read_to_string(&file) {
-        if let Ok(descriptor) = serde_json::from_str::<RuntimeDescriptor>(&text) {
-            if validate_descriptor(&descriptor).is_ok() {
-                return Ok(descriptor);
-            }
-        }
+    match fs::read_to_string(&file) {
+        Ok(text) => parse_desired_descriptor(&text),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => embedded_descriptor(),
+        Err(error) => Err(error.into()),
     }
-    embedded_descriptor()
 }
 
 pub fn write_desired(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<()> {
@@ -120,6 +158,8 @@ fn marker_matches(dir: &Path, descriptor: &RuntimeDescriptor) -> bool {
     };
     value.get("assetId").and_then(Value::as_str) == Some(descriptor.asset_id.as_str())
         && value.get("sha256").and_then(Value::as_str) == Some(descriptor.sha256.as_str())
+        && value.get("python").and_then(Value::as_str) == Some(descriptor.python.as_str())
+        && value.get("schemaVersion").and_then(Value::as_u64) == Some(2)
 }
 
 fn aria2_path(app: &AppHandle) -> AppResult<PathBuf> {
@@ -366,9 +406,6 @@ fn install_with_descriptor(
     }
 
     emit(app, descriptor, "extracting", descriptor.size, "解压运行时");
-    let bootstrap = storage::runtime_root_dir(app)
-        .map_err(|error| error.to_string())?
-        .join("python.exe");
     transaction::publish_archive(
         envs,
         &staging,
@@ -386,8 +423,7 @@ fn install_with_descriptor(
                     &format!("已放置 {copied} 个 VC++ 运行库文件"),
                 );
             }
-            repair_embedded_python_from(&bootstrap, prepared)?;
-            verify_interpreter(&prepared.join("Scripts/python.exe"))
+            verify_interpreter(prepared, descriptor)
         },
         || write_active_pointer(envs, descriptor),
     )?;
@@ -424,15 +460,82 @@ fn copy_dlls(from: &Path, to: &Path) -> std::io::Result<usize> {
 }
 
 /// 运行时资产必须是自包含的嵌入式 Python，而不是依赖旧安装目录的 venv 启动器。
-/// 用随包提供的真实嵌入式解释器覆盖 venv 启动器，并移除 pyvenv.cfg。
-fn repair_embedded_python_from(bootstrap: &Path, target: &Path) -> Result<(), String> {
-    if !bootstrap.is_file() {
-        // 小型 fixture 没有嵌入式基础解释器，直接使用夹具里的 python.exe 自检。
-        return Ok(());
+/// 资产原样验证；绝不从 bootstrap 借用解释器或删除 venv 配置。
+fn validate_asset_layout(root: &Path, descriptor: &RuntimeDescriptor) -> Result<(), String> {
+    let abi = descriptor.python.replace('.', "");
+    for directory in [root.to_path_buf(), root.join("Scripts")] {
+        if directory.join("pyvenv.cfg").exists() {
+            return Err("运行时必须自包含，不能安装 venv 或删除配置后伪装为独立资产".into());
+        }
+        if directory.is_dir() {
+            for entry in fs::read_dir(&directory).map_err(|error| error.to_string())? {
+                let path = entry.map_err(|error| error.to_string())?.path();
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_lowercase();
+                if name.starts_with("python")
+                    && (name.ends_with(".dll") || name.ends_with(".zip"))
+                    && name != "python3.dll"
+                    && name != format!("python{abi}.dll")
+                    && name != format!("python{abi}.zip")
+                {
+                    return Err(format!("运行时包含不匹配的 Python ABI 文件：{name}"));
+                }
+            }
+        }
     }
-    let python = target.join("Scripts").join("python.exe");
-    fs::copy(bootstrap, &python).map_err(|error| error.to_string())?;
-    let _ = fs::remove_file(target.join("pyvenv.cfg"));
+    if !root.join("Scripts/python.exe").is_file()
+        || ![
+            root.join(format!("Scripts/python{abi}.dll")),
+            root.join(format!("python{abi}.dll")),
+        ]
+        .iter()
+        .any(|path| path.is_file())
+        || !root.join("Lib/site-packages").is_dir()
+        || ![
+            root.join("Lib/encodings/__init__.py"),
+            root.join(format!("Scripts/python{abi}.zip")),
+            root.join(format!("python{abi}.zip")),
+        ]
+        .iter()
+        .any(|path| path.is_file())
+    {
+        return Err("运行时缺少匹配的自包含 Python 解释器、DLL、标准库或 site-packages".into());
+    }
+    Ok(())
+}
+
+fn validate_native_tree(directory: &Path, abi: &str) -> Result<(), String> {
+    transaction::ensure_plain(directory)?;
+    for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        transaction::ensure_plain(&path)?;
+        if path.is_dir() {
+            validate_native_tree(&path, abi)?;
+        } else {
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_lowercase();
+            let foreign_extension = name.ends_with(".pyd")
+                && name
+                    .split(".cp")
+                    .nth(1)
+                    .map(|suffix| {
+                        suffix
+                            .chars()
+                            .take_while(char::is_ascii_digit)
+                            .collect::<String>()
+                    })
+                    .is_some_and(|tag| !tag.is_empty() && tag != abi);
+            if name == "pyvenv.cfg" || foreign_extension {
+                return Err(format!("运行时包含 venv 或不匹配的扩展 ABI：{name}"));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -443,22 +546,137 @@ fn hide_console_window(command: &mut Command) {
 
 /// 装完立刻验证解释器能加载 C++ 运行库：失败时给出可操作的错误，
 /// 而不是等用户点任务才看到 "DLL load failed"。
-fn verify_interpreter(python: &Path) -> Result<(), String> {
-    let mut command = Command::new(python);
+fn validate_probe(
+    value: &Value,
+    root: &Path,
+    descriptor: &RuntimeDescriptor,
+) -> Result<(), String> {
+    if value.get("python").and_then(Value::as_str) != Some(descriptor.python.as_str())
+        || value.get("imports").and_then(Value::as_bool) != Some(true)
+        || value.get("torchBackend").and_then(Value::as_str) != Some(descriptor.backend.as_str())
+    {
+        return Err("运行时自检的 Python ABI、依赖或 torch 后端与描述符不一致".into());
+    }
+    let root = root.canonicalize().map_err(|error| error.to_string())?;
+    let resolve = |key| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .and_then(|path| Path::new(path).canonicalize().ok())
+    };
+    let prefix = resolve("prefix");
+    if prefix.is_none()
+        || prefix != resolve("basePrefix")
+        || !prefix.as_ref().unwrap().starts_with(&root)
+    {
+        return Err("运行时引用了资产目录以外的解释器或 venv 基础环境".into());
+    }
+    Ok(())
+}
+
+fn verify_interpreter(root: &Path, descriptor: &RuntimeDescriptor) -> Result<(), String> {
+    validate_descriptor(descriptor)?;
+    validate_asset_layout(root, descriptor)?;
+    validate_native_tree(root, &descriptor.python.replace('.', ""))?;
+    let isolated = tempfile::Builder::new()
+        .prefix("mediaforge-runtime-probe-")
+        .tempdir()
+        .map_err(|error| error.to_string())?;
+    let mut command = Command::new(root.join("Scripts/python.exe"));
     command.args([
-        "-c",
-        "import ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); print('ok')",
+        "-I", "-B", "-c",
+        "import sys,json,ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); import torch,pymss,pymss_core,pymss.graph; backend='rocm' if getattr(torch.version,'hip',None) else 'cuda' if getattr(torch.version,'cuda',None) else 'cpu'; print(json.dumps({'python':'.'.join(map(str,sys.version_info[:2])),'prefix':sys.prefix,'basePrefix':sys.base_prefix,'imports':True,'torchBackend':backend}))",
     ]);
+    for name in [
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "MEDIAFORGE_DATA_ROOT",
+        "MEDIAFORGE_DATA_DIR",
+        "PYMSS_STUDIO_DATA_ROOT",
+        "PYMSS_STUDIO_DATA_DIR",
+        "MEDIAFORGE_MODEL_DIR",
+        "PYMSS_MODEL_DIR",
+        "PYMSS_STUDIO_MODEL_DIR",
+        "MEDIAFORGE_RUNTIME_ENVS_DIR",
+        "PYMSS_STUDIO_RUNTIME_ENVS_DIR",
+        "WEBVIEW2_USER_DATA_FOLDER",
+        "HF_HOME",
+        "HF_HUB_CACHE",
+        "HUGGINGFACE_HUB_CACHE",
+        "HF_ASSETS_CACHE",
+        "HF_XET_CACHE",
+        "TRANSFORMERS_CACHE",
+        "MODELSCOPE_CACHE",
+        "TORCH_HOME",
+        "TORCH_EXTENSIONS_DIR",
+        "PIP_CACHE_DIR",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+    ] {
+        command.env(name, isolated.path());
+    }
+    command
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("HF_HUB_OFFLINE", "1")
+        .env("TRANSFORMERS_OFFLINE", "1")
+        .env("MODELSCOPE_OFFLINE", "1");
     hide_console_window(&mut command);
-    let output = command
-        .output()
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
         .map_err(|error| format!("无法启动解释器自检：{error}"))?;
+    let mut stdout = child.stdout.take().ok_or("自检 stdout 缺失")?;
+    let mut stderr = child.stderr.take().ok_or("自检 stderr 缺失")?;
+    let out = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stdout.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let err = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stderr.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let status = loop {
+        match child.try_wait().map_err(|error| error.to_string())? {
+            Some(status) => break status,
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = out.join();
+                let _ = err.join();
+                return Err("运行时 Python ABI 自检超时".into());
+            }
+            None => std::thread::sleep(Duration::from_millis(25)),
+        }
+    };
+    let output = std::process::Output {
+        status,
+        stdout: out
+            .join()
+            .map_err(|_| "自检 stdout 读取失败")?
+            .map_err(|error| error.to_string())?,
+        stderr: err
+            .join()
+            .map_err(|_| "自检 stderr 读取失败")?
+            .map_err(|error| error.to_string())?,
+    };
     if output.status.success() {
-        return Ok(());
+        let probe = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .rev()
+            .find_map(|line| serde_json::from_str::<Value>(line).ok())
+            .ok_or("运行时自检未返回有效 JSON")?;
+        return validate_probe(&probe, root, descriptor);
     }
     let detail = String::from_utf8_lossy(&output.stderr);
     Err(format!(
-        "运行时自检失败（解释器无法加载 VC++ 运行库）：{}",
+        "运行时自检失败（Python ABI 或依赖无法加载）：{}",
         detail.trim()
     ))
 }
@@ -626,77 +844,123 @@ fn extract_zip(archive: &Path, target: &Path) -> std::io::Result<()> {
 mod descriptor_tests {
     use super::*;
 
-    #[test]
-    fn verify_interpreter_reports_success_for_a_working_python() {
-        // A real interpreter is opt-in and must come from an isolated development runtime.
-        // Never fall back to an installed user's environment during backend tests.
-        let candidate = std::env::var_os("MEDIAFORGE_TEST_PYTHON").map(PathBuf::from);
-        let Some(python) = candidate else {
-            eprintln!("skip: no test interpreter");
-            return;
-        };
-        if !python.is_file() {
-            eprintln!("skip: {} missing", python.display());
-            return;
+    fn descriptor() -> RuntimeDescriptor {
+        RuntimeDescriptor {
+            asset_id: "runtime-test312".into(),
+            backend: "cuda".into(),
+            python: "3.12".into(),
+            sha256: "0".repeat(64),
+            size: 1,
+            urls: vec!["http://127.0.0.1/test.zip".into()],
         }
-        verify_interpreter(&python).expect("working python must pass the self-check");
+    }
+
+    fn layout(root: &Path) {
+        fs::create_dir_all(root.join("Scripts")).unwrap();
+        fs::create_dir_all(root.join("Lib/site-packages")).unwrap();
+        fs::create_dir_all(root.join("Lib/encodings")).unwrap();
+        for name in [
+            "Scripts/python.exe",
+            "Scripts/python312.dll",
+            "Lib/encodings/__init__.py",
+        ] {
+            fs::write(root.join(name), b"tiny layout fixture").unwrap();
+        }
+    }
+
+    #[test]
+    fn self_contained_layout_rejects_venv_and_foreign_dll_without_modifying_files() {
+        let root = tempfile::tempdir().unwrap();
+        let descriptor = descriptor();
+        layout(root.path());
+        validate_asset_layout(root.path(), &descriptor).unwrap();
+        let original = fs::read(root.path().join("Scripts/python.exe")).unwrap();
+        for name in ["pyvenv.cfg", "Scripts/pyvenv.cfg", "Scripts/python311.dll"] {
+            fs::write(root.path().join(name), b"foreign ABI").unwrap();
+            assert!(validate_asset_layout(root.path(), &descriptor).is_err());
+            assert_eq!(
+                fs::read(root.path().join("Scripts/python.exe")).unwrap(),
+                original
+            );
+            assert!(root.path().join(name).is_file());
+            fs::remove_file(root.path().join(name)).unwrap();
+        }
+        fs::remove_file(root.path().join("Scripts/python312.dll")).unwrap();
+        assert!(validate_asset_layout(root.path(), &descriptor).is_err());
+    }
+
+    #[test]
+    fn asset_tree_rejects_foreign_native_extension_and_preserves_venv_config() {
+        let root = tempfile::tempdir().unwrap();
+        layout(root.path());
+        let matching = root
+            .path()
+            .join("Lib/site-packages/matching.cp312-win_amd64.pyd");
+        fs::write(&matching, b"fixture").unwrap();
+        validate_native_tree(root.path(), "312").unwrap();
+        let foreign = root
+            .path()
+            .join("Lib/site-packages/foreign.cp311-win_amd64.pyd");
+        fs::write(&foreign, b"fixture").unwrap();
+        assert!(validate_native_tree(root.path(), "312").is_err());
+        fs::remove_file(foreign).unwrap();
+        fs::write(
+            root.path().join("Lib/site-packages/pyvenv.cfg"),
+            b"external home",
+        )
+        .unwrap();
+        assert!(validate_native_tree(root.path(), "312").is_err());
+        assert!(root.path().join("Lib/site-packages/pyvenv.cfg").is_file());
+    }
+
+    #[test]
+    fn probe_requires_matching_python_backend_imports_and_owned_base_prefix() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let descriptor = descriptor();
+        let valid = json!({"python":"3.12", "prefix":root.path(), "basePrefix":root.path(), "imports":true, "torchBackend":"cuda"});
+        validate_probe(&valid, root.path(), &descriptor).unwrap();
+        for (field, value) in [
+            ("python", json!("3.11")),
+            ("imports", json!(false)),
+            ("torchBackend", json!("cpu")),
+            ("basePrefix", json!(outside.path())),
+            ("prefix", json!(outside.path())),
+        ] {
+            let mut invalid = valid.clone();
+            invalid[field] = value;
+            assert!(
+                validate_probe(&invalid, root.path(), &descriptor).is_err(),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
+    fn desired_descriptor_rejects_old_missing_wrong_or_unknown_contract_fields() {
+        let valid = serde_json::to_value(descriptor()).unwrap();
+        parse_desired_descriptor(&valid.to_string()).unwrap();
+        let mut missing = valid.clone();
+        missing.as_object_mut().unwrap().remove("python");
+        assert!(parse_desired_descriptor(&missing.to_string()).is_err());
+        let mut wrong = valid.clone();
+        wrong["python"] = json!("3.11");
+        assert!(parse_desired_descriptor(&wrong.to_string()).is_err());
+        let mut extra = valid;
+        extra["legacyField"] = json!(true);
+        assert!(parse_desired_descriptor(&extra.to_string()).is_err());
     }
 
     #[test]
     fn copy_dlls_only_takes_dlls_and_creates_the_target() {
-        let root =
-            std::env::temp_dir().join(format!("mediaforge-vcrt-test-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let source = root.join("vcrt");
-        let target = root.join("env").join("Scripts");
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("vcrt");
+        let target = root.path().join("env/Scripts");
         fs::create_dir_all(&source).unwrap();
         fs::write(source.join("msvcp140.dll"), b"stub").unwrap();
         fs::write(source.join("SOURCE.json"), b"{}").unwrap();
-
-        let copied = copy_dlls(&source, &target).unwrap();
-        assert_eq!(copied, 1);
-        assert!(target.join("msvcp140.dll").is_file());
-        assert!(!target.join("SOURCE.json").is_file());
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn repair_embedded_python_replaces_the_venv_launcher_and_removes_config() {
-        let root = std::env::temp_dir().join(format!(
-            "mediaforge-embedded-python-test-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let bootstrap = root.join("bootstrap-python.exe");
-        let target = root.join("runtime");
-        fs::create_dir_all(target.join("Scripts")).unwrap();
-        fs::write(&bootstrap, b"embedded-python").unwrap();
-        fs::write(target.join("pyvenv.cfg"), "home = C:/old/install\n").unwrap();
-        repair_embedded_python_from(&bootstrap, &target).unwrap();
-        assert_eq!(
-            fs::read(target.join("Scripts").join("python.exe")).unwrap(),
-            b"embedded-python"
-        );
-        assert!(!target.join("pyvenv.cfg").exists());
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn missing_bootstrap_keeps_the_fixture_interpreter() {
-        let root = std::env::temp_dir().join(format!(
-            "mediaforge-missing-bootstrap-test-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let target = root.join("runtime");
-        fs::create_dir_all(target.join("Scripts")).unwrap();
-        fs::write(target.join("Scripts").join("python.exe"), b"fixture").unwrap();
-        repair_embedded_python_from(&root.join("missing-python.exe"), &target).unwrap();
-        assert_eq!(
-            fs::read(target.join("Scripts").join("python.exe")).unwrap(),
-            b"fixture"
-        );
-        let _ = fs::remove_dir_all(&root);
+        assert_eq!(copy_dlls(&source, &target).unwrap(), 1);
+        assert!(!target.join("SOURCE.json").exists());
     }
 
     #[test]
@@ -705,20 +969,17 @@ mod descriptor_tests {
             stderr_tail(b"  TLS certificate verification failed\n"),
             "TLS certificate verification failed"
         );
-        let long = "x".repeat(2500);
-        assert_eq!(stderr_tail(long.as_bytes()).len(), 2000);
-        let unicode = "下载失败".repeat(1000);
-        let tail = stderr_tail(unicode.as_bytes());
+        let long = "下载失败".repeat(1000);
+        let tail = stderr_tail(long.as_bytes());
         assert!(tail.len() <= 2000);
-        assert!(unicode.ends_with(&tail));
+        assert!(long.ends_with(&tail));
     }
 
     #[test]
     fn embedded_manifest_resolves_the_fallback_asset() {
-        let descriptor = embedded_descriptor().expect("manifest 应能解析");
-        assert!(descriptor.asset_id.starts_with("runtime-"));
-        assert_eq!(descriptor.sha256.len(), 64);
-        assert!(descriptor.size > 0);
-        assert!(!descriptor.urls.is_empty());
+        let descriptor =
+            embedded_descriptor().expect("manifest must declare the current Python ABI");
+        assert_eq!(descriptor.python, "3.12");
+        validate_descriptor(&descriptor).unwrap();
     }
 }

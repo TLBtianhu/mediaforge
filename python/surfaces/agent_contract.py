@@ -26,6 +26,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from shared.protocol_contract import command_entries
+
 CONTRACT_VERSION = 1
 
 
@@ -78,8 +80,11 @@ def _result_event(name: str, command: str | None, operation: str | None) -> str 
     explicit = RESULT_EVENTS.get(name)
     if explicit:
         return explicit
+    declared = command_entries().get(command or "", {}).get("resultEvent")
+    if isinstance(declared, str):
+        return declared
     # 音频仍经 audio_tools，媒体经 media_tool；两者都收口到规范终止事件。
-    if command in {"audio_tools", "media_tool"}:
+    if command in {"audio_tools", "media_tool", "infer", "infer_workflow"}:
         return "task.result"
     return None
 

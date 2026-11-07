@@ -97,78 +97,30 @@ test('workflow format detection rejects ambiguous definitions', () => {
   assert.equal(isGraphWorkflowDefinition({ nodes: [], links: [] }), true)
 })
 
-test('legacy custom separator widgets migrate without mutating stored input', () => {
-  const legacy = {
-    nodes: [{
-      id: 1,
-      type: 'custom_mss_separate',
-      widgets_values: ['custom.ckpt', 'mel_band_roformer', 'cuda', false, 'modelscope', '0,1', true],
-    }],
-    links: [],
+test('obsolete graph widget layouts are rejected without mutation', () => {
+  const graph={version:0.4,nodes:[{id:1,type:'custom_mss_separate',widgets_values:['m','roformer','cuda',false,'modelscope','0',true]}],links:[]}
+  const raw=JSON.stringify(graph)
+  assert.throws(()=>normalizeGraphWorkflowDefinition(graph),/Unsupported/)
+  assert.equal(JSON.stringify(graph),raw)
+  const current={version:0.4,nodes:[{id:1,type:'custom_mss_separate',widgets_values:['m','roformer','cuda','0',true]}],links:[]}
+  assert.equal(normalizeGraphWorkflowDefinition(current),current)
+  for(const version of [undefined,0,1,2,99]) {
+    const unsupported={...current,version};const original=JSON.stringify(unsupported)
+    assert.throws(()=>normalizeGraphWorkflowDefinition(unsupported),/Unsupported graph workflow schema/)
+    assert.equal(JSON.stringify(unsupported),original)
   }
-  const normalized = normalizeGraphWorkflowDefinition(legacy)
-
-  assert.notEqual(normalized, legacy)
-  assert.deepEqual(legacy.nodes[0].widgets_values, [
-    'custom.ckpt', 'mel_band_roformer', 'cuda', false, 'modelscope', '0,1', true,
-  ])
-  assert.deepEqual(normalized.nodes[0].widgets_values, [
-    'custom.ckpt', 'mel_band_roformer', 'cuda', '0,1', true,
-  ])
-  assert.equal(normalizeGraphWorkflowDefinition(normalized), normalized)
-
-  const withoutTrailingDebug = {
-    nodes: [{
-      type: 'custom_mss_separate',
-      widgets_values: ['custom.ckpt', 'mel_band_roformer', 'cpu', true, 'huggingface', '0'],
-    }],
-  }
-  assert.deepEqual(
-    normalizeGraphWorkflowDefinition(withoutTrailingDebug).nodes[0].widgets_values,
-    ['custom.ckpt', 'mel_band_roformer', 'cpu', '0', false],
-  )
-
-  const currentWithTrailingValue = {
-    nodes: [{
-      type: 'custom_mss_separate',
-      widgets_values: ['custom.ckpt', 'mel_band_roformer', 'cuda', '0,1', true, null],
-    }],
-  }
-  assert.equal(normalizeGraphWorkflowDefinition(currentWithTrailingValue), currentWithTrailingValue)
 })
 
-test('legacy simple save filename templates migrate to flat output names', () => {
-  const legacy = simpleFixture()
-  legacy.save_intermediate = false
-  legacy.steps[0].save.vocals = '%filename%_vocals_first.wav'
-  legacy.steps[1].save.clean = 'mastered'
-  const normalized = normalizeSimpleWorkflowDefinition(legacy)
-
-  assert.notEqual(normalized, legacy)
-  assert.equal(Object.hasOwn(normalized, 'save_intermediate'), false)
-  assert.equal(legacy.steps[0].save.vocals, '%filename%_vocals_first.wav')
-  assert.equal(normalized.steps[0].save.vocals, 'Default')
-  assert.equal(normalized.steps[0].output_names.vocals, '%filename%_vocals_first.wav')
-  assert.equal(normalized.steps[1].save.clean, 'mastered')
-  assert.equal(normalizeSimpleWorkflowDefinition(normalized), normalized)
-})
-
-test('legacy simple custom audio filenames migrate regardless of template prefix', () => {
-  const legacy = simpleFixture()
-  legacy.steps[0].save.vocals = 'lead-vocal.flac'
-  const normalized = normalizeSimpleWorkflowDefinition(legacy)
-
-  assert.equal(normalized.steps[0].save.vocals, 'Default')
-  assert.equal(normalized.steps[0].output_names.vocals, 'lead-vocal.flac')
-})
-
-test('simple creator stem directories migrate to the default file template', () => {
-  const legacy = simpleFixture()
-  legacy.steps[0].save.vocals = 'vocals'
-  const normalized = normalizeSimpleWorkflowDefinition(legacy)
-
-  assert.equal(normalized.steps[0].save.vocals, 'Default')
-  assert.equal(normalized.steps[0].output_names.vocals, '%filename%_%stem%_%model%.flac')
+test('obsolete simple save representations are rejected and current directory values are read literally', () => {
+  for(const patch of [{save_intermediate:false},{steps:[{id:'s',save:{vocals:'voice.wav'}}]}]) {
+    const definition={...simpleFixture(),...patch};const raw=JSON.stringify(definition)
+    assert.throws(()=>normalizeSimpleWorkflowDefinition(definition),/Unsupported/)
+    assert.equal(JSON.stringify(definition),raw)
+  }
+  const definition=simpleFixture()
+  definition.steps[0].save.vocals='vocals'
+  assert.equal(normalizeSimpleWorkflowDefinition(definition),definition)
+  assert.equal(definition.steps[0].save.vocals,'vocals')
 })
 
 test('workflow validation follows the detected definition format', () => {
@@ -907,6 +859,7 @@ test('simple inference precedence is defaults, step use_tta, then step inference
 
 test('graph runtime preparation preserves node formats and fills missing values', () => {
   const source = {
+    version: 0.4,
     nodes: [
       { type: 'pymss_save_audio', widgets_values: ['wav', 'Default'] },
       { type: 'pymss_save_audio', widgets_values: ['', 'Default'] },

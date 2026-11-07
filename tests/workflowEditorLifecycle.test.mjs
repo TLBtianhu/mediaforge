@@ -105,12 +105,12 @@ function entry(id, updatedAt = 16, format = 'simple') {
     createdAt: 10, updatedAt,
     definition: format === 'simple'
       ? { version: 1, steps: [{ id: 'vocals', model: 'model.ckpt', input: 'input', stems: ['vocals'], save: { vocals: 'vocals' } }] }
-      : { version: 1, nodes: [], links: [] },
+      : { version: 0.4, nodes: [], links: [] },
   }
 }
 
 function environment() {
-  let stored = { workflows: [entry('original')], selectedWorkflowId: 'original' }
+  let stored = { version: 1, workflows: [entry('original')], selectedWorkflowId: 'original' }
   let readHook
   let mutateHook
   let listenHook
@@ -133,7 +133,7 @@ function environment() {
         if (command === 'load_app_store') {
           assert.equal(args.name, 'workflow-state')
           reads.push(args.name)
-          return readHook ? readHook() : structuredClone(stored)
+          return readHook ? Promise.resolve(readHook()).then(value => value && typeof value === 'object' && !Array.isArray(value) ? {version:1,...value} : value) : structuredClone(stored)
         }
         if (command === 'mutate_workflow_store') {
           const mutation = args.payload
@@ -144,26 +144,13 @@ function environment() {
           if (mutateHook) await mutateHook(mutation)
           const state = structuredClone(stored)
           state.workflows ||= []
-          const isLegacyMatch = item => item
-            && !String(item.id || '').trim()
-            && (!mutation.legacyEntry || JSON.stringify(item) === JSON.stringify(mutation.legacyEntry))
-          const findMutationIndex = workflowId => {
-            const exactIndex = state.workflows.findIndex(item => item.id === workflowId)
-            if (exactIndex >= 0) return exactIndex
-            if (Number.isInteger(mutation.legacyIndex) && isLegacyMatch(state.workflows[mutation.legacyIndex])) {
-              return mutation.legacyIndex
-            }
-            return mutation.legacyEntry ? state.workflows.findIndex(isLegacyMatch) : -1
-          }
+          const findMutationIndex = workflowId => state.workflows.findIndex(item => item.id === workflowId)
           if (mutation.action === 'upsert') {
             const index = findMutationIndex(mutation.entry.id)
-            const legacyTargetMismatch = index < 0
-              && (Number.isInteger(mutation.legacyIndex) || Boolean(mutation.legacyEntry))
             const existing = index >= 0 ? state.workflows[index] : null
             const actualUpdatedAt = existing?.updatedAt || 0
             if (!mutation.force && (
-              legacyTargetMismatch
-              || (mutation.expectedUpdatedAt !== undefined && mutation.expectedUpdatedAt !== actualUpdatedAt)
+              mutation.expectedUpdatedAt !== undefined && mutation.expectedUpdatedAt !== actualUpdatedAt
             )) {
               return {
                 state,
@@ -187,9 +174,7 @@ function environment() {
             const index = findMutationIndex(mutation.workflowId)
             const actualUpdatedAt = index >= 0 ? state.workflows[index].updatedAt || 0 : 0
             if (
-              (index < 0 && (Number.isInteger(mutation.legacyIndex) || mutation.legacyEntry))
-              || (mutation.expectedUpdatedAt !== undefined
-                && mutation.expectedUpdatedAt !== actualUpdatedAt)
+              mutation.expectedUpdatedAt !== undefined && mutation.expectedUpdatedAt !== actualUpdatedAt
             ) {
               return {
                 state,
@@ -211,15 +196,6 @@ function environment() {
             } else if (index >= 0) {
               state.workflows[index].id = mutation.workflowId
               state.selectedWorkflowId = mutation.workflowId
-            } else if (Number.isInteger(mutation.legacyIndex) || mutation.legacyEntry) {
-              return {
-                state,
-                conflict: {
-                  workflowId: mutation.workflowId,
-                  expectedUpdatedAt: 0,
-                  actualUpdatedAt: 0,
-                },
-              }
             }
           } else {
             throw new Error(`Unexpected workflow mutation: ${mutation.action}`)
@@ -268,7 +244,7 @@ function environment() {
     set editorOpenFailure(value) { editorOpenError = value },
     set nativeEditorSnapshot(value) { nativeEditorSnapshot = structuredClone(value) },
     get stored() { return stored },
-    set stored(value) { stored = structuredClone(value) },
+    set stored(value) { stored = { version: 1, ...structuredClone(value) } },
     set read(value) { readHook = value },
     set mutate(value) { mutateHook = value },
     set listen(value) { listenHook = value },
@@ -331,9 +307,8 @@ test('overview imports an unfinished Studio draft without requiring runnable out
   assert.equal(messages.at(-1).level, 'success')
 })
 
-test('overview import and export repair old graph versions without rewriting the saved definition', async () => {
+test('overview imports and exports only the current graph schema without rewriting it', async () => {
   const source = JSON.parse(readFileSync(new URL('./fixtures/comfy-mss/example_ensemble.json', import.meta.url), 'utf8'))
-  source.version = 1
   const env = environment()
   await env.store.initialize()
   const page = env.mount(WorkflowsView)
@@ -350,18 +325,33 @@ test('overview import and export repair old graph versions without rewriting the
   assert.equal(exported.version, 0.4)
   assert.deepEqual(exported.links, source.links)
   assert.deepEqual(exported.nodes.map(n => n.widgets_values), source.nodes.map(n => n.widgets_values))
-  assert.equal(env.store.selectedWorkflow.definition.version, 1)
+  assert.equal(env.store.selectedWorkflow.definition.version, 0.4)
   assert.deepEqual(messages.map(m => m.level), ['success', 'success'])
+  assert.deepEqual(exported,source)
   input.files[0].text = async () => JSON.stringify(exported)
   await page.state.handleImportWorkflow({ target: input })
   assert.equal(env.store.workflows.length, 3)
   assert.deepEqual(JSON.parse(JSON.stringify(env.store.selectedWorkflow.definition)), exported)
 })
 
+test('overview rejects missing, old, future and historical link graph schemas without writes', async () => {
+  const env=environment();await env.store.initialize();const page=env.mount(WorkflowsView)
+  const source=JSON.parse(readFileSync(new URL('./fixtures/comfy-mss/example_ensemble.json',import.meta.url),'utf8'))
+  const before=structuredClone(env.stored);const writes=env.writes.length
+  for(const patch of [{version:undefined},{version:0},{version:1},{version:2},{links:source.links.map(link=>({...link}))}]){
+    const imported={...source,...patch};const raw=JSON.stringify(imported)
+    await page.state.handleImportWorkflow({target:{value:'picked',files:[{name:'unsupported.json',text:async()=>raw}]}})
+    assert.deepEqual(env.stored,before)
+    assert.equal(env.writes.length,writes)
+    assert.equal(messages.at(-1).level,'error')
+    assert.equal(JSON.stringify(imported),raw)
+  }
+})
+
 test('workflow type filters do not replace the global separation target', async () => {
   const env = environment()
   env.stored = {
-    workflows: [entry('simple-target'), entry('advanced-browser', 17, 'advanced')],
+    workflows: [entry('simple-target'), entry('advanced-browser', 17, 'graph')],
     selectedWorkflowId: 'simple-target',
   }
   await env.store.initialize()
@@ -384,7 +374,7 @@ test('overview export leaves simple workflow definitions unchanged', async () =>
   assert.deepEqual(JSON.parse(env.exports[0].content), definition)
 })
 
-test('opening the overview only hydrates details, without rewriting 0.0.16 workflow data', async () => {
+test('opening the overview only hydrates current data without rewriting it', async () => {
   const env = environment()
   const original = structuredClone(env.stored)
   await env.store.initialize()
@@ -716,7 +706,7 @@ test('malformed workflow records do not replace the previous list during a close
     { workflows: [entry('other')], selectedWorkflowId: { toString: 42 } },
   ]) {
     env.read = async () => malformed
-    await assert.rejects(env.store.handleEditorClosed('simple'), TypeError)
+    await assert.rejects(env.store.handleEditorClosed('simple'), /Unsupported|Invalid/)
     assert.equal(JSON.stringify(env.store.workflows), before)
     assert.equal(env.store.selectedWorkflowId, 'original')
     assert.deepEqual(env.writes, [])
@@ -842,103 +832,30 @@ test('rapid workflow default changes are serialized and keep the latest value', 
   assert.equal(messages.some(item => item.level === 'error'), false)
 })
 
-test('saving a legacy workflow without persisted metadata migrates it instead of duplicating it', async () => {
+test('a workflow missing its persisted identity is rejected without writes', async () => {
   const env = environment()
-  const legacy = entry('temporary')
-  delete legacy.id
-  delete legacy.createdAt
-  delete legacy.updatedAt
-  env.stored = { workflows: [legacy], selectedWorkflowId: '' }
-  await env.store.initialize()
-  const loaded = env.store.workflows[0]
-  assert.equal(loaded.updatedAt, 0)
-
-  const saved = await env.store.saveWorkflow({
-    id: loaded.id,
-    name: 'Migrated workflow',
-    description: loaded.description,
-    definition: loaded.definition,
-    expectedUpdatedAt: loaded.updatedAt,
-  })
-
-  assert.equal(env.stored.workflows.length, 1)
-  assert.equal(env.stored.workflows[0].id, loaded.id)
-  assert.equal(saved.name, 'Migrated workflow')
-  assert.ok(saved.updatedAt > 0)
+  const invalid = entry('old')
+  delete invalid.id
+  env.stored = { version: 1, workflows: [invalid], selectedWorkflowId: '' }
+  const original = structuredClone(env.stored)
+  await assert.rejects(env.store.initialize(), /Unsupported/)
+  assert.deepEqual(env.stored, original)
+  assert.equal(env.writes.length, 0)
+  assert.equal(env.store.initialized, false)
 })
 
-test('browser storage also migrates legacy workflows without duplicating them', async () => {
-  const values = new Map()
-  globalThis.window = {}
-  globalThis.localStorage = {
-    getItem: key => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, value),
+test('browser old and future workflow envelopes are preserved after failed load and mutation', async () => {
+  for (const version of [undefined, 0, 2]) {
+    const raw = JSON.stringify({ version, workflows: [entry('current')], selectedWorkflowId: 'current' })
+    const values = new Map([['pymss-studio:workflow-state',raw]])
+    globalThis.window = {}
+    globalThis.localStorage = { getItem:key=>values.get(key)??null, setItem:(key,value)=>values.set(key,value) }
+    const store = useWorkflowStore(createPinia()); stores.push(store)
+    await assert.rejects(store.initialize(), /Unsupported/)
+    await assert.rejects(store.saveWorkflow({ name:'New', definition:entry('new').definition }), /Unsupported/)
+    assert.equal(values.get('pymss-studio:workflow-state'),raw)
+    assert.equal(store.initialized,false)
   }
-  const legacy = entry('temporary')
-  delete legacy.id
-  delete legacy.createdAt
-  delete legacy.updatedAt
-  values.set('pymss-studio:workflow-state', JSON.stringify({ workflows: [legacy], selectedWorkflowId: '' }))
-  const store = useWorkflowStore(createPinia())
-  stores.push(store)
-  await store.initialize()
-  const loaded = store.workflows[0]
-
-  await store.saveWorkflow({
-    id: loaded.id,
-    name: 'Browser migrated workflow',
-    description: loaded.description,
-    definition: loaded.definition,
-    expectedUpdatedAt: loaded.updatedAt,
-  })
-
-  const saved = JSON.parse(values.get('pymss-studio:workflow-state'))
-  assert.equal(saved.workflows.length, 1)
-  assert.equal(saved.workflows[0].id, loaded.id)
-  assert.equal(saved.workflows[0].name, 'Browser migrated workflow')
-})
-
-test('legacy workflows can be selected and deleted before their first save', async () => {
-  const env = environment()
-  const first = entry('first legacy')
-  const second = entry('second legacy')
-  for (const item of [first, second]) {
-    delete item.id
-    delete item.updatedAt
-  }
-  env.stored = { workflows: [first, second], selectedWorkflowId: '' }
-  await env.store.initialize()
-  const selected = env.store.workflows.find(item => item.name === 'second legacy')
-  assert.ok(selected)
-
-  env.store.selectWorkflow(selected.id)
-  await flush()
-
-  assert.equal(env.stored.selectedWorkflowId, selected.id)
-  assert.equal(env.stored.workflows[1].id, selected.id)
-  const remainingLegacy = env.store.workflows.find(item => item.name === 'first legacy')
-  assert.ok(remainingLegacy)
-  await env.store.deleteWorkflow(remainingLegacy.id)
-  assert.deepEqual(env.stored.workflows.map(item => item.name), ['second legacy'])
-})
-
-test('deleting a legacy workflow reports a conflict after another window migrated it', async () => {
-  const env = environment()
-  const legacy = entry('legacy')
-  delete legacy.id
-  delete legacy.updatedAt
-  env.stored = { workflows: [legacy], selectedWorkflowId: '' }
-  await env.store.initialize()
-  const local = env.store.workflows[0]
-  env.stored = {
-    workflows: [{ ...legacy, id: 'remote-migrated', updatedAt: 20 }],
-    selectedWorkflowId: 'remote-migrated',
-  }
-
-  await assert.rejects(env.store.deleteWorkflow(local.id), WorkflowRevisionConflictError)
-
-  assert.equal(env.stored.workflows.length, 1)
-  assert.equal(env.store.workflows[0].id, 'remote-migrated')
 })
 
 test('deleting a workflow does not remove a newer revision saved by another window', async () => {

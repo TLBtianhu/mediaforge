@@ -25,6 +25,7 @@ import {
   type WorkflowEntry,
 } from '@/stores/workflow'
 import {
+  COMFY_WORKFLOW_VERSION,
   isGraphWorkflowDefinition,
   isWorkflowSaveNodeType,
   isWorkflowSeparationNodeType,
@@ -176,7 +177,7 @@ function syncCurrentDefinition() {
 
 function createFreshDefinition(): Record<string, unknown> {
   // An empty comfy-mss graph; the editor seeds a starter workflow on mount.
-  return { last_node_id: 0, last_link_id: 0, nodes: [], links: [], version: 1 }
+  return { last_node_id: 0, last_link_id: 0, nodes: [], links: [], version: COMFY_WORKFLOW_VERSION }
 }
 
 function restoreDefaultControls(defaults: { device: string; outputFormat: string }) {

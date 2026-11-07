@@ -1,6 +1,6 @@
 {
   "name": "pymss-studio",
-  "version": "0.0.32",
+  "version": "0.0.33",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "packageManager": "pnpm@10.33.2",
@@ -10,7 +10,7 @@
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vue-tsc --noEmit && vite build",
     "test": "node --test --test-concurrency=4 \"tests/**/*.test.*\"",
     "test:frontend": "pnpm test",
-    "test:python": "python -m unittest discover -s tests/python -t tests -p \"test_*.py\"",
+    "test:python": "node scripts/test-python.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:all": "pnpm test:frontend && pnpm test:python && pnpm test:rust",
     "preview": "vite preview",

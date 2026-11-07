@@ -57,7 +57,6 @@ import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSam
 import type { WorkflowEntry } from '@/stores/workflow'
 import { WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
 import { useSettingsStore } from '@/stores/settings'
-import { journalJob } from '@/utils/operationJournal'
 import { useModelStore, type ModelDefaultInferenceParams, type ModelEntry } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import { buildModelCategoryOptionsFromModels, getModelCategoryLabel } from '@/utils/modelCategory'

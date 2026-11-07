@@ -9,7 +9,7 @@
  *  - drop the litegraph-only `floatingLinks` / `reroutes` arrays
  */
 import type { ISerialisedGraph, ISerialisedNode, SerialisableGraph, SerialisableLLink } from '@comfyorg/litegraph/dist/types/serialisation'
-import { normalizeGraphWorkflowDefinition } from '../workflows/formats'
+import { COMFY_WORKFLOW_VERSION, normalizeGraphWorkflowDefinition } from '../workflows/formats'
 
 export interface ComfyNode {
   id: number
@@ -101,7 +101,7 @@ export function litegraphToComfy(serialized: ISerialisedGraph | any): ComfyWorkf
     nodes,
     links,
     // ComfyUI schema 1 requires object links and state, not these tuples.
-    version: 0.4,
+    version: COMFY_WORKFLOW_VERSION,
   }
   if (typeof serialized.id === 'string') wf.id = serialized.id
   if (typeof serialized.revision === 'number') wf.revision = serialized.revision
@@ -132,15 +132,8 @@ export function comfyLinksToLitegraph(links: unknown[]): SerialisableLLink[] {
       out.push(l as SerialisableLLink)
       continue
     }
-    // Comfy 6-tuple, either a real array or the numeric-key object
-    // ({0: id, 1: src, ...}) produced by litegraphToComfy — JSON round-trips
-    // the latter into objects with numeric keys that must be re-read by index.
-    const tuple = Array.isArray(l)
-      ? l
-      : l && typeof l === 'object' && (l as any)[0] !== undefined
-        ? [0, 1, 2, 3, 4, 5].map(i => (l as any)[i])
-        : null
-    if (!tuple || tuple.length < 6) continue
+    if (!Array.isArray(l) || l.length !== 6) throw new Error('Unsupported graph link schema')
+    const tuple = l
     out.push({
       id: Number(tuple[0]),
       type: String(tuple[5]),
@@ -153,7 +146,7 @@ export function comfyLinksToLitegraph(links: unknown[]): SerialisableLLink[] {
   return out
 }
 
-/** Accept native ComfyUI graphs and the tuple/object hybrids saved by older Studio versions. */
+/** Adapt the current persisted Comfy tuple schema to LiteGraph's in-memory objects. */
 export function comfyToLitegraph(definition: Record<string, unknown>): SerialisableGraph & { nodes: ISerialisedNode[] } {
   // Vue definitions can be proxies; LiteGraph structured-clones extra metadata.
   const normalized = normalizeGraphWorkflowDefinition(JSON.parse(JSON.stringify(definition)))

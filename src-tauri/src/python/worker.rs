@@ -1479,7 +1479,7 @@ fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
             matches!(event_type, "error" | "task.result" | "task.cancelled")
         }
         "run_operation" => {
-            matches!(event_type, "error" | "operation_result" | "task.cancelled")
+            matches!(event_type, "error" | "task.result" | "task.cancelled")
         }
         "list_nodes" => matches!(event_type, "error" | "nodes_list"),
         "export_editor_mix" => {
@@ -2831,13 +2831,13 @@ mod tests {
     }
 
     #[test]
-    fn operation_result_is_a_background_terminal_event() {
-        assert!(is_background_terminal_event("run_operation", "operation_result"));
+    fn operation_task_result_is_a_background_terminal_event() {
+        assert!(is_background_terminal_event("run_operation", "task.result"));
         assert!(is_background_terminal_event("run_operation", "error"));
         assert!(is_background_terminal_event("run_operation", "task.cancelled"));
         assert!(!is_background_terminal_event(
             "run_operation",
-            "operation_progress"
+            "task.progress"
         ));
     }
 

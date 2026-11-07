@@ -1,4 +1,4 @@
-# Windows packaging entry point. Normal packages contain bootstrap Python and
+﻿# Windows packaging entry point. Normal packages contain bootstrap Python and
 # tools; inference environments and models are separate managed assets.
 # Candidate example: -SkipBuild -SkipSign -SkipDownloadCopy -Version 0.0.32
 #   -OutputDir release/candidates/0.0.32
@@ -8,10 +8,10 @@ param(
     [switch]$SkipSign,
     [switch]$SkipDownloadCopy,
     [switch]$StageOnly,
-    [switch]$BuildRuntimeAsset,
     [string]$Version = '',
     [string]$OutputDir = '',
     [string]$StageName = '',
+    [string]$BootstrapDir = 'python-runtime',
     [ValidateSet('windows-x64-cuda', 'windows-x64-cpu', 'windows-x64-online', 'windows-x64-rocm')]
     [string]$PackageSuffix = 'windows-x64-cuda'
 )
@@ -84,6 +84,19 @@ function Assert-ReleaseOwnedPath([string]$Path, [string]$OutputRoot, [string]$Ex
 function Remove-ReleaseOwnedPath([string]$Path, [string]$OutputRoot, [string]$ExpectedName) {
     Assert-ReleaseOwnedPath $Path $OutputRoot $ExpectedName
     if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Recurse -Force }
+}
+
+function Get-ReleaseBootstrapPath([string]$Root, [string]$BootstrapDir) {
+    if ([string]::IsNullOrWhiteSpace($BootstrapDir)) { throw 'BootstrapDir must select an explicit source' }
+    $base = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    $source = if ([IO.Path]::IsPathRooted($BootstrapDir)) { [IO.Path]::GetFullPath($BootstrapDir) } else { [IO.Path]::GetFullPath((Join-Path $base $BootstrapDir)) }
+    $source = $source.TrimEnd('\', '/')
+    $isDefault = $source -ceq (Join-Path $base 'python-runtime')
+    $isRelease = [IO.Path]::GetDirectoryName($source) -ceq (Join-Path $base 'release') -and [IO.Path]::GetFileName($source) -cmatch '\Abootstrap-[A-Za-z0-9][A-Za-z0-9._-]*\z'
+    if (-not $isDefault -and -not $isRelease) { throw 'BootstrapDir must be workspace python-runtime or exact release/bootstrap-* source' }
+    Assert-NoReparsePath $source
+    if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw 'Selected bootstrap source does not exist; no fallback is used' }
+    $source
 }
 
 function Compress-Folder([string]$Source, [string]$Destination, [string]$Label) {
@@ -173,11 +186,11 @@ function Copy-ReleaseUpdate([string]$Stage, [string]$Destination) {
     Assert-ReleaseContract $Destination
 }
 
-function Copy-ReleaseResources([string]$Root, [string]$Stage) {
+function Copy-ReleaseResources([string]$Root, [string]$Stage, [string]$BootstrapDir = 'python-runtime') {
     # Copy allowlisted application surfaces only. Managed environments are
     # excluded before recursion, including incoming archives under runtime-envs.
     foreach ($item in @('python', 'python-runtime', 'integrations', 'manifest')) {
-        $source = Join-Path $Root $item
+        $source = if ($item -eq 'python-runtime') { Get-ReleaseBootstrapPath -Root $Root -BootstrapDir $BootstrapDir } else { Join-Path $Root $item }
         $target = Join-Path $Stage $item
         if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Missing package source: $source" }
         $exclude = if ($item -eq 'python-runtime') { @('runtime-envs') } else { @('data', 'models', '.dev-data', '.dev-webview') }
@@ -209,8 +222,14 @@ Write-Host "=== MediaForge $Version 打包 ==="
 Assert-VersionConsistent $Version
 if ($StageOnly -and -not $SkipBuild) { throw '-StageOnly requires -SkipBuild; compile the native EXE first.' }
 if (-not $StageOnly -and -not (Test-Path -LiteralPath $iscc -PathType Leaf)) { throw "Inno Setup compiler is missing: $iscc" }
-foreach ($relative in @('python-runtime/python.exe', 'release/bin/ffmpeg.exe', 'release/bin/ffprobe.exe', 'release/bin/aria2c.exe', 'release/bin/vcrt/msvcp140.dll')) {
+foreach ($relative in @('release/bin/ffmpeg.exe', 'release/bin/ffprobe.exe', 'release/bin/aria2c.exe', 'release/bin/vcrt/msvcp140.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing packaging input: $relative (prepare/fetch it explicitly first)" }
+}
+$expectedPython = [string](Get-Content -LiteralPath (Join-Path $root 'python/runtime-manifest.json') -Raw | ConvertFrom-Json).python
+$bootstrapSource = Get-ReleaseBootstrapPath -Root $root -BootstrapDir $BootstrapDir
+Assert-ReleasePython -PythonPath (Join-Path $bootstrapSource 'python.exe') -ExpectedVersion $expectedPython
+if (Test-Path -LiteralPath "$stage\python-runtime\python.exe" -PathType Leaf) {
+    Assert-ReleasePython -PythonPath "$stage\python-runtime\python.exe" -ExpectedVersion $expectedPython
 }
 
 if (-not $SkipBuild) {
@@ -235,7 +254,8 @@ Remove-ReleaseOwnedPath -Path $stage -OutputRoot $out -ExpectedName $stageName
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item -LiteralPath $sourceExe -Destination "$stage\MediaForge.exe" -Force
 Assert-ReleaseExecutable -Path "$stage\MediaForge.exe" -ExpectedVersion $Version
-Copy-ReleaseResources -Root $root -Stage $stage
+Copy-ReleaseResources -Root $root -Stage $stage -BootstrapDir $BootstrapDir
+Assert-ReleasePython -PythonPath "$stage\python-runtime\python.exe" -ExpectedVersion $expectedPython
 & "$root\scripts\stage-plugin-sdk.ps1" -StagePath $stage
 # VC++ 运行库：per-user 安装没有管理员权限，不能依赖 vc_redist；
 # 这里把可再发行 DLL 放进 bin\vcrt（随安装包走），并由运行时装好后复制到
@@ -282,43 +302,6 @@ if (-not $SkipZip) {
     Write-Host "[3/5] 跳过 zip（-SkipZip）"
 }
 
-
-# Runtime assets require an explicit opt-in and stay inside this output root.
-if ($BuildRuntimeAsset) {
-Write-Host "运行时资产包"
-$runtimeAssetId = if ($env:MEDIAFORGE_RUNTIME_ASSET_ID) { $env:MEDIAFORGE_RUNTIME_ASSET_ID } else { 'runtime-cuda-2026.11.4' }
-if ($runtimeAssetId -cnotmatch '\Aruntime-[a-z0-9]+-[0-9]+(?:\.[0-9]+)+\z') { throw "Invalid runtime asset ID: $runtimeAssetId" }
-$runtimeSrc = Join-Path $root 'python-runtime\runtime-envs\cuda'
-$runtimeOut = Join-Path $out 'runtime'
-Assert-NoReparsePath $runtimeOut
-$runtimeZip = Join-Path $runtimeOut "$runtimeAssetId.zip"
-$runtimeManifest = Join-Path $runtimeOut "$runtimeAssetId.json"
-Assert-ReleaseOwnedPath -Path $runtimeZip -OutputRoot $runtimeOut -ExpectedName "$runtimeAssetId.zip"
-Assert-ReleaseOwnedPath -Path $runtimeManifest -OutputRoot $runtimeOut -ExpectedName "$runtimeAssetId.json"
-if (Test-Path $runtimeSrc) {
-    New-Item -ItemType Directory -Force -Path $runtimeOut | Out-Null
-    if (-not (Test-Path $runtimeZip)) {
-        Write-Host "  打包运行时资产（$runtimeAssetId，约 5 GB，几分钟）"
-        Compress-Folder -Source $runtimeSrc -Destination $runtimeZip -Label $runtimeAssetId
-    } else {
-        Write-Host ("  运行时包已存在: {0} MB" -f [Math]::Round((Get-Item $runtimeZip).Length/1MB,1))
-    }
-    $hash = (Get-FileHash $runtimeZip -Algorithm SHA256).Hash.ToLower()
-    $manifest = [ordered]@{
-        assetId = $runtimeAssetId
-        backend = 'cuda'
-        unpackRoot = 'cuda'
-        size = (Get-Item $runtimeZip).Length
-        sha256 = $hash
-        urls = @("https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/$runtimeAssetId.zip")
-    }
-    $manifest | ConvertTo-Json -Depth 4 | Set-Content $runtimeManifest -Encoding UTF8
-    Write-Host "  manifest: $runtimeManifest"
-    Write-Host "  sha256: $hash"
-} else {
-    Write-Host "  跳过（源码树里没有 python-runtime\runtime-envs\cuda）"
-}
-}
 
 Write-Host "[4/6] 更新包（不含运行时，签名可选）"
 $updateRoot = "$out\update-stage-$Version"

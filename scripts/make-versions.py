@@ -30,12 +30,18 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def load_runtime() -> dict:
     manifest = json.loads((ROOT / "manifest" / "runtime.json").read_text(encoding="utf-8"))
+    expected_python = json.loads((ROOT / "python/runtime-manifest.json").read_text(encoding="utf-8"))["python"]
+    if manifest.get("schemaVersion") != 2:
+        raise ValueError("Runtime manifest must use the current schemaVersion 2")
     fallback = manifest.get("fallbackAssetId")
     for item in manifest["runtimes"]:
         if item["assetId"] == fallback:
+            if item.get("python") != expected_python:
+                raise ValueError("Runtime asset Python differs from the application runtime manifest")
             return {
                 "assetId": item["assetId"],
                 "backend": item["backend"],
+                "python": item["python"],
                 "sha256": item["sha256"],
                 "size": item["size"],
                 "urls": item["urls"],
@@ -48,7 +54,7 @@ def build(version: str | None = None) -> dict:
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?", app_version):
         raise ValueError("Invalid application version")
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "app": {"version": app_version},
         "runtime": load_runtime(),
     }

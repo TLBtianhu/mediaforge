@@ -23,8 +23,8 @@ import {
   type TaskStatus,
 } from '@/features/tasks/lifecycle'
 import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
-import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment, outputsFromFiles } from '@/stores/taskOutputPaths'
-import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
+import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
+import { CURRENT_INFERENCE_PARAMS_VERSION, TASK_HISTORY_VERSION, readTaskHistory, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
 import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
@@ -37,7 +37,7 @@ import { getRemovalTasks as getRemovalTasksFromState, primaryRevealPath, resultT
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
-import { cloneWorkflow, prepareWorkbenchRun, type WorkflowRuntimeBindings, type WorkflowWorkbenchSnapshot, type WorkflowNodeState } from '@/workflows/workbench'
+import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, type WorkflowRuntimeBindings, type WorkflowWorkbenchSnapshot, type WorkflowNodeState } from '@/workflows/workbench'
 import { SEPARATE_MODEL_PAGE_SIZES, normalizePageSize } from '@/utils/pagination'
 
 const studioLog = createLogger('ui.stores.task')
@@ -140,6 +140,7 @@ export type SeparationJob = {
 }
 
 type PersistedTaskState = {
+  version: number
   tasks?: Partial<SeparationTask>[]
 }
 
@@ -249,6 +250,7 @@ function resolveTaskErrorMessage(code: unknown, message: unknown, input?: string
 
 export const useTaskStore = defineStore('task', () => {
   const initialized = ref(false)
+  const loadError = ref('')
   const tasks = ref<SeparationTask[]>([])
   const activeTaskId = ref<string | null>(null)
   // Session-only queue visibility. Persisted task/result history remains the
@@ -412,7 +414,8 @@ export const useTaskStore = defineStore('task', () => {
   async function persistTasks() {
     if (!initialized.value) return
     await saveAppStore('task-history', {
-      tasks: tasks.value.map((task) => ({ ...task, logs: task.logs.slice(-120) })),
+      version: TASK_HISTORY_VERSION,
+      tasks: tasks.value.map(({ files: _files, ...task }) => ({ ...task, logs: task.logs.slice(-120) })),
     } satisfies PersistedTaskState)
   }
 
@@ -436,12 +439,14 @@ export const useTaskStore = defineStore('task', () => {
 
   async function initialize() {
     if (initialized.value) return
+    try {
     const [stored, separateStored] = await Promise.all([
       loadAppStore<PersistedTaskState>('task-history'),
       loadAppStore<PersistedSeparateState>('separate-state'),
     ])
-    // Older versions retained result-page deletions as hidden task records.
-    tasks.value = (stored?.tasks || []).filter(task => !task.resultHidden).map((task) => normalizeTask(task, windowsPaths.value))
+    const currentTasks = readTaskHistory(stored, windowsPaths.value)
+    validateSeparateState(separateStored)
+    tasks.value = currentTasks
     activeTaskId.value = tasks.value[0]?.id || null
     separateRunMode.value = 'model'
     ensembleEnabled.value = separateStored?.ensembleEnabled === true
@@ -484,7 +489,11 @@ export const useTaskStore = defineStore('task', () => {
         }),
     )
     initialized.value = true
-    if (stored?.tasks?.some(task => task.resultHidden)) queuePersist()
+    loadError.value = ''
+    } catch (error) {
+      loadError.value = error instanceof Error ? error.message : String(error)
+      throw error
+    }
   }
 
   watch(
@@ -915,7 +924,7 @@ export const useTaskStore = defineStore('task', () => {
     tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus,
     markTaskStarted, markTaskFinished, touch, queueProgressPersist, queuePersist, scheduleQueue,
     appendWorkflowNodeLogs, localLogRecord, workerLogRecord, normalizeLogRecord, appendTaskLogs,
-    useSettingsStore, normalizeStemOutputs, outputsFromFiles, windowsPaths, resolveTaskErrorMessage,
+    useSettingsStore, normalizeStemOutputs, windowsPaths, resolveTaskErrorMessage,
   })
   function addInputFiles(paths: string[]) {
     const valid = paths.filter((p) => p?.trim() && isSupportedInputPath(p))
@@ -1218,6 +1227,7 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   async function startSeparation(options: { outputDir?: string; outputLayout?: OutputLayout; outputNaming?: OutputNamingConfig } = {}) {
+    if (loadError.value) throw new Error(loadError.value)
     const modelStore = useModelStore()
     if (!inputFiles.value.length) {
       throw new Error('Input file is required')
@@ -1250,6 +1260,7 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   async function startWorkflowInference(workflow: WorkflowEntry, options: { outputDir?: string; outputLayout?: OutputLayout; outputNaming?: OutputNamingConfig } = {}) {
+    if (loadError.value) throw new Error(loadError.value)
     if (!workflow?.id) {
       throw new Error('Workflow is required')
     }
@@ -1273,6 +1284,7 @@ export const useTaskStore = defineStore('task', () => {
     return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
   }
   async function startWorkbenchInference(workflow: WorkflowEntry, bindings: WorkflowRuntimeBindings) {
+    if (loadError.value) throw new Error(loadError.value)
     if (!isMainTaskOwner()) throw new Error('workbench.mainWindowOnly')
     const validationError = workflowDefinitionValidationError(workflow.definition)
     if (validationError) throw new Error(validationError)
@@ -1290,17 +1302,18 @@ export const useTaskStore = defineStore('task', () => {
       const config = tasks.value.find(task => task.id === created.id)!.runConfig!
       config.useTta = false
       if (nativeGraph) config.workflowDefinition = cloneWorkflow(workflow.definition)
-      config.workbench = {
-        version: 1, ...(nativeGraph ? { nativeGraph: true as const } : {}), sourceUpdatedAt: workflow.updatedAt,
-        sourceDefinition: cloneWorkflow(workflow.definition), bindings: cloneWorkflow(bindings),
+      const snapshot = {
+        version: 2 as const, sourceUpdatedAt: workflow.updatedAt, bindings: cloneWorkflow(bindings),
         inputs: cloneWorkflow(run.inputs), outputs: cloneWorkflow(run.outputs),
       }
+      config.workbench = nativeGraph ? { ...snapshot, nativeGraph: true } : { ...snapshot, sourceDefinition: cloneWorkflow(workflow.definition) }
       return created
     })
     return finalizeTaskBatch(batch, createdTasks, { persist: queuePersist, schedule: scheduleQueue })
   }
 
   async function retryTask(taskId: string) {
+    if (loadError.value) throw new Error(loadError.value)
     const existing = tasks.value.find((t) => t.id === taskId)
     if (!existing) return
     if (existing.runConfig?.workbench && existing.runConfig.workflowDefinition) {
@@ -1308,7 +1321,7 @@ export const useTaskStore = defineStore('task', () => {
       const snapshot = config.workbench!
       const created = createQueuedWorkflowTask(existing.input, {
         id: config.workflowId!, name: config.workflowName || existing.model, description: '',
-        definition: snapshot.sourceDefinition, format: detectWorkflowFormat(snapshot.sourceDefinition),
+        definition: workflowSourceDefinition(config), format: detectWorkflowFormat(workflowSourceDefinition(config)),
         formatVersion: WORKFLOW_FORMAT_VERSION, createdAt: existing.createdAt, updatedAt: snapshot.sourceUpdatedAt,
       }, undefined, existing.jobOutput || existing.output, config.outputLayout, config.outputNaming)
       const queued = tasks.value.find(task => task.id === created.id)!
@@ -1348,6 +1361,7 @@ export const useTaskStore = defineStore('task', () => {
     cancelWorkbenchJob,
     startWorkbenchInference,
     initialized,
+    loadError,
     tasks,
     activeTaskId,
     activeTask,

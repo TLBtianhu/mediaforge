@@ -17,9 +17,9 @@ const taskStore = useTaskStore()
 const mediaJobs = useMediaJobsStore()
 const jobs = computed(() => mergeQueueJobs(mediaJobs.jobs, taskStore.tasks))
 const dataRoot = computed(() => mediaJobs.dataRoot)
-const workspace = computed(() => mediaJobs.workspace)
+const jobsDir = computed(() => mediaJobs.jobsDir)
 const loading = computed(() => mediaJobs.loading)
-const error = computed(() => mediaJobs.error)
+const error = computed(() => mediaJobs.error || taskStore.loadError)
 const cancelling = ref(new Set<string>())
 const query = ref('')
 const sourceFilter = ref<'all' | 'manual' | 'agent'>('all')
@@ -156,7 +156,7 @@ onBeforeUnmount(() => {
         <n-button text @click="openWorkspace"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('agent.openWorkspace') }}</n-button>
       </div>
       <div class="agent-path">{{ dataRoot || t('agent.noWorkspace') }}</div>
-      <div class="agent-path agent-path--muted">{{ workspace }}</div>
+      <div class="agent-path agent-path--muted">{{ jobsDir }}</div>
     </section>
 
     <section class="agent-toolbar">

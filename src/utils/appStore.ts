@@ -11,31 +11,19 @@ function localStoreKey(name: AppStoreName) {
   return `pymss-studio:${name}`
 }
 
-function errorMessage(error: unknown) {
-  if (typeof error === 'string') return error
-  if (error instanceof Error) return error.message
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = (error as { message?: unknown }).message
-    if (typeof message === 'string') return message
-  }
-  return String(error)
-}
-
-function isMissingUpdateStore(error: unknown, name: AppStoreName) {
-  return name === 'update-state' && /unknown app store:\s*update-state/i.test(errorMessage(error))
-}
+const strictStores = new Set<AppStoreName>(['task-history', 'separate-state', 'workflow-state', 'media-workflows'])
 
 function readLocalStore<T>(name: AppStoreName): T | null {
   const raw = localStorage.getItem(localStoreKey(name))
   if (raw === null) return null
   try {
     const value = JSON.parse(raw) as T
-    if (name === 'media-workflows' && (!value || typeof value !== 'object' || Array.isArray(value))) {
-      throw new TypeError('Invalid media workflow store')
+    if (strictStores.has(name) && (!value || typeof value !== 'object' || Array.isArray(value))) {
+      throw new TypeError(`Invalid ${name} store`)
     }
     return value && typeof value === 'object' ? value : null
   } catch (error) {
-    if (name === 'media-workflows') throw error
+    if (strictStores.has(name)) throw error
     return null
   }
 }
@@ -45,18 +33,11 @@ export async function loadAppStore<T>(name: AppStoreName): Promise<T | null> {
   if (!isTauriRuntime()) {
     return readLocalStore<T>(name)
   }
-  try {
-    const value = await invoke<T | null>('load_app_store', { name })
-    if (name === 'media-workflows' && value !== null && (typeof value !== 'object' || Array.isArray(value))) {
-      throw new TypeError('Invalid media workflow store')
-    }
-    return value && typeof value === 'object' ? value : null
-  } catch (error) {
-    // 0.0.13 did not register update-state in the Rust store map. Keep the
-    // update flow usable when a newer frontend is paired with that backend.
-    if (isMissingUpdateStore(error, name)) return readLocalStore<T>(name)
-    throw error
+  const value = await invoke<T | null>('load_app_store', { name })
+  if (strictStores.has(name) && value !== null && (typeof value !== 'object' || Array.isArray(value))) {
+    throw new TypeError(`Invalid ${name} store`)
   }
+  return value && typeof value === 'object' ? value : null
 }
 
 async function writeAppStore(name: AppStoreName, data: unknown, serialized: string) {
@@ -65,14 +46,7 @@ async function writeAppStore(name: AppStoreName, data: unknown, serialized: stri
     localStorage.setItem(localStoreKey(name), serialized)
     return
   }
-  try {
-    await invoke('save_app_store', { name, data })
-  } catch (error) {
-    // Persist update preferences locally when upgrading from a backend that
-    // predates the update-state app store. Other stores still surface errors.
-    if (!isMissingUpdateStore(error, name)) throw error
-    localStorage.setItem(localStoreKey(name), serialized)
-  }
+  await invoke('save_app_store', { name, data })
 }
 
 export function saveAppStore(name: AppStoreName, data: unknown) {

@@ -192,7 +192,8 @@ class VideoInpaintingTests(unittest.TestCase):
                  mock.patch.object(video_worker.video_ops, "inpaint_video", return_value={"path": str(output), "size": 1}) as inpaint, \
                  mock.patch.object(video_worker, "emit", side_effect=lambda kind, payload, **kwargs: events.append((kind, payload))):
                 code = video_worker.cmd_media_video({
-                    "mode": "video_inpainting", "inputs": [str(source)], "outputDir": str(root / "out"),
+                    "steps": [{"capability": "video_inpainting", "bindings": {"primary": "media:propainter"}, "params": {}}],
+                    "inputs": [str(source)], "outputDir": str(root / "out"),
                     "maskPath": str(mask), "requestId": "inpaint-test",
                 })
             self.assertEqual(code, 0)
@@ -206,7 +207,7 @@ class VideoInpaintingTests(unittest.TestCase):
 
     def test_capability_is_a_sequence_adapter_not_a_frame_step(self) -> None:
         self.assertIn("video_inpainting", video_step.SEQUENCE_CAPABILITIES)
-        steps = capabilities.normalize_steps(capabilities.steps_from_mode("video_inpainting"))
+        steps = capabilities.normalize_steps([{"capability": "video_inpainting", "bindings": {"primary": "media:propainter"}, "params": {}}])
         self.assertEqual(steps[0]["bindings"], {"primary": "media:propainter"})
         self.assertEqual(steps[0]["params"]["subvideoLength"], 80)
         self.assertEqual(steps[0]["params"]["detectMode"], "fixed")

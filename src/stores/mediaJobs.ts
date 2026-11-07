@@ -33,7 +33,7 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   const loading = ref(false)
   const error = ref('')
   const dataRoot = ref('')
-  const workspace = ref('')
+  const jobsDir = ref('')
   const active = computed(() => jobs.value.filter(job => !isJournalTerminal(job.status)
     && (job.source !== 'manual' || trackedManual(job))))
   const revisions = new Map<string, number>()
@@ -55,12 +55,12 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
       || jobs.value.find(item => item.jobId === event.requestId)
     if (!job || isJournalTerminal(job.status)) return
     const payload = event.payload || {}
-    if (isTaskProgress(event.type) || event.type === 'operation_progress' || event.type === 'task.started' || event.type === 'task.stage') {
+    if (isTaskProgress(event.type) || event.type === 'task.started' || event.type === 'task.stage') {
       const fraction = Number(payload.fraction ?? payload.overallFraction ?? (Number(payload.total) > 0 ? Number(payload.completed ?? payload.done ?? 0) / Number(payload.total) : job.fraction))
       put({ ...job, status: 'running', fraction: Number.isFinite(fraction) ? Math.max(0, Math.min(0.99, fraction)) : job.fraction,
         message: String(payload.current || payload.message || job.message),
         result: payload.outputs ? snapshot({ ...job.result, ...payload }) : job.result })
-    } else if (isTaskResult(event.type) || event.type === 'operation_result') {
+    } else if (isTaskResult(event.type)) {
       const failed = Array.isArray(payload.failed) && payload.failed.length > 0
         || journalOperation(job).startsWith('media_') && Array.isArray(payload.outputs) && payload.outputs.length === 0
       put({ ...job, status: failed ? 'failed' : 'completed', fraction: 1, result: snapshot(payload),
@@ -81,9 +81,12 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
     loading.value = true
     refreshing = (async () => {
       try {
-        const response = await invoke<{ dataRoot?: string; workspace?: string; index?: { jobs?: JournalJob[] } }>('agent_jobs')
-        const incoming = response.index?.jobs
-        if (Array.isArray(incoming)) {
+        const response = await invoke<{ schemaVersion: number; dataRoot: string; jobsDir: string; jobs: JournalJob[] }>('agent_jobs')
+        if (response.schemaVersion !== 1 || !Array.isArray(response.jobs) || typeof response.dataRoot !== 'string' || typeof response.jobsDir !== 'string') {
+          throw new Error('Unsupported task journal response schema')
+        }
+        const incoming = response.jobs
+        {
           const merged = new Map(jobs.value.map(job => [job.jobId, job]))
           for (const job of incoming) {
             if (!job || typeof job.jobId !== 'string' || typeof job.status !== 'string') continue
@@ -96,7 +99,7 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
           jobs.value = [...merged.values()]
         }
         dataRoot.value = response.dataRoot || dataRoot.value
-        workspace.value = response.workspace || workspace.value
+        jobsDir.value = response.jobsDir
         error.value = ''
       } catch (cause) {
         error.value = cause instanceof Error ? cause.message : String(cause)
@@ -123,6 +126,7 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   async function start(payload: Record<string, unknown>): Promise<JournalJob> {
     const request = snapshot(payload)
     await initialize()
+    if (error.value) throw new Error(error.value)
     const operation = String(request.operation || '')
     if (!operation) throw new Error('Missing media operation')
     if (active.value.some(job => journalOperation(job) === operation && job.source === 'manual' && trackedManual(job))) {
@@ -156,5 +160,5 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
       && (isJournalTerminal(job.status) || trackedManual(job)))
       .sort((a, b) => b.createdAt - a.createdAt)[0]
   }
-  return { jobs, loading, error, dataRoot, workspace, active, initialize, refresh, start, latest }
+  return { jobs, loading, error, dataRoot, jobsDir, active, initialize, refresh, start, latest }
 })

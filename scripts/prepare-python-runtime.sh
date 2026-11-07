@@ -12,12 +12,18 @@ TORCH_INDEX_URL="${TORCH_INDEX_URL-}"
 PBS_TAG="${PBS_TAG:-20260602}"
 PBS_PYTHON_VERSION="${PBS_PYTHON_VERSION:-3.12.13}"
 
-rm -rf "$RUNTIME_DIR"
-
 RUNTIME_ENVS_DIR="${RUNTIME_ENVS_DIR:-$RUNTIME_DIR/runtime-envs}"
 INITIAL_BACKEND="${INITIAL_BACKEND:-}"
 
 MANIFEST_PATH="$(cd "$(dirname "$0")/../python" && pwd)/runtime-manifest.json"
+EXPECTED_PYTHON="$("$PYTHON_BIN" -c 'import json,sys; print(json.load(open(sys.argv[1]))["python"])' "$MANIFEST_PATH")"
+HOST_PYTHON="$("$PYTHON_BIN" -I -B -c 'import sys; print(".".join(map(str,sys.version_info[:2])))')"
+if [[ "$EXPECTED_PYTHON" != 3.12 || "$HOST_PYTHON" != "$EXPECTED_PYTHON" || "${PBS_PYTHON_VERSION%.*}" != "$EXPECTED_PYTHON" ]]; then
+  echo 'Host and standalone Python must match the Python 3.12 release contract' >&2
+  exit 1
+fi
+# Reject interpreter drift before deleting any existing prepared runtime.
+rm -rf "$RUNTIME_DIR"
 if [[ "$INITIAL_BACKEND" == "mlx" || "$INITIAL_BACKEND" == "mps" ]]; then
   MANIFEST_BACKEND="mlx"
 elif [[ -n "$INITIAL_BACKEND" ]]; then
@@ -71,7 +77,14 @@ runtime_python() {
   fi
 }
 
+verify_python_version() {
+  local actual
+  actual="$(runtime_python -I -B -c 'import sys; print(".".join(map(str,sys.version_info[:2])))')"
+  [[ "$actual" == "$EXPECTED_PYTHON" ]] || { echo 'Prepared Python does not match the release contract' >&2; exit 1; }
+}
+
 verify_bootstrap_runtime() {
+  verify_python_version
   PYTHONDONTWRITEBYTECODE=1 runtime_python - <<'PY'
 import xmlrpc.client
 import requests
@@ -154,6 +167,7 @@ else
   PY="$RUNTIME_DIR/bin/python"
 fi
 
+verify_python_version
 if [[ "$VARIANT" == "minimal" || ( "$OSTYPE" == darwin* && -z "$INITIAL_BACKEND" && "$VARIANT" != "mlx" && "$VARIANT" != "mps" ) ]]; then
   runtime_python -m ensurepip --upgrade
   runtime_python -m pip install --upgrade pip setuptools wheel

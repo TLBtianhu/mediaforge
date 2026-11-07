@@ -9,16 +9,59 @@ from __future__ import annotations
 import ast
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 import agent_bridge  # noqa: E402
+from media_ops import task_params  # noqa: E402
 
 SOURCE = (PYTHON_DIR / "agent_bridge.py").read_text(encoding="utf-8")
+
+
+class CurrentStepSubmissionTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="bridge-current-steps-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.input = self.root / "input.mp4"
+        self.input.write_bytes(b"fixture; never decoded")
+        self.bridge = agent_bridge.Bridge.__new__(agent_bridge.Bridge)
+        self.bridge.model_root = self.root / "models"
+        self.bridge.jobs = mock.Mock()
+        job = self.bridge.jobs.start.return_value
+        job.job_id = "fixture"
+        job.snapshot.return_value = {"status": "queued"}
+
+    def test_pipeline_and_workflow_forward_only_supported_step_defaults_and_keep_zero_options(self):
+        raw = [{"capability": "video_super_resolution", "bindings": {"upscaler": "media:basicvsrpp"}, "params": {}}]
+        models = {"models": [{"id": "media:basicvsrpp", "downloaded": True}]}
+        for submit in (self.bridge.pipeline_start, self.bridge.workflow_start):
+            with self.subTest(submit=submit.__name__), mock.patch.object(agent_bridge.model_hub, "list_models", return_value=models):
+                result = submit(str(self.input), str(self.root / "outputs"), "video", raw,
+                                {"previewSeconds": 0, "crf": 0, "preset": "slow", "tile": 0})
+            self.assertTrue(result["ok"], result)
+            payload = self.bridge.jobs.start.call_args.args[1]
+            self.assertEqual(payload["steps"][0]["params"], {})
+            self.assertEqual(task_params.normalize_steps(payload, modality="video")[0]["params"], {})
+            self.assertEqual((payload["previewSeconds"], payload["crf"], payload["preset"], payload["tile"]), (0, 0, "slow", 0))
+            self.assertFalse(set(payload) & {"scale", "conf", "expand", "detectMode"})
+            self.assertEqual(raw[0]["params"], {})
+
+    def test_current_mcp_submission_rejects_explicit_unsupported_default_before_model_lookup(self):
+        raw = [{"capability": "video_super_resolution", "bindings": {"upscaler": "media:basicvsrpp"}, "params": {"tile": 0}}]
+        with mock.patch.object(agent_bridge.model_hub, "list_models") as models:
+            for submit in (self.bridge.pipeline_start, self.bridge.workflow_start):
+                result = submit(str(self.input), str(self.root / "outputs"), "video", raw)
+                self.assertFalse(result["ok"], result)
+                self.assertIn("not available", result["error"])
+        models.assert_not_called()
+        self.bridge.jobs.start.assert_not_called()
 
 
 def declared_tools() -> set[str]:

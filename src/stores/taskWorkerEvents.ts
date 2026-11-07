@@ -17,7 +17,7 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
   const { tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus,
     markTaskStarted, markTaskFinished, touch, queueProgressPersist, queuePersist, scheduleQueue,
     appendWorkflowNodeLogs, localLogRecord, workerLogRecord, normalizeLogRecord, appendTaskLogs,
-    useSettingsStore, normalizeStemOutputs, outputsFromFiles, windowsPaths, resolveTaskErrorMessage, } = deps
+    useSettingsStore, normalizeStemOutputs, windowsPaths, resolveTaskErrorMessage, } = deps
 
   function resolveStageProgress(status: TaskStatus, current?: number, total?: number) {
     const meta = STAGE_META[status]
@@ -197,7 +197,6 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
       task.progressCurrent = undefined
       task.progressTotal = undefined
       task.progressDetail = undefined
-      task.files = event.payload?.files || []
       if (Array.isArray(event.payload?.nodeValues)) task.nodeValues = event.payload.nodeValues
       if (event.payload?.outputDir) {
         task.output = event.payload.outputDir
@@ -212,9 +211,8 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
         task.jobOutput = event.payload.outputDir
       }
       const normalizedOutputs = normalizeStemOutputs(event.payload?.outputs, task.input, windowsPaths.value)
-      task.outputs = normalizedOutputs.length
-        ? normalizedOutputs
-        : outputsFromFiles(task.output, task.files, event.payload?.outputFormat || 'wav', task.outputPrefix, task.input, windowsPaths.value)
+      task.outputs = normalizedOutputs
+      task.files = normalizedOutputs.map((output: StemOutput) => output.path)
       task.error = undefined
       touch(task)
       markTaskFinished(task, task.updatedAt)

@@ -51,6 +51,9 @@ impl Drop for InstallLock {
 }
 
 pub(super) fn validate_descriptor(descriptor: &RuntimeDescriptor) -> Result<(), String> {
+    if descriptor.python != super::expected_python()? {
+        return Err("运行时 Python 版本必须与目标 3.12 一致，不能使用旧 ABI".into());
+    }
     let id = descriptor.asset_id.as_bytes();
     if id.is_empty()
         || id.len() > 160
@@ -65,7 +68,10 @@ pub(super) fn validate_descriptor(descriptor: &RuntimeDescriptor) -> Result<(), 
     if descriptor.sha256.len() != 64 || !descriptor.sha256.bytes().all(|c| c.is_ascii_hexdigit()) {
         return Err("运行时 SHA-256 格式无效".into());
     }
-    if descriptor.size == 0 || descriptor.backend.trim().is_empty() || descriptor.urls.is_empty() {
+    if descriptor.size == 0
+        || !matches!(descriptor.backend.as_str(), "cpu" | "cuda" | "rocm" | "mlx")
+        || descriptor.urls.is_empty()
+    {
         return Err("运行时描述符缺少大小、后端或下载源".into());
     }
     for source in &descriptor.urls {
@@ -80,7 +86,8 @@ pub(super) fn validate_descriptor(descriptor: &RuntimeDescriptor) -> Result<(), 
 
 pub(super) fn ready(target: &Path, descriptor: &RuntimeDescriptor) -> bool {
     ensure_plain(target).is_ok()
-        && target.join("Scripts/python.exe").is_file()
+        && validate_descriptor(descriptor).is_ok()
+        && super::validate_asset_layout(target, descriptor).is_ok()
         && marker_matches(target, descriptor)
 }
 
@@ -257,12 +264,10 @@ pub(super) fn publish_archive(
         .map_err(|error| error.to_string())?;
     super::extract_zip(archive, prepared.path()).map_err(|error| error.to_string())?;
     verify(prepared.path())?;
-    if !prepared.path().join("Scripts/python.exe").is_file() {
-        return Err("运行时包缺少 Scripts/python.exe".into());
-    }
+    super::validate_asset_layout(prepared.path(), descriptor)?;
     crate::storage::write_json_file(
         &prepared.path().join(ASSET_MARKER),
-        &serde_json::json!({"assetId": descriptor.asset_id, "sha256": descriptor.sha256}),
+        &serde_json::json!({"schemaVersion": 2, "assetId": descriptor.asset_id, "sha256": descriptor.sha256, "python": descriptor.python}),
     )
     .map_err(|error| error.to_string())?;
     commit_prepared(envs, staging, descriptor, prepared.path(), activate)
@@ -328,7 +333,8 @@ mod tests {
     fn descriptor() -> RuntimeDescriptor {
         RuntimeDescriptor {
             asset_id: "runtime-fixture".into(),
-            backend: "fixture".into(),
+            backend: "cuda".into(),
+            python: "3.12".into(),
             sha256: "0".repeat(64),
             size: 1,
             urls: vec!["http://127.0.0.1/fixture.zip".into()],
@@ -342,6 +348,17 @@ mod tests {
         zip.start_file(name, zip::write::SimpleFileOptions::default())
             .unwrap();
         zip.write_all(b"fixture-interpreter").unwrap();
+        if name == "Scripts/python.exe" {
+            for name in [
+                "Scripts/python312.dll",
+                "Lib/encodings/__init__.py",
+                "Lib/site-packages/.keep",
+            ] {
+                zip.start_file(name, zip::write::SimpleFileOptions::default())
+                    .unwrap();
+                zip.write_all(b"tiny ABI layout fixture").unwrap();
+            }
+        }
         zip.finish().unwrap();
         path
     }

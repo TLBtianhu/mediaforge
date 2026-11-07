@@ -1126,6 +1126,57 @@ def _runtime_python_works(python_path: Path) -> bool:
         return False
 
 
+def _validate_install_python_versions(env_dir: Path, manifest: dict[str, Any]) -> None:
+    """Reject foreign Python environments before recovery, repair, or reinstall can mutate them."""
+    expected = manifest.get("python")
+    if not isinstance(expected, str) or not re.fullmatch(r"\d+\.\d+", expected):
+        raise ValueError("The runtime manifest must declare a Python major.minor version.")
+    actual = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if actual != expected:
+        raise ValueError(f"Runtime installation requires Python {expected}; the bootstrap is Python {actual}.")
+
+    # Recovery may promote a hidden environment or discard its backup. Check these copies
+    # before recovery too, so an interrupted old-version install cannot bypass the guard.
+    candidates = [env_dir, *(
+        env_dir.parent / f".{env_dir.name}.{suffix}"
+        for suffix in ("reinstalling", "core-backup", "core-updating")
+    )]
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+
+        def reject(found: str) -> None:
+            raise ValueError(
+                f"Cannot replace runtime {candidate}: {found}. Python {expected} is required. "
+                "Select or create a new matching environment; the existing directory is preserved."
+            )
+
+        config = candidate / "pyvenv.cfg"
+        if config.is_file():
+            for line in config.read_text(encoding="utf-8").splitlines():
+                key, separator, value = line.partition("=")
+                if separator and key.strip() in {"version", "version_info"}:
+                    match = re.match(r"(\d+\.\d+)(?:\.|$)", value.strip())
+                    if not match or match.group(1) != expected:
+                        reject(f"pyvenv.cfg declares Python {value.strip()}")
+
+        python_path = candidate / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        if not python_path.is_file():
+            continue  # An interrupted fresh install may not have created its interpreter yet.
+        try:
+            result = subprocess.run(
+                [str(_runtime_command_path(python_path)), "-I", "-S", "-B", "-c",
+                 "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+                env=_probe_environment(python_path=python_path),
+            )
+        except (OSError, subprocess.SubprocessError):
+            reject("its interpreter version could not be verified")
+        if result.returncode or result.stdout.strip() != expected:
+            found = result.stdout.strip() if re.fullmatch(r"\d+\.\d+", result.stdout.strip()) else "unverified"
+            reject(f"its interpreter is Python {found}")
+
+
 def _runtime_pip_works(python_path: Path) -> bool:
     try:
         return subprocess.run(
@@ -2042,7 +2093,6 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
     mirror = str(payload.get("mirror") or "auto").strip().lower()
     locale = str(payload.get("locale") or "").strip().lower()
     manifest = _manifest()
-    _recover_runtime_transactions()
     supported = _supported_backend(backend, manifest)
     if not supported:
         from shared.worker_protocol import emit_error
@@ -2051,9 +2101,15 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
     if sys.platform not in spec.get("platforms", []):
         from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_PLATFORM_UNSUPPORTED", f"Backend {backend} is not supported on {sys.platform}", task_id=task_id)
+    env_dir = _env_dir(backend)
+    try:
+        _validate_install_python_versions(env_dir, manifest)
+    except (OSError, ValueError) as exc:
+        from shared.worker_protocol import emit_error
+        return emit_error("RUNTIME_PYTHON_MISMATCH", str(exc), task_id=task_id)
+    _recover_runtime_transactions()
     index_url = None
     mirror, index_url = _resolve_pypi_mirror(mirror, locale)
-    env_dir = _env_dir(backend)
     try:
         had_existing_environment = env_dir.is_dir() and any(env_dir.iterdir())
     except OSError:

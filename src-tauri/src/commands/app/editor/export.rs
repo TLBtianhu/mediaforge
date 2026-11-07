@@ -12,6 +12,9 @@ use std::path::PathBuf;
 use tauri::{AppHandle, State};
 
 fn prepare_editor_export_payload(app: &AppHandle, mut payload: Value) -> AppResult<Value> {
+    if payload.get("project").and_then(|project| project.get("version")).and_then(Value::as_u64) != Some(4) {
+        return Err(AppError::Worker("unsupported editor export project schema".into()));
+    }
     if let Some(object) = payload.as_object_mut() {
         let project_id = object
             .get("project")

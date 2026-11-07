@@ -264,7 +264,8 @@ function restoreSnapshot(snap: string) {
   const data = JSON.parse(snap)
   configuringGraph = true
   try {
-    graph.configure(comfyToLitegraph(data))
+    // History snapshots are LiteGraph's current in-memory schema, not persisted Comfy files.
+    graph.configure(data)
   } finally {
     configuringGraph = false
   }

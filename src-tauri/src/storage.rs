@@ -375,10 +375,12 @@ pub fn read_app_store(app: &AppHandle, name: &str) -> AppResult<Value> {
         if !value.is_object() { return Err(AppError::Worker("invalid media workflow store".into())); }
         return crate::media_workflows::normalize_state(value);
     }
+    if name == "workflow-state" { validate_workflow_state(&value)?; }
     Ok(value)
 }
 
 pub fn write_app_store(app: &AppHandle, name: &str, data: &Value) -> AppResult<()> {
+    if name == "workflow-state" { validate_workflow_state(data)?; }
     ensure_app_directories(app)?;
     let path = app_store_path(app, name)?;
     write_json_file(&path, data)
@@ -395,50 +397,24 @@ pub(crate) fn write_editor_project_file(path: &Path, data: &Value) -> AppResult<
     let _write_guard = JSON_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    backup_pre_plugin_project(path, data).map_err(|error| {
-        AppError::Worker(format!("Could not preserve the original editor project at {}: {error}", path.display()))
-    })?;
+    validate_editor_project(data)?;
+    if path.is_file() {
+        let previous: Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        validate_editor_project(&previous)?;
+    }
     write_json_file_locked(path, data)
 }
 
-fn backup_pre_plugin_project(path: &Path, data: &Value) -> AppResult<()> {
-    let backup = path.with_file_name("project.pre-plugins.json");
-    match std::fs::symlink_metadata(&backup) {
-        Ok(metadata) if metadata.is_file() => return Ok(()),
-        Ok(_) => return Err(AppError::Worker(format!("The project backup is not a regular file: {}", backup.display()))),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    let content = match std::fs::read(path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
-    let previous: Value = serde_json::from_slice(&content)?;
-    let has_legacy_effects = previous.get("tracks").and_then(Value::as_array)
-        .is_some_and(|tracks| tracks.iter().any(|track| track.get("effects").is_some_and(Value::is_object)));
-    if previous.get("version").and_then(Value::as_u64).unwrap_or(0) >= 4
-        || (!has_legacy_effects && data.get("version").and_then(Value::as_u64).unwrap_or(0) < 4)
-    {
-        return Ok(());
-    }
-
-    // Publish a fully synced copy before replacing the project. A second writer
-    // cannot replace the first upgrade snapshot, including across processes.
-    let mut file = tempfile::NamedTempFile::new_in(path.parent().unwrap_or_else(|| Path::new(".")))?;
-    file.write_all(&content)?;
-    file.as_file().sync_all()?;
-    match file.persist_noclobber(&backup) {
-        Ok(_) => Ok(()),
-        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
-            if std::fs::symlink_metadata(&backup)?.is_file() {
-                Ok(())
-            } else {
-                Err(error.error.into())
-            }
-        }
-        Err(error) => Err(error.error.into()),
-    }
+pub(crate) fn validate_editor_project(project: &Value) -> AppResult<()> {
+    let valid = project.get("version").and_then(Value::as_u64) == Some(4)
+        && project.get("sources").is_some_and(Value::is_array)
+        && project.get("tracks").and_then(Value::as_array).is_some_and(|tracks| tracks.iter().all(|track| {
+            track.is_object() && track.get("effects").is_none()
+                && track.get("clips").is_some_and(Value::is_array)
+                && track.get("autoName").is_some_and(Value::is_boolean)
+        }));
+    if !valid { return Err(AppError::Worker("unsupported editor project schema; original file preserved".into())); }
+    Ok(())
 }
 
 fn write_json_file_locked(path: &Path, data: &Value) -> AppResult<()> {
@@ -494,7 +470,10 @@ fn write_json_file_with_replace(
 
 pub fn mutate_workflow_store(app: &AppHandle, mutation: &Value) -> AppResult<Value> {
     ensure_app_directories(app)?;
-    let path = app_store_path(app, "workflow-state")?;
+    mutate_workflow_file(&app_store_path(app, "workflow-state")?, mutation)
+}
+
+pub(crate) fn mutate_workflow_file(path: &Path, mutation: &Value) -> AppResult<Value> {
     let _write_guard = JSON_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -503,7 +482,7 @@ pub fn mutate_workflow_store(app: &AppHandle, mutation: &Value) -> AppResult<Val
         let content = std::fs::read_to_string(&path)?;
         serde_json::from_str::<Value>(&content)?
     } else {
-        serde_json::json!({ "workflows": [], "selectedWorkflowId": "" })
+        serde_json::json!({ "version": 1, "workflows": [], "selectedWorkflowId": "" })
     };
     let response = apply_workflow_mutation(state, mutation)?;
     if response.get("conflict").is_none() {
@@ -536,36 +515,26 @@ pub fn mutate_media_workflows(app: &AppHandle, mutation: &Value) -> AppResult<Va
     mutate_media_workflow_file(&app_store_path(app, "media-workflows")?, mutation)
 }
 
-fn missing_workflow_id(item: &Value) -> bool {
-    item.is_object()
-        && item
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
-}
-
-fn legacy_workflow_index(workflow_list: &[Value], mutation: &Value) -> Option<usize> {
-    let legacy_index = mutation
-        .get("legacyIndex")
-        .and_then(Value::as_u64)
-        .and_then(|value| usize::try_from(value).ok());
-    let legacy_entry = mutation.get("legacyEntry");
-    let is_match = |item: &Value| {
-        missing_workflow_id(item)
-            && legacy_entry
-                .map(|expected| expected == item)
-                .unwrap_or(true)
-    };
-    legacy_index
-        .filter(|index| workflow_list.get(*index).is_some_and(&is_match))
-        .or_else(|| legacy_entry.and_then(|_| workflow_list.iter().position(is_match)))
+fn validate_workflow_state(state: &Value) -> AppResult<()> {
+    let invalid = || AppError::Worker("unsupported workflow-state schema; original file preserved".into());
+    if state.get("version").and_then(Value::as_u64) != Some(1) { return Err(invalid()); }
+    let entries = state.get("workflows").and_then(Value::as_array).ok_or_else(invalid)?;
+    let selected = state.get("selectedWorkflowId").and_then(Value::as_str).ok_or_else(invalid)?;
+    let mut ids = std::collections::HashSet::new();
+    for entry in entries {
+        let id = entry.get("id").and_then(Value::as_str).filter(|id| !id.trim().is_empty()).ok_or_else(invalid)?;
+        if !ids.insert(id) || entry.get("formatVersion").and_then(Value::as_u64) != Some(1) {
+            return Err(invalid());
+        }
+    }
+    if !selected.is_empty() && !ids.contains(selected) { return Err(invalid()); }
+    Ok(())
 }
 
 fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Value> {
-    if !state.is_object() {
-        state = serde_json::json!({ "workflows": [], "selectedWorkflowId": "" });
+    validate_workflow_state(&state)?;
+    if mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some() {
+        return Err(AppError::Worker("unsupported workflow mutation schema".into()));
     }
     let state_object = state
         .as_object_mut()
@@ -575,12 +544,7 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let workflows = state_object
-        .entry("workflows")
-        .or_insert_with(|| Value::Array(Vec::new()));
-    if !workflows.is_array() {
-        *workflows = Value::Array(Vec::new());
-    }
+    let workflows = state_object.get_mut("workflows").ok_or_else(|| AppError::Worker("workflow list is missing".into()))?;
     let workflow_list = workflows
         .as_array_mut()
         .ok_or_else(|| AppError::Worker("workflow list must be an array".into()))?;
@@ -594,24 +558,18 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
                 .cloned()
                 .filter(Value::is_object)
                 .ok_or_else(|| AppError::Worker("workflow entry is required".into()))?;
+            if entry.get("formatVersion").and_then(Value::as_u64) != Some(1) {
+                return Err(AppError::Worker("unsupported workflow record schema".into()));
+            }
             let workflow_id = entry
                 .get("id")
                 .and_then(Value::as_str)
                 .filter(|value| !value.trim().is_empty())
                 .ok_or_else(|| AppError::Worker("workflow id is required".into()))?
                 .to_string();
-            let mut existing_index = workflow_list.iter().position(|item| {
+            let existing_index = workflow_list.iter().position(|item| {
                 item.get("id").and_then(Value::as_str) == Some(workflow_id.as_str())
             });
-            let has_legacy_reference =
-                mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some();
-            let mut legacy_target_mismatch = false;
-            if existing_index.is_none() {
-                existing_index = legacy_workflow_index(workflow_list, mutation);
-                if existing_index.is_none() && has_legacy_reference {
-                    legacy_target_mismatch = true;
-                }
-            }
             let actual_updated_at = existing_index
                 .and_then(|index| workflow_list[index].get("updatedAt"))
                 .and_then(Value::as_u64)
@@ -622,9 +580,8 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             if !force
-                && (legacy_target_mismatch
-                    || (expected_updated_at.is_some()
-                        && expected_updated_at.unwrap_or(0) != actual_updated_at))
+                && expected_updated_at.is_some()
+                && expected_updated_at.unwrap_or(0) != actual_updated_at
             {
                 conflict = Some(serde_json::json!({
                     "workflowId": workflow_id,
@@ -665,18 +622,13 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
                 .unwrap_or("");
             let index = workflow_list
                 .iter()
-                .position(|item| item.get("id").and_then(Value::as_str) == Some(workflow_id))
-                .or_else(|| legacy_workflow_index(workflow_list, mutation));
+                .position(|item| item.get("id").and_then(Value::as_str) == Some(workflow_id));
             let actual_updated_at = index
                 .and_then(|index| workflow_list[index].get("updatedAt"))
                 .and_then(Value::as_u64)
                 .unwrap_or(0);
             let expected_updated_at = mutation.get("expectedUpdatedAt").and_then(Value::as_u64);
-            let has_legacy_reference =
-                mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some();
-            if (index.is_none() && has_legacy_reference)
-                || (expected_updated_at.is_some()
-                    && expected_updated_at.unwrap_or(0) != actual_updated_at)
+            if expected_updated_at.is_some() && expected_updated_at.unwrap_or(0) != actual_updated_at
             {
                 conflict = Some(serde_json::json!({
                     "workflowId": workflow_id,
@@ -711,34 +663,12 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
             let existing_index = workflow_list
                 .iter()
                 .position(|item| item.get("id").and_then(Value::as_str) == Some(workflow_id));
-            let legacy_index = existing_index
-                .is_none()
-                .then(|| legacy_workflow_index(workflow_list, mutation))
-                .flatten();
-            let has_legacy_reference =
-                mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some();
-            if !workflow_id.is_empty()
-                && existing_index.is_none()
-                && legacy_index.is_none()
-                && has_legacy_reference
-            {
-                conflict = Some(serde_json::json!({
-                    "workflowId": workflow_id,
-                    "expectedUpdatedAt": 0,
-                    "actualUpdatedAt": 0,
-                }));
-            } else {
-                if let Some(index) = legacy_index {
-                    workflow_list[index]["id"] = Value::String(workflow_id.to_string());
-                }
-                if workflow_id.is_empty() || existing_index.is_some() || legacy_index.is_some() {
-                    state_object.insert(
-                        "selectedWorkflowId".into(),
-                        Value::String(workflow_id.to_string()),
-                    );
-                }
+            if !workflow_id.is_empty() && existing_index.is_none() {
+                return Err(AppError::Worker("workflow id is missing".into()));
             }
+            state_object.insert("selectedWorkflowId".into(), Value::String(workflow_id.to_string()));
         }
+
         _ => {
             return Err(AppError::Worker(format!(
                 "unknown workflow mutation: {action}"
@@ -820,12 +750,25 @@ mod tests {
         apply_workflow_mutation, resolve_data_root, store_file_name, write_json_file,
         JSON_WRITE_SEQUENCE,
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
     fn path(name: &str) -> PathBuf {
         PathBuf::from(name)
+    }
+
+    fn current_workflow_state(mut state: Value) -> Value {
+        state["version"]=json!(1);
+        if let Some(entries)=state["workflows"].as_array_mut() { for entry in entries { entry["formatVersion"]=json!(1); } }
+        state
+    }
+
+    fn current_workflow_mutation(state: Value, mutation: &Value) -> crate::error::AppResult<Value> {
+        let state = current_workflow_state(state);
+        let mut mutation=mutation.clone();
+        if mutation.get("entry").is_some() { mutation["entry"]["formatVersion"]=json!(1); }
+        apply_workflow_mutation(state,&mutation)
     }
 
     #[test]
@@ -871,7 +814,7 @@ mod tests {
             ],
             "selectedWorkflowId": "first",
         });
-        let first = apply_workflow_mutation(
+        let first = current_workflow_mutation(
             initial,
             &json!({
                 "action": "upsert",
@@ -880,7 +823,7 @@ mod tests {
             }),
         )
         .unwrap();
-        let second = apply_workflow_mutation(
+        let second = current_workflow_mutation(
             first["state"].clone(),
             &json!({
                 "action": "upsert",
@@ -905,7 +848,7 @@ mod tests {
             "workflows": [{ "id": "first", "name": "Remote", "createdAt": 1, "updatedAt": 20 }],
             "selectedWorkflowId": "first",
         });
-        let response = apply_workflow_mutation(
+        let response = current_workflow_mutation(
             state.clone(),
             &json!({
                 "action": "upsert",
@@ -915,7 +858,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(response["conflict"]["actualUpdatedAt"], 20);
-        assert_eq!(response["state"], state);
+        assert_eq!(response["state"], current_workflow_state(state));
     }
 
     #[test]
@@ -924,7 +867,7 @@ mod tests {
             "workflows": [{ "id": "first", "name": "First", "createdAt": 1, "updatedAt": 10 }],
             "selectedWorkflowId": "first",
         });
-        let response = apply_workflow_mutation(
+        let response = current_workflow_mutation(
             state,
             &json!({ "action": "select", "workflowId": "" }),
         )
@@ -934,165 +877,21 @@ mod tests {
     }
 
     #[test]
-    fn workflow_mutation_migrates_a_legacy_entry_without_creating_a_duplicate() {
-        let state = json!({
-            "workflows": [{ "name": "Legacy", "definition": {}, "createdAt": 1 }],
-            "selectedWorkflowId": "",
-        });
-        let response = apply_workflow_mutation(
-            state,
-            &json!({
-                "action": "upsert",
-                "entry": {
-                    "id": "workflow_generated",
-                    "name": "Migrated",
-                    "definition": {},
-                    "createdAt": 2,
-                    "updatedAt": 10,
-                },
-                "expectedUpdatedAt": 0,
-                "legacyIndex": 0,
-            }),
-        )
-        .unwrap();
-        let workflows = response["state"]["workflows"].as_array().unwrap();
-        assert_eq!(workflows.len(), 1);
-        assert_eq!(workflows[0]["id"], "workflow_generated");
-        assert_eq!(workflows[0]["name"], "Migrated");
-    }
-
-    #[test]
-    fn stale_legacy_index_conflicts_instead_of_creating_a_duplicate() {
-        let state = json!({
-            "workflows": [{
-                "id": "workflow_saved_elsewhere",
-                "name": "Remote",
-                "definition": {},
-                "createdAt": 1,
-                "updatedAt": 20,
-            }],
-            "selectedWorkflowId": "workflow_saved_elsewhere",
-        });
-        let response = apply_workflow_mutation(
-            state.clone(),
-            &json!({
-                "action": "upsert",
-                "entry": {
-                    "id": "workflow_generated_locally",
-                    "name": "Local",
-                    "definition": {},
-                    "createdAt": 2,
-                    "updatedAt": 10,
-                },
-                "expectedUpdatedAt": 0,
-                "legacyIndex": 0,
-            }),
-        )
-        .unwrap();
-        assert!(response.get("conflict").is_some());
-        assert_eq!(response["state"], state);
-    }
-
-    #[test]
-    fn legacy_entry_identity_survives_reordering_before_migration() {
-        let target = json!({ "name": "Target legacy", "definition": {}, "updatedAt": 5 });
-        let state = json!({
-            "workflows": [
-                { "name": "Other legacy", "definition": {}, "updatedAt": 7 },
-                target.clone(),
-            ],
-            "selectedWorkflowId": "",
-        });
-        let response = apply_workflow_mutation(
-            state,
-            &json!({
-                "action": "upsert",
-                "entry": {
-                    "id": "workflow_target",
-                    "name": "Migrated target",
-                    "definition": {},
-                    "createdAt": 2,
-                    "updatedAt": 10,
-                },
-                "expectedUpdatedAt": 5,
-                "legacyIndex": 0,
-                "legacyEntry": target,
-            }),
-        )
-        .unwrap();
-        let workflows = response["state"]["workflows"].as_array().unwrap();
-        assert_eq!(workflows.len(), 2);
-        assert!(workflows
-            .iter()
-            .any(|item| item["id"] == "workflow_target" && item["name"] == "Migrated target"));
-        assert!(workflows
-            .iter()
-            .any(|item| item["name"] == "Other legacy" && item.get("id").is_none()));
-    }
-
-    #[test]
-    fn legacy_entries_support_select_and_delete_mutations() {
-        let first = json!({ "name": "First legacy", "definition": {} });
-        let second = json!({ "name": "Second legacy", "definition": {} });
-        let state = json!({
-            "workflows": [first.clone(), second.clone()],
-            "selectedWorkflowId": "",
-        });
-        let selected = apply_workflow_mutation(
-            state,
-            &json!({
-                "action": "select",
-                "workflowId": "workflow_second",
-                "legacyIndex": 1,
-                "legacyEntry": second,
-            }),
-        )
-        .unwrap();
-        assert_eq!(selected["state"]["selectedWorkflowId"], "workflow_second");
-        assert_eq!(selected["state"]["workflows"][1]["id"], "workflow_second");
-
-        let deleted = apply_workflow_mutation(
-            selected["state"].clone(),
-            &json!({
-                "action": "delete",
-                "workflowId": "workflow_first",
-                "legacyIndex": 0,
-                "legacyEntry": first,
-            }),
-        )
-        .unwrap();
-        let workflows = deleted["state"]["workflows"].as_array().unwrap();
-        assert_eq!(workflows.len(), 1);
-        assert_eq!(workflows[0]["id"], "workflow_second");
-    }
-
-    #[test]
-    fn stale_legacy_delete_and_select_report_conflicts() {
-        let legacy = json!({ "name": "Legacy", "definition": {} });
-        let migrated = json!({
-            "id": "workflow_remote",
-            "name": "Legacy",
-            "definition": {},
-            "updatedAt": 20,
-        });
-        let state = json!({
-            "workflows": [migrated],
-            "selectedWorkflowId": "workflow_remote",
-        });
-        for action in ["delete", "select"] {
-            let response = apply_workflow_mutation(
-                state.clone(),
-                &json!({
-                    "action": action,
-                    "workflowId": "workflow_stale",
-                    "legacyIndex": 0,
-                    "legacyEntry": legacy,
-                }),
-            )
-            .unwrap();
-            assert!(response.get("conflict").is_some(), "{action}");
-            assert_eq!(response["state"], state, "{action}");
+    fn incompatible_workflow_files_are_never_migrated_or_overwritten() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("workflows.json");
+        for state in [
+            json!({"workflows":[],"selectedWorkflowId":""}),
+            json!({"version":2,"workflows":[],"selectedWorkflowId":""}),
+            json!({"version":1,"workflows":[{"name":"missing id"}],"selectedWorkflowId":""}),
+        ] {
+            let raw = serde_json::to_vec(&state).unwrap();
+            std::fs::write(&path,&raw).unwrap();
+            assert!(super::mutate_workflow_file(&path,&json!({"action":"select","workflowId":""})).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(),raw);
         }
+        let state = json!({"version":1,"workflows":[],"selectedWorkflowId":""});
+        assert!(apply_workflow_mutation(state,&json!({"action":"select","legacyIndex":0})).is_err());
     }
 
     #[test]
@@ -1107,7 +906,7 @@ mod tests {
             }],
             "selectedWorkflowId": "workflow",
         });
-        let response = apply_workflow_mutation(
+        let response = current_workflow_mutation(
             state.clone(),
             &json!({
                 "action": "delete",
@@ -1117,7 +916,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(response["conflict"]["actualUpdatedAt"], 20);
-        assert_eq!(response["state"], state);
+        assert_eq!(response["state"], current_workflow_state(state));
     }
 
     struct ResourceFixture(PathBuf);
@@ -1249,82 +1048,28 @@ mod tests {
     }
 
     #[test]
-    fn editor_upgrade_backup_preserves_original_bytes_and_is_never_overwritten() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let backup = root.path().join("project.pre-plugins.json");
-        let original = b"{\n  \"id\": \"old\", \"version\": 3, \"tracks\": [{\"effects\": {\"delay\": 0.3}}], \"future\": [1, 2]\n}\n";
-        std::fs::write(&path, original).unwrap();
-        let mut next: serde_json::Value = serde_json::from_slice(original).unwrap();
-        // Autosave/enrichment can run before the user adds their first plugin.
-        next["name"] = json!("Renamed");
-        super::write_editor_project_file(&path, &next).unwrap();
-        assert_eq!(std::fs::read(&backup).unwrap(), original);
-        next["version"] = json!(4);
-        next["pluginChain"] = json!([{ "id": "slot", "state": "sha256:retained" }]);
-        super::write_editor_project_file(&path, &next).unwrap();
-        super::write_editor_project_file(&path, &next).unwrap();
-        assert_eq!(std::fs::read(&backup).unwrap(), original);
-        let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(saved, next);
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
+    fn unsupported_editor_files_are_preserved_without_upgrade_backups() {
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("project.json");
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        for version in [None,Some(2),Some(3),Some(5)] {
+            let mut old=json!({"id":"p","sources":[],"tracks":[]});
+            if let Some(version)=version { old["version"]=json!(version); }
+            let raw=serde_json::to_vec(&old).unwrap(); std::fs::write(&path,&raw).unwrap();
+            assert!(super::write_editor_project_file(&path,&current).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(),raw);
+            assert!(!root.path().join("project.pre-plugins.json").exists());
+        }
     }
 
     #[test]
-    fn editor_upgrade_backup_covers_v3_without_effects_but_not_new_or_existing_v4_projects() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let backup = root.path().join("project.pre-plugins.json");
-        let old = json!({ "id": "project", "version": 3, "tracks": [] });
-        super::write_editor_project_file(&path, &old).unwrap();
-        super::write_editor_project_file(&path, &old).unwrap();
-        assert!(!backup.exists());
-        let upgraded = json!({ "id": "project", "version": 4, "masterLimiter": { "enabled": true } });
-        super::write_editor_project_file(&path, &upgraded).unwrap();
-        let stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&backup).unwrap()).unwrap();
-        assert_eq!(stored, old);
-        let new_root = tempfile::tempdir().unwrap();
-        let new_path = new_root.path().join("project.json");
-        super::write_editor_project_file(&new_path, &upgraded).unwrap();
-        super::write_editor_project_file(&new_path, &upgraded).unwrap();
-        assert!(!new_root.path().join("project.pre-plugins.json").exists());
-    }
-
-    #[test]
-    fn editor_upgrade_backup_failure_keeps_original_project_until_retry() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let backup = root.path().join("project.pre-plugins.json");
-        let old = b"{\"id\":\"project\",\"version\":3}";
-        std::fs::write(&path, old).unwrap();
-        std::fs::create_dir(&backup).unwrap();
-        let next = json!({ "id": "project", "version": 4 });
-        let error = super::write_editor_project_file(&path, &next).unwrap_err();
-        assert!(error.to_string().contains("Could not preserve the original editor project"));
-        assert_eq!(std::fs::read(&path).unwrap(), old);
-        std::fs::remove_dir(&backup).unwrap();
-        super::write_editor_project_file(&path, &next).unwrap();
-        assert_eq!(std::fs::read(&backup).unwrap(), old);
-    }
-
-    #[test]
-    fn editor_upgrade_backup_serializes_concurrent_first_saves() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let old = b"{\"id\":\"project\",\"version\":3}";
-        std::fs::write(&path, old).unwrap();
-        std::thread::scope(|scope| {
-            for revision in 1..=4 {
-                let path = &path;
-                scope.spawn(move || super::write_editor_project_file(path, &json!({
-                    "id": "project", "version": 4, "revision": revision
-                })).unwrap());
-            }
-        });
-        assert_eq!(std::fs::read(root.path().join("project.pre-plugins.json")).unwrap(), old);
-        let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(saved["version"], 4);
-        assert!(saved["revision"].as_u64().is_some_and(|revision| (1..=4).contains(&revision)));
+    fn current_editor_writes_replace_only_the_current_project() {
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("project.json");
+        for revision in 1..=3 {
+            super::write_editor_project_file(&path,&json!({"version":4,"sources":[],"tracks":[],"revision":revision})).unwrap();
+        }
+        let saved:Value=serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["revision"],3);
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(),1);
     }
 
     #[cfg(windows)]
