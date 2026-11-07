@@ -13,6 +13,8 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - `.gitignore` 只是兜底；真正的隔离靠运行时数据根和 WebView2 profile
 - 不自动清理狗粮数据；升级测试必须保留配置和模型
 - 模型/日志/索引/测试截图不进仓库，也不进安装包
+- 用户优先保留开发便利：不为省空间自动清空Rust构建缓存、node_modules、运行时、模型或仍有回归用途的旧包。
+- 构建日志和一次性验证输出统一放`.tmp/`，不要在项目根新增编号日志；整理旧文件先核对实际用途与引用。
 
 ## 强制规则：1.0前当前格式与Python版本
 
