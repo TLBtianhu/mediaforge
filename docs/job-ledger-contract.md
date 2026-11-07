@@ -66,7 +66,28 @@ Kernel清理子进程失败时继续持有owner lease与临时请求文件，终
 
 目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
 执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。
+catalog读列表时也按对应write锁读取单文件，避免Windows原子替换与打开文件相撞；已持write锁的内部读取不重复加锁。
 多文件操作失败时只回滚本次明确拥有的路径；遗留不完整事务或损坏引用报错，不能静默重建。
+
+## 共享处理任务配额
+
+`manifest/execution-quota.json`是覆盖命令、默认1/最大4和配置字段名的唯一来源。
+配额读取同data-root的`settings/app.json`中现有`maxConcurrentSeparations`，不另存调度配置或队列索引。
+Rust/Python共用`.quota/global-0.lock`至`global-3.lock`的无正文OS lease；锁文件保留inode，释放不删除。
+领取时在catalog内检查全部固定slot，包括当前上限之外仍在运行的高位slot，因此4降到1不提前接纳新worker。
+
+音频批次占一个slot。通用手工任务与Agent处理任务先落ownerless queued，成功领取后才写running/startedAt、
+持owner及slot并启动worker。资源不足是正常排队；排队取消不创建payload/进程，取消音频primary仍可执行其余leaf。
+结果先终态也不能提前释slot；正常退出、取消和启动失败均确认reap后才归还。Python清理失败保留两项lease，
+Rust线程接管失败/unwind也由owned child守卫先回收再释锁。
+
+Rust以每应用一个内存pending表/dispatcher接回任务，重启仅恢复通用manual queued；音频仍由前端确认后交接。
+Kernel以一个可关闭、弱引用pump恢复Agent queued；双方不代跑另一来源。前端常驻每2秒串行同步账本，
+不依赖Queue路由；ACK丢失经权威刷新后有界重发，同组登记幂等，等待不会伪造failed。
+
+本阶段只共享同数据根的处理worker上限；各执行器内部FIFO，不承诺全局FIFO、跨数据根配额或物理GPU分区。
+查询、下载、运行时管理不占处理slot；原有运行时/应用互斥机制仍独立。执行器自身崩溃后的孤儿子树监督，
+仍须按跨平台进程生命周期债务继续完善。
 
 ## 验证入口
 
@@ -74,6 +95,7 @@ Kernel清理子进程失败时继续持有owner lease与临时请求文件，终
 无外部输入的原生图、无presentation的模型任务、独立Agent记录和紧凑的拒绝案例。
 它仅验证存储契约，不代表其中占位模型或空图可以执行。
 Python conformance、Rust schema/CRUD/owner/ref测试和前端codec/实际store测试共同验证读取及写入边界。
+`tests/fixtures/jobs/quota-contract.json`补充两后端共用的21个配额配置样例；真实Rust/Python进程验证双向互斥与退出释锁。
 所有验证须遵守DEVELOPMENT隔离与Windows隐藏子进程规则，不启动GUI或使用用户profile。
 
 已删除三个依赖旧task-history、旧事件入口或重复工作流快照的手工UI脚本；其旧实现可从Git历史查看。

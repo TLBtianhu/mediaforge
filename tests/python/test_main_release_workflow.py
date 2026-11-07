@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import unittest
@@ -65,14 +66,21 @@ class MainReleaseWorkflowTests(unittest.TestCase):
         metadata = self.step("Generate managed update metadata")
         self.assertEqual(set(metadata["env"]), {"RELEASE_WINDOWS_BUILD_RESULT", "RELEASE_MACOS_BUILD_RESULT", "RELEASE_LINUX_BUILD_RESULT"})
 
-    @unittest.skipUnless(shutil.which("bash"), "Bash syntax checker unavailable")
     def test_every_bash_step_parses_without_running_it(self):
+        if os.name == "nt":
+            # PATH can resolve bash to the WSL launcher, which cannot act as
+            # this local stdin-only syntax checker. Use the installed Git Bash.
+            bash = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+            self.assertTrue(bash.is_file(), "Windows workflow syntax checks require the installed Git Bash")
+        else:
+            bash = shutil.which("bash")
+            self.assertIsNotNone(bash, "Bash syntax checker unavailable")
         for step in self.steps:
             if "run" in step and step.get("shell", "bash") == "bash":
                 with self.subTest(step=step.get("name")):
                     # Binary stdin preserves LF on Windows; text=True translates
                     # it to CRLF and makes a valid Bash script fail spuriously.
-                    result = subprocess.run([shutil.which("bash"), "-n"], input=step["run"].encode("utf-8"), capture_output=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    result = subprocess.run([str(bash), "-n"], input=step["run"].encode("utf-8"), capture_output=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
 
 

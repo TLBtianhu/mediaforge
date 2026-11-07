@@ -1749,20 +1749,23 @@ pub fn spawn_worker_background(
     app: AppHandle,
     state: State<'_, AppState>,
     command: &str,
-    mut task_id: String,
-    mut payload: Value,
+    task_id: String,
+    payload: Value,
 ) -> AppResult<()> {
-    let journal = if matches!(command, "infer" | "infer_workflow") {
-        if !payload.as_object().is_some_and(|map| map.len() == 1 && map.get("jobId").and_then(Value::as_str) == Some(&task_id)) {
-            return Err(AppError::Worker("audio start requires only the persisted queued jobId".into()));
+    if super::execution_quota::applies(command)? {
+        let root = storage::data_root_dir(&app)?;
+        if matches!(command, "infer" | "infer_workflow") {
+            if !payload.as_object().is_some_and(|map| map.len() == 1 && map.get("jobId").and_then(Value::as_str) == Some(&task_id)) {
+                return Err(AppError::Worker("audio start requires only the persisted queued jobId".into()));
+            }
+        } else {
+            task_journal::enqueue_manual(&root, command, &task_id, &payload)?;
         }
-        let (journal, resolved) = task_journal::WorkerJournal::claim_audio(&storage::data_root_dir(&app)?, command, &task_id)?;
-        payload = resolved;
-        task_id = payload["taskId"].as_str().unwrap().to_string();
-        Some(journal)
-    } else if task_journal::tracks(command) {
-        Some(task_journal::WorkerJournal::start(&storage::data_root_dir(&app)?, command, &task_id, &payload)?)
-    } else { None };
+        let Some((key, created_at)) = task_journal::pending_identity(&root, command, &task_id)? else { return Ok(()); };
+        register_pending_workers(&app, &state, vec![PendingWorker { root, command: command.into(), requested: key, created_at }])?;
+        return Ok(());
+    }
+    let journal = None;
     let operation_id = session_log::record_operation_request(&app, command, &payload, Some(&task_id));
     let log_app = app.clone();
     let result = spawn_worker_background_inner(app, state, command, task_id, payload, operation_id.clone(), journal.clone());
@@ -1771,6 +1774,166 @@ pub fn spawn_worker_background(
         session_log::record_operation_failure(&log_app, command, &operation_id, &error.to_string());
     }
     result
+}
+
+#[derive(Clone)]
+pub(crate) struct PendingWorker {
+    root: PathBuf,
+    command: String,
+    requested: String,
+    created_at: f64,
+}
+
+fn select_pending_manual_workers(root: &Path, jobs: &[Value]) -> AppResult<Vec<PendingWorker>> {
+    let mut candidates = Vec::new();
+    for job in jobs {
+        super::job_schema::validate(job)?;
+        let command = job["command"].as_str().unwrap();
+        if job["source"] == "manual" && job["status"] == "queued" && job["owner"].is_null()
+            && job.get("audio").is_none() && !matches!(command, "infer" | "infer_workflow")
+            && super::execution_quota::applies(command)?
+        {
+            candidates.push(PendingWorker { root: root.into(), command: command.into(),
+                requested: job["jobId"].as_str().unwrap().into(), created_at: job["createdAt"].as_f64().unwrap() });
+        }
+    }
+    Ok(candidates)
+}
+
+fn merge_pending_workers(pending: &mut HashMap<String, PendingWorker>, candidates: Vec<PendingWorker>) -> usize {
+    let before = pending.len();
+    for candidate in candidates { pending.entry(candidate.requested.clone()).or_insert(candidate); }
+    pending.len() - before
+}
+
+fn register_pending_workers(app: &AppHandle, state: &AppState, candidates: Vec<PendingWorker>) -> AppResult<usize> {
+    let mut pending = state.pending_jobs.lock().map_err(|_| AppError::Worker("pending task registry lock poisoned".into()))?;
+    let added = merge_pending_workers(&mut pending, candidates);
+    if !pending.is_empty() && !state.job_dispatcher_running.swap(true, Ordering::AcqRel) {
+        let dispatcher_app = app.clone();
+        if let Err(error) = std::thread::Builder::new().name("mediaforge-worker-dispatch".into()).spawn(move || dispatch_pending_workers(dispatcher_app)) {
+            state.job_dispatcher_running.store(false, Ordering::Release);
+            return Err(error.into());
+        }
+    }
+    Ok(added)
+}
+
+/// Recover only generic manual waiters at application startup. Audio is handed
+/// off after its frontend enqueue/cancel coordination; Agent jobs belong to Kernel.
+fn load_pending_manual_workers(root: &Path) -> AppResult<Vec<PendingWorker>> {
+    let _catalog = task_journal::catalog_lock(root)?;
+    select_pending_manual_workers(root, &task_journal::read_all_unlocked(root)?)
+}
+
+pub(crate) fn restore_pending_manual_workers(app: &AppHandle) -> AppResult<usize> {
+    let root = storage::data_root_dir(app)?;
+    register_pending_workers(app, &app.state::<AppState>(), load_pending_manual_workers(&root)?)
+}
+
+struct DispatcherRunningGuard<'a> {
+    running: &'a std::sync::atomic::AtomicBool,
+    pending: &'a Mutex<HashMap<String, PendingWorker>>,
+    armed: bool,
+}
+
+impl DispatcherRunningGuard<'_> {
+    fn stopped_under_registry_lock(&mut self) {
+        self.running.store(false, Ordering::Release);
+        self.armed = false;
+    }
+}
+
+impl Drop for DispatcherRunningGuard<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let _registry = self.pending.lock().unwrap_or_else(|error| error.into_inner());
+            self.running.store(false, Ordering::Release);
+        }
+    }
+}
+
+fn remove_pending_after(
+    pending: &Mutex<HashMap<String, PendingWorker>>,
+    id: &str,
+    persist: impl FnOnce() -> AppResult<()>,
+) -> AppResult<()> {
+    persist()?;
+    pending.lock().unwrap_or_else(|error| error.into_inner()).remove(id);
+    Ok(())
+}
+
+fn dispatch_pending_workers(app: AppHandle) {
+    let dispatcher_state = app.state::<AppState>();
+    let mut running_guard = DispatcherRunningGuard {
+        running: &dispatcher_state.job_dispatcher_running, pending: &dispatcher_state.pending_jobs, armed: true,
+    };
+    let mut last_errors = HashMap::<String, String>::new();
+    loop {
+        let mut candidates = {
+            let state = app.state::<AppState>();
+            let mut pending = match state.pending_jobs.lock() {
+                Ok(pending) => pending,
+                Err(error) => error.into_inner(),
+            };
+            if pending.is_empty() {
+                // Under the same registry lock as insertion: no lost wakeup.
+                running_guard.stopped_under_registry_lock();
+                return;
+            }
+            pending.values_mut().map(|candidate| candidate.clone()).collect::<Vec<_>>()
+        };
+        candidates.sort_by(|a, b| a.created_at.total_cmp(&b.created_at).then(a.requested.cmp(&b.requested)));
+        for candidate in candidates {
+            let attempt = task_journal::try_claim_pending(&candidate.root, &candidate.command, &candidate.requested);
+            if matches!(&attempt, Ok(task_journal::ClaimAttempt::Waiting)) { break; }
+            match attempt {
+                Ok(task_journal::ClaimAttempt::Ready(journal, payload, task_id)) => {
+                    let _ = remove_pending_after(&dispatcher_state.pending_jobs, &candidate.requested, || Ok(()));
+                    last_errors.remove(&candidate.requested);
+                    let operation_id = session_log::record_operation_request(&app, &candidate.command, &payload, Some(&task_id));
+                    let result = spawn_worker_background_inner(app.clone(), app.state::<AppState>(), &candidate.command,
+                        task_id, payload, operation_id.clone(), Some(journal.clone()));
+                    if let Err(error) = result {
+                        update_task_journal(&app, &Some(journal), |journal| journal.fail_all(&error.to_string()));
+                        session_log::record_operation_failure(&app, &candidate.command, &operation_id, &error.to_string());
+                    }
+                }
+                Ok(task_journal::ClaimAttempt::Finished) => {
+                    let _ = remove_pending_after(&dispatcher_state.pending_jobs, &candidate.requested, || Ok(()));
+                    last_errors.remove(&candidate.requested);
+                }
+                Ok(task_journal::ClaimAttempt::Waiting) => unreachable!(),
+                Err(error) => {
+                    let persisted = remove_pending_after(&dispatcher_state.pending_jobs, &candidate.requested, ||
+                        task_journal::fail_unclaimed(&candidate.root, &candidate.command, &candidate.requested, &error.to_string()));
+                    let message = match persisted {
+                        Ok(()) => error.to_string(),
+                        Err(persist_error) => format!("{error}; unable to persist admission failure, retrying: {persist_error}"),
+                    };
+                    if last_errors.get(&candidate.requested) != Some(&message) {
+                        session_log::append(&app, "ERROR", "task.admission_failed", vec![("taskId", candidate.requested.clone()), ("message", message.clone())]);
+                        last_errors.insert(candidate.requested, message);
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[cfg(test)]
+thread_local! { static THREAD_SPAWN_FAILURE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) }; }
+
+fn spawn_worker_thread<T: Send + 'static>(name: &str, run: impl FnOnce() -> T + Send + 'static) -> std::io::Result<std::thread::JoinHandle<T>> {
+    #[cfg(test)]
+    if THREAD_SPAWN_FAILURE.with(|failure| failure.borrow().as_deref() == Some(name)) {
+        // Match Builder's failure semantics: the submitted closure is dropped
+        // before spawn returns Err, including everything captured by it.
+        drop(run);
+        return Err(std::io::Error::other("injected worker thread creation failure"));
+    }
+    std::thread::Builder::new().name(name.into()).spawn(run)
 }
 
 fn update_task_journal(app: &AppHandle, journal: &Option<JournalHandle>, update: impl FnOnce(&mut task_journal::WorkerJournal) -> AppResult<()>) {
@@ -1792,11 +1955,11 @@ impl Drop for ManualCancelWatch {
     }
 }
 
-fn watch_manual_cancel(app: &AppHandle, child: &Arc<Mutex<Child>>, ids: &[String], root: PathBuf, enabled: bool) -> ManualCancelWatch {
+fn watch_manual_cancel(app: &AppHandle, child: &Arc<Mutex<Child>>, ids: &[String], root: PathBuf, enabled: bool) -> AppResult<ManualCancelWatch> {
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread = if enabled {
         let stopped = stop.clone(); let child = child.clone(); let ids = ids.to_vec(); let app = app.clone();
-        Some(std::thread::spawn(move || {
+        Some(spawn_worker_thread("mediaforge-worker-cancel", move || {
             while !stopped.load(std::sync::atomic::Ordering::Acquire) {
                 if ids.iter().any(|id| root.join("agent-jobs").join(format!("{id}.cancel")).is_file()) {
                     if let Ok(mut owned) = child.try_lock() {
@@ -1811,9 +1974,110 @@ fn watch_manual_cancel(app: &AppHandle, child: &Arc<Mutex<Child>>, ids: &[String
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-        }))
+        })?)
     } else { None };
-    ManualCancelWatch { stop, thread }
+    Ok(ManualCancelWatch { stop, thread })
+}
+
+fn wait_reaped_child(child: &Arc<Mutex<Child>>, mut report: impl FnMut(&std::io::Error)) -> std::process::ExitStatus {
+    let mut reported = false;
+    loop {
+        // Do not hold the child mutex in a blocking wait: cancellation must still
+        // be able to terminate a worker that closed stdout before it exited.
+        let result = match child.lock() {
+            Ok(mut child) => child.try_wait(),
+            Err(poisoned) => poisoned.into_inner().try_wait(),
+        };
+        match result {
+            Ok(Some(status)) => return status,
+            Ok(None) => {}
+            Err(error) if !reported => { report(&error); reported = true; }
+            Err(_) => {}
+        }
+        // A wait error is not proof of exit. Keep both owner and quota leases,
+        // as well as the cancellation watcher, until the child is really reaped.
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+struct WorkerStartResources {
+    audio_scope: Option<audio_output::AudioOutputScope>,
+    runtime_access: Option<RuntimeAccessGuard<'static>>,
+    application_access: Option<Box<dyn Send>>,
+    stderr: Option<std::thread::JoinHandle<()>>,
+    cancel: Option<ManualCancelWatch>,
+}
+
+impl WorkerStartResources {
+    fn finish(&mut self) {
+        drop(self.cancel.take());
+        if let Some(stderr) = self.stderr.take() { let _ = stderr.join(); }
+        if let Some(mut scope) = self.audio_scope.take() { scope.finish(); }
+        drop(self.runtime_access.take());
+        drop(self.application_access.take());
+    }
+}
+
+#[derive(Clone)]
+struct WorkerStartCleanup {
+    app: AppHandle,
+    ids: Vec<String>,
+    payload: PathBuf,
+}
+
+/// Both the spawning side and the submitted supervisor closure own a guard.
+/// Builder drops its closure on failure before returning Err, so resources must
+/// stay shared until whichever guard handles failure has killed and reaped Child.
+struct WorkerStartGuard {
+    child: Arc<Mutex<Child>>,
+    resources: Arc<Mutex<WorkerStartResources>>,
+    _journal: Option<JournalHandle>,
+    cleanup: Option<WorkerStartCleanup>,
+    reaped: bool,
+    owns_cleanup: bool,
+}
+
+impl WorkerStartGuard {
+    fn fork(&self) -> Self {
+        Self { child: self.child.clone(), resources: self.resources.clone(), _journal: self._journal.clone(),
+            cleanup: self.cleanup.clone(), reaped: false, owns_cleanup: true }
+    }
+
+    fn handoff(&mut self) { self.owns_cleanup = false; }
+
+    fn finish_reaped(&mut self) {
+        self.reaped = true;
+        self.resources.lock().unwrap_or_else(|error| error.into_inner()).finish();
+    }
+}
+
+impl Drop for WorkerStartGuard {
+    fn drop(&mut self) {
+        if !self.owns_cleanup { return; }
+        if !self.reaped {
+            {
+                let mut child = self.child.lock().unwrap_or_else(|error| error.into_inner());
+                if !matches!(child.try_wait(), Ok(Some(_))) {
+                    kill_process_tree(child.id());
+                    let _ = child.kill();
+                }
+            }
+            wait_reaped_child(&self.child, |error| session_log::early("ERROR", "worker.startup_reap", &error.to_string()));
+        }
+        // These guards cannot leave scope before a real successful reap, even
+        // when thread creation or the supervisor closure itself fails.
+        self.resources.lock().unwrap_or_else(|error| error.into_inner()).finish();
+        if let Some(cleanup) = &self.cleanup {
+            let state = cleanup.app.state::<AppState>();
+            let mut tasks = state.tasks.lock().unwrap_or_else(|error| error.into_inner());
+            let owned = cleanup.ids.iter().filter(|id| tasks.get(*id).is_some_and(|child| Arc::ptr_eq(child, &self.child))).cloned().collect::<Vec<_>>();
+            for id in &owned { tasks.remove(id); }
+            drop(tasks);
+            let mut terminal = state.terminal_tasks.lock().unwrap_or_else(|error| error.into_inner());
+            for id in &owned { terminal.remove(id); }
+            let _ = std::fs::remove_file(&cleanup.payload);
+        }
+    }
 }
 
 fn spawn_worker_background_inner(
@@ -1889,33 +2153,49 @@ fn spawn_worker_background_inner(
             ("taskId", task_id.clone()),
         ],
     );
-    let mut child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+    // Check the registry before spawning so a lock failure cannot strand a live
+    // child after its owner and quota guards have already been released.
+    let mut task_registry = state.tasks.lock()
+        .map_err(|_| AppError::Worker("task registry lock poisoned".into()))?;
+    for id in &registered_task_ids {
+        if task_registry.contains_key(id) { return Err(AppError::Worker(format!("task already running: {id}"))); }
+    }
+    let child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
         Ok(child) => child,
         Err(error) => {
             let _ = std::fs::remove_file(&payload_file);
             return Err(error.into());
         }
     };
-    if let Some(scope) = &mut audio_scope {
-        if let Err(error) = scope.attach(child.id()) {
-            kill_process_tree(child.id());
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(error.into());
-        }
+    let shared_child = Arc::new(Mutex::new(child));
+    for registered_task_id in &registered_task_ids {
+        task_registry.insert(registered_task_id.clone(), shared_child.clone());
     }
-    update_task_journal(&app, &journal, |journal| journal.running(child.id()));
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
-    let stderr = child.stderr.take();
+    drop(task_registry);
+    let mut startup_guard = WorkerStartGuard {
+        child: shared_child.clone(), _journal: journal.clone(), reaped: false, owns_cleanup: true,
+        resources: Arc::new(Mutex::new(WorkerStartResources {
+            audio_scope: audio_scope.take(), runtime_access: runtime_access.take(),
+            application_access: application_access.take().map(|guard| Box::new(guard) as Box<dyn Send>), stderr: None, cancel: None,
+        })),
+        cleanup: Some(WorkerStartCleanup { app: app.clone(), ids: registered_task_ids.clone(), payload: payload_file.clone() }),
+    };
+    let worker_pid = shared_child.lock().unwrap_or_else(|error| error.into_inner()).id();
+    {
+        let mut resources = startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(scope) = resources.audio_scope.as_mut() { scope.attach(worker_pid)?; }
+    }
+    update_task_journal(&app, &journal, |journal| journal.running(worker_pid));
+    let (stdout, stderr) = {
+        let mut child = shared_child.lock().unwrap_or_else(|error| error.into_inner());
+        (child.stdout.take(), child.stderr.take())
+    };
+    let stdout = stdout.ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
     let stderr_app = app.clone();
     let stderr_task_ids = registered_task_ids.clone();
     let stderr_journal = journal.clone();
     let stderr_handle = stderr.map(|stderr| {
-        std::thread::spawn(move || {
+        spawn_worker_thread("mediaforge-worker-stderr", move || {
             read_lossy_lines(stderr, |line| {
                 if forward_python_terminal_log(&stderr_app, &line) {
                     return;
@@ -1923,22 +2203,14 @@ fn spawn_worker_background_inner(
                 emit_batch_stderr(&stderr_app, &stderr_task_ids, line, &stderr_journal);
             });
         })
-    });
-    let shared_child = Arc::new(Mutex::new(child));
-    {
-        let mut tasks = state
-            .tasks
-            .lock()
-            .map_err(|_| AppError::Worker("task registry lock poisoned".into()))?;
-        for registered_task_id in &registered_task_ids {
-            tasks.insert(registered_task_id.clone(), shared_child.clone());
-        }
-    }
+    }).transpose()?;
+    startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner()).stderr = stderr_handle;
     let cancel_root = journal.as_ref().and_then(|handle| handle.lock().ok().map(|journal| journal.data_root().to_path_buf()));
     let cancel_enabled = cancel_root.is_some();
-    let cancel_watch = watch_manual_cancel(&app, &shared_child, &registered_task_ids, cancel_root.unwrap_or_default(), cancel_enabled);
-    std::thread::spawn(move || {
-        let cancel_watch = cancel_watch;
+    let cancel_watch = watch_manual_cancel(&app, &shared_child, &registered_task_ids, cancel_root.unwrap_or_default(), cancel_enabled)?;
+    startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner()).cancel = Some(cancel_watch);
+    let mut supervisor_guard = startup_guard.fork();
+    spawn_worker_thread("mediaforge-worker-supervisor", move || {
         let mut terminal_task_ids: HashSet<String> = HashSet::new();
         let mut core_terminal_events = Vec::new();
         let mut core_terminal_error = None;
@@ -2021,21 +2293,13 @@ fn spawn_worker_background_inner(
                 }
             }
         });
-        drop(cancel_watch);
-        let exit_status = if let Ok(mut child) = shared_child.lock() {
-            child.wait().ok()
-        } else {
-            None
-        };
+        let exit_status = Some(wait_reaped_child(&shared_child, |error| {
+            session_log::append(&app, "ERROR", "worker.reap_pending", vec![("taskId", task_id.clone()), ("message", error.to_string())]);
+        }));
         if let Some(directory) = editor_export_directory.as_deref() {
             cleanup_editor_export_temp_files(directory, &task_id);
         }
-        if let Some(mut scope) = audio_scope.take() {
-            // Dropping here also handles a failed wait while both leases are held.
-            if exit_status.is_some() { scope.finish(); }
-        }
-        drop(runtime_access.take());
-        drop(application_access.take());
+        supervisor_guard.finish_reaped();
         // Finish Python cleanup before the terminal event starts the UI's environment refresh.
         if let Some((message, record)) = core_terminal_error {
             broadcast_existing_task_error(&app, &registered_task_ids, message, record.as_ref());
@@ -2127,28 +2391,8 @@ fn spawn_worker_background_inner(
                 _ => {}
             }
         }
-        if let Some(handle) = stderr_handle {
-            let _ = handle.join();
-        }
-        let _ = std::fs::remove_file(payload_file);
-        let cleanup_state = app.state::<AppState>();
-        if let Ok(mut tasks) = cleanup_state.tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                if tasks
-                    .get(registered_task_id)
-                    .map(|registered| Arc::ptr_eq(registered, &shared_child))
-                    .unwrap_or(false)
-                {
-                    tasks.remove(registered_task_id);
-                }
-            }
-        }
-        if let Ok(mut terminal) = cleanup_state.terminal_tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                terminal.remove(registered_task_id);
-            }
-        };
-    });
+    })?;
+    startup_guard.handoff();
 
     Ok(())
 }
@@ -2159,6 +2403,206 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn worker_restart_recovers_only_queued_generic_manual_compute_and_merges_idempotently() {
+        let root = tempfile::tempdir().unwrap();
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/jobs/current-contract.json")).unwrap();
+        for row in fixture["records"].as_array().unwrap() {
+            crate::storage::write_json_file(&root.path().join("agent-jobs").join(format!("{}.json", row["jobId"].as_str().unwrap())), row).unwrap();
+        }
+        let compute = ["audio_tools", "run_operation", "media_tool", "export_editor_mix"];
+        for command in compute.into_iter().chain(["model_download", "health", "install_runtime", "infer", "infer_workflow"]) {
+            super::task_journal::enqueue_manual(root.path(), command, command, &json!({"operation":"fixture"})).unwrap();
+        }
+        let base = super::task_journal::read_job(&root.path().join("agent-jobs/run_operation.json")).unwrap().unwrap();
+        for (id, status, source, owner) in [
+            ("external-agent", "queued", "agent", serde_json::Value::Null),
+            ("running", "running", "manual", json!({"kind":"tauri-worker","pid":12345})),
+            ("owned-queued", "queued", "manual", json!({"kind":"tauri-worker","pid":12345})),
+            ("completed", "completed", "manual", serde_json::Value::Null),
+            ("failed", "failed", "manual", serde_json::Value::Null),
+            ("cancelled", "cancelled", "manual", serde_json::Value::Null),
+            ("interrupted", "interrupted", "manual", serde_json::Value::Null),
+        ] {
+            let mut row = base.clone();
+            row["jobId"] = json!(id); row["cancelTaskId"] = json!(id); row["status"] = json!(status); row["source"] = json!(source); row["owner"] = owner;
+            if status == "running" { row["startedAt"] = json!(1.0); }
+            if ["completed", "failed", "cancelled", "interrupted"].contains(&status) { row["finishedAt"] = json!(2.0); }
+            crate::storage::write_json_file(&root.path().join("agent-jobs").join(format!("{id}.json")), &row).unwrap();
+        }
+        let bytes = || fs::read_dir(root.path().join("agent-jobs")).unwrap().map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+            .map(|path| (path.clone(), fs::read(path).unwrap())).collect::<std::collections::BTreeMap<_, _>>();
+        let before = bytes();
+        let candidates = super::load_pending_manual_workers(root.path()).unwrap();
+        let mut ids = candidates.iter().map(|candidate| candidate.requested.as_str()).collect::<Vec<_>>(); ids.sort();
+        assert_eq!(ids, ["audio_tools", "export_editor_mix", "media_tool", "run_operation"]);
+        assert!(candidates.iter().all(|candidate| candidate.root == root.path() && candidate.created_at > 0.0));
+        let mut pending = std::collections::HashMap::new();
+        assert_eq!(super::merge_pending_workers(&mut pending, candidates), 4);
+        assert_eq!(super::merge_pending_workers(&mut pending, super::load_pending_manual_workers(root.path()).unwrap()), 0);
+        assert_eq!(pending.len(), 4);
+        assert_eq!(bytes(), before, "restoring waiters must not claim or rewrite queued records");
+    }
+
+    #[test]
+    fn worker_restart_rejects_invalid_catalog_without_restoring_a_partial_default_queue() {
+        let root = tempfile::tempdir().unwrap();
+        super::task_journal::enqueue_manual(root.path(), "run_operation", "valid", &json!({"operation":"fixture"})).unwrap();
+        let valid_path = root.path().join("agent-jobs/valid.json");
+        let before = fs::read(&valid_path).unwrap();
+        let bad = root.path().join("agent-jobs/bad.json");
+        fs::write(&bad, b"{\"schemaVersion\":1}").unwrap();
+        assert!(super::load_pending_manual_workers(root.path()).is_err());
+        assert_eq!(fs::read(valid_path).unwrap(), before);
+        assert_eq!(fs::read(bad).unwrap(), b"{\"schemaVersion\":1}");
+    }
+
+    struct StartupReleaseProbe {
+        child: std::sync::Arc<std::sync::Mutex<std::process::Child>>,
+        root: std::path::PathBuf,
+        reaped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        slot_held: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl Drop for StartupReleaseProbe {
+        fn drop(&mut self) {
+            use std::sync::atomic::Ordering;
+            self.reaped.store(matches!(self.child.lock().unwrap().try_wait(), Ok(Some(_))), Ordering::SeqCst);
+            self.slot_held.store(matches!(super::task_journal::try_claim_pending(&self.root, "run_operation", "next"),
+                Ok(super::task_journal::ClaimAttempt::Waiting)), Ordering::SeqCst);
+        }
+    }
+
+    fn owned_startup_fixture(delay: f64) -> (tempfile::TempDir, super::WorkerStartGuard,
+        std::sync::Arc<std::sync::atomic::AtomicBool>, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        use std::io::{BufRead, BufReader};
+        use std::sync::{Arc, Mutex};
+        let root = tempfile::tempdir().unwrap();
+        for id in ["owned", "next"] {
+            super::task_journal::enqueue_manual(root.path(), "run_operation", id, &json!({"operation":"fixture"})).unwrap();
+        }
+        let super::task_journal::ClaimAttempt::Ready(journal, _, _) =
+            super::task_journal::try_claim_pending(root.path(), "run_operation", "owned").unwrap() else { panic!("fixture not admitted") };
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let python = std::env::var_os("MEDIAFORGE_RUNTIME_PYTHON").map(std::path::PathBuf::from)
+            .unwrap_or_else(|| project.join(if cfg!(windows) { "python-runtime/python.exe" } else { "python-runtime/bin/python3" }));
+        assert!(python.is_absolute() && python.is_file(), "startup fixtures require explicit Python 3.12: {}", python.display());
+        let script = format!("import sys,time; assert sys.version_info[:2]==(3,12), 'Python 3.12 required'; print('ready',flush=True); time.sleep({delay})");
+        let mut command = crate::process_command::hidden_command(python);
+        command.args(["-I", "-B", "-c", &script]).current_dir(root.path())
+            .env("HOME", root.path()).env("USERPROFILE", root.path()).env("APPDATA", root.path())
+            .env("LOCALAPPDATA", root.path()).env("TEMP", root.path()).env("TMP", root.path())
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+        let child = Arc::new(Mutex::new(command.spawn().unwrap()));
+        let reaped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let slot_held = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut scope = super::audio_output::AudioOutputScope::create(&root.path().join("receipts"), root.path().join("output")).unwrap();
+        scope.attach(child.lock().unwrap().id()).unwrap();
+        let guard = super::WorkerStartGuard { child: child.clone(), _journal: Some(journal), cleanup: None, reaped: false, owns_cleanup: true,
+            resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, stderr: None, cancel: None,
+                application_access: Some(Box::new(StartupReleaseProbe { child: child.clone(), root: root.path().into(), reaped: reaped.clone(), slot_held: slot_held.clone() })) })),
+        };
+        let stdout = child.lock().unwrap().stdout.take().unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let reader = super::spawn_worker_thread("mediaforge-startup-fixture-ready", move || {
+            let mut line = String::new();
+            let _ = sender.send(BufReader::new(stdout).read_line(&mut line).map(|_| line));
+        }).unwrap();
+        let ready = receiver.recv_timeout(std::time::Duration::from_secs(15));
+        if !matches!(&ready, Ok(Ok(line)) if line.trim() == "ready") {
+            drop(guard); let _ = reader.join(); panic!("owned Python 3.12 did not become ready: {ready:?}");
+        }
+        reader.join().unwrap();
+        (root, guard, reaped, slot_held)
+    }
+
+    #[test]
+    fn worker_startup_thread_failure_reaps_before_releasing_scope_or_quota() {
+        use std::sync::atomic::Ordering;
+        for name in ["mediaforge-worker-stderr", "mediaforge-worker-cancel", "mediaforge-worker-supervisor"] {
+            let (root, guard, reaped, slot_held) = owned_startup_fixture(60.0);
+            let child = guard.child.clone();
+            let submitted = guard.fork();
+            super::THREAD_SPAWN_FAILURE.with(|failure| *failure.borrow_mut() = Some(name.into()));
+            let spawned = super::spawn_worker_thread(name, move || drop(submitted));
+            super::THREAD_SPAWN_FAILURE.with(|failure| *failure.borrow_mut() = None);
+            assert!(spawned.is_err(), "{name}");
+            assert!(child.lock().unwrap().try_wait().unwrap().is_some());
+            assert!(reaped.load(Ordering::SeqCst), "resources released before reap: {name}");
+            assert!(slot_held.load(Ordering::SeqCst), "quota released before startup cleanup: {name}");
+            assert_eq!(fs::read_dir(root.path().join("receipts")).unwrap().count(), 0);
+            drop(guard);
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(), super::task_journal::ClaimAttempt::Ready(_, _, _)));
+        }
+    }
+
+    #[test]
+    fn worker_startup_success_hands_off_without_killing_the_owned_child() {
+        use std::sync::atomic::Ordering;
+        let (_root, mut guard, reaped, slot_held) = owned_startup_fixture(0.15);
+        let mut supervisor = guard.fork();
+        let thread = super::spawn_worker_thread("mediaforge-worker-supervisor", move || {
+            let status = super::wait_reaped_child(&supervisor.child, |_| {});
+            supervisor.finish_reaped();
+            status
+        }).unwrap();
+        guard.handoff(); drop(guard);
+        assert!(thread.join().unwrap().success());
+        assert!(reaped.load(Ordering::SeqCst)); assert!(slot_held.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn worker_startup_supervisor_unwind_still_reaps_before_releasing_resources() {
+        use std::sync::atomic::Ordering;
+        let (_root, mut guard, reaped, slot_held) = owned_startup_fixture(60.0);
+        let child = guard.child.clone();
+        let supervisor = guard.fork();
+        let thread = super::spawn_worker_thread("mediaforge-worker-supervisor", move || {
+            let _supervisor = supervisor;
+            panic!("injected supervisor failure");
+        }).unwrap();
+        guard.handoff(); drop(guard);
+        assert!(thread.join().is_err());
+        assert!(child.lock().unwrap().try_wait().unwrap().is_some());
+        assert!(reaped.load(Ordering::SeqCst)); assert!(slot_held.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn worker_startup_admission_keeps_pending_until_failure_is_durable() {
+        let root = tempfile::tempdir().unwrap();
+        super::task_journal::enqueue_manual(root.path(), "run_operation", "pending", &json!({"operation":"fixture"})).unwrap();
+        let pending = std::sync::Mutex::new(std::collections::HashMap::from([("pending".into(), super::PendingWorker {
+            root: root.path().into(), command: "run_operation".into(), requested: "pending".into(), created_at: 1.0,
+        })]));
+        assert!(super::remove_pending_after(&pending, "pending", || Err(crate::error::AppError::Worker("injected persistence failure".into()))).is_err());
+        assert!(pending.lock().unwrap().contains_key("pending"));
+        assert_eq!(super::task_journal::read_job(&root.path().join("agent-jobs/pending.json")).unwrap().unwrap()["status"], "queued");
+        super::remove_pending_after(&pending, "pending", || super::task_journal::fail_unclaimed(root.path(), "run_operation", "pending", "admission failed")).unwrap();
+        assert!(pending.lock().unwrap().is_empty());
+        assert_eq!(super::task_journal::read_job(&root.path().join("agent-jobs/pending.json")).unwrap().unwrap()["status"], "failed");
+    }
+
+    #[test]
+    fn worker_startup_dispatcher_unwind_resets_flag_without_clobbering_a_new_dispatcher() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let running = AtomicBool::new(true);
+        let pending = std::sync::Mutex::new(std::collections::HashMap::new());
+        let outcome = std::panic::catch_unwind(|| {
+            let _guard = super::DispatcherRunningGuard { running: &running, pending: &pending, armed: true };
+            panic!("injected dispatcher failure");
+        });
+        assert!(outcome.is_err()); assert!(!running.load(Ordering::Acquire));
+        let mut guard = super::DispatcherRunningGuard { running: &running, pending: &pending, armed: true };
+        {
+            let _registry = pending.lock().unwrap();
+            guard.stopped_under_registry_lock();
+            running.store(true, Ordering::Release);
+        }
+        drop(guard);
+        assert!(running.load(Ordering::Acquire));
+    }
 
     #[test]
     fn supervisor_terminal_decisions_preserve_recoverable_jobs() {

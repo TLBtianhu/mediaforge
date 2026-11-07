@@ -10,6 +10,7 @@ const vite = await createServer({
   server: {
     middlewareMode: true,
     hmr: false,
+    ws: false,
     watch: { ignored: ['**/*'] },
   },
   appType: 'custom',

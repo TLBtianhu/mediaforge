@@ -163,6 +163,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             "python/worker.py": b"never executed worker", "python/core/runtime_audio_probe.py": b"probe",
             "python/shared/safe_fs.py": b"safe fs", "python/runtime-manifest.json": b'{"python":"3.12"}',
             "manifest/protocol.json": b"{}", "manifest/runtime.json": b"{}",
+            "manifest/execution-quota.json": (ROOT / "manifest/execution-quota.json").read_bytes(),
             "python-runtime/python.exe": b"never executed bootstrap",
             "release/bootstrap-selected/python.exe": b"explicit selected bootstrap",
             "python-runtime/runtime-envs/cuda/retained.dll": b"separate runtime asset",
@@ -211,6 +212,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             names = {name.replace("\\", "/") for name in archive.namelist()}
             self.assertIn("manifest/protocol.json", names)
             self.assertIn("manifest/runtime.json", names)
+            self.assertIn("manifest/execution-quota.json", names)
             self.assertIn("python/plugin-sdk/pymss-sdk.js", names)
             self.assertFalse(any(name.startswith("python-runtime/") for name in names))
         # A later invocation with the wrong bootstrap must preserve this exact
@@ -245,6 +247,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             "python/shared/safe_fs.py": b"worker fixture",
             "integrations/dsh-mediaforge/cordis.patch.yml": b"bridge fixture",
             "manifest/protocol.json": b"{}", "manifest/runtime.json": b"{}",
+            "manifest/execution-quota.json": (ROOT / "manifest/execution-quota.json").read_bytes(),
             "python-runtime/python.exe": b"bootstrap",
             "python-runtime/runtime-envs/cuda/large.dll": b"excluded runtime",
             "python-runtime/Lib/__pycache__/cached.pyc": b"excluded cache",
@@ -310,7 +313,7 @@ Remove-ReleaseOwnedPath -Path (Join-Path $FixtureRoot 'release/stage-0.0.32') -O
             self.assertRegex(result.stderr, "OutputDir must be inside|Invalid stage directory")
 
     def test_full_stage_contract_requires_bootstrap_sources_sdk_tools_and_no_user_assets(self) -> None:
-        names = ["MediaForge.exe", "manifest/protocol.json", "manifest/runtime.json", "python/worker.py",
+        names = ["MediaForge.exe", "manifest/protocol.json", "manifest/runtime.json", "manifest/execution-quota.json", "python/worker.py",
                  "python/core/runtime_audio_probe.py", "python/shared/safe_fs.py", "python/runtime-manifest.json",
                  "python/plugin-sdk/pymss-sdk.js", "python/plugin-sdk/pymss-sdk.css", "python-runtime/python.exe",
                  "bin/ffmpeg.exe", "bin/ffprobe.exe", "bin/aria2c.exe", "bin/vcrt/msvcp140.dll",
@@ -349,6 +352,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             "bin/ffmpeg.exe": b"tool fixture", "integrations/bridge/config.json": b"{}",
             "manifest/protocol.json": (ROOT / "manifest/protocol.json").read_bytes(),
             "manifest/runtime.json": (ROOT / "manifest/runtime.json").read_bytes(),
+            "manifest/execution-quota.json": (ROOT / "manifest/execution-quota.json").read_bytes(),
             "manifest/future-contract.json": b'{"future":true}',
             "python-runtime/runtime-envs/cuda/asset.bin": b"exclude the runtime",
             "data/settings.json": b"exclude user data", "models/weights.bin": b"exclude models",
@@ -384,6 +388,20 @@ Copy-ReleaseUpdate -Stage (Join-Path $FixtureRoot 'source') -Destination (Join-P
 """, ok=False)
         self.assertIn("protocol.json", result.stderr)
         self.assertFalse((self.root / "update").exists())
+
+    def test_missing_execution_quota_rejects_stage_and_update_before_copying(self) -> None:
+        files = {"manifest/protocol.json": b"{}", "manifest/runtime.json": b"{}", "keep.bin": b"unchanged"}
+        source = self.write_files("source", files)
+        for statement in (
+            "Assert-ReleaseStage (Join-Path $FixtureRoot 'source')",
+            "Copy-ReleaseUpdate -Stage (Join-Path $FixtureRoot 'source') -Destination (Join-Path $FixtureRoot 'update')",
+        ):
+            with self.subTest(statement=statement):
+                result = self.run_fixture(statement, ok=False)
+                self.assertIn("execution-quota.json", result.stderr)
+                self.assertFalse((self.root / "update").exists())
+                self.assertEqual({path.relative_to(source).as_posix(): path.read_bytes()
+                                  for path in source.rglob("*") if path.is_file()}, files)
 
 
 if __name__ == "__main__":

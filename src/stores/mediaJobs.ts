@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -16,6 +16,7 @@ export const isJournalTerminal = (status: string) => TERMINAL.has(status)
 export const journalOperation = (job: JournalJob) => String(job.payload?.operation || job.command)
 const now = () => Date.now() / 1000
 const snapshot = <T>(value: T): T => JSON.parse(JSON.stringify(value))
+export const JOURNAL_POLL_INTERVAL_MS = 2000
 
 // A Pinia lifetime, rather than a route lifetime, owns the event subscription.
 // The backend journal remains the durable source of truth across app restarts.
@@ -33,6 +34,27 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   let listening = false
   let initializing: Promise<void> | undefined
   let refreshing: Promise<void> | undefined
+  let disposed = false
+  let pollTimer: ReturnType<typeof setTimeout> | undefined
+  let unlisten: (() => void) | undefined
+
+  function schedulePoll() {
+    if (disposed || pollTimer !== undefined || !isTauriRuntime()) return
+    pollTimer = setTimeout(() => {
+      pollTimer = undefined
+      void refresh().finally(schedulePoll)
+    }, JOURNAL_POLL_INTERVAL_MS)
+    // Node component tests have no application event loop to keep alive.
+    ;(pollTimer as unknown as { unref?: () => void }).unref?.()
+  }
+
+  onScopeDispose(() => {
+    disposed = true
+    if (pollTimer !== undefined) clearTimeout(pollTimer)
+    pollTimer = undefined
+    unlisten?.()
+    unlisten = undefined
+  })
 
   function put(job: JournalJob) {
     job.updatedAt = Math.max(job.updatedAt, now())
@@ -112,16 +134,19 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   }
 
   function refresh(): Promise<void> {
+    if (disposed) return Promise.resolve()
     if (refreshing) return refreshing
     const atStart = revision
     loading.value = true
     refreshing = (async () => {
       try {
         const response = await readJournal()
-        adoptSnapshot(response, atStart)
-        error.value = ''
+        if (!disposed) {
+          adoptSnapshot(response, atStart)
+          error.value = ''
+        }
       } catch (cause) {
-        error.value = cause instanceof Error ? cause.message : String(cause)
+        if (!disposed) error.value = cause instanceof Error ? cause.message : String(cause)
       } finally {
         loading.value = false
         refreshing = undefined
@@ -131,13 +156,17 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   }
 
   function initialize(): Promise<void> {
+    if (disposed) return Promise.resolve()
     if (initializing) return initializing
     initializing = (async () => {
       if (!listening && isTauriRuntime()) {
-        await listen<WorkerEvent>('pymss://worker-event', event => handleWorkerEvent(event.payload))
+        const stop = await listen<WorkerEvent>('pymss://worker-event', event => { if (!disposed) handleWorkerEvent(event.payload) })
+        if (disposed) { stop(); return }
+        unlisten = stop
         listening = true
       }
       await refresh()
+      schedulePoll()
     })().finally(() => { initializing = undefined })
     return initializing
   }
@@ -162,9 +191,12 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
       // The listener and immutable local snapshot exist before native work starts.
       await invoke('start_audio_tool', { payload: request })
     } catch (cause) {
-      const current = jobs.value.find(job => job.jobId === jobId)!
-      if (!isJournalTerminal(current.status)) put({ ...current, status: 'failed', finishedAt: now(),
-        message: cause instanceof Error ? cause.message : String(cause), error: String(cause) })
+      // An IPC acknowledgement can be lost after the backend accepted a waiter.
+      // Resolve against disk before deciding whether the submission was rejected.
+      pendingIds.delete(jobId)
+      await refresh()
+      const current = jobs.value.find(job => job.jobId === jobId)
+      if (!error.value && current && !isJournalTerminal(current.status)) return current
       throw cause
     } finally {
       pendingIds.delete(jobId)

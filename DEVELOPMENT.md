@@ -262,10 +262,32 @@ to its Agent history; manual audio records remain until explicit removal. Refere
 must not lose an anchor. The CLI transport payload.json is removed after its own worker is
 reaped; diagnostics and any other workspace artifacts remain.
 
-MCP stdio and HTTP share records when configured with the same data root. Their execution
-processes and concurrency quotas are still separate from the UI scheduler; storage unification
-does not claim a shared cross-process scheduler. Media/Agent produced-file deletion remains a
-separate next step. See [the job contract](docs/job-ledger-contract.md) for the exact boundaries.
+MCP stdio/HTTP and the UI share compute-worker admission when configured with the same data root.
+`manifest/execution-quota.json` is the one contract for covered commands, the existing settings
+field, default 1 and maximum 4 workers. Jobs remain ownerless queued until catalog → quota →
+owner → write claim succeeds. A batch occupies one slot; query, download and runtime management
+commands are not compute workers. Lowering the limit counts every occupied fixed slot, and
+terminal output does not release capacity until the process is reaped.
+
+The Rust dispatcher and Python Kernel still execute their own sources. Each has local FIFO;
+this is shared cross-process admission, not global FIFO, a machine-wide GPU budget or a daemon
+that takes over all sources. Generic manual queued jobs resume at native startup, audio after
+frontend enqueue/start coordination, and Agent jobs when Kernel restarts. Media/Agent produced-file
+deletion remains a next step. See [the job contract](docs/job-ledger-contract.md).
+
+### Headless installer smoke
+
+`scripts/smoke-installer.ps1 -Stage <stage> -Version <version> -Python <3.12-python> -Compiler <ISCC>`
+uses the same installer source and stage to compile a unique test identity. Optional `-Installer`
+is read-only hash metadata; the production installer is never executed by this smoke. The test
+verifies the `install/app` layout, byte-matched staged files, bootstrap worker health, silent
+uninstall and preservation of seeded assets. It does not launch the application GUI. An invalid
+identity, timeout or production registry drift retains evidence instead of killing unknown
+processes, restoring user registry values or deleting an unverified directory.
+
+All four Windows CI variants use this common action. Local regression uses fake compiler/
+installer/worker processes in disposable profiles; editing this flow is not proof that real
+Inno Setup, a production installer or remote CI has been executed successfully.
 
 ## Capability and model binding
 

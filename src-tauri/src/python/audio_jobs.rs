@@ -329,9 +329,14 @@ pub(super) struct Claimed {
     pub records: Vec<(Value, FileLock)>,
 }
 
+#[cfg(test)]
 pub(super) fn claim(root: &Path, command: &str, primary_id: &str) -> AppResult<Claimed> {
     let _catalog = task_journal::catalog_lock(root)?;
     let library = task_journal::read_all_unlocked(root)?;
+    claim_unlocked(root, command, primary_id, &library)
+}
+
+pub(super) fn claim_unlocked(root: &Path, command: &str, primary_id: &str, library: &[Value]) -> AppResult<Claimed> {
     let requested = library
         .iter()
         .find(|v| v["jobId"] == primary_id)
@@ -512,6 +517,31 @@ mod tests {
             timestamp: None,
             payload: json!({"outputs": [{"path": path}], "files": [path]}),
         }
+    }
+
+    #[test]
+    fn waiting_batch_uses_one_slot_and_a_cancelled_anchor_keeps_its_sibling() {
+        let root = tempfile::tempdir().unwrap();
+        enqueue(root.path(), request()).unwrap();
+        let busy = {
+            let _catalog = task_journal::catalog_lock(root.path()).unwrap();
+            super::super::execution_quota::try_acquire(root.path()).unwrap().unwrap()
+        };
+        assert!(matches!(task_journal::try_claim_pending(root.path(), "infer_workflow", "a_1").unwrap(), task_journal::ClaimAttempt::Waiting));
+        let rows = task_journal::list(root.path()).unwrap();
+        assert!(rows.iter().all(|row| row["owner"].is_null() && row["startedAt"].is_null()));
+        assert!(task_journal::request_cancel(root.path(), "a_1").unwrap());
+        assert_eq!(task_journal::pending_identity(root.path(), "infer_workflow", "a_1").unwrap().unwrap().0, "a_1");
+        drop(busy);
+        let task_journal::ClaimAttempt::Ready(journal, payload, id) = task_journal::try_claim_pending(root.path(), "infer_workflow", "a_1").unwrap() else { panic!("sibling not admitted"); };
+        assert_eq!(id, "b_1"); assert_eq!(payload["taskId"], "b_1");
+        assert_eq!(payload["tasks"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["output"], "batch/root");
+        assert_eq!(task_journal::list(root.path()).unwrap().iter().find(|row| row["jobId"] == "a_1").unwrap()["status"], "cancelled");
+        let _catalog = task_journal::catalog_lock(root.path()).unwrap();
+        assert!(super::super::execution_quota::try_acquire(root.path()).unwrap().is_none());
+        drop(journal);
+        assert!(super::super::execution_quota::try_acquire(root.path()).unwrap().is_some());
     }
 
     #[test]

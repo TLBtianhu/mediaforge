@@ -1,7 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useMediaJobsStore, isJournalTerminal } from '@/stores/mediaJobs'
 
-type Labels = { running: () => string; completed: () => string; failed: () => string; cancelled: () => string }
+type Labels = { queued: () => string; running: () => string; completed: () => string; failed: () => string; cancelled: () => string }
 type Messages = { success(text: string): unknown; warning(text: string): unknown; error(text: string): unknown; info(text: string): unknown }
 
 export function useMediaJob<T extends { path: string }>(operation: string, labels: Labels, message: Messages, restore?: (payload: Record<string, unknown>) => void) {
@@ -15,6 +15,7 @@ export function useMediaJob<T extends { path: string }>(operation: string, label
   const status = computed(() => {
     const current = job.value
     if (!current) return ''
+    if (current.status === 'queued') return labels.queued()
     if (current.message && !['queued', 'starting worker', 'completed', 'Cancelled'].includes(current.message)) return current.message
     if (current.status === 'completed') return labels.completed()
     if (current.status === 'cancelled') return labels.cancelled()

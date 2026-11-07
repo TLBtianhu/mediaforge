@@ -26,6 +26,8 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 音频先持久入队确认，再仅按jobId领取执行；共享图/参数仅存primary，child保存引用与输入差异，前端不回写生命周期。
 - 目录成员与引用读取使用共享catalog锁；整组删除须全终态且owner lease释放，资产清理前先预检。
 - manual历史保留到显式删除，不套用Kernel默认Agent保留策略；仅清当前自建worker回收后的临时请求正文。
+- UI/媒体/MCP处理任务按`manifest/execution-quota.json`共享同数据根的worker配额，配置只读`settings/app.json`的现有并发字段；排队不占owner/slot，领取顺序为catalog→quota→owner→write，进程确认回收后才释放。
+- 不恢复独立前端并发计数；批次按一个worker计数，查询/下载/运行时管理不占处理配额。当前仅各执行器内部FIFO，不宣称跨进程全局FIFO或物理GPU分区。
 - Python版本唯一目标来自`python/runtime-manifest.json`，当前为3.12；开发、bootstrap及独立资产均须实测一致。
 - 自包含运行时必须自带匹配解释器、DLL、stdlib和扩展。安装只验证/发布，不覆盖解释器修旧venv。
 
@@ -36,6 +38,7 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 创建venv使用`HiddenVenvBuilder`：让ensurepip及孙进程继承隐藏控制台，不能只隐藏第一层进程。
 - 保留stdout/stderr日志、退出码、超时和取消能力，不用`pythonw.exe`丢弃诊断，也不全局monkeypatch subprocess。
 - 用户明确禁止ComputerUse/桌面操控；不为验收弹窗而启动GUI、操作现有窗口或强杀旧测试实例。
+- 安装验收用`smoke-installer.ps1`显式stage/版本/Python3.12/编译器，重编唯一测试身份，只跑bootstrap health；正式安装包只读记录哈希，不拿生产AppId覆盖用户安装来冒烟。
 
 ## Architecture
 

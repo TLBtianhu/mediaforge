@@ -168,7 +168,7 @@ function Copy-ReleaseTree {
 }
 
 function Assert-ReleaseContract([string]$Stage) {
-    foreach ($name in @('protocol.json', 'runtime.json')) {
+    foreach ($name in @('protocol.json', 'runtime.json', 'execution-quota.json')) {
         $path = Join-Path (Join-Path $Stage 'manifest') $name
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             throw "staging is missing worker contract: $path"

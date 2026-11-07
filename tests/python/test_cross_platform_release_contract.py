@@ -35,6 +35,7 @@ def write_fixture(root: Path) -> None:
         "python/runtime-manifest.json": json.dumps({"baseGeneration": 1, "manifestVersion": "fixture", "python": "3.12"}),
         "manifest/protocol.json": json.dumps({"domains": {"test": {"commands": {"run": {"handler": "core.handler:run"}}}}}),
         "manifest/runtime.json": '{"schemaVersion":1}', "manifest/future-contract.json": '{"keep":true}',
+        "manifest/execution-quota.json": (ROOT / "manifest/execution-quota.json").read_text(encoding="utf-8"),
     }
     for name, content in files.items():
         path = root / name
@@ -76,6 +77,7 @@ class PosixResourceFixtureTests(unittest.TestCase):
         self.assertTrue((resources / "python/core/operation_kernel.py").is_file())
         self.assertTrue((resources / "python/shared/worker_protocol.py").is_file())
         self.assertTrue((resources / "python/surfaces/agent_contract.py").is_file())
+        self.assertEqual((resources / "manifest/execution-quota.json").read_bytes(), (ROOT / "manifest/execution-quota.json").read_bytes())
 
     def test_staging_replaces_stale_files_keeps_all_contracts_and_excludes_generated_caches(self):
         source, resources = self.root / "source", self.root / "resources"
@@ -110,6 +112,20 @@ class PosixResourceFixtureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overwrite its source"):
             RELEASE.stage_resources(self.root, self.root)
         self.assertTrue((self.root / "python/worker.py").is_file())
+
+    def test_missing_execution_quota_is_rejected_before_bundle_configuration(self):
+        write_fixture(self.root)
+        (self.root / "manifest/execution-quota.json").unlink()
+        before = {path.relative_to(self.root).as_posix(): path.read_bytes()
+                  for path in self.root.rglob("*") if path.is_file()}
+        for platform in ("linux", "macos"):
+            with self.subTest(platform=platform):
+                with self.assertRaisesRegex(ValueError, "manifest/execution-quota.json"):
+                    RELEASE.bundle_config(self.root, platform)
+        with self.assertRaisesRegex(ValueError, "manifest/execution-quota.json"):
+            RELEASE.verify_resources(self.root)
+        self.assertEqual({path.relative_to(self.root).as_posix(): path.read_bytes()
+                          for path in self.root.rglob("*") if path.is_file()}, before)
 
     def test_tauri_override_maps_complete_code_contract_tools_and_bootstrap_at_resource_root(self):
         write_fixture(self.root)
@@ -174,6 +190,8 @@ class MacReleaseFixtureTests(unittest.TestCase):
         with tarfile.open(output) as archive:
             self.assertEqual(archive.extractfile("MediaForge.app/Contents/Resources/manifest/future-contract.json").read(), b'{"keep":true}')
             self.assertIsNotNone(archive.getmember("MediaForge.app/Contents/Resources/python/shared/protocol_contract.py"))
+            self.assertEqual(archive.extractfile("MediaForge.app/Contents/Resources/manifest/execution-quota.json").read(),
+                             (self.resources / "manifest/execution-quota.json").read_bytes())
             self.assertEqual({name.split("/")[0] for name in archive.getnames()}, {"MediaForge.app"})
         sidecar = json.loads(Path(str(output) + ".json").read_text())
         self.assertEqual(sidecar["version"], "1.2.3")

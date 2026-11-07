@@ -156,6 +156,9 @@ pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
             if metadata.file_attributes() & 0x400 != 0 { return Err(AppError::Worker("job reparse point is not allowed".into())); }
         }
         if metadata.file_type().is_symlink() { return Err(AppError::Worker("job symlink is not allowed".into())); }
+        // Progress writers intentionally do not take the catalog lock. Coordinate
+        // the actual open/read with their per-job atomic replacement on Windows.
+        let _read_guard = write_lock(root, id)?;
         if let Some(value) = read_job(&path)? {
             if value["jobId"] != id { return Err(AppError::Worker("job id does not match its filename".into())); }
             jobs.push(value);
@@ -179,17 +182,8 @@ pub(crate) fn registered_ids(primary: &str, payload: &Value) -> Vec<String> {
     ids
 }
 
-pub(crate) fn tracks(command: &str) -> bool {
-    matches!(
-        command,
-        "infer"
-            | "infer_workflow"
-            | "audio_tools"
-            | "media_tool"
-            | "run_operation"
-            | "export_editor_mix"
-    )
-}
+#[cfg(test)]
+pub(crate) fn tracks(command: &str) -> bool { super::execution_quota::applies(command).unwrap() }
 
 struct Job {
     snapshot: Value,
@@ -201,10 +195,118 @@ pub(crate) struct WorkerJournal {
     root: PathBuf,
     primary: String,
     jobs: Vec<Job>,
+    _quota: Option<super::execution_quota::QuotaLease>,
+}
+
+pub(crate) enum ClaimAttempt {
+    Ready(JournalHandle, Value, String),
+    Waiting,
+    Finished,
+}
+
+fn pending_row<'a>(library: &'a [Value], command: &str, requested: &str) -> AppResult<Option<(&'a Value, &'a Value)>> {
+    let Some(row) = library.iter().find(|row| row["jobId"] == requested) else { return Ok(None); };
+    if row["command"] != command || row["source"] != "manual" {
+        return Err(AppError::Worker("queued task command/source mismatch".into()));
+    }
+    if let Some(anchor) = row.pointer("/audio/primaryJobId").and_then(Value::as_str) {
+        let primary = library.iter().find(|row| row["jobId"] == anchor)
+            .ok_or_else(|| AppError::Worker("queued task anchor is missing".into()))?;
+        let members = library.iter().filter(|row| row.pointer("/audio/primaryJobId").and_then(Value::as_str) == Some(anchor)).collect::<Vec<_>>();
+        if members.iter().any(|row| !terminal(row) && !row["owner"].is_null()) { return Ok(None); }
+        return Ok(members.into_iter().filter(|row| row["status"] == "queued" && row["owner"].is_null())
+            .min_by_key(|row| row.pointer("/audio/index").and_then(Value::as_u64).unwrap())
+            .map(|queued| (primary, queued)));
+    }
+    Ok((row["status"] == "queued" && row["owner"].is_null()).then_some((row, row)))
+}
+
+/// Stable identity for an idempotent, in-memory dispatcher request. A cancelled
+/// audio anchor still identifies its waiting siblings; it is never duplicated.
+pub(crate) fn pending_identity(root: &Path, command: &str, requested: &str) -> AppResult<Option<(String, f64)>> {
+    job_path(root, requested)?;
+    let _catalog = catalog_lock(root)?;
+    let library = read_all_unlocked(root)?;
+    if !library.iter().any(|row| row["jobId"] == requested) { return Err(AppError::Worker("queued task is missing".into())); }
+    Ok(pending_row(&library, command, requested)?.map(|(primary, _)| (
+        primary["jobId"].as_str().unwrap().to_string(), primary["createdAt"].as_f64().unwrap(),
+    )))
+}
+
+pub(crate) fn enqueue_manual(root: &Path, command: &str, id: &str, payload: &Value) -> AppResult<()> {
+    if !payload.is_object() { return Err(AppError::Worker("task payload must be an object".into())); }
+    let path = job_path(root, id)?;
+    let _catalog = catalog_lock(root)?;
+    let library = read_all_unlocked(root)?;
+    if let Some(previous) = library.iter().find(|row| row["jobId"] == id) {
+        if previous["command"] == command && previous["source"] == "manual" && previous["payload"] == *payload { return Ok(()); }
+        return Err(AppError::Worker("task journal ID already exists with another request".into()));
+    }
+    let _write = write_lock(root, id)?;
+    let created = now();
+    let snapshot = json!({"schemaVersion": 2, "jobId": id, "command": command, "source": "manual", "cancelTaskId": id,
+        "status": "queued", "fraction": 0.0, "message": "waiting for worker capacity", "error": null, "result": null,
+        "createdAt": created, "updatedAt": created, "startedAt": null, "finishedAt": null, "payload": payload,
+        "owner": null, "runtime": super::job_schema::empty_runtime(), "logs": []});
+    super::job_schema::validate(&snapshot)?;
+    storage::write_json_file(&path, &snapshot)
+}
+
+pub(crate) fn try_claim_pending(root: &Path, command: &str, requested: &str) -> AppResult<ClaimAttempt> {
+    let _catalog = catalog_lock(root)?;
+    let library = read_all_unlocked(root)?;
+    let Some((primary, queued)) = pending_row(&library, command, requested)? else { return Ok(ClaimAttempt::Finished); };
+    let Some(quota) = super::execution_quota::try_acquire(root)? else { return Ok(ClaimAttempt::Waiting); };
+    let mut journal;
+    let payload;
+    if primary.get("audio").is_some() {
+        let claim = super::audio_jobs::claim_unlocked(root, command, queued["jobId"].as_str().unwrap(), &library)?;
+        payload = claim.payload;
+        journal = WorkerJournal { root: root.into(), primary: claim.primary,
+            jobs: claim.records.into_iter().map(|(snapshot, owner)| Job { snapshot, _owner: owner, saved: None }).collect(),
+            _quota: Some(quota) };
+    } else {
+        let id = primary["jobId"].as_str().unwrap();
+        let owner = owner_lock(root, id)?;
+        let mut snapshot = primary.clone();
+        snapshot["owner"] = json!({"kind": OWNER_KIND, "pid": std::process::id()});
+        payload = snapshot["payload"].clone();
+        journal = WorkerJournal { root: root.into(), primary: id.into(),
+            jobs: vec![Job { snapshot, _owner: owner, saved: None }], _quota: Some(quota) };
+    }
+    for index in 0..journal.jobs.len() {
+        let snapshot = &mut journal.jobs[index].snapshot;
+        snapshot["status"] = json!("running");
+        snapshot["startedAt"] = json!(now());
+        snapshot["message"] = json!("starting worker");
+        journal.persist(index, true)?;
+    }
+    let id = journal.primary.clone();
+    Ok(ClaimAttempt::Ready(Arc::new(Mutex::new(journal)), payload, id))
+}
+
+pub(crate) fn fail_unclaimed(root: &Path, command: &str, requested: &str, message: &str) -> AppResult<()> {
+    let _catalog = catalog_lock(root)?;
+    let library = read_all_unlocked(root)?;
+    let Some((primary, _)) = pending_row(&library, command, requested)? else { return Ok(()); };
+    let anchor = primary["jobId"].as_str().unwrap();
+    let selected = library.iter().filter(|row| row["jobId"] == anchor || row.pointer("/audio/primaryJobId").and_then(Value::as_str) == Some(anchor));
+    for row in selected {
+        if row["status"] != "queued" || !row["owner"].is_null() { continue; }
+        let id = row["jobId"].as_str().unwrap();
+        let _write = write_lock(root, id)?;
+        let mut row = row.clone();
+        row["status"] = json!("failed"); row["message"] = json!(message); row["error"] = json!(message);
+        row["finishedAt"] = json!(now()); row["updatedAt"] = json!(now());
+        super::job_runtime::finish(&mut row, "failed");
+        storage::write_json_file(&job_path(root, id)?, &row)?;
+    }
+    Ok(())
 }
 
 impl WorkerJournal {
     pub(crate) fn data_root(&self) -> &Path { &self.root }
+    #[cfg(test)]
     pub(crate) fn start(
         root: &Path,
         command: &str,
@@ -220,6 +322,7 @@ impl WorkerJournal {
             root: root.into(),
             primary: primary.into(),
             jobs: Vec::new(),
+            _quota: None,
         };
         let created = now();
         let result = (|| -> AppResult<()> {
@@ -297,9 +400,10 @@ impl WorkerJournal {
         Ok(Arc::new(Mutex::new(journal)))
     }
 
+    #[cfg(test)]
     pub(crate) fn claim_audio(root: &Path, command: &str, primary: &str) -> AppResult<(JournalHandle, Value)> {
         let claim = super::audio_jobs::claim(root, command, primary)?;
-        let journal = Self { root: root.into(), primary: claim.primary, jobs: claim.records.into_iter().map(|(snapshot, owner)| Job { snapshot, _owner: owner, saved: Some(Instant::now()) }).collect() };
+        let journal = Self { root: root.into(), primary: claim.primary, jobs: claim.records.into_iter().map(|(snapshot, owner)| Job { snapshot, _owner: owner, saved: Some(Instant::now()) }).collect(), _quota: None };
         Ok((Arc::new(Mutex::new(journal)), claim.payload))
     }
 
@@ -389,7 +493,7 @@ impl WorkerJournal {
     pub(crate) fn running(&mut self, worker_pid: u32) -> AppResult<()> {
         for index in 0..self.jobs.len() {
             self.jobs[index].snapshot["status"] = json!("running");
-            self.jobs[index].snapshot["startedAt"] = json!(now());
+            if self.jobs[index].snapshot["startedAt"].is_null() { self.jobs[index].snapshot["startedAt"] = json!(now()); }
             self.jobs[index].snapshot["message"] = json!("starting worker");
             self.jobs[index].snapshot["owner"]["workerPid"] = json!(worker_pid);
             self.persist(index, true)?;
@@ -705,6 +809,55 @@ pub(crate) fn list(root: &Path) -> AppResult<Vec<Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn durable_manual_enqueue_is_ownerless_and_idempotent_until_admission() {
+        let root = tempfile::tempdir().unwrap();
+        let payload = json!({"operation": "fixture", "outputDir": "out"});
+        enqueue_manual(root.path(), "run_operation", "queued_once", &payload).unwrap();
+        let path = job_path(root.path(), "queued_once").unwrap();
+        let bytes = fs::read(&path).unwrap();
+        enqueue_manual(root.path(), "run_operation", "queued_once", &payload).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let row = read_job(&path).unwrap().unwrap();
+        assert_eq!(row["status"], "queued"); assert!(row["owner"].is_null()); assert!(row["startedAt"].is_null());
+        assert!(enqueue_manual(root.path(), "run_operation", "queued_once", &json!({"operation": "another"})).is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let ClaimAttempt::Ready(journal, resolved, id) = try_claim_pending(root.path(), "run_operation", "queued_once").unwrap() else { panic!("not admitted"); };
+        assert_eq!(resolved, payload); assert_eq!(id, "queued_once");
+        assert!(matches!(try_claim_pending(root.path(), "run_operation", "queued_once").unwrap(), ClaimAttempt::Finished));
+        assert_eq!(read_job(&path).unwrap().unwrap()["status"], "running");
+        journal.lock().unwrap().exited(true, false, "finished").unwrap();
+    }
+
+    #[test]
+    fn queued_cancel_never_claims_a_worker_or_a_slot() {
+        let root = tempfile::tempdir().unwrap();
+        enqueue_manual(root.path(), "run_operation", "cancel_before_run", &json!({"operation": "fixture"})).unwrap();
+        assert!(request_cancel(root.path(), "cancel_before_run").unwrap());
+        assert!(matches!(try_claim_pending(root.path(), "run_operation", "cancel_before_run").unwrap(), ClaimAttempt::Finished));
+        let row = read_job(&job_path(root.path(), "cancel_before_run").unwrap()).unwrap().unwrap();
+        assert_eq!(row["status"], "cancelled"); assert!(row["owner"].is_null()); assert!(row["startedAt"].is_null());
+        assert!(!root.path().join("agent-jobs/.quota").exists());
+    }
+
+    #[test]
+    fn terminal_result_keeps_its_slot_until_the_supervisor_is_reaped_and_dropped() {
+        let root = tempfile::tempdir().unwrap();
+        for id in ["first", "second"] { enqueue_manual(root.path(), "run_operation", id, &json!({"operation": "fixture"})).unwrap(); }
+        let ClaimAttempt::Ready(first, _, _) = try_claim_pending(root.path(), "run_operation", "first").unwrap() else { panic!("first not admitted"); };
+        assert!(matches!(try_claim_pending(root.path(), "run_operation", "second").unwrap(), ClaimAttempt::Waiting));
+        let before = read_job(&job_path(root.path(), "second").unwrap()).unwrap().unwrap();
+        assert_eq!(before["status"], "queued"); assert!(before["owner"].is_null()); assert!(before["startedAt"].is_null());
+        first.lock().unwrap().observe(&event("task.result", Some("first"), json!({"outputs": [{"path": "result.wav"}]}))).unwrap();
+        assert!(matches!(try_claim_pending(root.path(), "run_operation", "second").unwrap(), ClaimAttempt::Waiting));
+        drop(first);
+        let ClaimAttempt::Ready(second, _, _) = try_claim_pending(root.path(), "run_operation", "second").unwrap() else { panic!("released capacity not reused"); };
+        second.lock().unwrap().fail_all("spawn failed fixture").unwrap();
+        drop(second);
+        let _catalog = catalog_lock(root.path()).unwrap();
+        assert!(super::super::execution_quota::try_acquire(root.path()).unwrap().is_some());
+    }
 
     fn event(kind: &str, id: Option<&str>, payload: Value) -> WorkerEnvelope {
         WorkerEnvelope {
@@ -1111,7 +1264,7 @@ mod tests {
 
     #[test]
     fn python_kernel_cannot_recover_a_live_rust_owner_but_can_recover_after_release() {
-        // System Python, stdlib only: never select an installed user runtime or load models.
+        // Isolated current bootstrap, stdlib only; no user runtime or models.
         let root = tempfile::tempdir().unwrap();
         let journal = started(root.path(), "interop_1");
         journal.lock().unwrap().running(123).unwrap();
@@ -1121,7 +1274,7 @@ mod tests {
             .join("python");
         let script = "import json,sys; from pathlib import Path; sys.path.insert(0,sys.argv[2]); from core.operation_kernel import OperationKernel; root=Path(sys.argv[1]); kernel=OperationKernel(root); value=json.loads((root/'agent-jobs/interop_1.json').read_text(encoding='utf-8')); assert value['status']==sys.argv[3], value['status']";
         let run = |expected| {
-            crate::process_command::hidden_command("python")
+            crate::process_command::isolated_test_python(root.path())
                 .args(["-B", "-S", "-c", script])
                 .arg(root.path())
                 .arg(&python_source)

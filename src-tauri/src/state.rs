@@ -20,6 +20,8 @@ pub struct AppState {
     pub native_tasks: Mutex<HashMap<String, Arc<AtomicBool>>>,
     pub cancelled_tasks: Mutex<HashSet<String>>,
     pub terminal_tasks: Mutex<HashSet<String>>,
+    pub pending_jobs: Mutex<HashMap<String, crate::python::worker::PendingWorker>>,
+    pub job_dispatcher_running: AtomicBool,
     pub migrations: Arc<Mutex<HashMap<String, SharedMigrationSession>>>,
     pub proxy_settings: Mutex<ProxySettings>,
 }
@@ -31,6 +33,8 @@ impl AppState {
             native_tasks: Mutex::new(HashMap::new()),
             cancelled_tasks: Mutex::new(HashSet::new()),
             terminal_tasks: Mutex::new(HashSet::new()),
+            pending_jobs: Mutex::new(HashMap::new()),
+            job_dispatcher_running: AtomicBool::new(false),
             migrations: Arc::new(Mutex::new(HashMap::new())),
             proxy_settings: Mutex::new(ProxySettings {
                 mode: "system".into(),

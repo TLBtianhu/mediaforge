@@ -17,12 +17,14 @@ import threading
 import time
 import traceback
 import uuid
+import weakref
 from pathlib import Path
 from typing import Any
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 from shared.worker_subprocess import hidden_subprocess_kwargs
 from core import job_store
+from core import job_quota
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "worker.py"
@@ -102,6 +104,7 @@ class Job:
         self.persisted_status = ""
         self.owner: dict[str, Any] | None = None
         self._lease: Any = None
+        self._quota_lease: job_quota.QuotaLease | None = None
         self._stored: dict[str, Any] = {}
 
     @classmethod
@@ -208,8 +211,139 @@ class OperationKernel:
         self._lock = threading.Lock()
         self._persist_lock = threading.Lock()
         self._owner_id = uuid.uuid4().hex
+        self._pump_lock = threading.Lock()
+        self._pump_stop = threading.Event()
+        self._pump_wake = threading.Event()
+        self._pump_thread: threading.Thread | None = None
+        self._pump_finalizer = weakref.finalize(self, self._pump_stop.set)
+        self._scheduler_error: str | None = None
         self.recovered = self._recover_from_disk()
         self.pruned = self._prune_history()
+        pending = [record for record in job_store.read_jobs(self.jobs_root).values() if self._is_pending(record)]
+        if pending:
+            if any(job_quota.applies(record["command"]) for record in pending):
+                job_quota.read_limit(self.data_root)
+            self._ensure_dispatcher()
+
+    @staticmethod
+    def _is_pending(record: dict[str, Any]) -> bool:
+        return record["source"] == "agent" and record["status"] == "queued" and record["owner"] is None and "audio" not in record
+
+    def close(self) -> None:
+        """Stop admission only; running workers retain their execution leases."""
+        self._pump_stop.set()
+        self._pump_wake.set()
+        thread = self._pump_thread
+        if thread is not None and thread is not threading.current_thread() and thread.ident is not None:
+            thread.join(timeout=1)
+
+    def _ensure_dispatcher(self) -> None:
+        with self._pump_lock:
+            if self._pump_stop.is_set():
+                return
+            self._pump_wake.set()
+            if self._pump_thread is None or not self._pump_thread.is_alive():
+                thread = threading.Thread(
+                    target=OperationKernel._dispatch_loop,
+                    args=(weakref.ref(self), self._pump_stop, self._pump_wake),
+                    daemon=True, name=f"mediaforge-dispatch-{self._owner_id[:8]}",
+                )
+                self._pump_thread = thread
+                thread.start()
+
+    @staticmethod
+    def _dispatch_loop(reference, stop: threading.Event, wake: threading.Event) -> None:
+        while not stop.is_set():
+            kernel = reference()
+            if kernel is None:
+                return
+            try:
+                kernel._dispatch_once()
+                kernel._scheduler_error = None
+            except Exception as error:
+                message = str(error)
+                if kernel._scheduler_error != message:
+                    print(f"[kernel] dispatch blocked: {message}", file=sys.stderr)
+                kernel._scheduler_error = message
+            finally:
+                del kernel
+            wake.wait(0.1)
+            wake.clear()
+
+    def _try_claim_next(self) -> Job | None:
+        with job_store.catalog_lock(self.jobs_root):
+            if self._pump_stop.is_set():
+                return None
+            records = job_store.read_jobs_unlocked(self.jobs_root)
+            pending = sorted((record for record in records.values() if self._is_pending(record)),
+                             key=lambda record: (record["createdAt"], record["jobId"]))
+            limit = job_quota.read_limit(self.data_root) if any(job_quota.applies(record["command"]) for record in pending) else None
+            capacity_full = False
+            for record in pending:
+                quota = None
+                if job_quota.applies(record["command"]):
+                    if capacity_full:
+                        continue
+                    quota = job_quota.try_acquire(self.jobs_root, limit)
+                    if quota is None:
+                        capacity_full = True
+                        continue
+                lease = runtime_lock(self._lease_path(record["jobId"]), timeout=0)
+                acquired = False
+                transferred = False
+                try:
+                    try:
+                        lease.__enter__()
+                        acquired = True
+                    except (OSError, RuntimeLockBusy) as error:
+                        if job_quota.is_busy(error):
+                            continue
+                        raise
+                    with job_store.write_lock(self.jobs_root, record["jobId"]):
+                        current = _read_job(self.jobs_root / f"{record['jobId']}.json")
+                        if current is None or not self._is_pending(current) or self._pump_stop.is_set():
+                            continue
+                        current.update(owner={"kind": "operation-kernel", "kernelId": self._owner_id, "pid": os.getpid()},
+                                       status="running", startedAt=time.time(), updatedAt=time.time())
+                        current["runtime"]["stage"] = "preparing"
+                        job_store.validate_record(current)
+                        _atomic_write(self.jobs_root / f"{record['jobId']}.json", _json_text(current))
+                    claimed = Job.from_snapshot(current, self.data_root / "bridge-jobs" / record["jobId"])
+                    with self._lock:
+                        local = self._jobs.get(record["jobId"])
+                        if local is not None and local.owner is None and local.created_at == current["createdAt"]:
+                            with local._lock:
+                                for field in ("command", "payload", "source", "status", "fraction", "message", "result", "error",
+                                              "created_at", "updated_at", "started_at", "finished_at", "owner", "runtime", "logs", "_stored"):
+                                    setattr(local, field, getattr(claimed, field))
+                            claimed = local
+                        claimed._lease = lease
+                        claimed._quota_lease = quota
+                        claimed.persisted_at = time.monotonic()
+                        claimed.persisted_status = current["status"]
+                        self._jobs[claimed.job_id] = claimed
+                    transferred = True
+                    return claimed
+                finally:
+                    if not transferred:
+                        if acquired:
+                            lease.__exit__(None, None, None)
+                        if quota is not None:
+                            quota.release()
+        return None
+
+    def _dispatch_once(self) -> None:
+        job = self._try_claim_next()
+        if job is None:
+            return
+        try:
+            threading.Thread(target=self._run, args=(job,), daemon=True, name=f"mediaforge-{job.job_id}").start()
+        except Exception as error:
+            job.update(status="failed", message="worker thread could not start", error=str(error))
+            try:
+                self._persist(job, force=True)
+            finally:
+                self._release_job_lease(job)
 
     # ── 落盘 ────────────────────────────────────────────────────────────────
 
@@ -371,6 +505,8 @@ class OperationKernel:
     # ── 生命周期 ────────────────────────────────────────────────────────────
 
     def start(self, command: str, payload: dict[str, Any]) -> Job:
+        if self._pump_stop.is_set():
+            raise RuntimeError("OperationKernel is closed")
         if not isinstance(payload, dict) or not isinstance(command, str) or not command.strip():
             raise job_store.JobStoreError("invalid job request")
         job_id = str(payload.get("requestId") or "").strip() or f"job_{uuid.uuid4().hex[:12]}"
@@ -380,6 +516,14 @@ class OperationKernel:
             records = job_store.read_jobs_unlocked(self.jobs_root)
             if job_id in records:
                 raise job_store.JobStoreError(f"job id already exists: {job_id}")
+            if job_quota.applies(command):
+                job_quota.read_limit(self.data_root)
+                job = Job(job_id, command, copy.deepcopy(payload), self.data_root / "bridge-jobs" / job_id)
+                self._persist(job, force=True, catalog_held=True)
+                with self._lock:
+                    self._jobs[job_id] = job
+                self._ensure_dispatcher()
+                return job
             lease = runtime_lock(self._lease_path(job_id), timeout=0)
             lease.__enter__()
             workdir = self.data_root / "bridge-jobs" / job_id
@@ -429,6 +573,9 @@ class OperationKernel:
             if job._lease is not None:
                 job._lease.__exit__(None, None, None)
                 job._lease = None
+            if job._quota_lease is not None:
+                job._quota_lease.release()
+                job._quota_lease = None
 
     def _cleanup_process(self, job: Job) -> bool:
         """One bounded cleanup attempt; retain ownership until wait confirms exit."""
@@ -478,6 +625,7 @@ class OperationKernel:
             job._cleanup_lock.release()
 
     def _run_worker(self, job: Job) -> None:
+        job.workdir.mkdir(parents=True, exist_ok=True)
         payload_path = job.workdir / "payload.json"
         process = None
         try:
@@ -619,6 +767,29 @@ class OperationKernel:
             else:
                 job.update(status="completed", result=result, message="completed", fraction=1.0)
         elif kind == "error":
+            if payload.get("recoverable") is True:
+                # Match the Rust supervisor: this is a durable diagnostic, not
+                # the worker's terminal result or a reason to disable cancel.
+                structured = payload.get("record")
+                if not isinstance(structured, dict):
+                    structured = payload.get("logRecord")
+                if isinstance(structured, dict):
+                    diagnostic = copy.deepcopy(structured)
+                else:
+                    diagnostic = {key: copy.deepcopy(value) for key, value in payload.items()
+                                  if key in {"message", "code", "nodeId", "recoverable", "detail", "context", "errorType"}}
+                diagnostic.setdefault("schemaVersion", 1)
+                diagnostic.setdefault("id", uuid.uuid4().hex)
+                diagnostic.setdefault("level", "error")
+                diagnostic.setdefault("event", kind)
+                diagnostic.setdefault("taskId", job.job_id)
+                diagnostic.setdefault("timestamp", event.get("timestamp") or time.time())
+                if not any(row.get("id") == diagnostic["id"] for row in job.logs):
+                    job.logs.append(diagnostic)
+                    del job.logs[:-1200]
+                job.update(message=str(payload.get("message") or payload.get("code") or "worker is continuing"))
+                self._persist(job, force=True)
+                return
             # 保留错误载荷：job_status 要把 recovery 建议一并透出给调用方
             previous = copy.deepcopy(job.result) if isinstance(job.result, dict) else {}
             old_outputs = previous.get("outputs")

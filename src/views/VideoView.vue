@@ -63,7 +63,7 @@ const planStep = ref<PlanStep>({
 const planAvailable = ref(true)
 const { job, busy, progress, status, outputs, failedCount, start: startJob } = useMediaJob<OutputFile>(
   'media_video', {
-    running: () => t('factory.processing'), completed: () => t('factory.completed'),
+    queued: () => t('tasks.waitingForResources'), running: () => t('factory.processing'), completed: () => t('factory.completed'),
     failed: () => t('factory.failed'), cancelled: () => t('tasks.cancelSuccess'),
   }, message, payload => {
     if (Array.isArray(payload.inputs)) inputs.value = payload.inputs as string[]

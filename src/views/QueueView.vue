@@ -24,7 +24,6 @@ const cancelling = ref(new Set<string>())
 const query = ref('')
 const sourceFilter = ref<'all' | 'manual' | 'agent'>('all')
 const statusFilter = ref<'all' | 'active' | 'completed' | 'failed'>('all')
-let timer: ReturnType<typeof setInterval> | undefined
 let disposed = false
 
 const sourceOptions = computed(() => [
@@ -113,16 +112,10 @@ async function cancel(job: QueueEntry) {
 
 onMounted(() => {
   void mediaJobs.initialize().catch(() => {})
-  timer = setInterval(() => {
-    // Live events come from the resident store; polling also discovers MCP jobs.
-    if (typeof document !== 'undefined' && document.hidden) return
-    void load()
-  }, 10000)
 })
 
 onBeforeUnmount(() => {
   disposed = true
-  if (timer) clearInterval(timer)
 })
 </script>
 

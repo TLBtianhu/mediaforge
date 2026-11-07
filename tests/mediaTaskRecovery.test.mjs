@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createRenderer, nextTick } from 'vue'
-import { createPinia } from 'pinia'
+import { createPinia, disposePinia } from 'pinia'
 import { createServer, transformWithEsbuild } from 'vite'
 import { parse, compileScript } from 'vue/compiler-sfc'
 
@@ -20,7 +20,7 @@ const stubs = {
 }
 const vite = await createServer({
   configFile: false,
-  server: { watch: null, middlewareMode: true, hmr: false, preTransformRequests: false },
+  server: { watch: null, middlewareMode: true, hmr: false, ws: false, preTransformRequests: false },
   appType: 'custom',
   optimizeDeps: { noDiscovery: true },
   resolve: { alias: {
@@ -85,9 +85,10 @@ const flush = async () => { await nextTick(); await new Promise(resolve => setIm
 async function mount(t, Component, hook, listenHook) {
   fixture.reset(hook, listenHook)
   const app = renderer.createApp(Component)
-  app.use(createPinia())
+  const pinia = createPinia()
+  app.use(pinia)
   app.mount({ children: [] })
-  t.after(() => app.unmount())
+  t.after(() => { app.unmount(); disposePinia(pinia) })
   await flush()
   return app._instance.setupState
 }
@@ -168,7 +169,7 @@ test('media workflow survives route unmount and restores outputs and the submitt
   await workflowEvent({ taskId: id, type: 'task.progress', payload: { fraction: 0.5, current: 'halfway' } })
   const second = renderer.createApp(Workflow).use(pinia)
   second.mount({ children: [] })
-  t.after(() => second.unmount())
+  t.after(() => { second.unmount(); disposePinia(pinia) })
   await flush()
   const restored = second._instance.setupState
   assert.equal(restored.busy, true)

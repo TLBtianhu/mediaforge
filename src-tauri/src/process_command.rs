@@ -19,6 +19,35 @@ pub(crate) fn hidden_command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
+/// Test fixtures use the declared ABI and their own profile, never a Python
+/// interpreter found accidentally on the developer's PATH.
+#[cfg(test)]
+pub(crate) fn isolated_test_python(profile: &std::path::Path) -> Command {
+    let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let embedded = project.join(if cfg!(windows) { "python-runtime/python.exe" } else { "python-runtime/bin/python3" });
+    let python = std::env::var_os("MEDIAFORGE_RUNTIME_PYTHON")
+        .or_else(|| std::env::var_os("PYMSS_STUDIO_PYTHON"))
+        .unwrap_or_else(|| {
+            assert!(embedded.is_file(), "Rust Python fixtures require a prepared Python 3.12 bootstrap or MEDIAFORGE_RUNTIME_PYTHON");
+            embedded.into_os_string()
+        });
+    let configure = |command: &mut Command| {
+        command.current_dir(profile)
+            .env("HOME", profile).env("USERPROFILE", profile)
+            .env("APPDATA", profile).env("LOCALAPPDATA", profile)
+            .env("TEMP", profile).env("TMP", profile)
+            .env("MEDIAFORGE_DATA_ROOT", profile.join("data"))
+            .env("MEDIAFORGE_DATA_DIR", profile.join("data"))
+            .env("MEDIAFORGE_MODEL_DIR", profile.join("models"))
+            .env("MEDIAFORGE_RUNTIME_ENVS_DIR", profile.join("runtime-envs"))
+            .env("PYTHONNOUSERSITE", "1").env("PYTHONDONTWRITEBYTECODE", "1");
+    };
+    let mut probe = hidden_command(&python); configure(&mut probe);
+    let output = probe.args(["-I", "-B", "-c", "import sys; assert sys.version_info[:2] == (3, 12), 'tests require Python 3.12'"]).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let mut command = hidden_command(python); configure(&mut command); command
+}
+
 #[cfg(test)]
 mod tests {
     use super::hidden_command;

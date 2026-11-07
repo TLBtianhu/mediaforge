@@ -38,7 +38,7 @@ function applyPreset(definition: PresetDefinition) {
 }
 const needsMask = computed(() => steps.value.some(step => step.capability === 'video_inpainting') && modality.value === 'video')
 const { busy, progress, status, outputs, start: startJob } = useMediaJob<WorkflowOutput>(
-  'media_workflow', { running: () => t('mediaWorkflow.starting'), completed: () => t('mediaWorkflow.completed'), failed: () => t('mediaWorkflow.failed'), cancelled: () => t('tasks.cancelSuccess') }, message, payload => {
+  'media_workflow', { queued: () => t('tasks.waitingForResources'), running: () => t('mediaWorkflow.starting'), completed: () => t('mediaWorkflow.completed'), failed: () => t('mediaWorkflow.failed'), cancelled: () => t('tasks.cancelSuccess') }, message, payload => {
     if (Array.isArray(payload.inputs)) inputs.value = payload.inputs as string[]
     if (typeof payload.outputDir === 'string') outputDir.value = payload.outputDir
     if (typeof payload.modelDir === 'string') modelDir.value = payload.modelDir

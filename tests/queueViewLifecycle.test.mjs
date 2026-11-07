@@ -16,7 +16,7 @@ const stubs = {
 }
 const vite = await createServer({
   configFile: false,
-  server: { watch: null, middlewareMode: true, hmr: false, preTransformRequests: false },
+  server: { watch: null, middlewareMode: true, hmr: false, ws: false, preTransformRequests: false },
   appType: 'custom', optimizeDeps: { noDiscovery: true },
   resolve: { alias: {
     ...Object.fromEntries(Object.keys(stubs).map(id => [id, `\0queue-stub:${id}`])),
@@ -130,29 +130,46 @@ test('a false cancellation response is not announced as success', async t => {
   assert.equal(fixture.messages.length, 0)
 })
 
-test('journal polling remains ten seconds, skips hidden documents, and stops with the view', async t => {
-  let tick, interval, cleared = false
-  const token = {}
-  t.mock.method(globalThis, 'setInterval', (callback, delay) => { tick = callback; interval = delay; return token })
-  t.mock.method(globalThis, 'clearInterval', handle => { cleared = handle === token })
-  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
-  Object.defineProperty(globalThis, 'document', { configurable: true, value: { hidden: true } })
-  t.after(() => {
-    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument)
-    else delete globalThis.document
+test('Queue mounts reuse resident polling without creating or stopping route timers', async t => {
+  const intervals = [], timeouts = [], cleared = []
+  t.mock.method(globalThis, 'setInterval', (callback, delay) => { intervals.push({ callback, delay }); return {} })
+  t.mock.method(globalThis, 'clearInterval', handle => { cleared.push(['interval', handle]) })
+  t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+    const timer = { callback, delay }
+    timeouts.push(timer)
+    return timer
   })
-  const { app } = await mount(t)
-  assert.equal(interval, 10000)
-  tick()
+  t.mock.method(globalThis, 'clearTimeout', handle => { cleared.push(['timeout', handle]) })
+  // Model the resident boundary's one shared timer. Its actual scheduling,
+  // refresh ordering and disposal are exercised by mediaJobsStore.test.mjs.
+  let residentTimer
+  t.mock.method(fixture.media, 'initialize', async () => {
+    fixture.calls.push(['initialize'])
+    residentTimer ||= setTimeout(() => fixture.media.refresh(), 2000)
+  })
+  const { state, app } = await mount(t)
+  assert.equal(timeouts.length, 1)
+  assert.equal(timeouts[0], residentTimer)
+  assert.equal(intervals.length, 0)
+  fixture.media.jobs = [{ jobId: 'external', command: 'run_operation', source: 'agent', status: 'queued' }]
   await flush()
-  assert.equal(fixture.calls.some(call => call[0] === 'refresh'), false)
-  document.hidden = false
-  tick()
+  assert.equal(state.jobs[0].status, 'queued')
+  residentTimer.callback()
   await flush()
   assert.equal(fixture.calls.filter(call => call[0] === 'refresh').length, 1)
   app.unmount()
-  assert.equal(cleared, true)
-  tick()
+  assert.deepEqual(cleared, [])
+  fixture.media.jobs[0].status = 'running'
+  residentTimer.callback()
   await flush()
-  assert.equal(fixture.calls.filter(call => call[0] === 'refresh').length, 1)
+  assert.equal(fixture.calls.filter(call => call[0] === 'refresh').length, 2)
+  const reopened = renderer.createApp(Queue)
+  reopened.mount({ children: [] })
+  t.after(() => reopened.unmount())
+  await flush()
+  assert.equal(reopened._instance.setupState.jobs[0].status, 'running')
+  assert.equal(fixture.calls.filter(call => call[0] === 'initialize').length, 2)
+  assert.equal(timeouts.length, 1)
+  assert.equal(intervals.length, 0)
+  assert.deepEqual(cleared, [])
 })

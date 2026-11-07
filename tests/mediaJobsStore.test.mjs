@@ -8,7 +8,7 @@ import { createServer } from 'vite'
 const fixtureId = '\0media-jobs-store-fixture'
 const vite = await createServer({
   configFile: false, appType: 'custom', optimizeDeps: { noDiscovery: true },
-  server: { watch: null, middlewareMode: true, hmr: false, preTransformRequests: false },
+  server: { watch: null, middlewareMode: true, hmr: false, ws: false, preTransformRequests: false },
   resolve: { alias: {
     '@tauri-apps/api/core': '\0media-jobs-core', '@tauri-apps/api/event': '\0media-jobs-event',
     '@': fileURLToPath(new URL('../src', import.meta.url)),
@@ -62,7 +62,7 @@ const vite = await createServer({
 after(() => vite.close())
 globalThis.window={__TAURI_INTERNALS__:{}}
 const fixture = await vite.ssrLoadModule(fixtureId)
-const { useMediaJobsStore } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
+const { useMediaJobsStore, JOURNAL_POLL_INTERVAL_MS } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
 const { useMediaJob } = await vite.ssrLoadModule('/src/composables/useMediaJob.ts')
 const deferred = () => {
   let resolve, reject
@@ -253,7 +253,7 @@ test('backend-owned running records restore their request and still prevent dupl
   assert.equal(fixture.calls.some(call => call.command === 'start_audio_tool'), false)
 })
 
-test('an IPC start failure becomes a terminal record and allows an explicit retry', async t => {
+test('a rejected IPC submission absent from the journal leaves no fabricated failure and permits retry', async t => {
   let attempts = 0
   const { store } = setup(t, command => {
     if (command === 'agent_jobs') return response([])
@@ -261,8 +261,7 @@ test('an IPC start failure becomes a terminal record and allows an explicit retr
     return { started: true }
   })
   await assert.rejects(store.start({ operation: 'media_image', requestId: 'failed' }), /worker launch failed/)
-  assert.equal(store.jobs[0].status, 'failed')
-  assert.match(store.jobs[0].error, /worker launch failed/)
+  assert.equal(store.jobs.length, 0)
   await store.start({ operation: 'media_image', requestId: 'retry' })
   assert.equal(store.latest('media_image').jobId, 'retry')
   assert.equal(store.active.length, 1)
@@ -371,6 +370,105 @@ test('equal timestamps cannot replace newly observed live progress with stale di
   assert.equal(store.jobs[0].message,'new progress')
 })
 
+test('a queued backend ACK remains ownerless and starts only on the later real worker event', async t => {
+  const { pinia, store } = setup(t, (command, args) => {
+    if (command === 'agent_jobs') return response([...fixture.remote.values()])
+    if (command === 'start_audio_tool') {
+      const current = fixture.remote.get(args.payload.requestId)
+      Object.assign(current, { status: 'queued', owner: null, startedAt: null })
+      return { queued: true, started: false }
+    }
+  })
+  const { state, messages } = mountJob(t, pinia)
+  await state.start({ operation: 'media_image', requestId: 'resource-waiter' })
+  assert.equal(state.busy.value, true)
+  assert.equal(state.status.value, 'queued')
+  assert.equal(store.jobs[0].status, 'queued')
+  assert.equal(store.jobs[0].owner, null)
+  assert.equal(store.jobs[0].startedAt, null)
+  assert.deepEqual(messages, [])
+  Object.assign(fixture.remote.get('resource-waiter'), { status: 'running', owner: { kind: 'tauri-worker', pid: 1 }, startedAt: Date.now() / 1000 })
+  fixture.emit({ taskId: 'resource-waiter', type: 'task.started', payload: {} })
+  await flush()
+  assert.equal(state.status.value, 'running')
+  assert.equal(fixture.calls.filter(call => call.command === 'start_audio_tool').length, 1)
+})
+
+test('a lost media ACK preserves the authoritative queued waiter instead of inventing a failure', async t => {
+  const { store } = setup(t, (command, args) => {
+    if (command === 'agent_jobs') return response([...fixture.remote.values()])
+    if (command === 'start_audio_tool') {
+      Object.assign(fixture.remote.get(args.payload.requestId), { status: 'queued', owner: null, startedAt: null })
+      throw new Error('ACK lost')
+    }
+  })
+  const job = await store.start({ operation: 'media_video', requestId: 'accepted-before-disconnect' })
+  assert.equal(job.status, 'queued')
+  assert.equal(job.error, null)
+  assert.equal(job.owner, null)
+  assert.equal(fixture.calls.filter(call => call.command === 'start_audio_tool').length, 1)
+})
+
+test('resident polling discovers external jobs without a Queue page and disposes its timer and listener', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { store } = setup(t)
+  await store.initialize()
+  fixture.remote.set('external', journal('external', { source: 'agent', command: 'run_operation' }))
+  const reads = () => fixture.calls.filter(call => call.command === 'agent_jobs').length
+  assert.equal(reads(), 1)
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(store.jobs[0].jobId, 'external')
+  assert.equal(reads(), 2)
+  await Promise.all([store.initialize(), store.initialize()])
+  const beforePoll = reads()
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), beforePoll + 1)
+  store.$dispose()
+  assert.equal(fixture.listeners.size, 0)
+  const beforeDispose = reads()
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 4)
+  await flush()
+  assert.equal(reads(), beforeDispose)
+})
+
+test('resident polling never overlaps a pending read or updates a disposed store', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = deferred()
+  let reads = 0
+  const { store } = setup(t, command => {
+    if (command === 'agent_jobs') return ++reads === 1 ? response([]) : pending.promise
+  })
+  await store.initialize()
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 5)
+  await flush()
+  assert.equal(reads, 2)
+  store.$dispose()
+  pending.resolve(response([journal('late-external')]))
+  await flush()
+  assert.equal(store.jobs.length, 0)
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 4)
+  await flush()
+  assert.equal(reads, 2)
+})
+
+test('disposal during initialization releases the late event listener without creating a poll', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = deferred()
+  const { store } = setup(t, undefined, () => pending.promise)
+  const initializing = store.initialize()
+  store.$dispose()
+  pending.resolve()
+  await initializing
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 3)
+  await flush()
+  assert.equal(fixture.listeners.size, 0)
+  assert.equal(fixture.calls.length, 0)
+})
+
 const renderer = createRenderer({
   createComment: text => ({ text }), createText: text => ({ text }), createElement: tag => ({ tag, children: [] }),
   insert(node, parent) { node.parent = parent; parent.children.push(node) }, remove() {},
@@ -379,7 +477,7 @@ const renderer = createRenderer({
 function mountJob(t, pinia, restore) {
   const messages = []
   const notifications = Object.fromEntries(['success', 'error', 'info', 'warning'].map(level => [level, text => messages.push([level, text])]))
-  const labels = Object.fromEntries(['running', 'completed', 'failed', 'cancelled'].map(status => [status, () => status]))
+  const labels = Object.fromEntries(['queued', 'running', 'completed', 'failed', 'cancelled'].map(status => [status, () => status]))
   let state
   const app = renderer.createApp({ setup() { state = useMediaJob('media_image', labels, notifications, restore); return () => null } })
   app.use(pinia)

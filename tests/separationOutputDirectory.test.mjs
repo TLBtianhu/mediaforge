@@ -7,7 +7,7 @@ import { JOB_KEY, recordsFromEnqueue, readJobs, putJobs, storageShim } from './_
 
 const vite = await createServer({
   configFile: false,
-  server: { middlewareMode: true, hmr: false, watch: null },
+  server: { middlewareMode: true, hmr: false, watch: null, ws: false },
   appType: 'custom',
   optimizeDeps: { noDiscovery: true },
   resolve: { alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) } },
@@ -657,17 +657,17 @@ for (const mode of ['workflow', 'model']) {
   })
 }
 
-test('rejected batches free Worker slots without duplicate starts or starving later jobs', async () => {
+test('rejected batches cannot duplicate or prevent handoff of later groups to backend admission', async () => {
   const invalid = Array.from({ length: 25 }, (_, index) => queuedBatch(`invalid-${index}`, 2, 'workflow', index * 2 + 1)).flat()
   const { task, calls } = await resumeRestoredQueue([
     ...invalid, ...queuedBatch('first', 1, 'workflow', 100),
     ...queuedBatch('second', 1, 'model', 110), ...queuedBatch('third', 1, 'workflow', 120),
   ], 2)
-  assert.deepEqual(calls.map(call => call.jobId), ['first-0', 'second-0'])
+  assert.deepEqual(calls.map(call => call.jobId), ['first-0', 'second-0', 'third-0'])
   assert.ok(task.tasks.filter(item => item.jobId.startsWith('invalid-')).every(item => item.status === 'failed'))
-  assert.ok(task.tasks.filter(item => item.jobId === 'third').every(item => item.status === 'queued'))
+  assert.ok(task.tasks.filter(item => item.jobId === 'third').every(item => item.status === 'preparing'))
   task.scheduleQueue()
-  assert.equal(calls.length, 2)
+  assert.equal(calls.length, 3)
   for (const id of ['first-0', 'first-1']) {
     await emitWorkerEvent(task, { type: 'task.result', taskId: id, payload: { outputDir: 'D:/Outputs', files: [], outputs: [] } })
   }

@@ -54,7 +54,7 @@ const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ la
 const isVideoFormat = computed(() => ['mp4', 'mkv', 'mov', 'webm', 'avi'].includes(format.value))
 const { job, busy, progress, status, outputs, failedCount, start: startJob } = useMediaJob<OutputFile>(
   'media_convert', {
-    running: () => t('factory.processing'), completed: () => t('factory.completed'),
+    queued: () => t('tasks.waitingForResources'), running: () => t('factory.processing'), completed: () => t('factory.completed'),
     failed: () => t('factory.failed'), cancelled: () => t('tasks.cancelSuccess'),
   }, message, payload => {
     if (Array.isArray(payload.inputs)) inputs.value = payload.inputs as string[]

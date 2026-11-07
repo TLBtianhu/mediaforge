@@ -36,15 +36,15 @@ runs:
         }
         $process = Start-Process -FilePath $installer -ArgumentList @(
           "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/CURRENTUSER", "/DIR=`"$innoDir`""
-        ) -Wait -PassThru
+        ) -Wait -PassThru -WindowStyle Hidden
         if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed with exit code $($process.ExitCode)" }
         $iscc = Join-Path $innoDir "ISCC.exe"
         if (!(Test-Path $iscc)) { throw "Inno Setup compiler was not installed" }
         if (!(Test-Path (Join-Path $innoDir "Languages\ChineseSimplified.isl"))) {
           throw "Inno Setup bundled Chinese language file was not installed"
         }
-        & $iscc --version
-        if ($LASTEXITCODE -ne 0) { throw "Inno Setup compiler version check failed" }
+        $probe = Start-Process -FilePath $iscc -ArgumentList '--version' -Wait -PassThru -WindowStyle Hidden
+        if ($probe.ExitCode -ne 0) { throw "Inno Setup compiler version check failed" }
         "MEDIAFORGE_ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
     - name: Download staged package
       uses: actions/download-artifact@v4
@@ -60,16 +60,33 @@ runs:
         $stageFull = (Resolve-Path "release/${{ inputs.stage-name }}").Path
         $releaseFull = (Resolve-Path "release").Path
         $drive = "Z:"
-        subst $drive $stageFull
-        if ($LASTEXITCODE -ne 0) { throw "Unable to map $stageFull to $drive" }
+        $mapping = Start-Process -FilePath "$env:SystemRoot\System32\subst.exe" -ArgumentList @($drive, "`"$stageFull`"") -Wait -PassThru -WindowStyle Hidden
+        if ($mapping.ExitCode -ne 0) { throw "Unable to map $stageFull to $drive" }
         try {
           $env:MEDIAFORGE_PORTABLE_DIR = $drive
           $env:MEDIAFORGE_INSTALLER_OUTPUT = $releaseFull
-          & $env:MEDIAFORGE_ISCC "installer\mediaforge.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          $installerSource = (Resolve-Path 'installer\mediaforge.iss').Path
+          $compile = Start-Process -FilePath $env:MEDIAFORGE_ISCC -ArgumentList @('/Qp', "`"$installerSource`"") -Wait -PassThru -WindowStyle Hidden
+          if ($compile.ExitCode -ne 0) { throw "Inno Setup failed with exit code $($compile.ExitCode)" }
         } finally {
-          subst $drive /D | Out-Null
+          $unmap = Start-Process -FilePath "$env:SystemRoot\System32\subst.exe" -ArgumentList @($drive, '/D') -Wait -PassThru -WindowStyle Hidden
+          if ($unmap.ExitCode -ne 0) { throw "Unable to unmap $drive" }
         }
+    - name: Verify isolated headless installer identity
+      shell: pwsh
+      run: |
+        $stage = (Resolve-Path 'release/${{ inputs.stage-name }}').Path
+        ./scripts/smoke-installer.ps1 -Stage $stage -Version '${{ inputs.version }}' `
+          -Python (Join-Path $stage 'python-runtime\python.exe') -Compiler $env:MEDIAFORGE_ISCC `
+          -Installer 'release/${{ inputs.output-file }}' -Report '.tmp/installer-smoke-${{ inputs.package-suffix }}.json'
+        if ($LASTEXITCODE -ne 0) { throw 'Isolated headless installer smoke failed' }
+    - name: Upload isolated installer smoke evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.output-artifact }}-isolated-smoke-evidence
+        if-no-files-found: warn
+        path: .tmp/installer-smoke-${{ inputs.package-suffix }}.json
     # ---- SignPath 签名（可选）----
     # 只有在仓库配置了 SIGNPATH_ORGANIZATION_ID 时才执行；没配置就走了原来的未签名路径。
     # 先把安装包打成 zip 再上传：SignPath 的 artifact configuration 以 zip 为根更稳妥。

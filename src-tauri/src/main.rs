@@ -108,6 +108,11 @@ fn main() {
     let app = builder
         .setup(|app| {
             let _ = session_log::init_session_log(app.handle());
+            if let Err(error) = python::worker::restore_pending_manual_workers(app.handle()) {
+                // Keep the app available for diagnostics. Strict loading also
+                // exposes this error in the task UI; no old files are rewritten.
+                session_log::append(app.handle(), "ERROR", "task.restore_pending_failed", vec![("message", error.to_string())]);
+            }
             python::worker::recover_audio_output_temps(app.handle());
             Ok(())
         })

@@ -3,7 +3,7 @@ import test, { after } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createRenderer, nextTick } from 'vue'
-import { createPinia } from 'pinia'
+import { createPinia, disposePinia } from 'pinia'
 import { createServer, transformWithEsbuild } from 'vite'
 import { parse, compileScript } from 'vue/compiler-sfc'
 
@@ -19,7 +19,7 @@ const stubs = {
   '@vicons/ionicons5': 'export const CloseCircleOutline={}, DocumentOutline={}, FolderOpenOutline={}, SparklesOutline={}, CubeOutline={}, VideocamOutline={}',
 }
 const vite = await createServer({
-  configFile: false, server: { watch: null, middlewareMode: true, hmr: false, preTransformRequests: false },
+  configFile: false, server: { watch: null, middlewareMode: true, hmr: false, ws: false, preTransformRequests: false },
   appType: 'custom', optimizeDeps: { noDiscovery: true },
   resolve: { alias: {
     ...Object.fromEntries(Object.keys(stubs).map(id => [id, `\0media-param-stub:${id}`])),
@@ -64,9 +64,10 @@ const renderer = createRenderer({
 async function mount(t, Component, props) {
   fixture.calls.length = 0
   const app = renderer.createApp(Component, props)
-  app.use(createPinia())
+  const pinia = createPinia()
+  app.use(pinia)
   app.mount({ children: [] })
-  t.after(() => app.unmount())
+  t.after(() => { app.unmount(); disposePinia(pinia) })
   await nextTick(); await new Promise(resolve => setImmediate(resolve))
   return app._instance.setupState
 }

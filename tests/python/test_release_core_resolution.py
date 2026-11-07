@@ -56,7 +56,10 @@ class ReleaseCoreResolutionTests(unittest.TestCase):
             command = list(command)
             index = command.index("--index-url")
             command[index:index + 2] = ["--no-index", "--find-links", str(self.root)]
-            return run(command, capture_output=True, text=True, **kwargs)
+            try:
+                return run(command, capture_output=True, text=True, **kwargs)
+            except subprocess.CalledProcessError as error:
+                self.fail(f"Offline release-core pip resolver exited {error.returncode}:\n{error.stderr or error.stdout or '(no diagnostics)'}")
 
         with mock.patch.object(CORE.subprocess, "run", side_effect=offline_run):
             versions = CORE.resolve_manifest(self.path)

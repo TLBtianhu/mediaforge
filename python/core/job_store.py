@@ -180,7 +180,9 @@ def read_jobs_unlocked(jobs_root: Path) -> dict[str, dict[str, Any]]:
     _require(not any(jobs_root.glob("*.removing")), "incomplete job removal transaction; files preserved")
     records = {}
     for path in sorted(jobs_root.glob("*.json")):
-        value = read_job(path)
+        # Catalog protects membership; a writer can still replace one snapshot.
+        with write_lock(jobs_root, path.stem):
+            value = read_job(path)
         if value is not None:
             records[value["jobId"]] = value
     for value in records.values():

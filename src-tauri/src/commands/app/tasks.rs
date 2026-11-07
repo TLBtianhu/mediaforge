@@ -31,7 +31,7 @@ pub async fn start_separation(
         vec![("kind", "separation".to_string()), ("taskId", task_id.clone())],
     );
     spawn_worker_background(app, state, "infer", task_id.clone(), payload)?;
-    Ok(serde_json::json!({ "taskId": task_id, "started": true }))
+    Ok(serde_json::json!({ "taskId": task_id, "queued": true, "started": false }))
 }
 
 #[tauri::command]
@@ -52,7 +52,7 @@ pub async fn start_workflow_inference(
         vec![("kind", "workflow".to_string()), ("taskId", task_id.clone())],
     );
     spawn_worker_background(app, state, "infer_workflow", task_id.clone(), payload)?;
-    Ok(serde_json::json!({ "taskId": task_id, "started": true }))
+    Ok(serde_json::json!({ "taskId": task_id, "queued": true, "started": false }))
 }
 
 
@@ -154,7 +154,7 @@ pub async fn start_audio_tool(
         .ok_or_else(|| AppError::Worker("missing audio tool request id".into()))?
         .to_string();
     spawn_worker_background(app, state, "audio_tools", task_id.clone(), payload)?;
-    Ok(serde_json::json!({ "taskId": task_id, "started": true }))
+    Ok(serde_json::json!({ "taskId": task_id, "queued": true, "started": false }))
 }
 
 #[tauri::command]
@@ -171,7 +171,7 @@ pub async fn start_operation_task(
         .ok_or_else(|| AppError::Worker("missing operation request id".into()))?
         .to_string();
     spawn_worker_background(app, state, "run_operation", task_id.clone(), payload)?;
-    Ok(serde_json::json!({ "taskId": task_id, "started": true }))
+    Ok(serde_json::json!({ "taskId": task_id, "queued": true, "started": false }))
 }
 
 #[tauri::command]

@@ -61,7 +61,7 @@ const planAvailable = ref(true)
 const prechecking = ref(false)
 const { job, busy: taskBusy, progress, status, outputs, failedCount, start: startJob } = useMediaJob<OutputFile>(
   'media_image', {
-    running: () => t('factory.processing'), completed: () => t('factory.completed'),
+    queued: () => t('tasks.waitingForResources'), running: () => t('factory.processing'), completed: () => t('factory.completed'),
     failed: () => t('factory.failed'), cancelled: () => t('tasks.cancelSuccess'),
   }, message, payload => {
     if (Array.isArray(payload.inputs)) inputs.value = payload.inputs as string[]

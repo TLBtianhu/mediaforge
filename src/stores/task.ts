@@ -25,7 +25,7 @@ import {
 import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
 import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
 import { CURRENT_INFERENCE_PARAMS_VERSION, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming } from '@/stores/taskNormalize'
-import { useMediaJobsStore } from '@/stores/mediaJobs'
+import { JOURNAL_POLL_INTERVAL_MS, useMediaJobsStore } from '@/stores/mediaJobs'
 import { audioTasksFromJobs, audioEnqueueFromTasks } from '@/features/tasks/audioJobs'
 import { enqueueAudioJobs, removeAudioJobs } from '@/features/tasks/journal'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
@@ -37,7 +37,6 @@ import { buildInferenceParams as buildInferenceParamsFromValues, modelInferenceP
 import { buildJobs, findJobById } from '@/stores/taskJobs'
 import { getRemovalTasks as getRemovalTasksFromState, primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets, resultTrashTargetsForTasks as planResultTrashTargets } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
-import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, type WorkflowRuntimeBindings, type WorkflowWorkbenchSnapshot, type WorkflowNodeState } from '@/workflows/workbench'
 import { SEPARATE_MODEL_PAGE_SIZES, normalizePageSize } from '@/utils/pagination'
@@ -229,7 +228,9 @@ export const useTaskStore = defineStore('task', () => {
   const loadError = ref('')
   const tasks = ref<SeparationTask[]>([])
   const journal = useMediaJobsStore()
-  const dispatchedTaskIds = new Set<string>()
+  const acceptedGroupIds = new Set<string>()
+  const inFlightGroupIds = new Set<string>()
+  const retryDispatchAfter = new Map<string, number>()
   function syncJournalTasks() {
     const previous = new Map(tasks.value.map(task => [task.id,task]))
     tasks.value = audioTasksFromJobs(journal.jobs, windowsPaths.value, resolveTaskErrorMessage).map(projected => {
@@ -238,6 +239,9 @@ export const useTaskStore = defineStore('task', () => {
       for (const key of Object.keys(current)) if (!(key in projected)) delete (current as unknown as Record<string, unknown>)[key]
       return Object.assign(current,projected)
     })
+    const activeGroups = new Set(tasks.value.filter(task => !isTerminalTaskStatus(task.status)).map(taskJobId))
+    for (const id of acceptedGroupIds) if (!activeGroups.has(id)) acceptedGroupIds.delete(id)
+    for (const id of retryDispatchAfter.keys()) if (!activeGroups.has(id)) retryDispatchAfter.delete(id)
   }
   watch(() => journal.jobs, () => {
     if (!initialized.value) return
@@ -619,11 +623,6 @@ export const useTaskStore = defineStore('task', () => {
     restoreInferenceNumberFallback('window_size')
   }
 
-  function maxConcurrentSeparations() {
-    const settings = useSettingsStore()
-    return normalizeConcurrentSeparations(settings.maxConcurrentSeparations)
-  }
-
   const { buildRunConfig, workflowModelInferenceParams, buildWorkflowRunConfig } = makeTaskRunConfig({
     useSettingsStore, useAppStore, useModelStore, selectedStems, useTta,
     normalizeOutputNaming, CURRENT_INFERENCE_PARAMS_VERSION,
@@ -637,25 +636,36 @@ export const useTaskStore = defineStore('task', () => {
   })
   async function startQueuedTask(taskId: string) {
     const task = tasks.value.find(item => item.id === taskId)
-    if (!task || task.status !== 'queued' || dispatchedTaskIds.has(taskId)) return false
+    if (!task || task.status !== 'queued') return false
     return startQueuedGroup([task])
   }
 
   async function startQueuedGroup(group: SeparationTask[]) {
-    if (!group.length || group.some(task => dispatchedTaskIds.has(task.id))) return false
-    group.forEach(task => dispatchedTaskIds.add(task.id))
+    if (!group.length) return false
+    const groupId = taskJobId(group[0])
+    if (acceptedGroupIds.has(groupId) || inFlightGroupIds.has(groupId) || (retryDispatchAfter.get(groupId) || 0) > Date.now()) return false
+    inFlightGroupIds.add(groupId)
     const primary = group[0].id
     try {
       await invoke(group[0].runConfig?.runMode === 'workflow' ? 'start_workflow_inference' : 'start_separation', { payload: { jobId: primary } })
+      // A queued ACK means the backend owns the waiter, not that a worker started.
+      acceptedGroupIds.add(groupId)
+      retryDispatchAfter.delete(groupId)
       await journal.refresh()
       if (journal.error) throw new Error(journal.error)
       syncJournalTasks()
       return true
     } catch (error) {
+      // A queued record predates start, so a lost ACK is ambiguous. Retrying the
+      // idempotent start is safe, but only after the resident polling interval.
+      retryDispatchAfter.set(groupId, Date.now() + JOURNAL_POLL_INTERVAL_MS)
       studioLog.warn('Failed to start an enqueued audio job', error)
       await journal.refresh()
       syncJournalTasks()
+      if (tasks.value.some(task => taskJobId(task) === groupId && task.status !== 'queued' && !isTerminalTaskStatus(task.status))) acceptedGroupIds.add(groupId)
       return false
+    } finally {
+      inFlightGroupIds.delete(groupId)
     }
   }
 
@@ -679,10 +689,11 @@ export const useTaskStore = defineStore('task', () => {
     try {
       do {
         queueScheduleRequested = false
-        const awaiting = new Set(tasks.value.filter(task => task.status === 'queued' && dispatchedTaskIds.has(task.id)).map(taskJobId)).size
-        const limit = maxConcurrentSeparations() - awaiting
-        if (limit <= 0) break
-        const nextJobs = selectQueuedJobGroups(tasks.value.filter(task => task.status !== 'queued' || !dispatchedTaskIds.has(task.id)), limit)
+        // Admission and the shared UI/MCP/media cap belong to the backend. Submit
+        // every unaccepted group once; a batch still maps to one backend waiter.
+        const eligible = tasks.value.filter(task => task.status !== 'queued' || !acceptedGroupIds.has(taskJobId(task))
+          && !inFlightGroupIds.has(taskJobId(task)) && (retryDispatchAfter.get(taskJobId(task)) || 0) <= Date.now())
+        const nextJobs = selectQueuedJobGroups(eligible, Math.max(1, tasks.value.length))
         nextJobs.forEach((jobTasks) => {
           if (jobTasks.length === 1) {
             void startQueuedTask(jobTasks[0].id)

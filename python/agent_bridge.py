@@ -387,13 +387,25 @@ class Bridge:
         return {"ok": True, "feedbackId": record["id"], "path": str(self.feedback_path)}
 
     def _wait(self, job: Job, timeout: float) -> dict[str, Any]:
+        from core.job_store import TERMINAL_STATES
+
         deadline = time.time() + timeout
         while time.time() < deadline:
-            snapshot = job.snapshot()
-            if snapshot["status"] in {"completed", "failed", "cancelled"}:
+            current = self.jobs.get(job.job_id)
+            if current is None:
+                return {"ok": False, "error": "unknown job", "jobId": job.job_id}
+            snapshot = current.snapshot()
+            if snapshot["status"] in TERMINAL_STATES:
                 return {"ok": snapshot["status"] == "completed", **snapshot}
             time.sleep(0.1)
-        return {"ok": True, "jobId": job.job_id, "status": "running", "message": "job is still running; poll job_status"}
+        current = self.jobs.get(job.job_id)
+        if current is None:
+            return {"ok": False, "error": "unknown job", "jobId": job.job_id}
+        snapshot = current.snapshot()
+        if snapshot["status"] in TERMINAL_STATES:
+            return {"ok": snapshot["status"] == "completed", **snapshot}
+        return {"ok": True, "jobId": job.job_id, "status": snapshot["status"],
+                "message": f"job is {snapshot['status']}; poll job_status"}
 
     # ---- MCP tool registry ---------------------------------------------------
 
@@ -720,20 +732,23 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve_stdio(bridge: Bridge) -> int:
     """Line-delimited JSON-RPC over stdio for DSH's stdio MCP transport."""
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            request = json.loads(line)
-            if not isinstance(request, dict):
-                raise ValueError("JSON-RPC request must be an object")
-            response = bridge.rpc(request)
-        except Exception as exc:  # noqa: BLE001
-            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
-        if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                request = json.loads(line)
+                if not isinstance(request, dict):
+                    raise ValueError("JSON-RPC request must be an object")
+                response = bridge.rpc(request)
+            except Exception as exc:  # noqa: BLE001
+                response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
+            if response is not None:
+                sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+                sys.stdout.flush()
+    finally:
+        bridge.jobs.close()
     return 0
 
 
@@ -783,6 +798,7 @@ def main() -> int:
         pass
     finally:
         server.server_close()
+        bridge.jobs.close()
     return 0
 
 
