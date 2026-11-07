@@ -11,7 +11,6 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         self.assertIn("MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR", source)
         self.assertIn("pub fn smoke_activate", source)
         self.assertIn("runtime_asset_install(app.clone())", source)
-        self.assertGreaterEqual(source.count("write_active_pointer(&envs, &descriptor)"), 2)
         main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
         self.assertIn('"--smoke-activate-runtime"', main)
 

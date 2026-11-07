@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::log_record::{legacy_stderr, LogRecord};
 use crate::python::protocol::WorkerEnvelope;
+use crate::python::task_journal::{self, JournalHandle};
 use crate::session_log;
 use crate::state::AppState;
 use crate::storage;
@@ -990,7 +991,7 @@ fn build_worker_command(
     }
     if let Ok(models_dir) = storage::models_dir(app) {
         cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
-        cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
+        cmd.env("PYMSS_MODEL_DIR", models_dir.to_string_lossy().to_string());
     }
     if let Ok(data_root) = storage::data_root_dir(app) {
         cmd.env("MEDIAFORGE_DATA_DIR", data_root.to_string_lossy().to_string());
@@ -1748,13 +1749,25 @@ pub fn spawn_worker_background(
     task_id: String,
     payload: Value,
 ) -> AppResult<()> {
+    let journal = if task_journal::tracks(command) {
+        Some(task_journal::WorkerJournal::start(&storage::data_root_dir(&app)?, command, &task_id, &payload)?)
+    } else { None };
     let operation_id = session_log::record_operation_request(&app, command, &payload, Some(&task_id));
     let log_app = app.clone();
-    let result = spawn_worker_background_inner(app, state, command, task_id, payload, operation_id.clone());
+    let result = spawn_worker_background_inner(app, state, command, task_id, payload, operation_id.clone(), journal.clone());
     if let Err(error) = &result {
+        update_task_journal(&log_app, &journal, |journal| journal.fail_all(&error.to_string()));
         session_log::record_operation_failure(&log_app, command, &operation_id, &error.to_string());
     }
     result
+}
+
+fn update_task_journal(app: &AppHandle, journal: &Option<JournalHandle>, update: impl FnOnce(&mut task_journal::WorkerJournal) -> AppResult<()>) {
+    let Some(journal) = journal else { return; };
+    let result = journal.lock().map_err(|_| AppError::Worker("task journal lock poisoned".into())).and_then(|mut journal| update(&mut journal));
+    if let Err(error) = result {
+        session_log::append(app, "WARN", "task.journal_failed", vec![("message", error.to_string())]);
+    }
 }
 
 fn spawn_worker_background_inner(
@@ -1764,19 +1777,11 @@ fn spawn_worker_background_inner(
     task_id: String,
     mut payload: Value,
     operation_id: String,
+    journal: Option<JournalHandle>,
 ) -> AppResult<()> {
     let mut application_access = Some(acquire_application_operation()?);
     let mut runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
-    let mut registered_task_ids = vec![task_id.clone()];
-    if let Some(tasks) = payload.get("tasks").and_then(Value::as_array) {
-        for item in tasks {
-            if let Some(child_task_id) = item.get("taskId").and_then(Value::as_str) {
-                if !registered_task_ids.iter().any(|id| id == child_task_id) {
-                    registered_task_ids.push(child_task_id.to_string());
-                }
-            }
-        }
-    }
+    let registered_task_ids = task_journal::registered_ids(&task_id, &payload);
     {
         let tasks = state
             .tasks
@@ -1854,6 +1859,7 @@ fn spawn_worker_background_inner(
             return Err(error.into());
         }
     }
+    update_task_journal(&app, &journal, |journal| journal.running(child.id()));
     let stdout = child
         .stdout
         .take()
@@ -1891,6 +1897,7 @@ fn spawn_worker_background_inner(
             }
             match serde_json::from_str::<WorkerEnvelope>(&line) {
                 Ok(mut envelope) => {
+                    update_task_journal(&app, &journal, |journal| journal.observe(&envelope));
                     if envelope.event_type == "error" {
                         log_worker_event_with_scope(&app, &command_name, &mut envelope, Some(&operation_id), Some(&task_id));
                     }
@@ -1942,6 +1949,7 @@ fn spawn_worker_background_inner(
                     if is_rocm_offload_arch_diagnostic(&line) {
                         emit_batch_stderr(&app, &registered_task_ids, line.clone());
                     } else {
+                        update_task_journal(&app, &journal, |journal| journal.fail_all(&format!("Invalid worker event: {err}")));
                         let record = log_worker_parse_error(
                             &app,
                             &command_name,
@@ -1993,6 +2001,10 @@ fn spawn_worker_background_inner(
                 }
             }
         }
+        update_task_journal(&app, &journal, |journal| journal.exited(
+            exit_status.as_ref().is_some_and(|status| status.success()), was_cancelled,
+            &exit_status.as_ref().map(|status| format!("worker exited with {status}")).unwrap_or_else(|| "worker exited unexpectedly".into()),
+        ));
         session_log::append(
             &app,
             match exit_status.as_ref() {

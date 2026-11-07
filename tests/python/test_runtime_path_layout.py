@@ -29,11 +29,37 @@ class RuntimePathLayoutTest(unittest.TestCase):
             self.assertEqual(models, root / "models")
             self.assertEqual(runtime, root / "runtime-envs")
 
-    def test_data_root_sibling_and_custom_root_child_are_explicit(self) -> None:
+    def test_explicit_data_root_owns_assets_even_when_named_data(self) -> None:
         with tempfile.TemporaryDirectory(prefix="mf-data-root-") as root_name:
             root = Path(root_name)
-            self.assertEqual(worker_paths.runtime_envs_root(data_root=root / "data"), root / "runtime-envs")
-            self.assertEqual(worker_paths.model_root(data_root=root / "custom"), root / "custom" / "models")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(worker_paths.runtime_envs_root(data_root=root / "data"), root / "data" / "runtime-envs")
+                self.assertEqual(worker_paths.model_root(data_root=root / "data"), root / "data" / "models")
+                self.assertEqual(worker_paths.model_root(data_root=root / "custom"), root / "custom" / "models")
+
+    def test_bridge_default_layout_keeps_sibling_assets_without_overrides(self) -> None:
+        with tempfile.TemporaryDirectory(prefix='mf-bridge-layout-') as raw:
+            root = Path(raw)
+            with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(worker_paths, '_app_root', return_value=root / 'app'):
+                self.assertEqual(worker_paths.model_root(data_root=worker_paths.data_root()), root / 'models')
+                self.assertEqual(worker_paths.runtime_envs_root(data_root=worker_paths.data_root()), root / 'runtime-envs')
+
+    def test_data_override_beats_packaged_layout_and_data_dir_alias(self) -> None:
+        with tempfile.TemporaryDirectory(prefix='mf-override-layout-') as raw:
+            root = Path(raw)
+            for app_root in [root / 'installed' / 'app', root / 'portable']:
+                app_root.mkdir(parents=True)
+                (app_root / 'mediaforge.portable').touch()
+                isolated = root / 'isolated' / 'data'
+                with mock.patch.dict(os.environ, {'MEDIAFORGE_DATA_ROOT': str(isolated), 'MEDIAFORGE_DATA_DIR': str(root / 'stale')}, clear=True), mock.patch.object(worker_paths, '_app_root', return_value=app_root):
+                    self.assertEqual(worker_paths.data_root(), isolated)
+                    self.assertEqual(worker_paths.model_root(), isolated / 'models')
+                    self.assertEqual(worker_paths.runtime_envs_root(), isolated / 'runtime-envs')
+
+    def test_explicit_asset_roots_override_the_data_root(self) -> None:
+        with mock.patch.dict(os.environ, {'MEDIAFORGE_DATA_ROOT': 'C:/isolated/data', 'MEDIAFORGE_MODEL_DIR': 'C:/weights', 'MEDIAFORGE_RUNTIME_ENVS_DIR': 'C:/runtimes'}, clear=True):
+            self.assertEqual(worker_paths.model_root(), Path('C:/weights'))
+            self.assertEqual(worker_paths.runtime_envs_root(), Path('C:/runtimes'))
 
     def test_default_paths_do_not_use_legacy_mediaforge_root(self) -> None:
         data, models, runtime = worker_paths.default_layout()

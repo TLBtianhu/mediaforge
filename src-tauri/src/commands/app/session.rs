@@ -117,6 +117,9 @@ pub async fn save_app_store(app: AppHandle, name: String, data: Value) -> AppRes
     if name == "workflow-state" {
         return Err(AppError::Worker("workflow-state requires mutate_workflow_store".into()));
     }
+    if name == "media-workflows" {
+        return Err(AppError::Worker("media-workflows requires mutate_media_workflows".into()));
+    }
     session_log::append(
         &app,
         "DEBUG",
@@ -130,6 +133,11 @@ pub async fn save_app_store(app: AppHandle, name: String, data: Value) -> AppRes
         );
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn mutate_media_workflows(app: AppHandle, payload: Value) -> AppResult<Value> {
+    storage::mutate_media_workflows(&app, &payload)
 }
 
 #[tauri::command]

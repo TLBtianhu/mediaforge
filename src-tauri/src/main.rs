@@ -9,6 +9,7 @@ mod diagnostic_report;
 mod error;
 mod log_record;
 mod model_dir_migration;
+mod media_workflows;
 mod plugin_views;
 mod python;
 mod rba;
@@ -16,6 +17,8 @@ mod session_log;
 mod single_instance;
 mod state;
 mod runtime_assets;
+#[cfg(windows)]
+mod process_job;
 mod version_check;
 mod storage;
 mod terminal;
@@ -199,6 +202,7 @@ fn main() {
             commands::app::session::load_app_store,
             commands::app::tasks::get_workflow_editors,
             commands::app::session::mutate_workflow_store,
+            commands::app::session::mutate_media_workflows,
             commands::app::editor::load_editor_project,
             commands::app::editor::relink_editor_sources,
             commands::app::editor::open_editor_window,
@@ -246,13 +250,16 @@ fn main() {
 
     // 开发数据根冒烟：在真实进程里输出解析结果，不创建或改写用户数据。
     if std::env::args().any(|arg| arg == "--smoke-print-data-root") {
-        match storage::data_root_dir(&app.handle()) {
-            Ok(root) => {
+        match (storage::data_root_dir(&app.handle()), storage::models_dir(&app.handle()), storage::runtime_envs_dir(&app.handle()), runtime_assets::runtime_asset_status(app.handle().clone())) {
+            (Ok(root), Ok(models), Ok(runtimes), Ok(asset)) => {
                 println!("SMOKE_DATA_ROOT={}", root.display());
+                println!("SMOKE_MODEL_ROOT={}", models.display());
+                println!("SMOKE_RUNTIME_ROOT={}", runtimes.display());
+                println!("SMOKE_RUNTIME_ASSET_DIR={}", asset["dir"].as_str().unwrap_or(""));
                 println!("SMOKE_DEVELOPMENT={}", storage::is_development_executable());
                 std::process::exit(0);
             }
-            Err(error) => {
+            (Err(error), _, _, _) | (_, Err(error), _, _) | (_, _, Err(error), _) | (_, _, _, Err(error)) => {
                 eprintln!("smoke-print-data-root: FAILED: {error}");
                 std::process::exit(1);
             }

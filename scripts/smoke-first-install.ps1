@@ -96,4 +96,7 @@ if ($failures.Count -gt 0) {
     Write-Host ("FAIL: {0}" -f ($failures -join ', '))
     exit 1
 }
+. (Join-Path $PSScriptRoot 'temp-work-guard.ps1')
+$resolvedWork = Assert-TempWorkDir -Work $work -Prefix 'mediaforge-first-install-'
+Remove-Item -LiteralPath $resolvedWork -Recurse -Force
 Write-Host 'PASS: 首装下载运行时端到端成立（含 sha256 负例）'

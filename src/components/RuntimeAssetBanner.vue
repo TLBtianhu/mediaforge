@@ -25,10 +25,26 @@ const error = ref('')
 // 远端 versions.json 声明了另一份运行时（与本地不同）时，用同一块横幅提示切换
 const remoteRuntime = ref('')
 let unlisten: UnlistenFn | null = null
+let disposed = false
+let listenerRequest: Promise<void> | null = null
 
 const visible = computed(() => checked.value && (!installed.value || Boolean(remoteRuntime.value)))
-const canStart = computed(() => !running.value && !error.value)
+const canStart = computed(() => !running.value)
 const remoteAvailable = computed(() => Boolean(remoteRuntime.value))
+
+async function ensureProgressListener() {
+  if (unlisten || disposed) return
+  if (!listenerRequest) {
+    listenerRequest = (async () => {
+      const stop = await listen('mediaforge://runtime-asset', event => {
+        if (!disposed) void onProgress(event.payload as Parameters<typeof onProgress>[0])
+      })
+      if (disposed) stop()
+      else unlisten = stop
+    })().finally(() => { listenerRequest = null })
+  }
+  await listenerRequest
+}
 
 async function refreshStatus() {
   try {
@@ -38,17 +54,19 @@ async function refreshStatus() {
       size: number
       sha256: string
     }>('runtime_asset_status')
+    if (disposed) return
     installed.value = Boolean(status.installed)
     // stale=true 表示本地那份运行时存在但不是当前版本（缺依赖或版本不符），
     // 这时的文案要说"需要更新"，否则用户会以为要重装整个应用。
     stale.value = Boolean(status.stale)
     totalMb.value = Math.round((status.size || 0) / 1024 / 1024)
   } catch (err) {
+    if (disposed) return
     // 命令不存在（旧版本）时不要打扰用户
     installed.value = true
     error.value = ''
   } finally {
-    checked.value = true
+    if (!disposed) checked.value = true
   }
 }
 
@@ -58,15 +76,17 @@ async function checkVersions() {
       available?: { runtime?: boolean }
       remote?: { runtime?: string }
     }>('versions_check')
+    if (disposed) return
     remoteRuntime.value = result?.available?.runtime ? String(result?.remote?.runtime || '') : ''
   } catch {
-    // 没有网络、没有发布清单、或签名不通过：都按"没有更新"处理，不打扰用户
-    remoteRuntime.value = ''
+    // 检查失败表示远端状态未知；暂不展示更新提示，不据此宣称已是最新。
+    if (!disposed) remoteRuntime.value = ''
   }
 }
 
 async function acceptRemoteRuntime() {
   if (!canStart.value) return
+  error.value = ''
   try {
     await invoke('versions_accept_runtime')
   } catch (err) {
@@ -82,7 +102,12 @@ async function startInstall() {
   running.value = true
   error.value = ''
   percent.value = 0
+  downloadedMb.value = 0
+  stage.value = ''
   try {
+    // Retry a failed subscription before starting work whose progress would be lost.
+    await ensureProgressListener()
+    if (disposed) return
     await invoke('runtime_asset_install')
   } catch (err) {
     running.value = false
@@ -112,18 +137,19 @@ async function onProgress(payload: { stage?: string; percent?: number; downloade
 }
 
 onMounted(async () => {
-  await refreshStatus()
-  if (installed.value) await checkVersions()
   try {
-    unlisten = await listen('mediaforge://runtime-asset', event => {
-      onProgress(event.payload as Parameters<typeof onProgress>[0])
-    })
+    await ensureProgressListener()
   } catch {
     // 浏览器预览没有 Tauri 事件桥
   }
+  if (disposed) return
+  await refreshStatus()
+  // 本地状态与事件监听先就绪，远端版本查询即使超时也不会漏掉安装进度。
+  if (!disposed && installed.value) await checkVersions()
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   unlisten?.()
   unlisten = null
 })

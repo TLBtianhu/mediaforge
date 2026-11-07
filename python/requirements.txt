@@ -9,6 +9,10 @@ av>=14
 librosa>=0.10.2
 audioread>=3.0,<4
 numpy>=1.26
+# Direct worker_audio imports; already present in runtime-lock-media.txt and
+# supplied by the shipped librosa runtime. Declare them explicitly for development.
+soundfile>=0.14,<0.15
+soxr>=1.1,<1.2
 pysocks>=1.7.1
 requests[socks]>=2.32
 pyyaml>=6.0.1

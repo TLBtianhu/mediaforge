@@ -32,6 +32,14 @@ const DYNAMIC_KEY_PREFIXES = [
   'plan.capabilities.',
 ]
 
+// JournalResults.vue builds these keys from its two sources and four terminal
+// states. Keep this finite so new unused source/status strings remain visible.
+const DYNAMIC_KEYS = new Set([
+  'results.journal.source.manual', 'results.journal.source.agent',
+  'results.journal.status.completed', 'results.journal.status.failed',
+  'results.journal.status.cancelled', 'results.journal.status.interrupted',
+])
+
 /**
  * Copy for features that exist in code but are not surfaced yet. Unreferenced on purpose —
  * listing them here is what separates "kept deliberately" from "forgotten".
@@ -86,7 +94,7 @@ for (const match of source.matchAll(/['"`]([a-zA-Z][\w]*(?:\.[\w]+)+)['"`]/g)) {
 }
 
 function isDynamic(key: string) {
-  return DYNAMIC_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
+  return DYNAMIC_KEYS.has(key) || DYNAMIC_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
 }
 
 test('both locales define exactly the same keys', () => {

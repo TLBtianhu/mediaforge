@@ -853,11 +853,8 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
     def sink(event_type: str, data: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
         events.append({"type": event_type, "payload": data})
 
-    worker_protocol.set_event_sink(sink)
-    try:
+    with worker_protocol.bind_event_sink(sink):
         code = worker.run_command(tool["command"], payload)
-    finally:
-        worker_protocol.set_event_sink(None)
 
     terminal = events[-1] if events else None
     payload = terminal.get("payload") if isinstance(terminal, dict) else None

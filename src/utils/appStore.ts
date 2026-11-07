@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isTutorialFrame, tutorialAdapter } from '../features/onboarding/demoContext.ts'
 
-export type AppStoreName = 'app-settings' | 'task-history' | 'model-state' | 'editor-ui' | 'audio-tools' | 'workflow-state' | 'separate-state' | 'update-state'
+export type AppStoreName = 'app-settings' | 'task-history' | 'model-state' | 'editor-ui' | 'audio-tools' | 'workflow-state' | 'media-workflows' | 'separate-state' | 'update-state'
 
 export const isTauriRuntime = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -27,11 +27,15 @@ function isMissingUpdateStore(error: unknown, name: AppStoreName) {
 
 function readLocalStore<T>(name: AppStoreName): T | null {
   const raw = localStorage.getItem(localStoreKey(name))
-  if (!raw) return null
+  if (raw === null) return null
   try {
     const value = JSON.parse(raw) as T
+    if (name === 'media-workflows' && (!value || typeof value !== 'object' || Array.isArray(value))) {
+      throw new TypeError('Invalid media workflow store')
+    }
     return value && typeof value === 'object' ? value : null
-  } catch {
+  } catch (error) {
+    if (name === 'media-workflows') throw error
     return null
   }
 }
@@ -43,6 +47,9 @@ export async function loadAppStore<T>(name: AppStoreName): Promise<T | null> {
   }
   try {
     const value = await invoke<T | null>('load_app_store', { name })
+    if (name === 'media-workflows' && value !== null && (typeof value !== 'object' || Array.isArray(value))) {
+      throw new TypeError('Invalid media workflow store')
+    }
     return value && typeof value === 'object' ? value : null
   } catch (error) {
     // 0.0.13 did not register update-state in the Rust store map. Keep the

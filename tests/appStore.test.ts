@@ -64,4 +64,36 @@ describe('app store persistence', () => {
       lastAcceptedVersion: '0.0.14',
     })
   })
+
+  it('rejects corrupt or primitive media workflow preview data instead of treating it as a new empty library', async () => {
+    for (const raw of ['{broken', 'null', '42', 'true', '"old-format"', '', '   ']) {
+      values.set('pymss-studio:media-workflows', raw)
+      await assert.rejects(loadAppStore('media-workflows'), undefined, `stored value ${JSON.stringify(raw)}`)
+      assert.equal(values.get('pymss-studio:media-workflows'), raw)
+    }
+    values.delete('pymss-studio:media-workflows')
+    assert.equal(await loadAppStore('media-workflows'), null)
+    values.set('pymss-studio:media-workflows', JSON.stringify({ version: 1, presets: [] }))
+    assert.deepEqual(await loadAppStore('media-workflows'), { version: 1, presets: [] })
+  })
+
+  it('rejects primitive native media workflow responses while allowing an absent library', async () => {
+    for (const value of [42, true, 'old-format']) {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: { __TAURI_INTERNALS__: { invoke: async () => value } },
+      })
+      await assert.rejects(loadAppStore('media-workflows'))
+    }
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { __TAURI_INTERNALS__: { invoke: async () => null } },
+    })
+    assert.equal(await loadAppStore('media-workflows'), null)
+  })
+
+  it('keeps the established lenient browser fallback for unrelated app stores', async () => {
+    values.set('pymss-studio:model-state', '{broken')
+    assert.equal(await loadAppStore('model-state'), null)
+  })
 })

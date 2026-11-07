@@ -17,27 +17,12 @@ from . import image_ops
 from . import capabilities
 from . import evaluation
 from . import failures
+from . import task_params
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
     value = str(payload.get("requestId") or "").strip()
     return value or None
-
-
-def _capability_model(payload: dict[str, Any], capability: str, role: str) -> str:
-    """图像独有能力（去噪/深度/抠图/检测）的模型选择。
-
-    这些能力没有 video_step planner，走不了 steps/bindings 路由，
-    所以在入口处统一读 payload.modelId；没给就用能力的默认绑定。
-    """
-    override = str(payload.get("modelId") or "").strip()
-    if override:
-        return override
-    # 兼容上一轮先加的单一字段
-    legacy = str(payload.get("denoiserModelId") or "").strip()
-    if capability == "denoise" and legacy:
-        return legacy
-    return str(capabilities.default_bindings(capability)[role])
 
 
 def cmd_media_image(payload: dict[str, Any]) -> int:
@@ -51,62 +36,40 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
         if not output_dir:
             return emit_error("MEDIA_IMAGE_INVALID", "No output directory", request_id=request_id)
 
-        mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale", "denoise", "detect", "depth", "matting", "interpolate", "face", "face_restoration", "custom"}:
-            return emit_error("MEDIA_IMAGE_INVALID", f"Unknown image mode: {mode}", request_id=request_id)
-        scale = float(payload.get("scale") or 2.0)
-        target = image_ops.resolve_target(
-            str(payload.get("target") or "none"),
-            int(payload.get("width") or 0),
-            int(payload.get("height") or 0),
-        )
-        fit = str(payload.get("fit") or "contain")
-        conf = float(payload.get("conf") or 0.25)
-        expand = int(payload.get("expand") or 6)
         model_dir = str(payload.get("modelDir") or "").strip()
         if model_dir:
             worker_paths.export_model_root(model_dir)
 
-        raw_steps = payload.get("steps")
-        if raw_steps:
-            steps = capabilities.normalize_steps(raw_steps)
-            for step in steps:
-                if step["capability"] == "upscale":
-                    target_value = step["params"].get("target")
-                    if not isinstance(target_value, tuple):
-                        step["params"]["target"] = image_ops.resolve_target(
-                            str(target_value or "none"),
-                            int(payload.get("width") or 0),
-                            int(payload.get("height") or 0),
-                        )
-            mode = capabilities.mode_for_steps(steps)
-        else:
-            steps = capabilities.normalize_steps(capabilities.steps_from_mode(mode))
-            for step in steps:
-                if step["capability"] == "watermark_removal":
-                    step["params"].update({"conf": conf, "expand": expand})
-                elif step["capability"] == "upscale":
-                    step["params"].update({"scale": scale, "target": target, "fit": fit})
-                elif step["capability"] == "denoise":
-                    # 允许指定替代去噪模型；不指定就用能力的默认绑定。
-                    # 图像独有能力（去噪/深度/抠图/检测）走不了 video_step 的 steps 路由，
-                    # 所以模型选择必须在这里透传。
-                    chosen = _capability_model(payload, "denoise", "denoiser")
-                    step["params"].update({"modelOverride": chosen})
+        steps = task_params.normalize_steps(payload, modality="image")
         if len(steps) != 1:
             return emit_error(
                 "MEDIA_ONE_MODEL_PER_TASK",
                 "One task may run exactly one capability/model. Use a workflow for multiple steps.",
                 request_id=request_id,
             )
+        step = steps[0]
+        params = step["params"]
+        bindings = step["bindings"]
+        mode = capabilities.mode_for_steps(steps)
+        scale = float(task_params.value(params, "scale", 2.0))
+        target = image_ops.resolve_target(
+            str(task_params.value(params, "target", "none")),
+            int(task_params.value(params, "width", 0)),
+            int(task_params.value(params, "height", 0)),
+        )
+        fit = str(task_params.value(params, "fit", "contain"))
+        conf = float(task_params.value(params, "conf", 0.25))
+        expand = int(task_params.value(params, "expand", 6))
+        if step["capability"] == "upscale":
+            params["target"] = target
 
         if mode == "detect":
-            model_path = capabilities.model_path(_capability_model(payload, "object_detection", "detector"))
+            model_path = capabilities.model_path(bindings["detector"])
             outputs = []
             failed = []
             for source in inputs:
                 try:
-                    boxes = image_ops.detect_objects(model_path, image_ops.read_image(source), conf=float(payload.get("conf") or 0.25))
+                    boxes = image_ops.detect_objects(model_path, image_ops.read_image(source), conf=conf)
                     sidecar = Path(output_dir) / f"{Path(source).stem}_detect.json"
                     sidecar.parent.mkdir(parents=True, exist_ok=True)
                     sidecar.write_text(json.dumps({"source": str(source), "boxes": boxes}, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -122,7 +85,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return 0
 
         if mode == "depth":
-            model_dir = capabilities.model_path(_capability_model(payload, "depth", "depth_estimator"))
+            model_dir = capabilities.model_path(bindings["depth_estimator"])
             outputs = []
             failed = []
             for source in inputs:
@@ -143,7 +106,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return 0
 
         if mode == "matting":
-            model_dir = capabilities.model_path(_capability_model(payload, "matting", "background_remover"))
+            model_dir = capabilities.model_path(bindings["background_remover"])
             outputs = []
             failed = []
             for source in inputs:
@@ -164,7 +127,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             return 0
 
         if mode in {"face", "face_restoration"}:
-            model_path = capabilities.model_path(_capability_model(payload, "face_restoration", "face_restorer"))
+            model_path = capabilities.model_path(bindings["face_restorer"])
             outputs = []
             failed = []
             for source in inputs:
@@ -187,12 +150,12 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
         if mode == "interpolate":
             if len(inputs) < 2:
                 return emit_error("MEDIA_IMAGE_INVALID", "插帧需要两张图作为前后帧", request_id=request_id)
-            model_id = _capability_model(payload, "frame_interpolation", "interpolator")
+            model_id = bindings["interpolator"]
             model_dir = capabilities.model_path(model_id)
             source_a, source_b = inputs[0], inputs[1]
             middle = image_ops.interpolate_frames(
                 model_dir, image_ops.read_image(source_a), image_ops.read_image(source_b),
-                float(payload.get("timestep") or 0.5),
+                float(task_params.value(params, "timestep", 0.5)),
             )
             target_path = Path(output_dir) / f"{Path(source_a).stem}_{Path(source_b).stem}_interp.png"
             target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -205,7 +168,7 @@ def cmd_media_image(payload: dict[str, Any]) -> int:
             )
             return 0
 
-        restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, tile=int(payload.get("tile") or 0) or 512)
+        restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, tile=int(task_params.value(params, "tile", 0)) or 512)
         outputs: list[dict] = []
         failed: list[dict] = []
         total = len(inputs)

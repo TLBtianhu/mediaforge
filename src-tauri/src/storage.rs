@@ -164,10 +164,7 @@ fn resolve_data_root(
 }
 
 pub fn data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    let env_root = std::env::var_os(MEDIAFORGE_DATA_ROOT_ENV)
-        .or_else(|| std::env::var_os(DATA_ROOT_ENV))
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from);
+    let env_root = explicit_data_root();
     Ok(resolve_data_root(
         env_root,
         development_data_root_dir()?,
@@ -177,19 +174,55 @@ pub fn data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
     ))
 }
 
+fn env_path(names: &[&str]) -> Option<PathBuf> {
+    names.iter().find_map(|name| {
+        std::env::var_os(name)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+    })
+}
+
+fn explicit_data_root() -> Option<PathBuf> {
+    env_path(&[MEDIAFORGE_DATA_ROOT_ENV, "MEDIAFORGE_DATA_DIR", DATA_ROOT_ENV])
+}
+
+fn resolve_asset_root(
+    explicit_asset: Option<PathBuf>,
+    explicit_data: Option<PathBuf>,
+    default_data: PathBuf,
+    packaged_asset: Option<PathBuf>,
+    name: &str,
+) -> PathBuf {
+    explicit_asset
+        .or_else(|| explicit_data.map(|root| root.join(name)))
+        .or(packaged_asset)
+        .unwrap_or_else(|| default_data.join(name))
+}
+
+fn packaged_layout() -> AppResult<Option<InstalledLayout>> {
+    if is_development_executable() {
+        return Ok(None);
+    }
+    let exe = std::env::current_exe()?;
+    #[cfg(windows)]
+    if let Some(layout) = installed_layout_for(&exe) {
+        return Ok(Some(layout));
+    }
+    Ok(portable_layout_for(&exe))
+}
+
 pub fn settings_dir(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(data_root_dir(app)?.join("settings"))
 }
 
 pub fn models_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    #[cfg(windows)]
-    if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.models);
-    }
-    if let Some(layout) = portable_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.models);
-    }
-    Ok(data_root_dir(app)?.join("models"))
+    Ok(resolve_asset_root(
+        env_path(&["MEDIAFORGE_MODEL_DIR", "PYMSS_MODEL_DIR"]),
+        explicit_data_root(),
+        data_root_dir(app)?,
+        packaged_layout()?.map(|layout| layout.models),
+        "models",
+    ))
 }
 
 pub fn outputs_dir(app: &AppHandle) -> AppResult<PathBuf> {
@@ -261,39 +294,13 @@ fn bundled_runtime_envs_from(resource: Option<&Path>, exe_dir: &Path) -> Option<
 }
 
 pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    if let Some(value) = std::env::var_os("MEDIAFORGE_RUNTIME_ENVS_DIR") {
-        if !value.is_empty() {
-            return Ok(PathBuf::from(value));
-        }
-    }
-    #[cfg(windows)]
-    if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.runtime_envs);
-    }
-    if let Some(layout) = portable_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.runtime_envs);
-    }
-    #[cfg(any(feature = "vst-lab", target_os = "macos", target_os = "linux"))]
-    {
-        Ok(data_root_dir(app)?.join("runtime-envs"))
-    }
-    #[cfg(not(any(feature = "vst-lab", target_os = "macos", target_os = "linux")))]
-    {
-        // 开发态：数据根和运行时根不是同一个地方——数据在 `.dev-data`，
-        // 运行时默认却在 exe 旁边的 `python-runtime`，于是 `pnpm tauri dev` 永远
-        // 报 "No active runtime environment is installed"。
-        // 数据根下存在 runtime-envs 时优先用它，开发态与数据目录保持一致。
-        // 运行时属于"可变状态"，必须待在可写的数据根里：
-        // 装到 %LOCALAPPDATA%\Programs 之后，程序目录虽然也归用户所有，
-        // 但把 2.5 GB 的可替换资产塞进程序目录会让升级/卸载互相牵连。
-        // 因此数据根下有 runtime-envs 就用它，没有才回落程序目录（仅兼容老布局）。
-        if let Ok(candidate) = data_root_dir(app).map(|root| root.join("runtime-envs")) {
-            if candidate.is_dir() {
-                return Ok(candidate);
-            }
-        }
-        Ok(runtime_root_dir(app)?.join("runtime-envs"))
-    }
+    Ok(resolve_asset_root(
+        env_path(&["MEDIAFORGE_RUNTIME_ENVS_DIR"]),
+        explicit_data_root(),
+        data_root_dir(app)?,
+        packaged_layout()?.map(|layout| layout.runtime_envs),
+        "runtime-envs",
+    ))
 }
 
 pub fn active_runtime_file(app: &AppHandle) -> AppResult<PathBuf> {
@@ -345,6 +352,7 @@ fn store_file_name(name: &str) -> AppResult<&'static str> {
         "editor-ui" => Ok("editor-ui.json"),
         "audio-tools" => Ok("audio-tools.json"),
         "workflow-state" => Ok("workflows.json"),
+        "media-workflows" => Ok("media-workflows.json"),
         "separate-state" => Ok("separate.json"),
         "update-state" => Ok("update.json"),
         _ => Err(AppError::Worker(format!("unknown app store: {name}"))),
@@ -362,7 +370,12 @@ pub fn read_app_store(app: &AppHandle, name: &str) -> AppResult<Value> {
         return Ok(Value::Null);
     }
     let content = std::fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&content)?)
+    let value = serde_json::from_str::<Value>(&content)?;
+    if name == "media-workflows" {
+        if !value.is_object() { return Err(AppError::Worker("invalid media workflow store".into())); }
+        return crate::media_workflows::normalize_state(value);
+    }
+    Ok(value)
 }
 
 pub fn write_app_store(app: &AppHandle, name: &str, data: &Value) -> AppResult<()> {
@@ -500,6 +513,27 @@ pub fn mutate_workflow_store(app: &AppHandle, mutation: &Value) -> AppResult<Val
         write_json_file_locked(&path, next_state)?;
     }
     Ok(response)
+}
+
+pub(crate) fn mutate_media_workflow_file(path: &Path, mutation: &Value) -> AppResult<Value> {
+    let _guard = JSON_WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let state = match std::fs::read_to_string(path) {
+        Ok(content) => {
+            let value = serde_json::from_str::<Value>(&content)?;
+            if !value.is_object() { return Err(AppError::Worker("invalid media workflow store".into())); }
+            value
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Null,
+        Err(error) => return Err(error.into()),
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis().min(u64::MAX as u128) as u64;
+    let response = crate::media_workflows::apply_mutation(state, mutation, now)?;
+    if response.get("conflict").is_none() { write_json_file_locked(path, &response["state"])?; }
+    Ok(response)
+}
+
+pub fn mutate_media_workflows(app: &AppHandle, mutation: &Value) -> AppResult<Value> {
+    mutate_media_workflow_file(&app_store_path(app, "media-workflows")?, mutation)
 }
 
 fn missing_workflow_id(item: &Value) -> bool {
@@ -792,6 +826,40 @@ mod tests {
 
     fn path(name: &str) -> PathBuf {
         PathBuf::from(name)
+    }
+
+    #[test]
+    fn media_workflow_file_transactions_merge_parallel_windows() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("media-workflows.json");
+        let handles = (0..8).map(|index| {
+            let path = path.clone();
+            std::thread::spawn(move || super::mutate_media_workflow_file(&path, &json!({
+                "action":"upsert","id":format!("preset_{index}"),"name":format!("Preset {index}"),
+                "definition":{"version":1,"modality":"image","steps":[{"capability":"upscale","bindings":{"upscaler":"media:real-esrgan-x2"},"params":{"scale":2}}]}
+            })).unwrap())
+        }).collect::<Vec<_>>();
+        for handle in handles { handle.join().unwrap(); }
+        let stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(stored["presets"].as_array().unwrap().len(), 8);
+        let revision = stored["presets"][0]["updatedAt"].as_u64().unwrap();
+        let id = stored["presets"][0]["id"].as_str().unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let conflict = super::mutate_media_workflow_file(&path, &json!({"action":"delete","id":id,"expectedUpdatedAt":revision - 1})).unwrap();
+        assert!(conflict.get("conflict").is_some());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn media_workflow_file_corruption_never_gets_overwritten() {
+        let root = tempfile::tempdir().unwrap(); let path = root.path().join("media-workflows.json");
+        std::fs::write(&path, b"broken-json").unwrap();
+        assert!(super::mutate_media_workflow_file(&path, &json!({"action":"delete","id":"preset","expectedUpdatedAt":1})).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"broken-json");
+        std::fs::write(&path, b"null").unwrap();
+        assert!(super::mutate_media_workflow_file(&path, &json!({"action":"delete","id":"preset","expectedUpdatedAt":1})).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"null");
+        assert_eq!(store_file_name("media-workflows").unwrap(), "media-workflows.json");
     }
 
     #[test]
@@ -1465,5 +1533,35 @@ mod tests {
         assert_eq!(layout.data, fixture.0.join("data"));
         assert_eq!(layout.models, fixture.0.join("models"));
         assert_eq!(layout.runtime_envs, fixture.0.join("runtime-envs"));
+    }
+
+    #[test]
+    fn asset_roots_keep_explicit_data_inside_its_boundary() {
+        for name in ["models", "runtime-envs"] {
+            let data = path("isolated").join("data");
+            let result = super::resolve_asset_root(
+                None, Some(data.clone()), path("unused-data"), Some(path("installed").join(name)), name,
+            );
+            assert_eq!(result, data.join(name));
+        }
+    }
+
+    #[test]
+    fn asset_roots_preserve_explicit_asset_overrides() {
+        for name in ["models", "runtime-envs"] {
+            let explicit = path("separate-assets").join(name);
+            assert_eq!(super::resolve_asset_root(
+                Some(explicit.clone()), Some(path("isolated-data")), path("unused-data"), Some(path("installed").join(name)), name,
+            ), explicit);
+        }
+    }
+
+    #[test]
+    fn asset_roots_use_sibling_layout_only_without_data_override() {
+        for name in ["models", "runtime-envs"] {
+            let installed = path("installed").join(name);
+            assert_eq!(super::resolve_asset_root(None, None, path("installed").join("data"), Some(installed.clone()), name), installed);
+            assert_eq!(super::resolve_asset_root(None, None, path("dev-data"), None, name), path("dev-data").join(name));
+        }
     }
 }

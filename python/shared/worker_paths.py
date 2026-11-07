@@ -35,22 +35,28 @@ def allow_debug_runtime_override() -> bool:
 
 
 def data_root(override: Any = None) -> Path:
-    explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
+    explicit = (str(override or "").strip() or os.environ.get("MEDIAFORGE_DATA_ROOT")
+                or os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("PYMSS_STUDIO_DATA_ROOT"))
     if explicit:
         return Path(explicit).expanduser()
     return default_layout()[0]
 
 
 def _sibling_or_child(root: Path, name: str) -> Path:
-    # 安装/便携的 data 与 models、runtime-envs 同级；显式自定义数据根保持其子目录语义。
-    return root.parent / name if root.name.lower() == "data" else root / name
+    # 只认实际安装/便携布局，不能根据任意临时目录名为 data 就逃出显式数据根。
+    layout = default_layout()
+    if root == layout[0] and not any(os.environ.get(key) for key in (
+        "MEDIAFORGE_DATA_ROOT", "MEDIAFORGE_DATA_DIR", "PYMSS_STUDIO_DATA_ROOT"
+    )):
+        return layout[1 if name == "models" else 2]
+    return root / name
 
 
 def runtime_envs_root(override: Any = None, *, data_root: Any = None) -> Path:
     explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR")
     if explicit:
         return Path(explicit).expanduser()
-    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("MEDIAFORGE_DATA_ROOT")):
+    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_ROOT"), os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("PYMSS_STUDIO_DATA_ROOT")):
         text = str(candidate or "").strip()
         if text:
             return _sibling_or_child(Path(text).expanduser(), "runtime-envs")
@@ -68,9 +74,9 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
     解析链（顺序固定，别在别处再写一遍）：
 
     1. ``override`` —— payload 里的 ``modelDir`` / 调用方显式参数
-    2. ``MEDIAFORGE_MODEL_DIR``
-    3. ``data_root`` / ``MEDIAFORGE_DATA_DIR`` / ``MEDIAFORGE_DATA_ROOT``
-       —— 安装与便携版的 ``data`` 旁取同级 ``models``，开发根取其 ``models`` 子目录
+    2. ``MEDIAFORGE_MODEL_DIR`` / ``PYMSS_MODEL_DIR``
+    3. ``data_root`` / ``MEDIAFORGE_DATA_ROOT`` / ``MEDIAFORGE_DATA_DIR``
+       —— 显式数据根取其 ``models`` 子目录，只有默认安装/便携布局取同级目录
     4. ``default_layout()`` —— 安装、便携或开发布局的唯一默认模型根
 
     不再回退到 ``~/.mediaforge/models``，也不包含仓库根的 ``all_models`` 或程序目录。
@@ -82,12 +88,12 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
     if explicit:
         return Path(explicit).expanduser()
 
-    for key in ("MEDIAFORGE_MODEL_DIR", "MEDIAFORGE_MODEL_DIR"):
+    for key in ("MEDIAFORGE_MODEL_DIR", "PYMSS_MODEL_DIR"):
         value = str(os.environ.get(key) or "").strip()
         if value:
             return Path(value).expanduser()
 
-    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("MEDIAFORGE_DATA_ROOT")):
+    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_ROOT"), os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("PYMSS_STUDIO_DATA_ROOT")):
         text = str(candidate or "").strip()
         if text:
             return _sibling_or_child(Path(text).expanduser(), "models")
@@ -98,7 +104,7 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
 def export_model_root(model_dir: Any) -> None:
     """把 payload 里的 `modelDir` 固化成进程环境变量（三个 media worker 共用）。
 
-    为什么**两个都写**：`model_root()` 认 `MEDIAFORGE_MODEL_DIR` / `MEDIAFORGE_MODEL_DIR`，
+    为什么**两个都写**：`model_root()` 认 `MEDIAFORGE_MODEL_DIR` / `PYMSS_MODEL_DIR`，
     而 pymss 自己的 `DEFAULT_MODEL_DIR` 是在**导入时**求值的——只写前者的话，
     之后才 import pymss 的代码仍然会落到 `~/.cache/pymss/models`。
     两边都写，才能保证"同一份模型根"这句话在整个进程里成立。
@@ -110,7 +116,7 @@ def export_model_root(model_dir: Any) -> None:
     if not text:
         return
     os.environ["MEDIAFORGE_MODEL_DIR"] = text
-    os.environ["MEDIAFORGE_MODEL_DIR"] = text
+    os.environ["PYMSS_MODEL_DIR"] = text
 
 
 def normalize_output_dir(value: Any) -> str:

@@ -87,15 +87,16 @@ def suffix_for_steps(capability_ids: Iterable[str]) -> str:
 
 @register("watermark_removal", "clean")
 def _plan_watermark_removal(inputs: StepInputs) -> StepPlan:
+    from .task_params import value
     params = inputs.params
     payload = inputs.payload
     return StepPlan(
         mode="watermark",
         # 去水印本身不改分辨率；要放大是后面另一步的事
         scale=1.0,
-        detect_mode=str(params.get("detectMode") or payload.get("detectMode") or "fixed"),
-        conf=float(params.get("conf") or payload.get("conf") or 0.25),
-        expand=int(params.get("expand") or payload.get("expand") or 8),
+        detect_mode=str(value(params, "detectMode", value(payload, "detectMode", "fixed"))),
+        conf=float(value(params, "conf", value(payload, "conf", 0.25))),
+        expand=int(value(params, "expand", value(payload, "expand", 8))),
         preferred_scale=None,
         model_paths={
             "detector": str(capabilities.model_path(str(inputs.bindings["detector"]))),
@@ -107,11 +108,12 @@ def _plan_watermark_removal(inputs: StepInputs) -> StepPlan:
 
 @register("upscale", "sr")
 def _plan_upscale(inputs: StepInputs) -> StepPlan:
+    from .task_params import value
     upscaler = str(inputs.bindings["upscaler"])
     model_scale = capabilities.model_scale(upscaler)
     return StepPlan(
         mode="upscale",
-        scale=float(inputs.params.get("scale") or inputs.payload.get("scale") or 2.0),
+        scale=float(value(inputs.params, "scale", value(inputs.payload, "scale", 2.0))),
         detect_mode="fixed",
         conf=0.25,
         expand=8,

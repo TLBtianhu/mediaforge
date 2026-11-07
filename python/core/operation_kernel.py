@@ -20,15 +20,14 @@ implementation.
    `agent-jobs/<id>.cancel`，而这里只盯 `bridge-jobs/<id>/cancel`。现在两处都看，
    并且同进程取消走 `threading.Event` 立刻醒（不再每 0.2s 摸一次文件）。
 
-仍然由外部决定的部分：谁写 index.json。Rust 的 `journal_job` 也会重写它
-（给手工作业记账）。为了不把那些作业挤掉，`_flush_indexes` 每次落盘前会做一次
-轻量的目录名差集，把本进程不认识的作业文件吸收进索引——只 readdir，不重新
-解析已认识的作业。
+Rust 的 `journal_job` 和其它 bridge 实例共享账本。作业持有生命周期文件锁，
+恢复前必须取得同一把锁；外部作业按文件版本增量刷新，查询历史不需要重启 worker。
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -37,6 +36,8 @@ import traceback
 import uuid
 from pathlib import Path
 from typing import Any
+
+from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "worker.py"
@@ -71,9 +72,13 @@ def _json_text(value: Any) -> str:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(text, encoding="utf-8")
-    temporary.replace(path)
+    # Different bridge processes may flush the same shared index simultaneously.
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _read_json(path: Path) -> Any:
@@ -81,6 +86,18 @@ def _read_json(path: Path) -> Any:
         # 这些文件可能被 PowerShell 或别的工具写过，BOM 会让 json.loads 直接抛
         return json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _valid_job_id(job_id: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,199}", job_id))
+
+
+def _file_version(path: Path) -> tuple[int, int] | None:
+    try:
+        info = path.stat()
+        return info.st_mtime_ns, info.st_size
+    except OSError:
         return None
 
 
@@ -103,13 +120,32 @@ class Job:
         # 节流用的记账；只在 OperationKernel._persist 的锁内读写
         self.persisted_at = 0.0
         self.persisted_status = ""
+        self.owner: dict[str, Any] | None = None
+        self._lease: Any = None
+        self._stored: dict[str, Any] = {}
+
+    @classmethod
+    def from_snapshot(cls, value: dict[str, Any], workdir: Path) -> Job:
+        payload = value.get("payload") if isinstance(value.get("payload"), dict) else {}
+        job = cls(str(value["jobId"]), str(value.get("command") or ""), payload, workdir)
+        job._stored = dict(value)
+        job.status = str(value.get("status") or "queued")
+        job.fraction = float(value.get("fraction") or 0)
+        job.message = str(value.get("message") or "")
+        job.result = value.get("result")
+        job.error = value.get("error")
+        job.created_at = value.get("createdAt")
+        job.finished_at = value.get("finishedAt")
+        job.owner = value.get("owner") if isinstance(value.get("owner"), dict) else None
+        return job
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return {
+                **self._stored,
                 "jobId": self.job_id,
                 "command": self.command,
-                "source": str(self.payload.get("source") or "agent"),
+                "source": str(self._stored.get("source") or self.payload.get("source") or "agent"),
                 "status": self.status,
                 "fraction": round(float(self.fraction), 4),
                 "message": self.message,
@@ -118,12 +154,16 @@ class Job:
                 "createdAt": self.created_at,
                 "finishedAt": self.finished_at,
                 "payload": self.payload,
+                **({"owner": self.owner} if self.owner else {}),
             }
 
-    def update(self, **fields: Any) -> None:
+    def update(self, **fields: Any) -> bool:
         with self._lock:
+            if self.status in TERMINAL_STATES and fields.get("status", self.status) != self.status:
+                return False
             for key, value in fields.items():
                 setattr(self, key, value)
+            return True
 
 
 class OperationKernel:
@@ -139,18 +179,15 @@ class OperationKernel:
         self._index: dict[str, dict[str, Any]] = {}
         self._index_lock = threading.Lock()
         self._last_flush = 0.0
+        self._disk_versions: dict[str, tuple[int, int] | None] = {}
+        self._owner_id = uuid.uuid4().hex
         self.recovered = self._recover_from_disk()
         self.pruned = self._prune_history()
 
     # ── 落盘 ────────────────────────────────────────────────────────────────
 
     def _recover_from_disk(self) -> int:
-        """把上一进程遗留的 queued/running 标成 interrupted，并建起内存索引。
-
-        不这么做的话，磁盘会长期显示一个永远不动的 running，而 get() 返回 None，
-        MCP 的 job_status 只能回 "unknown job" —— 调用方无法分辨"没有这个作业"
-        和"作业的进程已经死了"。
-        """
+        """Recover abandoned agent jobs, never a job owned by a live kernel/UI."""
         recovered = 0
         for path in self.jobs_root.glob("*.json"):
             if path.name == "index.json" or path.name.endswith(".json.tmp"):
@@ -159,19 +196,30 @@ class OperationKernel:
             if not isinstance(value, dict):
                 continue
             job_id = value.get("jobId")
-            if not job_id:
+            if not isinstance(job_id, str) or not _valid_job_id(job_id) or path.stem != job_id:
                 continue
-            if value.get("status") in {"queued", "running"}:
-                value["status"] = "interrupted"
-                value["message"] = "进程重启时被中断（未完成）"
-                value["error"] = value.get("error") or "kernel restarted before the job finished"
-                value["finishedAt"] = value.get("finishedAt") or time.time()
+            if value.get("status") in {"queued", "running"} and (
+                value.get("source") != "manual" or isinstance(value.get("owner"), dict)
+            ):
                 try:
-                    _atomic_write(path, _json_text(value))
-                except OSError:
+                    with runtime_lock(self._lease_path(job_id), timeout=0):
+                        # The owner may have finished while we were opening its lock.
+                        latest = _read_json(path)
+                        if isinstance(latest, dict):
+                            value = latest
+                        if value.get("status") in {"queued", "running"}:
+                            value["status"] = "interrupted"
+                            value["message"] = "进程重启时被中断（未完成）"
+                            value["error"] = value.get("error") or "kernel restarted before the job finished"
+                            value["finishedAt"] = value.get("finishedAt") or time.time()
+                            _atomic_write(path, _json_text(value))
+                            recovered += 1
+                except (RuntimeLockBusy, OSError):
+                    # Busy means another kernel still owns this job. An inaccessible
+                    # lock is also insufficient evidence that its owner has died.
                     pass
-                recovered += 1
             self._index[str(job_id)] = value
+            self._disk_versions[job_id] = _file_version(path)
         if recovered:
             print(f"[kernel] 恢复 {recovered} 个被中断的作业（queued/running -> interrupted）", file=sys.stderr)
         self._flush_indexes(force=True)
@@ -208,8 +256,19 @@ class OperationKernel:
             if not (too_old or too_many):
                 continue
             try:
-                (self.jobs_root / f"{job_id}.json").unlink(missing_ok=True)
-            except OSError:
+                with runtime_lock(self._lease_path(job_id), timeout=0):
+                    path = self.jobs_root / f"{job_id}.json"
+                    latest = _read_json(path)
+                    # A different owner may have reused the ID since the index scan.
+                    # Never delete an active job or apply an old retention rank to it.
+                    if (
+                        not isinstance(latest, dict)
+                        or latest.get("status") not in TERMINAL_STATES
+                        or float(latest.get("createdAt") or 0.0) != created
+                    ):
+                        continue
+                    path.unlink(missing_ok=True)
+            except (RuntimeLockBusy, OSError, TypeError, ValueError):
                 continue
             with self._index_lock:
                 self._index.pop(job_id, None)
@@ -225,26 +284,34 @@ class OperationKernel:
     def _write_job_file(self, snapshot: dict[str, Any]) -> None:
         path = self.jobs_root / f"{snapshot['jobId']}.json"
         _atomic_write(path, _json_text(snapshot))
+        self._disk_versions[str(snapshot["jobId"])] = _file_version(path)
 
     def _absorb_foreign_jobs(self) -> None:
-        """把本进程不知道的作业文件吸进索引（Rust 的 journal_job 会写这些）。
-
-        只做目录名的差集，不重新解析已认识的作业——否则又回到 O(n) 全量扫描。
-        """
+        """Refresh added/changed/deleted foreign jobs without reparsing unchanged JSON."""
         try:
-            names = [entry.name for entry in self.jobs_root.iterdir()]
+            paths = list(self.jobs_root.glob("*.json"))
         except OSError:
             return
-        known = set(self._index.keys())
-        for name in names:
-            if not name.endswith(".json") or name == "index.json" or name.endswith(".json.tmp"):
+        with self._lock:
+            local_ids = {job_id for job_id, job in self._jobs.items() if job.status not in TERMINAL_STATES}
+        seen: set[str] = set()
+        for path in paths:
+            job_id = path.stem
+            if path.name == "index.json" or not _valid_job_id(job_id):
                 continue
-            job_id = name[:-5]
-            if job_id in known:
+            seen.add(job_id)
+            version = _file_version(path)
+            if job_id in local_ids or (version is not None and self._disk_versions.get(job_id) == version):
                 continue
-            value = _read_json(self.jobs_root / name)
-            if isinstance(value, dict) and value.get("jobId"):
-                self._index[str(value["jobId"])] = value
+            value = _read_json(path)
+            if isinstance(value, dict) and value.get("jobId") == job_id:
+                with self._index_lock:
+                    self._index[job_id] = value
+                self._disk_versions[job_id] = version
+        with self._index_lock:
+            for job_id in set(self._disk_versions) - seen - local_ids:
+                self._index.pop(job_id, None)
+                self._disk_versions.pop(job_id, None)
 
     def _flush_indexes(self, *, force: bool) -> None:
         now = time.monotonic()
@@ -301,22 +368,61 @@ class OperationKernel:
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
-            return self._jobs.get(job_id)
+            local = self._jobs.get(job_id)
+        if local is not None and local.status not in TERMINAL_STATES:
+            return local
+        if not _valid_job_id(job_id):
+            return None
+        value = _read_json(self.jobs_root / f"{job_id}.json")
+        if not isinstance(value, dict) or value.get("jobId") != job_id:
+            return None
+        try:
+            return Job.from_snapshot(value, self.data_root / "bridge-jobs" / job_id)
+        except (TypeError, ValueError):
+            return None
 
     # ── 生命周期 ────────────────────────────────────────────────────────────
 
     def start(self, command: str, payload: dict[str, Any]) -> Job:
         job_id = str(payload.get("requestId") or "").strip() or f"job_{uuid.uuid4().hex[:12]}"
+        if not _valid_job_id(job_id):
+            raise ValueError("invalid job id")
+        lease = runtime_lock(self._lease_path(job_id), timeout=0)
+        lease.__enter__()
         workdir = self.data_root / "bridge-jobs" / job_id
-        workdir.mkdir(parents=True, exist_ok=True)
-        job = Job(job_id, command, payload, workdir)
-        with self._lock:
-            self._jobs[job_id] = job
-        self._persist(job, force=True)
-        threading.Thread(target=self._run, args=(job,), daemon=True, name=f"mediaforge-{job_id}").start()
+        try:
+            workdir.mkdir(parents=True, exist_ok=True)
+            job = Job(job_id, command, payload, workdir)
+            job.owner = {"kernelId": self._owner_id, "pid": os.getpid()}
+            job._lease = lease
+            # A reused terminal request ID must not inherit an old cancel request.
+            for path in self._cancel_paths(job):
+                path.unlink(missing_ok=True)
+            with self._lock:
+                self._jobs[job_id] = job
+            self._persist(job, force=True)
+            threading.Thread(target=self._run, args=(job,), daemon=True, name=f"mediaforge-{job_id}").start()
+        except BaseException:
+            lease.__exit__(*sys.exc_info())
+            raise
         return job
 
+    def _lease_path(self, job_id: str) -> Path:
+        # Never unlink lock files: all processes must lock the same inode.
+        return self.jobs_root / ".owners" / f"{job_id}.lock"
+
     def _run(self, job: Job) -> None:
+        try:
+            self._run_worker(job)
+        except Exception as exc:  # Preparation can fail before the worker is spawned.
+            job.update(status="failed", error=str(exc), finished_at=time.time())
+            self._persist(job, force=True)
+        finally:
+            if job._lease is not None:
+                job._lease.__exit__(None, None, None)
+                job._lease = None
+
+    def _run_worker(self, job: Job) -> None:
         payload_path = job.workdir / "payload.json"
         payload_path.write_text(_json_text(job.payload), encoding="utf-8")
         stdout_path = job.workdir / "events.jsonl"
@@ -378,7 +484,8 @@ class OperationKernel:
                     break
         else:
             return
-        job.update(status="cancelled", message="cancelled by user")
+        if not job.update(status="cancelled", message="cancelled by user"):
+            return
         self._persist(job, force=True)
         try:
             process.terminate()
@@ -388,12 +495,17 @@ class OperationKernel:
     def _consume(self, job: Job, event: dict[str, Any]) -> None:
         kind = str(event.get("type") or "")
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        if kind == "task.progress":
+        if job.status in TERMINAL_STATES:
+            return  # Late worker output cannot reverse cancellation/failure.
+        if kind in {"task.progress", "operation_progress", "asset.progress"}:
+            fraction = payload.get("fraction")
+            if fraction is None and kind == "asset.progress":
+                fraction = float(payload.get("progress") or 0) / 100.0
             job.update(
-                fraction=float(payload.get("fraction") or 0),
+                fraction=float(fraction or 0),
                 message=str(payload.get("current") or payload.get("message") or "running"),
             )
-        elif kind == "task.result":
+        elif kind in {"task.result", "operation_result", "asset.done"}:
             failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
             if failed:
                 first = failed[0] if isinstance(failed[0], dict) else {"error": str(failed[0])}
@@ -418,14 +530,23 @@ class OperationKernel:
         job = self.get(job_id)
         if job is None:
             return {"ok": False, "error": f"unknown job: {job_id}"}
+        if job.status in TERMINAL_STATES:
+            return {"ok": True, "cancelled": job.status == "cancelled"}
+        with self._lock:
+            local = self._jobs.get(job_id) is job
+        if not local:
+            # A detached disk snapshot has no watcher/Event. Signal its real owner.
+            (self.jobs_root / f"{job_id}.cancel").touch()
+            return {"ok": True, "cancelled": False, "requested": True}
         job.cancel_event.set()
         process = job.process
         if process and process.poll() is None:
+            if not job.update(status="cancelled", message="cancelled by client"):
+                return {"ok": True, "cancelled": job.status == "cancelled"}
             try:
                 process.terminate()
             except OSError:
                 pass
-            job.update(status="cancelled", message="cancelled by client")
             self._persist(job, force=True)
             return {"ok": True, "cancelled": True}
         return {"ok": True, "cancelled": job.status == "cancelled"}

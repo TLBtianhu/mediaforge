@@ -132,6 +132,7 @@
       "label": "视频插帧",
       "labelEn": "Frame interpolation",
       "modalities": [
+        "image",
         "video"
       ],
       "roles": {
@@ -147,7 +148,8 @@
       "params": {
         "multiplier": {
           "type": "integer",
-          "default": 2
+          "default": 2,
+          "modalities": ["video"]
         }
       }
     },
@@ -169,6 +171,14 @@
         "media:propainter"
       ],
       "params": {
+        "conf": {
+          "type": "number",
+          "default": 0.25
+        },
+        "expand": {
+          "type": "integer",
+          "default": 8
+        },
         "detectMode": {
           "type": "string",
           "enum": [
@@ -205,7 +215,8 @@
       "params": {
         "tile": {
           "type": "integer",
-          "default": 0
+          "default": 0,
+          "supported": false
         }
       }
     },

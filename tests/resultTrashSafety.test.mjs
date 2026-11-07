@@ -1,30 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import vm from 'node:vm'
-import ts from 'typescript'
-import { isTerminalTaskStatus, taskJobId } from '../src/features/tasks/lifecycle.ts'
-import { specFor, widgetValue } from '../src/litegraph/paramCodec.ts'
 import { normalizeStemOutputs } from '../src/utils/stemOutputs.ts'
-import { workflowInputNodes } from '../src/workflows/workbench.ts'
-
-// 路径纯函数已抽到 stores/taskOutputPaths.ts；trash 相关仍在 stores/task.ts。
-// 两个模块各取所需，合并成同一份可执行代码（与真实 import 关系一致）。
-const sources = [
-  ts.createSourceFile('task.ts', readFileSync(new URL('../src/stores/task.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true),
-  ts.createSourceFile('taskOutputPaths.ts', readFileSync(new URL('../src/stores/taskOutputPaths.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true),
-]
-const names = new Set(['cleanupPath', 'pathKey', 'parentDir', 'samePath', 'cleanupDirChain', 'resultTrashTargets', 'resultTrashEmptyDirs', 'resultTrashTargetsForTasks', 'getRemovalTasks'])
-const selected = []
-for (const source of sources) {
-  const collect = (node) => {
-    if (ts.isFunctionDeclaration(node) && names.has(node.name?.text)) selected.push(node.getText(source))
-    ts.forEachChild(node, collect)
-  }
-  collect(source)
-}
-assert.equal(selected.length, names.size)
-const code = ts.transpileModule(selected.join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^export /gm, '')
+import { getRemovalTasks, resultTrashEmptyDirs, resultTrashTargets, resultTrashTargetsForTasks } from '../src/stores/taskResultCleanup.ts'
 const plain = value => Array.from(value)
 
 function task(id, root = '/tmp/results', directory = `${root}/song`, output = `${directory}/vocals.wav`) {
@@ -32,11 +9,12 @@ function task(id, root = '/tmp/results', directory = `${root}/song`, output = `$
     outputs: [{ path: output }], files: [output], runConfig: { outputLayout: 'folders' } }
 }
 function environment(items, windows = false) {
-  // task.ts 现在通过 paramCodec 按控件名读参数，VM 里要一并注入这两个函数
-  const state = { tasks: { value: items }, windowsPaths: { value: windows }, isTerminalTaskStatus, taskJobId, workflowInputNodes,
-    specFor, widgetValue,
-    i18n: { global: { t: key => key } } }
-  return vm.runInNewContext(`${code}\n({resultTrashTargets,resultTrashEmptyDirs,resultTrashTargetsForTasks})`, state)
+  return {
+    resultTrashTargets,
+    resultTrashEmptyDirs: task => resultTrashEmptyDirs(task, windows),
+    resultTrashTargetsForTasks: selected => resultTrashTargetsForTasks(items,
+      getRemovalTasks(items, selected.map(task => task.id), 'results.removeRunningBatch'), windows),
+  }
 }
 
 test('result file paths preserve trailing whitespace through metadata and recycling selection', () => {
@@ -146,4 +124,25 @@ test('native workflow file and batch-directory inputs protect another task outpu
       assert.deepEqual(plain(store.resultTrashTargetsForTasks([first, consumer]).paths), [first.outputs[0].path])
     }
   }
+})
+
+test('a running sibling blocks recycling the entire batch', () => {
+  const first = task('first')
+  const sibling = { ...task('sibling'), jobId: first.jobId, status: 'separating' }
+  assert.throws(() => environment([first, sibling]).resultTrashTargetsForTasks([first]), /results.removeRunningBatch/)
+})
+
+test('an empty or unknown selection never recycles all results', () => {
+  const item = task('first')
+  const store = environment([item])
+  assert.deepEqual(store.resultTrashTargetsForTasks([]), { paths: [], retained: 0 })
+  assert.deepEqual(store.resultTrashTargetsForTasks([task('unknown')]), { paths: [], retained: 0 })
+})
+
+test('workbench input bindings protect source files from result recycling', () => {
+  const first = task('first')
+  const consumer = task('consumer')
+  consumer.outputs = []
+  consumer.runConfig.workbench = { inputs: { input: first.outputs[0].path } }
+  assert.deepEqual(environment([first, consumer]).resultTrashTargetsForTasks([first]), { paths: [], retained: 1 })
 })

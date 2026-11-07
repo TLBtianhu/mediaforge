@@ -4,13 +4,11 @@ The Operation Kernel owns the job lifecycle. This worker owns only the
 step-to-step orchestration: each step is one capability plus one primary model,
 and the output of a step becomes the input of the next step.
 
-Image steps run in memory through ImageRestorer.process_steps. Video steps run
-sequentially through video_ops.process_video and hand intermediate files to the
-next step. The final artifact is copied into outputDir with a stable name.
+Image steps run in memory through ImageRestorer.process_steps. Video frame steps
+share one decoder/encoder; whole-sequence adapters currently run alone.
 """
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -18,7 +16,84 @@ from typing import Any
 from shared.worker_protocol import emit, emit_error
 
 from shared import worker_paths
-from . import capabilities, evaluation, failures, image_ops, video_ops, video_step
+from . import capabilities, evaluation, failures, image_ops, task_params, video_ops, video_step
+from .workflow_contract import workflow_support
+
+
+def _shared_tile(steps: list[dict[str, Any]], payload: dict[str, Any]) -> int:
+    tiles = {int(step["params"].get("tile") or 0) for step in steps if step["capability"] == "upscale"}
+    tiles.discard(0)
+    if len(tiles) > 1:
+        raise ValueError("workflow steps share one restorer; conflicting tile values are not supported")
+    tile = next(iter(tiles), int(task_params.value(payload, "tile", 0))) or 512
+    if tile < 64:
+        raise ValueError("workflow tile must be 0 (automatic) or at least 64")
+    return tile
+
+
+def validate_workflow(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate every static step constraint before model loading or output creation."""
+    modality = str(payload.get("modality") or "").strip().lower()
+    if modality not in {"image", "video"}:
+        raise ValueError("modality must be image or video")
+    raw_steps = payload.get("steps")
+    if not isinstance(raw_steps, list) or not raw_steps:
+        raise ValueError("Workflow requires at least one step")
+    catalog = capabilities._catalog()
+    for raw in raw_steps:
+        if not isinstance(raw, dict):
+            raise ValueError("workflow step must be an object")
+        capability_id = str(raw.get("capability") or raw.get("type") or "")
+        declaration = capabilities.capability(capability_id)
+        support = workflow_support(capability_id)[modality]
+        if not support["supported"]:
+            raise ValueError(f"{capability_id}: {support['reason']}")
+        if support.get("maxSteps") == 1 and len(raw_steps) != 1:
+            raise ValueError(f"{capability_id}: sequence video capabilities currently require a single-step workflow")
+        bindings = raw.get("bindings") or {}
+        if not isinstance(bindings, dict):
+            raise ValueError(f"{capability_id}: bindings must be an object")
+        unknown_roles = set(bindings) - set(declaration["roles"])
+        if unknown_roles:
+            raise ValueError(f"{capability_id}: unsupported bindings: {', '.join(sorted(unknown_roles))}")
+        for role, model_id in bindings.items():
+            record = catalog.get(str(model_id)) or {}
+            if record.get("task") != declaration["roles"][role].get("task"):
+                raise ValueError(f"{capability_id}: model {model_id} cannot fulfill role {role}")
+        if raw.get("params") is not None and not isinstance(raw["params"], dict):
+            raise ValueError(f"{capability_id}: params must be an object")
+    steps = task_params.normalize_steps(payload, modality=modality)
+    if any(workflow_support(step["capability"])[modality]["execution"] == "video-sequence" for step in steps):
+        if payload.get("tile") not in (None, 0):
+            raise ValueError("sequence workflow adapters do not support a tile override")
+        if str(payload.get("device") or "").strip():
+            raise ValueError("sequence workflow adapters select their own device; a device override is not supported")
+    slots: dict[str, str] = {}
+    for step in steps:
+        capability_id = step["capability"]
+        support = workflow_support(capability_id)[modality]
+        specs = capabilities.parameter_specs(capability_id, step["bindings"])
+        for name, value in step["params"].items():
+            if name not in support["supportedParams"] and value != specs[name].get("default"):
+                raise ValueError(f"{capability_id}: parameter {name} is not supported by the {modality} workflow adapter")
+        if capability_id == "upscale":
+            params = step["params"]
+            if params["fit"] not in {"contain", "cover", "pad", "stretch"}:
+                raise ValueError(f"unsupported workflow fit: {params['fit']}")
+            image_ops.resolve_target(str(params["target"]), int(params["width"]), int(params["height"]))
+        if modality == "video" and support["execution"] == "video-frame":
+            for role, model_id in step["bindings"].items():
+                slot = role
+                if role == "upscaler":
+                    scale = capabilities.model_scale(model_id)
+                    if scale not in {2, 4}:
+                        raise ValueError(f"workflow upscaler model scale is not supported: {scale}")
+                    slot = f"upscaler_x{scale}"
+                if slot in slots and slots[slot] != model_id:
+                    raise ValueError(f"video workflow model slot {slot} has conflicting bindings: {slots[slot]} and {model_id}")
+                slots[slot] = model_id
+    _shared_tile(steps, payload)
+    return steps
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -46,13 +121,27 @@ def _progress(request_id: str | None, fraction: float, current: str, completed: 
     )
 
 
-def _validate_models(steps: list[dict[str, Any]]) -> None:
+def _validate_models(steps: list[dict[str, Any]], payload: dict[str, Any] | None = None) -> None:
     missing: list[str] = []
-    for step in steps:
-        for model_id in step["bindings"].values():
-            path = capabilities.model_path(str(model_id))
+    catalog = capabilities._catalog()
+    required = {str(model_id) for step in steps for model_id in step["bindings"].values()}
+    if any(step.get("capability") == "video_inpainting" for step in steps):
+        mask = str((payload or {}).get("maskPath") or "").strip()
+        if mask:
+            path = Path(mask)
             if not path.exists():
-                missing.append(f"{model_id} ({path})")
+                raise FileNotFoundError(f"mask not found: {path}")
+            if path.is_dir() and not any(item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".webp"} for item in path.iterdir()):
+                raise ValueError("mask directory contains no image masks")
+        else:
+            required.add(capabilities.default_bindings("watermark_removal")["detector"])
+    for model_id in sorted(required):
+        path = capabilities.model_path(model_id)
+        files = (catalog.get(model_id) or {}).get("files") or []
+        expected = [path / item["path"] for item in files] if files else [path]
+        for file in expected:
+            if not file.is_file():
+                missing.append(f"{model_id} ({file})")
     if missing:
         raise FileNotFoundError("missing models: " + ", ".join(missing))
 
@@ -69,6 +158,13 @@ def _run_image(
     tile: int = 512,
 ) -> dict[str, Any]:
     # 设备与分块由调用方传入：`_run_image` 没有 payload 作用域（这个坑真实调用才暴露）
+    # ImageRestorer accepts resolved tuple targets, while the public schema uses
+    # names/custom dimensions. Do not mutate the original serialized request.
+    steps = [{**step, "params": dict(step["params"])} for step in steps]
+    for step in steps:
+        if step["capability"] == "upscale":
+            params = step["params"]
+            params["target"] = image_ops.resolve_target(str(params.get("target") or "none"), int(params.get("width") or 0), int(params.get("height") or 0))
     restorer = image_ops.ImageRestorer(device=device, tile=tile)
     name = source.name
 
@@ -116,7 +212,7 @@ def _run_video_sequence(
             source,
             output_dir,
             preview_seconds=float(payload.get("previewSeconds") or 0),
-            crf=int(payload.get("crf") or 18),
+            crf=int(task_params.value(payload, "crf", 18)),
             preset=str(payload.get("preset") or "fast"),
             progress=report,
         )
@@ -131,12 +227,12 @@ def _run_video_sequence(
             output_dir,
             mask_path=mask_path,
             detector_path=detector_path,
-            conf=float(params.get("conf") or payload.get("conf") or 0.25),
-            expand=int(params.get("expand") or payload.get("expand") or 8),
-            detect_mode=str(params.get("detectMode") or payload.get("detectMode") or "fixed"),
-            subvideo_length=int(params.get("subvideoLength") or payload.get("subvideoLength") or 80),
+            conf=float(task_params.value(params, "conf", task_params.value(payload, "conf", 0.25))),
+            expand=int(task_params.value(params, "expand", task_params.value(payload, "expand", 8))),
+            detect_mode=str(task_params.value(params, "detectMode", task_params.value(payload, "detectMode", "fixed"))),
+            subvideo_length=int(task_params.value(params, "subvideoLength", task_params.value(payload, "subvideoLength", 80))),
             preview_seconds=float(payload.get("previewSeconds") or 0),
-            crf=int(payload.get("crf") or 18),
+            crf=int(task_params.value(payload, "crf", 18)),
             preset=str(payload.get("preset") or "fast"),
             progress=report,
         )
@@ -187,15 +283,15 @@ def _run_video(
         merged_paths.update(step_plan.model_paths)
         target = image_ops.resolve_target(
             str(params.get("target") or "none"),
-            int(params.get("width") or payload.get("width") or 0),
-            int(params.get("height") or payload.get("height") or 0),
+            int(task_params.value(params, "width", task_params.value(payload, "width", 0))),
+            int(task_params.value(params, "height", task_params.value(payload, "height", 0))),
         )
         frame_steps.append(
             video_ops.FrameStep(
                 mode=step_plan.mode,
                 scale=step_plan.scale,
                 target=target,
-                fit=str(params.get("fit") or payload.get("fit") or "contain"),
+                fit=str(task_params.value(params, "fit", task_params.value(payload, "fit", "contain"))),
                 conf=step_plan.conf,
                 expand=step_plan.expand,
                 detect_mode=step_plan.detect_mode,
@@ -205,7 +301,7 @@ def _run_video(
         step_meta.append({"capability": capability, "model": dict(bindings)})
 
     # 模型只加载一次：把各步需要的权重合并到一个 ImageRestorer
-    restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, model_paths=merged_paths)
+    restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, model_paths=merged_paths, tile=_shared_tile(steps, payload))
 
     def report(fraction: float, message: str) -> None:
         base = (index + max(0.0, min(1.0, fraction))) / max(total, 1)
@@ -217,7 +313,7 @@ def _run_video(
         steps=frame_steps,
         suffix=_suffix(steps),
         preview_seconds=float(payload.get("previewSeconds") or 0),
-        crf=int(payload.get("crf") or 18),
+        crf=int(task_params.value(payload, "crf", 18)),
         preset=str(payload.get("preset") or "fast"),
         restorer=restorer,
         progress=report,
@@ -249,24 +345,28 @@ def _run_video(
 def cmd_media_workflow(payload: dict[str, Any]) -> int:
     request_id = _request_id(payload)
     try:
-        inputs = [Path(str(item)) for item in (payload.get("inputs") or []) if str(item).strip()]
-        if not inputs:
+        raw_inputs = payload.get("inputs")
+        if not isinstance(raw_inputs, list) or not raw_inputs or any(not isinstance(item, str) or not item.strip() for item in raw_inputs):
             return emit_error("MEDIA_WORKFLOW_INVALID", "No input files", request_id=request_id)
-        output_dir = Path(str(payload.get("outputDir") or "").strip())
-        if not str(output_dir):
+        inputs = [Path(item) for item in raw_inputs]
+        output_text = str(payload.get("outputDir") or "").strip()
+        if not output_text:
             return emit_error("MEDIA_WORKFLOW_INVALID", "No output directory", request_id=request_id)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_text)
         modality = str(payload.get("modality") or "").strip().lower()
         if modality not in {"image", "video"}:
             return emit_error("MEDIA_WORKFLOW_INVALID", "modality must be image or video", request_id=request_id)
-        raw_steps = payload.get("steps")
-        steps = capabilities.normalize_steps(raw_steps)
-        if not steps:
-            return emit_error("MEDIA_WORKFLOW_INVALID", "Workflow requires at least one step", request_id=request_id)
+        steps = validate_workflow(payload)
+        for source in inputs:
+            if not source.is_file():
+                raise FileNotFoundError(f"input not found: {source}")
+            if source.stat().st_size == 0:
+                raise ValueError(f"input is empty: {source}")
         model_dir = str(payload.get("modelDir") or "").strip()
         if model_dir:
             worker_paths.export_model_root(model_dir)
-        _validate_models(steps)
+        _validate_models(steps, payload)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         started = time.perf_counter()
         total = len(inputs)
@@ -286,7 +386,7 @@ def cmd_media_workflow(payload: dict[str, Any]) -> int:
                             index,
                             total,
                             device=str(payload.get("device") or "") or None,
-                            tile=int(payload.get("tile") or 0) or 512,
+                            tile=_shared_tile(steps, payload),
                         )
                     )
                 else:

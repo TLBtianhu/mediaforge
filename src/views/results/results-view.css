@@ -7,6 +7,8 @@
   margin-bottom: 4px;
 }
 
+.results-section-title { margin: 4px 0 0; color: var(--on-surface-heading); font-size: 14px; }
+
 .results-page__header-actions {
   display: flex;
   align-items: center;

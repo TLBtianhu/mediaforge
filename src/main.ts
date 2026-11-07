@@ -11,6 +11,7 @@ import { initializeWorkbenchBridge } from './utils/workbenchBridge'
 import { isTauriRuntime } from './utils/appStore'
 import { listenForEditorExportPreferences } from './utils/editorExportPreferences'
 import { useSettingsStore } from '@/stores/settings'
+import { useMediaJobsStore } from '@/stores/mediaJobs'
 import { useAppStore, type RuntimeBackend } from '@/stores/app'
 import { activeRuntimeEnvironment, runtimeCoreSyncAvailable, runtimeToActivate } from '@/utils/runtime'
 import './styles/global.scss'
@@ -72,6 +73,11 @@ async function bootstrap() {
   await workerEventsReady.catch((error) => {
     studioLog.warn('Failed to register worker events', error)
   })
+  if (isTauriRuntime() && isMainTaskOwner()) {
+    void useMediaJobsStore(pinia).initialize().catch(error => {
+      studioLog.warn('Failed to initialize media task journal', error)
+    })
+  }
   initTheme(settings.themeMode, settings.themeAccent)
   try {
     const { invoke } = await import('@tauri-apps/api/core')

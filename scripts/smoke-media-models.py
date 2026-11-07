@@ -1,72 +1,60 @@
-"""逐个跑一遍 catalog 里 available 的模型，确认"标着可用就能跑出东西"。
+"""Run available media models through the real worker with explicit test assets.
 
-走真实入口（worker.py media_tool），不是直接调函数——这样连路由、模式、
-payload 形状都一起验证。任何一项失败就以非零退出，便于放进 CI。
+Required: --python <test-python> --model-dir <test-models> --data-root <isolated-data>.
+Inputs are synthetic unless --input is explicit; outputs are temporary unless
+--output-dir is explicit. Existing user/dogfood profiles are never discovered.
 """
 from __future__ import annotations
 
+import argparse
 import json
-import os
+import shutil
+import struct
 import subprocess
-import sys
 import tempfile
+import zlib
 from pathlib import Path
 
+from media_smoke_env import add_arguments, isolated_environment, model_paths, test_path
+
 ROOT = Path(__file__).resolve().parent.parent
-PYTHON = Path(os.environ.get("MEDIAFORGE_RUNTIME_PYTHON") or (Path(os.environ["USERPROFILE"]) / ".mediaforge" / "runtime-envs" / "cuda" / "Scripts" / "python.exe"))
 WORKER = ROOT / "python" / "worker.py"
-MODELS = Path(os.environ["USERPROFILE"]) / ".mediaforge" / "models" / "media"
-OUTPUTS = Path(os.environ["USERPROFILE"]) / ".mediaforge" / "outputs" / "smoke"
 
 
-def sample_image() -> Path:
-    """用一张真实素材的小裁剪，避免每次跑整张 4K。"""
-    sys.path.insert(0, str(ROOT / "python"))
-    from media_ops import image_ops
+def sample_image(outputs: Path, source: Path | None = None) -> Path:
+    """Generate a dependency-free PNG, or copy only the explicitly chosen input."""
+    outputs.mkdir(parents=True, exist_ok=True)
+    if source is not None:
+        target = outputs / f"sample{source.suffix}"
+        if source.resolve() != target.resolve():
+            shutil.copyfile(source, target)
+        return target
+    width = height = 256
+    pixels = b"".join(b"\0" + bytes(channel for x in range(width) for channel in (x, y, (x + y) % 256)) for y in range(height))
 
-    source = None
-    for candidate in (Path(os.environ["USERPROFILE"]) / ".mediaforge" / "outputs").glob("*.png"):
-        source = candidate
-        break
-    if source is None:
-        raise SystemExit("没找到可用的样例图片")
-    image = image_ops.read_image(source)[:256, :256]
-    OUTPUTS.mkdir(parents=True, exist_ok=True)
-    target = OUTPUTS / "sample.png"
-    image_ops.write_image(target, image)
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    target = outputs / "sample.png"
+    target.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b""))
     return target
 
 
-def make_watermarked_sample(source: Path, target: Path) -> bool:
-    """在原图上画一块醒目的"水印"，给检测器一个明确目标。"""
-    try:
-        import cv2
-        import numpy as np
-
-        image = cv2.imread(str(source))
-        if image is None:
-            return False
-        height, width = image.shape[:2]
-        cv2.rectangle(image, (width // 4, height // 3), (width * 3 // 4, height * 2 // 3), (255, 255, 255), -1)
-        cv2.putText(image, "WATERMARK", (width // 5, height // 2), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        return bool(cv2.imwrite(str(target), image))
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def run(payload: dict) -> tuple[bool, str]:
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-        path = handle.name
+def run(payload: dict, *, python: Path, models: Path, env: dict[str, str]) -> tuple[bool, str]:
+    request = {**payload, "modelDir": str(models), "downloadMethod": "never"}
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8", dir=env["TMPDIR"]) as handle:
+        json.dump(request, handle, ensure_ascii=False)
+        path = Path(handle.name)
     try:
         proc = subprocess.run(
-            [str(PYTHON), str(WORKER), "media_tool", "--payload", path],
-            cwd=str(ROOT), capture_output=True, text=True, timeout=900,
+            [str(python), "-B", str(WORKER), "media_tool", "--payload", str(path)],
+            cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", timeout=900, env=env,
         )
+        if proc.returncode != 0:
+            return False, (proc.stderr or proc.stdout or f"worker exit {proc.returncode}")[-120:]
         lines = [line for line in proc.stdout.splitlines() if line.startswith("{")]
         if not lines:
-            return False, (proc.stderr or proc.stdout or "无输出")[:120]
+            return False, (proc.stderr or proc.stdout or "No worker output")[:120]
         event = json.loads(lines[-1])
         body = event.get("payload") or {}
         if event.get("type") == "error":
@@ -76,82 +64,71 @@ def run(payload: dict) -> tuple[bool, str]:
         if failed:
             return False, str(failed[0].get("error"))[:120]
         if not outputs:
-            return False, "没有输出文件"
+            return False, "No output files"
         produced = Path(outputs[0]["path"])
-        if not produced.exists():
-            return False, "输出文件缺失"
-        # 检测类输出是 JSON：一张没有目标的图也会合法地得到空框列表，不能按体积判失败。
+        if not produced.is_file():
+            return False, "Output file is missing"
         if produced.suffix.lower() == ".json":
-            try:
-                body = json.loads(produced.read_text(encoding="utf-8"))
-            except Exception as exc:  # noqa: BLE001
-                return False, f"JSON 无法解析: {exc}"
-            return True, f"{produced.name} ({len(body.get('boxes') or [])} 个框)"
+            boxes = json.loads(produced.read_text(encoding="utf-8")).get("boxes") or []
+            return True, f"{produced.name} ({len(boxes)} boxes)"
         if produced.stat().st_size < 512:
-            return False, "输出文件过小"
+            return False, "Output file is too small"
         return True, f"{produced.name} ({produced.stat().st_size // 1024} KB)"
     finally:
-        Path(path).unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
-def main() -> int:
-    catalog = json.loads((ROOT / "python" / "media_ops" / "media_catalog.json").read_text(encoding="utf-8"))
-    available = [m for m in catalog["models"] if m.get("status") == "available"]
-    sample = sample_image()
-    OUTPUTS.mkdir(parents=True, exist_ok=True)
-
+def verify_models(python: Path, models: Path, outputs: Path, source: Path | None, env: dict[str, str]) -> int:
+    catalog = json.loads((ROOT / "python/media_ops/media_catalog.json").read_text(encoding="utf-8"))
+    available = [item for item in catalog["models"] if item.get("status") == "available"]
+    sample = sample_image(outputs, source)
     results = []
+    modes = {"denoise": "denoise", "depth": "depth", "matting": "matting", "object_detection": "detect", "frame_interpolation": "interpolate"}
     for item in available:
         model_id = f"media:{item['id']}"
         task = item.get("task")
-        target_dir = OUTPUTS / item["id"]
-        payload = {"operation": "media_image", "inputs": [str(sample)], "outputDir": str(target_dir), "modelId": model_id}
+        payload = {"operation": "media_image", "inputs": [str(sample)], "outputDir": str(outputs / item["id"]), "modelId": model_id}
         if task == "super_resolution":
-            payload["mode"] = "upscale"
-            payload["steps"] = [{"capability": "upscale", "bindings": {"upscaler": model_id}, "params": {"scale": 4}}]
+            payload.update(mode="upscale", steps=[{"capability": "upscale", "bindings": {"upscaler": model_id}, "params": {"scale": 4}}])
             payload.pop("modelId")
-        elif task == "denoise":
-            payload["mode"] = "denoise"
-        elif task == "depth":
-            payload["mode"] = "depth"
-        elif task == "matting":
-            payload["mode"] = "matting"
-        elif task == "object_detection":
-            payload["mode"] = "detect"
-        elif task == "frame_interpolation":
-            payload["mode"] = "interpolate"
-            payload["inputs"] = [str(sample), str(sample)]
-        elif task in {"inpainting", "watermark_detection"}:
-            # 这两个只有组合起来才有入口：检测器找框、修复器填洞。
-            # 所以用同一张带人工水印的图跑一次 watermark 流程，两个模型一起验证。
-            continue
+        elif task in modes:
+            payload["mode"] = modes[task]
+            if task == "frame_interpolation":
+                payload["inputs"] = [str(sample), str(sample)]
         else:
-            results.append((item["id"], "skip", f"未知任务 {task}"))
+            # The former watermark combo implicitly selected two models and no
+            # longer satisfies the single-model task contract. Do not run it here.
+            results.append((item["id"], "skip", f"Requires a separate adapter/workflow smoke: {task}"))
             continue
-        ok, detail = run(payload)
+        ok, detail = run(payload, python=python, models=models, env=env)
         results.append((item["id"], "pass" if ok else "FAIL", detail))
-
-    combo = OUTPUTS / "watermarked.png"
-    if make_watermarked_sample(sample, combo):
-        ok, detail = run({
-            "operation": "media_image",
-            "mode": "watermark",
-            "conf": 0.01,
-            "inputs": [str(combo)],
-            "outputDir": str(OUTPUTS / "combo"),
-        })
-        status = "pass" if ok else "FAIL"
-        results.append(("watermark 组合（检测+修复）", status, detail))
-
-    width = max(len(r[0]) for r in results)
-    failures = 0
+    width = max((len(row[0]) for row in results), default=1)
     for model_id, status, detail in results:
-        if status == "FAIL":
-            failures += 1
         print(f"  {model_id.ljust(width)}  {status:5}  {detail}")
-    print(f"\n  合计 {len(results)}：通过 {sum(1 for r in results if r[1] == 'pass')} / "
-          f"失败 {failures} / 跳过 {sum(1 for r in results if r[1] == 'skip')}")
-    return 1 if failures else 0
+    failures = sum(row[1] == "FAIL" for row in results)
+    passed = sum(row[1] == "pass" for row in results)
+    print(f"Total {len(results)}: passed {passed}, failed {failures}, skipped {len(results) - passed - failures}")
+    return 1 if failures or not passed else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_arguments(parser)
+    args = parser.parse_args(argv)
+    try:
+        python, models, data = model_paths(args)
+        source = test_path(args.input, "--input") if args.input else None
+        if source is not None and not source.is_file():
+            raise ValueError(f"sample image does not exist: {source}")
+        output = test_path(args.output_dir, "--output-dir") if args.output_dir else None
+        if output is not None and (output == models or models in output.parents):
+            raise ValueError("--output-dir must be separate from the model directory")
+    except ValueError as error:
+        parser.error(str(error))
+    with tempfile.TemporaryDirectory(prefix="mediaforge-model-smoke-") as temporary:
+        outputs = output or Path(temporary) / "outputs"
+        env = isolated_environment(data, python, models, outputs)
+        return verify_models(python, models, outputs, source, env)
 
 
 if __name__ == "__main__":

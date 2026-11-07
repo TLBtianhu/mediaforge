@@ -764,8 +764,8 @@ class ImageRestorer:
                 inpainter_path = str(capabilities.model_path(str(bindings.get("inpainter") or watermark_defaults["inpainter"])))
                 boxes, scores, mask = self.detector_for(detector_path).detect(
                     image,
-                    conf=float(params.get("conf") or 0.25),
-                    expand=int(params.get("expand") or 6),
+                    conf=float(params.get("conf", 0.25)),
+                    expand=int(params.get("expand", 6)),
                 )
                 info["steps"].append({"capability": capability, "boxes": int(len(boxes)), "scores": [round(float(v), 3) for v in scores[:20]], "mask_ratio": round(mask_area_ratio(mask), 4)})
                 if int(mask.max()) == 0:

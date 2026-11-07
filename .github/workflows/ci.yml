@@ -166,6 +166,9 @@ jobs:
       - name: Verify the development executable keeps its data in the repository
         shell: pwsh
         run: ./scripts/smoke-dev-data-root.ps1 -AppExe 'src-tauri\target\release\pymss-studio.exe'
+      - name: Verify installed and portable assets respect isolated data roots
+        shell: pwsh
+        run: ./scripts/smoke-asset-paths.ps1 -AppExe 'src-tauri\target\release\pymss-studio.exe'
       - name: Verify runtime install, reuse and rollback end to end
         shell: pwsh
         run: |

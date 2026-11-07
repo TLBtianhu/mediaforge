@@ -26,6 +26,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::error::{AppError, AppResult};
 use crate::storage;
 
+mod transaction;
+use transaction::{validate_descriptor, InstallLock};
+
 /// 清单里的运行时描述。字段名与 `manifest/runtime.json` 一致（camelCase）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,7 +74,7 @@ pub fn embedded_descriptor() -> AppResult<RuntimeDescriptor> {
 }
 
 fn envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    Ok(storage::data_root_dir(app)?.join("runtime-envs"))
+    storage::runtime_envs_dir(app)
 }
 
 /// 当前应该使用哪份运行时：`versions.json` 接受过就用它，否则用编译进的基线。
@@ -82,7 +85,7 @@ pub fn desired_runtime(app: &AppHandle) -> AppResult<RuntimeDescriptor> {
     let file = envs.join(DESIRED_FILE);
     if let Ok(text) = fs::read_to_string(&file) {
         if let Ok(descriptor) = serde_json::from_str::<RuntimeDescriptor>(&text) {
-            if !descriptor.asset_id.trim().is_empty() && !descriptor.sha256.trim().is_empty() {
+            if validate_descriptor(&descriptor).is_ok() {
                 return Ok(descriptor);
             }
         }
@@ -91,29 +94,21 @@ pub fn desired_runtime(app: &AppHandle) -> AppResult<RuntimeDescriptor> {
 }
 
 pub fn write_desired(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<()> {
+    validate_descriptor(descriptor).map_err(AppError::Worker)?;
     let envs = envs_dir(app)?;
-    fs::create_dir_all(&envs)?;
-    fs::write(envs.join(DESIRED_FILE), serde_json::to_string(descriptor)?)?;
-    Ok(())
+    let _lock = InstallLock::acquire(&envs).map_err(AppError::Worker)?;
+    storage::write_json_file(&envs.join(DESIRED_FILE), &serde_json::to_value(descriptor)?)
 }
 
 fn asset_dir(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<PathBuf> {
+    validate_descriptor(descriptor).map_err(AppError::Worker)?;
     Ok(envs_dir(app)?.join(&descriptor.asset_id))
 }
 
 fn python_path(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<PathBuf> {
-    Ok(asset_dir(app, descriptor)?.join("Scripts").join("python.exe"))
-}
-
-/// 运行时是否已就位（只看解释器与标记，不重算 5 GB 的哈希）。
-pub fn is_ready(app: &AppHandle) -> bool {
-    let Ok(descriptor) = desired_runtime(app) else {
-        return false;
-    };
-    let Ok(dir) = asset_dir(app, &descriptor) else {
-        return false;
-    };
-    dir.join("Scripts").join("python.exe").is_file() && marker_matches(&dir, &descriptor)
+    Ok(asset_dir(app, descriptor)?
+        .join("Scripts")
+        .join("python.exe"))
 }
 
 fn marker_matches(dir: &Path, descriptor: &RuntimeDescriptor) -> bool {
@@ -149,7 +144,13 @@ fn aria2_path(app: &AppHandle) -> AppResult<PathBuf> {
     }
 }
 
-fn emit(app: &AppHandle, descriptor: &RuntimeDescriptor, stage: &str, downloaded: u64, message: &str) {
+fn emit(
+    app: &AppHandle,
+    descriptor: &RuntimeDescriptor,
+    stage: &str,
+    downloaded: u64,
+    message: &str,
+) {
     let percent = if descriptor.size > 0 {
         ((downloaded as f64 / descriptor.size as f64) * 100.0).clamp(0.0, 100.0)
     } else {
@@ -173,7 +174,13 @@ pub fn runtime_asset_status(app: AppHandle) -> AppResult<Value> {
     let descriptor = desired_runtime(&app)?;
     let python = python_path(&app, &descriptor)?;
     let present = python.is_file();
-    let ready = present && marker_matches(python.parent().and_then(Path::parent).unwrap_or(Path::new("")), &descriptor);
+    let ready = transaction::ready(
+        python
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or(Path::new("")),
+        &descriptor,
+    );
     Ok(json!({
         "assetId": descriptor.asset_id,
         "sha256": descriptor.sha256,
@@ -189,21 +196,29 @@ pub fn runtime_asset_status(app: AppHandle) -> AppResult<Value> {
 /// 启动下载。立刻返回，进度通过 `mediaforge://runtime-asset` 事件推送。
 #[tauri::command]
 pub fn runtime_asset_install(app: AppHandle) -> AppResult<Value> {
-    let handle = app.clone();
-    if is_ready(&handle) {
-        let descriptor = desired_runtime(&handle)?;
-        let envs = envs_dir(&handle)?;
-        write_active_pointer(&envs, &descriptor).map_err(AppError::Worker)?;
-        emit(&handle, &descriptor, "done", descriptor.size, "运行时已激活");
+    let envs = envs_dir(&app)?;
+    let lock = InstallLock::acquire(&envs).map_err(AppError::Worker)?;
+    transaction::recover_pointer(&envs).map_err(AppError::Worker)?;
+    let descriptor = desired_runtime(&app)?;
+    validate_descriptor(&descriptor).map_err(AppError::Worker)?;
+    let staging = envs.join(format!(".incoming-{}", descriptor.asset_id));
+    transaction::recover_previous(&staging, &envs.join(&descriptor.asset_id))
+        .map_err(AppError::Worker)?;
+    if transaction::ready(&envs.join(&descriptor.asset_id), &descriptor) {
+        transaction::activate_with_rollback(&envs, || write_active_pointer(&envs, &descriptor))
+            .map_err(AppError::Worker)?;
+        finish_install(&app, &descriptor, &staging);
         return Ok(json!({ "started": false, "installed": true }));
     }
-    std::thread::spawn(move || {
-        if let Err(error) = install_blocking(&handle) {
-            if let Ok(descriptor) = desired_runtime(&handle) {
-                emit(&handle, &descriptor, "error", 0, &error);
+    std::thread::Builder::new()
+        .name("runtime-asset-install".into())
+        .spawn(move || {
+            let _lock = lock;
+            if let Err(error) = install_with_descriptor(&app, &envs, &descriptor) {
+                emit(&app, &descriptor, "error", 0, &error);
             }
-        }
-    });
+        })
+        .map_err(|error| AppError::Worker(format!("无法启动运行时安装：{error}")))?;
     Ok(json!({ "started": true, "installed": false }))
 }
 
@@ -265,7 +280,10 @@ pub fn smoke_activate(app: &AppHandle) -> i32 {
         return 1;
     }
     match runtime_asset_install(app.clone()) {
-        Ok(value) if value.get("started") == Some(&json!(false)) && value.get("installed") == Some(&json!(true)) => {
+        Ok(value)
+            if value.get("started") == Some(&json!(false))
+                && value.get("installed") == Some(&json!(true)) =>
+        {
             println!("smoke-activate-runtime: OK");
             0
         }
@@ -281,30 +299,65 @@ pub fn smoke_activate(app: &AppHandle) -> i32 {
 }
 
 fn write_active_pointer(envs: &Path, descriptor: &RuntimeDescriptor) -> Result<(), String> {
+    validate_descriptor(descriptor)?;
     let target = envs.join(&descriptor.asset_id);
     let record = json!({
         "pythonPath": target.join("Scripts").join("python.exe").to_string_lossy(),
         "backend": descriptor.backend,
         "assetId": descriptor.asset_id,
     });
-    fs::write(envs.join("active-runtime.json"), record.to_string())
+    storage::write_json_file(&envs.join("active-runtime.json"), &record)
         .map_err(|error| error.to_string())
 }
 
 fn install_blocking(app: &AppHandle) -> Result<(), String> {
-    let descriptor = desired_runtime(app).map_err(|error| error.to_string())?;
     let envs = envs_dir(app).map_err(|error| error.to_string())?;
+    let _lock = InstallLock::acquire(&envs)?;
+    transaction::recover_pointer(&envs)?;
+    let descriptor = desired_runtime(app).map_err(|error| error.to_string())?;
+    validate_descriptor(&descriptor)?;
+    install_with_descriptor(app, &envs, &descriptor)
+}
+
+fn finish_install(app: &AppHandle, descriptor: &RuntimeDescriptor, staging: &Path) {
+    let message = match transaction::cleanup_staging(staging) {
+        Ok(()) => "运行时已就绪".to_string(),
+        Err(error) => format!("运行时已就绪，下载缓存未能清理：{error}"),
+    };
+    emit(app, descriptor, "done", descriptor.size, &message);
+}
+
+fn install_with_descriptor(
+    app: &AppHandle,
+    envs: &Path,
+    descriptor: &RuntimeDescriptor,
+) -> Result<(), String> {
     let staging = envs.join(format!(".incoming-{}", descriptor.asset_id));
+    let target = envs.join(&descriptor.asset_id);
+    transaction::recover_previous(&staging, &target)?;
+    if transaction::ready(&target, descriptor) {
+        transaction::activate_with_rollback(envs, || write_active_pointer(envs, descriptor))?;
+        finish_install(app, descriptor, &staging);
+        return Ok(());
+    }
+    transaction::ensure_plain(&staging)?;
     fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
     let archive = staging.join(format!("{}.zip", descriptor.asset_id));
+    transaction::ensure_plain(&archive)?;
 
     if file_size(&archive) != descriptor.size {
-        download(app, &descriptor, &staging, &archive)?;
+        download(app, descriptor, &staging, &archive)?;
     }
 
-    emit(app, &descriptor, "verifying", descriptor.size, "校验运行时完整性");
+    emit(
+        app,
+        descriptor,
+        "verifying",
+        descriptor.size,
+        "校验运行时完整性",
+    );
     let actual = sha256_of(&archive).map_err(|error| error.to_string())?;
-    if actual != descriptor.sha256 {
+    if !actual.eq_ignore_ascii_case(&descriptor.sha256) {
         let _ = fs::remove_file(&archive);
         return Err(format!(
             "运行时包校验失败：期望 {}，实际 {actual}（已删除，请重试）",
@@ -312,29 +365,33 @@ fn install_blocking(app: &AppHandle) -> Result<(), String> {
         ));
     }
 
-    emit(app, &descriptor, "extracting", descriptor.size, "解压运行时");
-    let target = envs.join(&descriptor.asset_id);
-    if target.exists() {
-        let _ = fs::remove_dir_all(&target);
-    }
-    extract_zip(&archive, &target).map_err(|error| error.to_string())?;
-
-    if let Some(vcrt) = bundled_vcrt_dir(app) {
-        let scripts = target.join("Scripts");
-        let copied = copy_dlls(&vcrt, &scripts).map_err(|error| format!("复制 VC++ 运行库失败：{error}"))?;
-        emit(app, &descriptor, "verifying", descriptor.size, &format!("已放置 {copied} 个 VC++ 运行库文件"));
-    }
-    let bootstrap = storage::runtime_root_dir(app).map_err(|error| error.to_string())?.join("python.exe");
-    repair_embedded_python_from(&bootstrap, &target)?;
-    verify_interpreter(&target.join("Scripts").join("python.exe"))?;
-
-    write_active_pointer(&envs, &descriptor)?;
-    // 标记最后写：它存在就意味着这份运行时完整、且与描述符一致。
-    let marker = json!({ "assetId": descriptor.asset_id, "sha256": descriptor.sha256 });
-    fs::write(target.join(ASSET_MARKER), marker.to_string()).map_err(|error| error.to_string())?;
-
-    let _ = fs::remove_dir_all(&staging);
-    emit(app, &descriptor, "done", descriptor.size, "运行时已就绪");
+    emit(app, descriptor, "extracting", descriptor.size, "解压运行时");
+    let bootstrap = storage::runtime_root_dir(app)
+        .map_err(|error| error.to_string())?
+        .join("python.exe");
+    transaction::publish_archive(
+        envs,
+        &staging,
+        descriptor,
+        &archive,
+        |prepared| {
+            if let Some(vcrt) = bundled_vcrt_dir(app) {
+                let copied = copy_dlls(&vcrt, &prepared.join("Scripts"))
+                    .map_err(|error| format!("复制 VC++ 运行库失败：{error}"))?;
+                emit(
+                    app,
+                    descriptor,
+                    "verifying",
+                    descriptor.size,
+                    &format!("已放置 {copied} 个 VC++ 运行库文件"),
+                );
+            }
+            repair_embedded_python_from(&bootstrap, prepared)?;
+            verify_interpreter(&prepared.join("Scripts/python.exe"))
+        },
+        || write_active_pointer(envs, descriptor),
+    )?;
+    finish_install(app, descriptor, &staging);
     Ok(())
 }
 
@@ -393,7 +450,8 @@ fn verify_interpreter(python: &Path) -> Result<(), String> {
         "import ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); print('ok')",
     ]);
     hide_console_window(&mut command);
-    let output = command.output()
+    let output = command
+        .output()
         .map_err(|error| format!("无法启动解释器自检：{error}"))?;
     if output.status.success() {
         return Ok(());
@@ -412,7 +470,12 @@ fn stderr_tail(bytes: &[u8]) -> String {
     if trimmed.len() <= LIMIT {
         return trimmed.to_string();
     }
-    trimmed[trimmed.len() - LIMIT..].to_string()
+    let start = trimmed
+        .char_indices()
+        .find(|(index, _)| *index >= trimmed.len() - LIMIT)
+        .map(|(index, _)| index)
+        .unwrap_or(0);
+    trimmed[start..].to_string()
 }
 
 fn download(
@@ -451,6 +514,15 @@ fn download(
     let mut child = command
         .spawn()
         .map_err(|error| format!("无法启动 aria2c：{error}"))?;
+    #[cfg(windows)]
+    let _download_job = match crate::process_job::ProcessJob::attach(&child) {
+        Ok(job) => job,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("无法管理下载进程生命周期：{error}"));
+        }
+    };
 
     let started = Instant::now();
     loop {
@@ -460,11 +532,19 @@ fn download(
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
-                    let output = child.wait_with_output().map_err(|error| error.to_string())?;
+                    let output = child
+                        .wait_with_output()
+                        .map_err(|error| error.to_string())?;
                     let detail = stderr_tail(&output.stderr);
-                    let suffix = if detail.is_empty() { String::new() } else { format!("：{detail}") };
+                    let suffix = if detail.is_empty() {
+                        String::new()
+                    } else {
+                        format!("：{detail}")
+                    };
                     // 断点续传：下一轮从已有字节继续，所以先保留文件。
-                    return Err(format!("下载中断（aria2c 退出码 {status:?}）{suffix}，可重试续传"));
+                    return Err(format!(
+                        "下载中断（aria2c 退出码 {status:?}）{suffix}，可重试续传"
+                    ));
                 }
                 break;
             }
@@ -512,9 +592,21 @@ fn extract_zip(archive: &Path, target: &Path) -> std::io::Result<()> {
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string()))?;
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index)?;
-        let Some(relative) = entry.enclosed_name() else {
-            continue;
-        };
+        let relative = entry.enclosed_name().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "runtime archive path escapes its directory",
+            )
+        })?;
+        if entry
+            .unix_mode()
+            .is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "runtime archive cannot contain symbolic links",
+            ));
+        }
         let destination = target.join(relative);
         if entry.is_dir() {
             fs::create_dir_all(&destination)?;
@@ -536,12 +628,9 @@ mod descriptor_tests {
 
     #[test]
     fn verify_interpreter_reports_success_for_a_working_python() {
-        // 只有本机装了运行时的开发环境才跑；CI 的 Windows runner 没有这份解释器。
-        let candidate = std::env::var_os("MEDIAFORGE_TEST_PYTHON")
-            .map(PathBuf::from)
-            .or_else(|| {
-                dirs_runtime_python()
-            });
+        // A real interpreter is opt-in and must come from an isolated development runtime.
+        // Never fall back to an installed user's environment during backend tests.
+        let candidate = std::env::var_os("MEDIAFORGE_TEST_PYTHON").map(PathBuf::from);
         let Some(python) = candidate else {
             eprintln!("skip: no test interpreter");
             return;
@@ -553,20 +642,10 @@ mod descriptor_tests {
         verify_interpreter(&python).expect("working python must pass the self-check");
     }
 
-    fn dirs_runtime_python() -> Option<PathBuf> {
-        let home = std::env::var_os("USERPROFILE").map(PathBuf::from)?;
-        let path = home
-            .join(".mediaforge")
-            .join("runtime-envs")
-            .join("runtime-cuda-2026.10.2")
-            .join("Scripts")
-            .join("python.exe");
-        Some(path)
-    }
-
     #[test]
     fn copy_dlls_only_takes_dlls_and_creates_the_target() {
-        let root = std::env::temp_dir().join(format!("mediaforge-vcrt-test-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("mediaforge-vcrt-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let source = root.join("vcrt");
         let target = root.join("env").join("Scripts");
@@ -583,7 +662,10 @@ mod descriptor_tests {
 
     #[test]
     fn repair_embedded_python_replaces_the_venv_launcher_and_removes_config() {
-        let root = std::env::temp_dir().join(format!("mediaforge-embedded-python-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "mediaforge-embedded-python-test-{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&root);
         let bootstrap = root.join("bootstrap-python.exe");
         let target = root.join("runtime");
@@ -591,28 +673,44 @@ mod descriptor_tests {
         fs::write(&bootstrap, b"embedded-python").unwrap();
         fs::write(target.join("pyvenv.cfg"), "home = C:/old/install\n").unwrap();
         repair_embedded_python_from(&bootstrap, &target).unwrap();
-        assert_eq!(fs::read(target.join("Scripts").join("python.exe")).unwrap(), b"embedded-python");
+        assert_eq!(
+            fs::read(target.join("Scripts").join("python.exe")).unwrap(),
+            b"embedded-python"
+        );
         assert!(!target.join("pyvenv.cfg").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
     fn missing_bootstrap_keeps_the_fixture_interpreter() {
-        let root = std::env::temp_dir().join(format!("mediaforge-missing-bootstrap-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "mediaforge-missing-bootstrap-test-{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&root);
         let target = root.join("runtime");
         fs::create_dir_all(target.join("Scripts")).unwrap();
         fs::write(target.join("Scripts").join("python.exe"), b"fixture").unwrap();
         repair_embedded_python_from(&root.join("missing-python.exe"), &target).unwrap();
-        assert_eq!(fs::read(target.join("Scripts").join("python.exe")).unwrap(), b"fixture");
+        assert_eq!(
+            fs::read(target.join("Scripts").join("python.exe")).unwrap(),
+            b"fixture"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
     fn stderr_tail_keeps_the_actual_download_error() {
-        assert_eq!(stderr_tail(b"  TLS certificate verification failed\n"), "TLS certificate verification failed");
+        assert_eq!(
+            stderr_tail(b"  TLS certificate verification failed\n"),
+            "TLS certificate verification failed"
+        );
         let long = "x".repeat(2500);
         assert_eq!(stderr_tail(long.as_bytes()).len(), 2000);
+        let unicode = "下载失败".repeat(1000);
+        let tail = stderr_tail(unicode.as_bytes());
+        assert!(tail.len() <= 2000);
+        assert!(unicode.ends_with(&tail));
     }
 
     #[test]

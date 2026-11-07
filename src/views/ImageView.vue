@@ -4,7 +4,7 @@ import { DIRECTORY_ZONES, findDropZone, folderToReference, toCssPoint, type Path
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import type { UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
@@ -20,17 +20,9 @@ import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
-import { journalJob, journalNow } from '@/utils/operationJournal'
-import { useSettingsStore } from '@/stores/settings'
-import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
-// 图像独有能力：没有视频帧适配器，必须走 mode + modelId 入口
-const IMAGE_ONLY_MODES: Record<string, string> = {
-  denoise: 'denoise',
-  depth: 'depth',
-  matting: 'matting',
-  object_detection: 'detect',
-}
+import { useSettingsStore } from '@/stores/settings'
+import { useMediaJob } from '@/composables/useMediaJob'
 
 defineOptions({ name: 'ImageView' })
 
@@ -49,23 +41,6 @@ type OutputFile = {
     elapsed?: number
   }
 }
-type WorkerPayload = {
-  operation?: string
-  fraction?: number
-  completed?: number
-  total?: number
-  current?: string
-  message?: string
-  outputs?: OutputFile[]
-  failed?: Array<{ path: string; error: string }>
-  warnings?: string[]
-}
-type WorkerEvent = {
-  type: string
-  requestId?: string | null
-  taskId?: string | null
-  payload?: WorkerPayload
-}
 
 const { t } = useI18n()
 const message = useMessage()
@@ -75,14 +50,7 @@ const settings = useSettingsStore()
 const inputs = ref<string[]>([])
 const outputDir = ref(settings.outputDir || '')
 const modelDir = ref('')
-const busy = ref(false)
-const progress = ref(0)
-const status = ref('')
-const failedCount = ref(0)
-const outputs = ref<OutputFile[]>([])
 const compare = ref(50)
-const requestId = ref('')
-const journalCreatedAt = ref(0)
 type PlanStep = { capability: string; bindings: Record<string, string>; params: Record<string, unknown> }
 const planStep = ref<PlanStep>({
   capability: 'watermark_removal',
@@ -90,11 +58,22 @@ const planStep = ref<PlanStep>({
   params: { conf: 0.25, expand: 8, detectMode: 'fixed' },
 })
 const planAvailable = ref(true)
-let unlisten: UnlistenFn | undefined
+const prechecking = ref(false)
+const { job, busy: taskBusy, progress, status, outputs, failedCount, start: startJob } = useMediaJob<OutputFile>(
+  'media_image', {
+    running: () => t('factory.processing'), completed: () => t('factory.completed'),
+    failed: () => t('factory.failed'), cancelled: () => t('tasks.cancelSuccess'),
+  }, message, payload => {
+    if (Array.isArray(payload.inputs)) inputs.value = payload.inputs as string[]
+    if (typeof payload.outputDir === 'string') outputDir.value = payload.outputDir
+    if (typeof payload.modelDir === 'string') modelDir.value = payload.modelDir
+    if (Array.isArray(payload.steps) && payload.steps[0]) planStep.value = payload.steps[0] as PlanStep
+  })
+const busy = computed(() => prechecking.value || taskBusy.value)
+
 let unlistenDrop: UnlistenFn | undefined
 const dragging = ref(false)
 // 投放区用 data-drop-zone 标记：组件 ref 拿到的是组件实例，取不到矩形
-
 
 const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 const pipelineSteps = computed(() => [planStep.value])
@@ -158,31 +137,8 @@ function removeInput(path: string) {
   inputs.value = inputs.value.filter(item => item !== path)
 }
 
-function onProgress(payload: WorkerPayload) {
-  const fraction = Number(payload.fraction || 0)
-  const completed = Number(payload.completed || 0)
-  const total = Number(payload.total || 0)
-  const percentage = fraction > 0 ? fraction * 100 : (total > 0 ? (completed / total) * 100 : 0)
-  progress.value = Math.max(0, Math.min(99, Math.round(percentage)))
-  status.value = String(payload.current || t('image.title'))
-}
-
-function journal(status: 'running' | 'completed' | 'failed' | 'cancelled', fraction: number, text: string, result: Record<string, unknown> | null = null) {
-  void journalJob({
-    jobId: requestId.value,
-    command: 'media_image',
-    source: 'manual',
-    status,
-    fraction,
-    message: text,
-    createdAt: journalCreatedAt.value,
-    payload: { operation: 'media_image', inputs: inputs.value, outputDir: outputDir.value },
-    result,
-    error: status === 'failed' ? text : null,
-  })
-}
-
 async function run() {
+  if (busy.value) return
   if (!inputs.value.length) {
     message.warning(t('factory.selectFirst'))
     return
@@ -191,62 +147,35 @@ async function run() {
     message.warning(t('factory.selectOutput'))
     return
   }
-  // 跑之前先问后端：输入可用吗、目标比原图大吗、图上有没有水印
-  const precheck = summarizePrecheck(await precheckPlan(pipelineSteps.value, inputs.value))
-  if (!precheck.runnable) {
-    message.error(precheck.notices.join('；') || t('factory.processing'))
-    return
-  }
-  const stepsToRun = dropSkippedSteps(pipelineSteps.value, precheck.dropped)
-  if (precheck.notices.length) {
-    if (!stepsToRun.length) {
-      // 唯一的步骤被预检判死：直接说清楚，不让用户等一轮失败
-      message.warning(precheck.notices.join('；'))
+  const payload = JSON.parse(JSON.stringify({
+    operation: 'media_image', inputs: inputs.value, outputDir: outputDir.value,
+    modelDir: modelDir.value, steps: pipelineSteps.value,
+  }))
+  prechecking.value = true
+  try {
+    const precheck = summarizePrecheck(await precheckPlan(payload.steps, payload.inputs))
+    if (!precheck.runnable) {
+      message.error(precheck.notices.join('；') || t('factory.processing'))
       return
     }
-    message.warning(precheck.notices.join('；'))
-  }
-  busy.value = true
-  progress.value = 0
-  status.value = t('factory.processing')
-  failedCount.value = 0
-  outputs.value = []
-  requestId.value = `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  journalCreatedAt.value = journalNow()
-  journal('running', 0, status.value)
-  try {
-    // 图像独有能力（去噪/深度/抠图/检测）没有视频帧适配器，走 steps 会被拒
-    // （"mixed pipeline steps are not supported by the current frame adapter"），
-    // 所以单步且是这类能力时改成 mode + modelId 的入口。
-    const imageOnlyMode = stepsToRun.length === 1
-      ? IMAGE_ONLY_MODES[stepsToRun[0].capability]
-      : undefined
-    const payload: Record<string, unknown> = {
-      operation: 'media_image',
-      requestId: requestId.value,
-      inputs: inputs.value,
-      outputDir: outputDir.value,
-      modelDir: modelDir.value,
+    const stepsToRun = dropSkippedSteps(payload.steps, precheck.dropped)
+    if (precheck.notices.length) {
+      message.warning(precheck.notices.join('；'))
+      if (!stepsToRun.length) return
     }
-    if (imageOnlyMode) {
-      payload.mode = imageOnlyMode
-      payload.modelId = Object.values(stepsToRun[0].bindings || {})[0]
-    } else {
-      payload.steps = stepsToRun
-    }
-    await invoke('start_audio_tool', { payload })
+    await startJob({ ...payload, steps: stepsToRun })
   } catch (error) {
-    busy.value = false
-    status.value = error instanceof Error ? error.message : String(error)
-    journal('failed', 0, status.value)
-    message.error(status.value)
+    message.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    prechecking.value = false
   }
 }
 
 async function openOutput() {
-  if (!outputDir.value) return
+  const path = String(job.value?.payload?.outputDir || outputDir.value)
+  if (!path) return
   try {
-    await invoke('reveal_path', { path: outputDir.value })
+    await invoke('reveal_path', { path })
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -310,61 +239,13 @@ onMounted(async () => {
 
   const requested = route.query.asset
   if (typeof requested === 'string' && requested) addInputs([requested])
-  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
-  try {
-    unlisten = await listen<WorkerEvent>('pymss://worker-event', event => {
-      const payload = event.payload
-      const id = payload?.requestId || payload?.taskId
-      if (!requestId.value || id !== requestId.value) return
-
-      if (isTaskProgress(payload?.type) && payload.payload) {
-        onProgress(payload.payload)
-        journal('running', Number(payload.payload.fraction || 0), String(payload.payload.current || status.value))
-        return
-      }
-      if (isTaskResult(payload?.type) && payload.payload) {
-        const result = payload.payload
-        outputs.value = result.outputs || []
-        failedCount.value = result.failed?.length || 0
-        busy.value = false
-        progress.value = 100
-        compare.value = 50
-        status.value = failedCount.value
-          ? `${t('factory.failed')} (${failedCount.value})`
-          : t('factory.completed')
-        journal(failedCount.value ? 'failed' : 'completed', 1, status.value, result as Record<string, unknown>)
-        if (failedCount.value) message.warning(status.value)
-        else message.success(status.value)
-        requestId.value = ''
-        return
-      }
-      if (payload?.type === 'error') {
-        busy.value = false
-        status.value = String(payload.payload?.message || 'Image processing failed')
-        journal('failed', 0, status.value)
-        message.error(status.value)
-        requestId.value = ''
-      }
-      if (payload?.type === 'task.cancelled') {
-        busy.value = false
-        status.value = 'Cancelled'
-        journal('cancelled', 0, status.value)
-        requestId.value = ''
-      }
-    })
-  } catch {
-    // Browser preview has no Tauri event bridge.
-  }
 })
 
-onBeforeUnmount(() => {
-  unlistenDrop?.()
-  unlisten?.()
-})
+onBeforeUnmount(() => { unlistenDrop?.() })
 const workbenchSteps = computed(() => [
   { title: t('factory.input'), text: t('pipeline.stepInput') },
   { title: t('plan.title'), text: t('pipeline.stepCompose') },
-  { title: t('image.compare'), text: pipelineSummary.value },
+  { title: t('factory.output'), text: pipelineSummary.value },
 ])
 </script>
 

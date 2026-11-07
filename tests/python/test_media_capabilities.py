@@ -70,9 +70,10 @@ class ModelDirResolutionTests(unittest.TestCase):
 
     ENV_KEYS = (
         "MEDIAFORGE_MODEL_DIR",
-        "MEDIAFORGE_MODEL_DIR",
+        "PYMSS_MODEL_DIR",
         "MEDIAFORGE_DATA_DIR",
         "MEDIAFORGE_DATA_ROOT",
+        "PYMSS_STUDIO_DATA_ROOT",
     )
 
     def _env_without_overrides(self) -> dict:
@@ -86,15 +87,16 @@ class ModelDirResolutionTests(unittest.TestCase):
         self.assertNotIn(".mediaforge", str(root))
 
     def test_follows_the_data_root_env(self) -> None:
-        with mock.patch.dict(os.environ, {"MEDIAFORGE_DATA_ROOT": r"C:\tmp\mf-data"}):
-            os.environ.pop("MEDIAFORGE_MODEL_DIR", None)
-            os.environ.pop("MEDIAFORGE_MODEL_DIR", None)
+        with mock.patch.dict(os.environ, {
+            **self._env_without_overrides(), "MEDIAFORGE_DATA_ROOT": r"C:\tmp\mf-data",
+        }, clear=True):
             self.assertEqual(capabilities.model_dir(), Path(r"C:\tmp\mf-data") / "models")
 
     def test_explicit_model_dir_wins_over_data_root(self) -> None:
         with mock.patch.dict(
             os.environ,
-            {"MEDIAFORGE_MODEL_DIR": r"C:\tmp\explicit", "MEDIAFORGE_DATA_ROOT": r"C:\tmp\mf-data"},
+            {**self._env_without_overrides(), "MEDIAFORGE_MODEL_DIR": r"C:\tmp\explicit", "MEDIAFORGE_DATA_ROOT": r"C:\tmp\mf-data"},
+            clear=True,
         ):
             self.assertEqual(capabilities.model_dir(), Path(r"C:\tmp\explicit"))
 

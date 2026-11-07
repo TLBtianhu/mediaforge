@@ -173,6 +173,7 @@ def _layout_root(override_dir: Any = None) -> Path:
 
 def list_capabilities(override_dir: Any = None) -> dict[str, Any]:
     from . import runtime_guard
+    from .workflow_contract import workflow_support
 
     runtime_descriptor = runtime_guard.describe()
     runtime_supported = set(runtime_descriptor["capabilities"])
@@ -213,6 +214,7 @@ def list_capabilities(override_dir: Any = None) -> dict[str, Any]:
                 # 那是另一层问题（runtime_guard 只回答"这套运行时有没有这项能力"）。
                 "runtimeSupported": item["id"] in runtime_supported,
                 "models": models,
+                "workflow": workflow_support(item["id"]),
             }
         )
     # audit 一起带出去：让 MCP / UI / 日志都能看见"声明 vs 实现"的漂移，
@@ -285,11 +287,20 @@ def _validate_step_params(capability_id: str, params: dict[str, Any], declared: 
                 )
 
 
+def parameter_specs(capability_id: str, bindings: dict[str, str]) -> dict[str, Any]:
+    declared = dict(capability(capability_id)["params"])
+    catalog = _catalog()
+    for model_id in bindings.values():
+        for key, spec in ((catalog.get(model_id) or {}).get("params") or {}).items():
+            if isinstance(spec, dict):
+                declared[key] = spec
+    return declared
+
+
 def normalize_steps(steps: Any) -> list[dict[str, Any]]:
     if not isinstance(steps, list) or not steps:
         raise ValueError("pipeline steps must be a non-empty array")
     normalized: list[dict[str, Any]] = []
-    catalog = _catalog()
     implemented = adapter_capability_ids()
     for raw in steps:
         if not isinstance(raw, dict):
@@ -309,14 +320,8 @@ def normalize_steps(steps: Any) -> list[dict[str, Any]]:
             if model_id not in cap["modelIds"]:
                 raise ValueError(f"model {model_id} is not allowed for capability {cap['id']}")
             resolved[role] = model_id
-        declared = dict(cap["params"])
-        defaults = {key: spec.get("default") for key, spec in cap["params"].items()}
-        for model_id in resolved.values():
-            record = catalog.get(model_id) or {}
-            for key, spec in (record.get("params") or {}).items():
-                if isinstance(spec, dict):
-                    declared[key] = spec
-                    defaults[key] = spec.get("default")
+        declared = parameter_specs(cap["id"], resolved)
+        defaults = {key: spec.get("default") for key, spec in declared.items()}
         _validate_step_params(cap["id"], params, declared)
         normalized.append(
             {
@@ -421,6 +426,10 @@ def steps_from_mode(mode: str) -> list[dict[str, Any]]:
 
 def mode_for_steps(steps: list[dict[str, Any]]) -> str:
     ids = {step["capability"] for step in steps}
+    if len(ids) == 1 and ids <= {"denoise", "depth", "matting"}:
+        return next(iter(ids))
+    if ids == {"object_detection"}:
+        return "detect"
     if ids == {"watermark_removal"}:
         return "watermark"
     if ids == {"upscale"}:

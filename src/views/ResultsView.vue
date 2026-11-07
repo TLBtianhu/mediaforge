@@ -12,6 +12,7 @@ import {
   SwapVerticalOutline,
   TimeOutline,
   TrashOutline,
+  RefreshOutline,
 } from '@vicons/ionicons5'
 import { useTaskStore, type SeparationJob, type SeparationTask } from '@/stores/task'
 import { useEditorStore, type OrphanedEditorProject } from '@/stores/editor'
@@ -19,12 +20,16 @@ import { usePagedSelection } from '@/composables/usePagedSelection'
 import { resultType, RESULT_TYPE_KEYS, type ResultType } from '@/utils/resultType'
 import { makeResultListing, type ResultGroup } from './results/listing'
 import { NCheckbox, useDialog, useMessage } from 'naive-ui'
+import { useMediaJobsStore } from '@/stores/mediaJobs'
+import JournalResults from './results/JournalResults.vue'
+import { buildJournalResults, filterJournalResults } from './results/journalResults'
 
 type ResultSort = 'time_desc' | 'time_asc' | 'name_asc' | 'name_desc'
 
 const { t } = useI18n()
 const task = useTaskStore()
 const editor = useEditorStore()
+const mediaJobs = useMediaJobsStore()
 const message = useMessage()
 const dialog = useDialog()
 
@@ -51,6 +56,12 @@ const sortOptions = [
 const { resultGroups, filteredResults, getFileName, getGroupTitle } = makeResultListing({
   computed, t, task, search, typeFilter, sortBy, resultType,
 })
+const journalResults = computed(() => buildJournalResults(mediaJobs.jobs,
+  new Set(task.tasks.flatMap(item => [item.id, item.jobId, item.batchId].filter((id): id is string => Boolean(id))))))
+const filteredJournalResults = computed(() => filterJournalResults(journalResults.value, search.value, sortBy.value))
+async function refreshJournalResults() {
+  try { await mediaJobs.refresh() } catch { /* The shared store exposes the refresh error. */ }
+}
 const pagedSelection = usePagedSelection(filteredResults, {
   initialPageSize: 24,
   pageSizeOptions: [12, 24, 48, 96],
@@ -637,6 +648,7 @@ watch(() => task.focusedResultTaskId, (value) => {
 })
 
 onMounted(() => {
+  void mediaJobs.initialize().catch(() => {})
   window.addEventListener('keydown', handleResultsKeydown)
   window.addEventListener('pointerup', finishResultDragSelection)
   window.addEventListener('pointercancel', finishResultDragSelection)
@@ -704,6 +716,9 @@ function formatDurationMs(value: number | undefined) {
           </n-button>
         </template>
         <template v-else>
+          <n-button quaternary :loading="mediaJobs.loading" :aria-label="t('results.journal.refresh')" @click="refreshJournalResults">
+            <template #icon><n-icon :component="RefreshOutline" /></template>
+          </n-button>
           <n-button
             v-if="orphanedEditorProjects.length"
             secondary
@@ -731,7 +746,7 @@ function formatDurationMs(value: number | undefined) {
       </div>
     </MediaPageHeader>
 
-    <div v-if="task.resultTasks.length" class="results-toolbar">
+    <div v-if="task.resultTasks.length || journalResults.length" class="results-toolbar">
       <n-input
         v-model:value="search"
         class="results-toolbar__search"
@@ -741,7 +756,7 @@ function formatDurationMs(value: number | undefined) {
         <template #prefix><n-icon :component="SearchOutline" /></template>
       </n-input>
 
-      <n-select v-model:value="typeFilter" class="results-toolbar__type" size="small" :options="typeOptions" :aria-label="t('results.typeFilter')" />
+      <n-select v-model:value="typeFilter" class="results-toolbar__type" size="small" :options="typeOptions" :disabled="!task.resultTasks.length" :aria-label="t('results.typeFilter')" />
       <n-select
         v-model:value="sortBy"
         class="results-toolbar__sort"
@@ -751,22 +766,30 @@ function formatDurationMs(value: number | undefined) {
         <template #arrow><n-icon :component="SwapVerticalOutline" /></template>
       </n-select>
 
-      <span class="results-toolbar__count">{{ filteredResults.length }} / {{ resultGroups.length }}</span>
+      <span class="results-toolbar__count">{{ filteredResults.length + filteredJournalResults.length }} / {{ resultGroups.length + journalResults.length }}</span>
     </div>
 
-    <div v-if="!task.resultTasks.length" class="results-empty" data-guide="results-empty">
+    <JournalResults
+      v-if="journalResults.length || mediaJobs.loading || mediaJobs.error"
+      :results="filteredJournalResults" :total="journalResults.length" :loading="mediaJobs.loading" :error="mediaJobs.error || ''"
+      @refresh="refreshJournalResults"
+    />
+
+    <h2 v-if="task.resultTasks.length" class="results-section-title">{{ t('results.audioSection') }}</h2>
+
+    <div v-if="!task.resultTasks.length && !journalResults.length && !mediaJobs.loading && !mediaJobs.error" class="results-empty" data-guide="results-empty">
       <n-icon :component="FolderOutline" size="46" />
       <strong>{{ t('results.empty') }}</strong>
       <span>{{ t('results.emptyHint') }}</span>
     </div>
 
-    <div v-else-if="!filteredResults.length" class="results-empty" data-guide="results-empty">
+    <div v-else-if="task.resultTasks.length && !filteredResults.length" class="results-empty" data-guide="results-empty">
       <n-icon :component="SearchOutline" size="42" />
       <strong>{{ t('results.noMatchTitle') }}</strong>
       <span>{{ t('results.noMatchHint') }}</span>
     </div>
 
-    <div v-else class="results-list">
+    <div v-else-if="filteredResults.length" class="results-list">
       <section
         v-for="item in pagedResults"
         :id="resultCardId(item)"

@@ -10,7 +10,7 @@ import sys
 import time
 import warnings
 from contextlib import contextmanager, redirect_stdout
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock, local
@@ -470,19 +470,29 @@ def _write_debug_line(path: str | None, line: str, max_bytes: int) -> None:
         file.write(line + "\n")
 
 
-_EVENT_SINK: Any = None
+_EVENT_SINK: ContextVar[Any] = ContextVar("worker_event_sink", default=None)
 
 
-def set_event_sink(sink: Any) -> None:
+def set_event_sink(sink: Any) -> Token[Any]:
     """把事件捕获到进程内（内嵌 agent 直调用），而不是写到 stdout。
 
     设置后 `emit()` 不再序列化/写管道，而是直接把事件交给 sink。
     这是"同一个工具既能被外部 agent 通过 MCP 调用、也能被内嵌 loop 直接调用"
     的那道缝：执行器只认识工具名与 payload，不知道调用方在进程内还是跨进程。
-    传 `None` 恢复默认行为。
+    只影响当前请求的执行上下文，不会覆盖其它 HTTP 线程的接收器。
+    传 `None` 恢复默认行为；嵌套调用应使用 `bind_event_sink()` 自动复原。
     """
-    global _EVENT_SINK
-    _EVENT_SINK = sink
+    return _EVENT_SINK.set(sink)
+
+
+@contextmanager
+def bind_event_sink(sink: Any) -> Iterator[None]:
+    """Capture this call's events and restore its caller's sink, even on failure."""
+    token = set_event_sink(sink)
+    try:
+        yield
+    finally:
+        _EVENT_SINK.reset(token)
 
 
 # 历史事件名 → 规范事件名。P7 起边界处只发出规范名：
@@ -491,7 +501,7 @@ def set_event_sink(sink: Any) -> None:
 
 def _write_event(event_type: str, payload: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
     """底层写出：sink 或 stdout，不含任何业务判断。"""
-    sink = _EVENT_SINK
+    sink = _EVENT_SINK.get()
     if sink is not None:
         sink(event_type, payload, request_id, task_id)
         return

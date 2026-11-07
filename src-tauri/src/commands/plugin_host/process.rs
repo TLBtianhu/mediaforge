@@ -128,52 +128,7 @@ pub(crate) fn terminate_helper(pid: u32) {
 }
 
 #[cfg(windows)]
-pub(crate) struct ProcessJob(isize);
-
-#[cfg(windows)]
-impl ProcessJob {
-    pub(crate) fn attach(child: &Child) -> Result<Self, String> {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::Foundation::CloseHandle;
-        use windows_sys::Win32::System::JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        };
-        // The job outlives the child and owns all decoder descendants. Closing it
-        // also terminates them if the UI exits without receiving a response.
-        unsafe {
-            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-            if job.is_null() {
-                return Err(std::io::Error::last_os_error().to_string());
-            }
-            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            if SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                &limits as *const _ as *const std::ffi::c_void,
-                std::mem::size_of_val(&limits) as u32,
-            ) == 0
-                || AssignProcessToJobObject(job, child.as_raw_handle()) == 0
-            {
-                let error = std::io::Error::last_os_error().to_string();
-                CloseHandle(job);
-                return Err(error);
-            }
-            Ok(Self(job as isize))
-        }
-    }
-}
-
-#[cfg(windows)]
-impl Drop for ProcessJob {
-    fn drop(&mut self) {
-        unsafe {
-            windows_sys::Win32::Foundation::CloseHandle(self.0 as _);
-        }
-    }
-}
+pub(crate) use crate::process_job::ProcessJob;
 
 #[derive(Debug)]
 pub(crate) enum HostRequestError {

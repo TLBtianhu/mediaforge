@@ -103,8 +103,8 @@ def _check_watermark(
             image = np.asarray(Image.open(value).convert("RGB"))
             _boxes, _scores, mask = detector.detect(
                 image,
-                conf=float(params.get("conf") or 0.25),
-                expand=int(params.get("expand") or 6),
+                conf=float(params.get("conf", 0.25)),
+                expand=int(params.get("expand", 6)),
             )
         except Exception:  # noqa: BLE001
             return findings
