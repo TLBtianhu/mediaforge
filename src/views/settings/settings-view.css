@@ -132,15 +132,11 @@
   height: 80px;
   display: grid;
   place-items: center;
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 40%, transparent);
 }
 
-.about-logo {
-  width: 62px;
-  height: 62px;
-  object-fit: contain;
+.about-logo-wrap > .about-logo {
+  width: 100%;
+  height: 100%;
 }
 
 .about-hero__copy {
@@ -1780,12 +1776,6 @@
   .about-logo-wrap {
     width: 72px;
     height: 72px;
-    border-radius: 18px;
-  }
-
-  .about-logo {
-    width: 56px;
-    height: 56px;
   }
 
   .about-hero__title {

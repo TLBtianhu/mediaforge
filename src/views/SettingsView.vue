@@ -2,6 +2,7 @@
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import RuntimePreparationProgress from '@/components/RuntimePreparationProgress.vue'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import AppBrandMark from '@/components/AppBrandMark.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -12,7 +13,6 @@ import { useDialog, useMessage } from 'naive-ui'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import packageMeta from '../../package.json'
-import appLogo from '@/assets/app-logo-symbol-canvas.png'
 import { SYSTEM_LOCALE, setLocale, type LocaleSetting } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useAppStore, type RuntimeBackend } from '@/stores/app'
@@ -431,7 +431,7 @@ onMounted(async () => {
           <article class="about-hero">
             <div class="about-hero__main">
               <div class="about-logo-wrap">
-                <img class="about-logo" :src="appLogo" alt="MediaForge" />
+                <AppBrandMark class="about-logo" :size="80" variant="hero" />
               </div>
               <div class="about-hero__copy">
                 <span class="about-eyebrow">{{ t('settings.aboutEyebrow') }}</span>
