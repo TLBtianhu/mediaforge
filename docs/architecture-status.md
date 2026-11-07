@@ -50,6 +50,8 @@ ABI门禁           worker与安装器实际核对3.12；资产校验解释器/D
                   不从bootstrap覆盖解释器；旧venv在任何恢复、pip或状态写入前拒绝
 后台控制台        worker/FFmpeg/探针与测试显式隐藏Windows子进程；Rust共享hidden_command，
                   venv及ensurepip专用隐藏控制台供孙进程继承，日志/退出码/取消保留
+流式进程回收      视频逐帧和媒体格式转换共用StreamProcess：并行排空stderr，正常/异常
+                  都等待回收并关闭管道/线程；等待超时有界，截断帧拒绝，保留错误尾
 队列与产物        queue合并共享journal与音频待调度/执行任务，音频取消走调度器；
                   results增加独立媒体/工具/Agent文件区，保留失败或取消的部分产物
 媒体方案          media-workflows独立版本库，命名保存/加载/更新/删除只保存方案；

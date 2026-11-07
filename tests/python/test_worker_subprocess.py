@@ -264,19 +264,34 @@ class WorkerChildInvocationTests(unittest.TestCase):
 
     def test_video_stream_process_keeps_pipes_drain_and_cancel(self):
         from media_ops import video_ops
-        process = mock.Mock(stderr=io.BytesIO(b"diagnostic\n"))
+        read_fd, write_fd = os.pipe()
+        stderr = os.fdopen(read_fd, "rb", buffering=0)
+        try:
+            os.write(write_fd, b"diagnostic\n")
+        finally:
+            os.close(write_fd)
+        process = mock.Mock(stdin=io.BytesIO(), stdout=io.BytesIO(), stderr=stderr)
         process.poll.return_value = None
-        with mock.patch.object(video_ops.subprocess, "Popen", return_value=process) as popen:
-            stream = video_ops._StreamProcess(["ffmpeg"], "fixture", want_stdin=True, want_stdout=True)
-            stream._drain.join(timeout=2)
-            self.assertFalse(stream._drain.is_alive())
-            self.assertEqual(stream.tail(), "diagnostic")
-            stream.kill()
+        process.wait.return_value = 0
+        try:
+            with mock.patch.object(video_ops.subprocess, "Popen", return_value=process) as popen:
+                stream = video_ops._StreamProcess(["ffmpeg"], "fixture", want_stdin=True, want_stdout=True)
+                stream._drain.join(timeout=2)
+                self.assertFalse(stream._drain.is_alive())
+                self.assertEqual(stream.tail(), "diagnostic")
+                stream.kill()
+                stream.close()
+        finally:
+            stderr.close()
         self.assert_hidden(popen.call_args)
         self.assertEqual(popen.call_args.kwargs["stdin"], subprocess.PIPE)
         self.assertEqual(popen.call_args.kwargs["stdout"], subprocess.PIPE)
         self.assertEqual(popen.call_args.kwargs["stderr"], subprocess.PIPE)
         process.kill.assert_called_once()
+        process.wait.assert_called_once()
+        self.assertTrue(process.stdin.closed)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
 
     def test_kernel_child_keeps_protocol_pipe_and_wait(self):
         from core import operation_kernel as kernel_module

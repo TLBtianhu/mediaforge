@@ -144,6 +144,10 @@ venv通过`shared.worker_subprocess.HiddenVenvBuilder`创建，专门让ensurepi
 不要改用`pythonw.exe`或丢弃错误输出来隐藏问题。用户禁止桌面操作时只做文件/CLI检查，
 不启动GUI、不操作或关闭现有测试窗口；显式GUI用例不能因此被当作已验收。
 
+媒体流式子进程复用`media_ops.stream_process.StreamProcess`。正常结束调用`finish()`，
+异常/取消在`finally`调用幂等`close()`，等待回收进程、关闭全部管道并结束stderr排空线程。
+不能只kill后直接删除工作目录；stdout进度与stderr必须并行读取，避免日志写满管道后死锁。
+
 - 自动化 UI 测试使用一次性 Playwright 上下文；关闭即丢弃
 - 不把测试 localStorage 或测试 profile 写进真实 WebView2
 - 每次 UI 改动后保留截图用于对比，截图目录不进 Git
