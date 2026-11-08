@@ -423,7 +423,8 @@
     "_comment": [
       "执行侧清单：哪些命令需要 bootstrap 解释器、哪些是 Rust 原生入口。",
       "worker 项必须能在 domains 的 command 里找到；native 项不在 worker 协议里。",
-      "resultJobs 是“结果任务”的分类：commands 为 worker 命令，operations 为经 media 路由的操作名。"
+      "resultJobs 是“结果任务”的分类：commands 为 worker 命令，operations 为经 media 路由的操作名。",
+      "outputScope 声明需要输出临时作用域的命令/操作；backgroundResult 声明必须有后台结果代理的命令。"
     ],
     "bootstrap": {
       "worker": [
@@ -454,6 +455,25 @@
         "media_workflow",
         "media_convert"
       ]
-    }
+    },
+    "outputScope": {
+      "commands": [
+        "run_operation"
+      ],
+      "audioToolCommands": [
+        "audio_tools"
+      ],
+      "operations": [
+        "convert",
+        "merge",
+        "slicer"
+      ]
+    },
+    "backgroundResult": [
+      "audio_tools",
+      "export_editor_mix",
+      "manage_plugin",
+      "run_operation"
+    ]
   }
 }

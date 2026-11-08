@@ -141,6 +141,28 @@ class ExecutionManifestTests(unittest.TestCase):
             [],
         )
 
+    def test_output_scope_operations_must_exist(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["execution"]["outputScope"] = {"operations": ["convert", "not_a_tool"]}
+        problems = architecture.check_execution_manifest(manifest)
+        self.assertTrue(any("not_a_tool" in problem for problem in problems))
+
+    def test_output_scope_and_background_commands_must_exist(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["execution"]["outputScope"] = {"commands": ["ghost_scope"]}
+        manifest["execution"]["backgroundResult"] = ["ghost_background"]
+        problems = architecture.check_execution_manifest(manifest)
+        self.assertTrue(any("ghost_scope" in problem for problem in problems))
+        self.assertTrue(any("ghost_background" in problem for problem in problems))
+
+    def test_valid_output_scope_and_background_pass(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["execution"]["outputScope"] = {
+            "commands": ["runtime_info"], "operations": ["convert"],
+        }
+        manifest["execution"]["backgroundResult"] = ["runtime_info"]
+        self.assertEqual(architecture.check_execution_manifest(manifest), [])
+
     def test_worker_and_native_must_not_overlap(self) -> None:
         problems = architecture.check_execution_manifest(
             self.manifest(["runtime_info"], ["runtime_info"])

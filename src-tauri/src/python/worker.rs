@@ -26,13 +26,14 @@ pub(crate) fn recover_audio_output_temps(app: &AppHandle) {
 }
 
 fn needs_audio_output_scope(command: &str, payload: &Value) -> bool {
-    command == "run_operation" || command == "audio_tools" && payload.get("operation").and_then(Value::as_str).is_some_and(|operation| {
-        ["convert", "merge", "slicer"].iter().any(|name| operation.trim().eq_ignore_ascii_case(name))
-    })
+    super::protocol::needs_audio_output_scope(
+        command,
+        payload.get("operation").and_then(Value::as_str),
+    )
 }
 
 fn requires_background_result(command: &str) -> bool {
-    matches!(command, "audio_tools" | "export_editor_mix" | "manage_plugin" | "run_operation")
+    super::protocol::requires_background_result(command)
 }
 
 fn operation_output_directory(payload: &Value, default: &Path) -> AppResult<PathBuf> {

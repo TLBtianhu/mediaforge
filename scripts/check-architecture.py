@@ -200,6 +200,32 @@ def check_rust_event_literals(manifest: dict) -> list[str]:
     return problems
 
 
+def audio_tool_handlers() -> set[str]:
+    """Operation names the audio-tools registry actually dispatches (static parse)."""
+    path = ROOT / "python" / "audio_tools" / "registry.py"
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except OSError:
+        return set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign):
+            targets, value = [node.target], node.value
+        elif isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        else:
+            continue
+        if not isinstance(value, ast.Dict):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "_HANDLERS" for target in targets):
+            continue
+        return {
+            key.value
+            for key in node.value.keys
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        }
+    return set()
+
+
 def check_execution_manifest(manifest: dict) -> list[str]:
     """执行清单也只有一个真源：bootstrap 选择不能靠 Rust 再写一份命令名单。"""
     commands = set()
@@ -235,6 +261,18 @@ def check_execution_manifest(manifest: dict) -> list[str]:
     for label, items in (("commands", result_commands), ("operations", result_operations)):
         if len(set(items)) != len(items):
             problems.append(f"protocol: execution.resultJobs.{label} 有重复项")
+    output_scope = execution.get("outputScope") or {}
+    for label in ("commands", "audioToolCommands"):
+        for name in list(output_scope.get(label) or []):
+            if name not in commands:
+                problems.append(f"protocol: execution.outputScope.{label} 的 {name} 不是任何命令的 command")
+    handlers = audio_tool_handlers()
+    for name in list(output_scope.get("operations") or []):
+        if name not in handlers:
+            problems.append(f"protocol: execution.outputScope.operations 的 {name} 不在 audio_tools 注册表里")
+    for name in list(execution.get("backgroundResult") or []):
+        if name not in commands:
+            problems.append(f"protocol: execution.backgroundResult 的 {name} 不是任何命令的 command")
     if result_operations:
         routing_path = ROOT / "python" / "core" / "worker_tools.py"
         routing = routing_path.read_text(encoding="utf-8") if routing_path.is_file() else ""

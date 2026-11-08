@@ -31,11 +31,26 @@ struct ManifestResultJobs {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ManifestOutputScope {
+    #[serde(default)]
+    commands: Vec<String>,
+    #[serde(default)]
+    audio_tool_commands: Vec<String>,
+    #[serde(default)]
+    operations: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ManifestExecution {
     #[serde(default)]
     bootstrap: ManifestBootstrap,
     #[serde(default)]
     result_jobs: ManifestResultJobs,
+    #[serde(default)]
+    output_scope: ManifestOutputScope,
+    #[serde(default)]
+    background_result: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +77,26 @@ pub fn is_terminal_event(kind: &str) -> bool {
 
 /// Commands that must run on the bootstrap interpreter: the worker commands the
 /// manifest declares plus native Rust entries that drive pip directly.
+/// Commands (and audio-tool operations) that must run inside a temporary
+/// output scope so a crash cannot leave half-written files in place.
+pub fn needs_audio_output_scope(command: &str, operation: Option<&str>) -> bool {
+    let scope = &manifest().execution.output_scope;
+    scope.commands.iter().any(|item| item == command)
+        || (scope.audio_tool_commands.iter().any(|item| item == command)
+            && operation.is_some_and(|op| {
+                // Python normalizes audio-tool operations with strip + lower;
+                // matching must accept the same spellings.
+                let normalized = op.trim().to_ascii_lowercase();
+                scope.operations.iter().any(|name| name == &normalized)
+            }))
+}
+
+/// Commands whose background agent must report a real terminal event; a zero
+/// exit code alone is not a result.
+pub fn requires_background_result(command: &str) -> bool {
+    manifest().execution.background_result.iter().any(|item| item == command)
+}
+
 /// Result-bearing job commands: worker commands plus media operation aliases.
 pub fn is_result_job_command(command: &str) -> bool {
     let jobs = &manifest().execution.result_jobs;
@@ -150,6 +185,21 @@ mod tests {
         assert!(is_bootstrap_command("update_runtime_core"));
         assert!(!is_bootstrap_command("infer"));
         assert!(!bootstrap.native.iter().any(|name| bootstrap.worker.contains(name)));
+    }
+
+    #[test]
+    fn output_scope_and_background_results_match_the_declared_sets() {
+        for operation in ["convert", "merge", "slicer", " CONVERT "] {
+            assert!(needs_audio_output_scope("audio_tools", Some(operation)));
+        }
+        assert!(!needs_audio_output_scope("audio_tools", Some("scan")));
+        assert!(!needs_audio_output_scope("audio_tools", None));
+        assert!(needs_audio_output_scope("run_operation", None));
+        assert!(!needs_audio_output_scope("infer", Some("convert")));
+        for command in ["audio_tools", "export_editor_mix", "manage_plugin", "run_operation"] {
+            assert!(requires_background_result(command));
+        }
+        assert!(!requires_background_result("list_operations"));
     }
 
     #[test]
