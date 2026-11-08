@@ -162,16 +162,36 @@ function scheduleDraw() {
   })
 }
 
+// Theme tokens are CSS variables: a theme/accent switch changes the stylesheet,
+// not any prop, so props alone would keep the old colour until something else
+// re-rendered. Observe the root element's style/theme attributes to repaint.
+let themeObserver: MutationObserver | null = null
+
+function observeTheme() {
+  if (typeof MutationObserver === "undefined") return
+  themeObserver?.disconnect()
+  themeObserver = new MutationObserver(scheduleDraw)
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["style", "class", "data-theme"],
+  })
+}
+
 watch(
   () => [props.peaks, props.channelPeaks, props.channels, props.assetDuration, props.offset, props.duration, props.width, props.height, props.fadeIn, props.fadeOut, props.color, tileCount.value],
   scheduleDraw,
   { deep: false },
 )
 
-onMounted(scheduleDraw)
+onMounted(() => {
+  scheduleDraw()
+  observeTheme()
+})
 
 onBeforeUnmount(() => {
   if (frame !== null) cancelAnimationFrame(frame)
+  themeObserver?.disconnect()
+  themeObserver = null
 })
 </script>
 
