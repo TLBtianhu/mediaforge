@@ -175,6 +175,17 @@ def rust_files(directory: Path) -> list[Path]:
     return sorted(path for path in directory.rglob("*.rs") if "target" not in path.parts)
 
 
+def check_worker_event_projection(manifest: dict) -> list[str]:
+    """The frontend event union is generated; a stale file means drift."""
+    from sync_worker_events import OUTPUT, render_events
+
+    expected = render_events(list((manifest.get("events") or {}).get("canonical") or []))
+    actual = OUTPUT.read_text(encoding="utf-8") if OUTPUT.is_file() else ""
+    if actual != expected:
+        return [f"{OUTPUT.relative_to(ROOT)} 与 protocol.json 不同步，运行 scripts/sync_worker_events.py"]
+    return []
+
+
 def check_rust_event_literals(manifest: dict) -> list[str]:
     """Rust 的运行时事件词表必须来自协议，不能自成一套。"""
     events = manifest.get("events") or {}
@@ -426,6 +437,7 @@ def main() -> int:
         "事件覆盖": check_event_coverage(manifest),
         "事件命名": check_event_names(),
         "Rust 事件名": check_rust_event_literals(manifest),
+        "前端事件投影": check_worker_event_projection(manifest),
         "执行清单": check_execution_manifest(manifest),
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),

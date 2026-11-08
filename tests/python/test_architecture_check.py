@@ -201,5 +201,17 @@ class ExecutionManifestTests(unittest.TestCase):
         self.assertTrue(any("重叠" in problem for problem in problems))
 
 
+class WorkerEventProjectionTests(unittest.TestCase):
+    def test_generated_file_matches_the_manifest(self) -> None:
+        self.assertEqual(architecture.check_worker_event_projection(architecture.load_manifest()), [])
+
+    def test_drift_is_reported(self) -> None:
+        manifest = architecture.load_manifest()
+        manifest["events"]["canonical"] = [*manifest["events"]["canonical"], "task.ghost"]
+        problems = architecture.check_worker_event_projection(manifest)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("sync_worker_events", problems[0])
+
+
 if __name__ == "__main__":
     unittest.main()
