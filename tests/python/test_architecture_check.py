@@ -163,6 +163,20 @@ class ExecutionManifestTests(unittest.TestCase):
         manifest["execution"]["backgroundResult"] = ["runtime_info"]
         self.assertEqual(architecture.check_execution_manifest(manifest), [])
 
+    def test_bootstrap_query_and_update_sets_must_be_known(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["execution"]["bootstrap"]["withoutRuntime"] = ["ghost_query"]
+        manifest["execution"]["bootstrap"]["updatesRuntime"] = ["update_runtime_core", "ghost_update"]
+        problems = architecture.check_execution_manifest(manifest)
+        self.assertTrue(any("ghost_query" in problem for problem in problems))
+        self.assertTrue(any("ghost_update" in problem for problem in problems))
+
+    def test_valid_bootstrap_query_and_update_sets_pass(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["execution"]["bootstrap"]["withoutRuntime"] = ["runtime_info"]
+        manifest["execution"]["bootstrap"]["updatesRuntime"] = ["update_runtime_core"]
+        self.assertEqual(architecture.check_execution_manifest(manifest), [])
+
     def test_worker_and_native_must_not_overlap(self) -> None:
         problems = architecture.check_execution_manifest(
             self.manifest(["runtime_info"], ["runtime_info"])

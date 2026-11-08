@@ -144,14 +144,7 @@ fn requires_bootstrap_python(command: &str) -> bool {
 }
 
 fn allows_bootstrap_without_runtime(command: &str) -> bool {
-    matches!(
-        command,
-        "media_library"
-            | "list_models"
-            | "env_info"
-            | "model_hub"
-            | "model_download"
-    )
+    super::protocol::bootstrap_allowed_without_runtime(command)
 }
 
 fn select_worker_python(
@@ -178,7 +171,7 @@ fn acquire_runtime_access<'a>(
     access: &'a Mutex<RuntimeAccess>,
     command: &str,
 ) -> AppResult<Option<RuntimeAccessGuard<'a>>> {
-    let updating = matches!(command, "update_runtime_core" | "manage_plugin" | "activate_runtime" | "delete_runtime" | "install_runtime");
+    let updating = super::protocol::command_updates_runtime(command);
     if !updating && requires_bootstrap_python(command) {
         return Ok(None);
     }

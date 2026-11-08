@@ -14,11 +14,16 @@ struct ManifestEvents {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ManifestBootstrap {
     #[serde(default)]
     worker: Vec<String>,
     #[serde(default)]
     native: Vec<String>,
+    #[serde(default)]
+    without_runtime: Vec<String>,
+    #[serde(default)]
+    updates_runtime: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -73,6 +78,16 @@ pub fn is_canonical_event(kind: &str) -> bool {
 
 pub fn is_terminal_event(kind: &str) -> bool {
     manifest().events.terminal.iter().any(|name| name == kind)
+}
+
+/// Queries and downloads that may run before any runtime is activated.
+pub fn bootstrap_allowed_without_runtime(command: &str) -> bool {
+    manifest().execution.bootstrap.without_runtime.iter().any(|name| name == command)
+}
+
+/// Commands that replace the runtime and must exclude bootstrap users meanwhile.
+pub fn command_updates_runtime(command: &str) -> bool {
+    manifest().execution.bootstrap.updates_runtime.iter().any(|name| name == command)
 }
 
 /// Commands that must run on the bootstrap interpreter: the worker commands the
@@ -185,6 +200,18 @@ mod tests {
         assert!(is_bootstrap_command("update_runtime_core"));
         assert!(!is_bootstrap_command("infer"));
         assert!(!bootstrap.native.iter().any(|name| bootstrap.worker.contains(name)));
+    }
+
+    #[test]
+    fn bootstrap_query_and_update_sets_match_the_declared_sets() {
+        for command in ["media_library", "list_models", "env_info", "model_hub", "model_download"] {
+            assert!(bootstrap_allowed_without_runtime(command));
+        }
+        assert!(!bootstrap_allowed_without_runtime("infer"));
+        for command in ["update_runtime_core", "manage_plugin", "activate_runtime", "delete_runtime", "install_runtime"] {
+            assert!(command_updates_runtime(command));
+        }
+        assert!(!command_updates_runtime("infer"));
     }
 
     #[test]

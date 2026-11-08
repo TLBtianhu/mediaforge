@@ -424,7 +424,8 @@
       "执行侧清单：哪些命令需要 bootstrap 解释器、哪些是 Rust 原生入口。",
       "worker 项必须能在 domains 的 command 里找到；native 项不在 worker 协议里。",
       "resultJobs 是“结果任务”的分类：commands 为 worker 命令，operations 为经 media 路由的操作名。",
-      "outputScope 声明需要输出临时作用域的命令/操作；backgroundResult 声明必须有后台结果代理的命令。"
+      "outputScope 声明需要输出临时作用域的命令/操作；backgroundResult 声明必须有后台结果代理的命令。",
+      "bootstrap.withoutRuntime 是没有激活运行时也允许跑的查询/下载命令；updatesRuntime 是会替换运行时并把 bootstrap 使用者排除在外的命令。"
     ],
     "bootstrap": {
       "worker": [
@@ -438,6 +439,20 @@
       ],
       "native": [
         "update_runtime_core"
+      ],
+      "withoutRuntime": [
+        "media_library",
+        "list_models",
+        "env_info",
+        "model_hub",
+        "model_download"
+      ],
+      "updatesRuntime": [
+        "update_runtime_core",
+        "manage_plugin",
+        "activate_runtime",
+        "delete_runtime",
+        "install_runtime"
       ]
     },
     "resultJobs": {

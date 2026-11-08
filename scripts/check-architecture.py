@@ -250,6 +250,16 @@ def check_execution_manifest(manifest: dict) -> list[str]:
         problems.append(f"protocol: execution.bootstrap 的 worker/native 重叠：{sorted(overlap)}")
     if not worker:
         problems.append("protocol: execution.bootstrap.worker 为空，bootstrap 选择会退回猜测")
+    known_bootstrap = commands | set(native)
+    for label in ("withoutRuntime", "updatesRuntime"):
+        names = list(bootstrap.get(label) or [])
+        if len(set(names)) != len(names):
+            problems.append(f"protocol: execution.bootstrap.{label} 有重复项")
+        for name in names:
+            if name not in known_bootstrap:
+                problems.append(
+                    f"protocol: execution.bootstrap.{label} 的 {name} 既不是命令也不是 native 项"
+                )
     result_jobs = execution.get("resultJobs") or {}
     result_commands = list(result_jobs.get("commands") or [])
     result_operations = list(result_jobs.get("operations") or [])
