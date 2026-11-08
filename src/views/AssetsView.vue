@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -343,7 +343,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.assets-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: auto; color: var(--text-color-3); font-size: 11px; }
+.assets-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: auto; color: var(--on-surface-muted); font-size: 11px; }
 .asset-kind { position: absolute; top: 8px; left: 8px; }
 .assets-db { overflow: hidden; max-width: 52%; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) { .assets-db { max-width: 100%; } }

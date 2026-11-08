@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -206,7 +206,7 @@ function openPluginView(plugin: { name: string }, view: { id: string; placements
 .plugins-toolbar { flex-wrap: wrap; margin-bottom: 12px; }
 .plugins-search { flex: 1; min-width: 200px; }
 .plugins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 16px; }
-.plugin-card { border: 1px solid var(--border-color, rgba(128,128,128,.2)); background: var(--bg-elevated, rgba(128,128,128,.04)); border-radius: 12px; padding: 20px; min-width: 0; }
+.plugin-card { border: 1px solid var(--outline, rgba(128,128,128,.2)); background: var(--surface-2); border-radius: 12px; padding: 20px; min-width: 0; }
 .plugins-grid .plugin-card { display: flex; flex-direction: column; }
 .plugin-card-title { justify-content: flex-start; flex-wrap: wrap; }
 .plugin-card h2 { font-size: 17px; margin: 0; }

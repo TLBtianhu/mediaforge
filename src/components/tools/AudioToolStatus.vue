@@ -401,7 +401,7 @@ function showLogProgress(entry: AudioToolLogEntry) {
 }
 
 .status-overview--busy .status-state i {
-  background: var(--primary-strong);
+  background: var(--primary);
 }
 
 .status-overview--success .status-state i {

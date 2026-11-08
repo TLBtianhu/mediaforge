@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onMounted, ref } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
@@ -300,7 +300,7 @@ const workbenchSteps = computed(() => [
 <style scoped>
 .video-page { display: flex; flex-direction: column; gap: 12px; }
 .video-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.video-count { color: var(--text-color-3); font-size: 12px; }
+.video-count { color: var(--on-surface-muted); font-size: 12px; }
 .video-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .video-label { display: block; margin-bottom: 6px; color: var(--on-surface-muted); font-size: 12px; font-weight: 600; }
 .video-path { display: flex; gap: 8px; align-items: center; }

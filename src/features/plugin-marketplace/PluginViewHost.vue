@@ -14,6 +14,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { pluginViewUrl } from './viewUrl'
+import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 type PluginViewContribution = {
   id: string
@@ -97,7 +98,7 @@ const THEME_TOKENS = [
   '--surface', '--surface-1', '--surface-2', '--surface-3',
   '--on-surface', '--on-surface-heading', '--on-surface-muted',
   '--outline', '--outline-strong',
-  '--primary', '--primary-strong', '--primary-soft',
+  '--primary', '--primary-ink', '--primary-soft',
   '--danger', '--success', '--warning', '--radius', '--radius-small',
 ]
 
@@ -163,13 +164,13 @@ onMounted(async () => {
         const requestId = workerEvent.requestId || workerEvent.taskId || ''
         const handlers = runRequests.get(requestId)
         if (!handlers) return
-        if (workerEvent.type === 'operation_result') {
+        if (isTaskResult(workerEvent.type)) {
           runRequests.delete(requestId)
           handlers.resolve(workerEvent.payload)
         } else if (workerEvent.type === 'error' || workerEvent.type === 'task.cancelled') {
           runRequests.delete(requestId)
           handlers.reject(new Error(String(workerEvent.payload?.message || workerEvent.type)))
-        } else if (workerEvent.type === 'operation_progress') {
+        } else if (isTaskProgress(workerEvent.type)) {
           postToFrame({ jsonrpc: '2.0', method: 'task.progress', params: { ...(workerEvent.payload || {}), requestId, id: handlers.rpcId } })
         }
       },

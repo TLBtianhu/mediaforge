@@ -1018,7 +1018,7 @@ async function toggleEditor(slotId: string) {
 .plugin-manager__chain { background: var(--surface-1); }
 .plugin-manager__chain--parameters { overflow-y: auto; }
 .plugin-manager__chain--parameters > .plugin-manager__slots { min-height: 96px; }
-.plugin-manager__feedback { flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--primary-softer); color: var(--primary-strong); font-size: 12px; line-height: 1.6; }
+.plugin-manager__feedback { flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--primary-softer); color: var(--primary-ink); font-size: 12px; line-height: 1.6; }
 .plugin-manager__section-heading, .plugin-manager__slot-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .plugin-manager__section-heading { justify-content: space-between; min-height: 28px; flex-shrink: 0; }
 .plugin-manager__section-heading > div { display: flex; align-items: center; gap: 8px; }

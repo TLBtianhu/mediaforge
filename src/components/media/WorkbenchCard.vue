@@ -57,7 +57,7 @@ withDefaults(defineProps<{
   width: 28px;
   height: 28px;
   border-radius: 9px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 40%, transparent);
   font-size: 11px;

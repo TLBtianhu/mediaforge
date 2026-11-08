@@ -183,7 +183,7 @@
   transition: background 150ms ease, box-shadow 150ms ease, transform 120ms ease;
 }
 
-.picker-btn .n-icon { font-size: 15px; color: var(--primary-strong); }
+.picker-btn .n-icon { font-size: 15px; color: var(--primary-ink); }
 .picker-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--primary-soft) 26%, var(--surface-2));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 52%, transparent);
@@ -242,7 +242,7 @@
   background: color-mix(in srgb, var(--primary-soft) 12%, var(--surface));
 }
 .dropzone--clickable:hover .dropzone__glyph {
-  color: var(--primary);
+  color: var(--primary-ink);
   background: color-mix(in srgb, var(--primary-soft) 46%, var(--surface-2));
 }
 
@@ -296,7 +296,7 @@
   place-items: center;
   border-radius: 8px;
   font-size: 14px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
 }
 
@@ -337,7 +337,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
-  color: color-mix(in srgb, var(--primary-strong) 76%, var(--on-surface-muted));
+  color: color-mix(in srgb, var(--primary-ink) 76%, var(--on-surface-muted));
   background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2));
 }
 
@@ -361,7 +361,7 @@
   place-items: center;
   border-radius: 13px;
   font-size: 21px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface-2));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 30%, transparent);
   margin-bottom: 2px;
@@ -400,14 +400,14 @@
 .stem-selection-actions button {
   padding: 0;
   border: 0;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: transparent;
   font: inherit;
   cursor: pointer;
 }
 
 .stem-selection-actions button:hover:not(:disabled) {
-  color: var(--primary);
+  color: var(--primary-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -479,7 +479,7 @@
 
 .naming-summary small {
   flex: 0 0 auto;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   font-size: 11px;
 }
 
@@ -731,7 +731,7 @@
   place-items: center;
   border-radius: 12px;
   font-size: 19px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface-2));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 34%, transparent);
 }
@@ -793,7 +793,7 @@
 
 .view-toggle__button--active {
   background: var(--surface-1);
-  color: var(--primary);
+  color: var(--primary-ink);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
@@ -915,7 +915,7 @@
 }
 .ensemble-modal { width: min(720px, 92vw); }
 .ensemble-modal__intro { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; color: var(--on-surface-muted); font-size: 12px; }
-.ensemble-modal__intro strong { color: var(--primary-strong); white-space: nowrap; }
+.ensemble-modal__intro strong { color: var(--primary-ink); white-space: nowrap; }
 .ensemble-modal__weights { display: grid; gap: 12px; max-height: 220px; overflow-y: auto; padding-right: 5px; }
 .ensemble-modal__weight { display: grid; grid-template-columns: minmax(130px, 0.9fr) minmax(120px, 0.8fr) minmax(120px, 1fr) 96px; align-items: center; gap: 10px; }
 .ensemble-modal__weight-input { width: 96px; }
@@ -1099,7 +1099,7 @@
   padding: 2px 9px;
   border-radius: 999px;
   font-size: 10px;
-  color: color-mix(in srgb, var(--primary-strong) 74%, var(--on-surface-muted));
+  color: color-mix(in srgb, var(--primary-ink) 74%, var(--on-surface-muted));
   background: color-mix(in srgb, var(--primary-soft) 26%, var(--surface-2));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 26%, transparent);
 }
@@ -1189,7 +1189,7 @@
   place-items: center;
   border-radius: 16px;
   font-size: 26px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 26%, transparent);
   margin-bottom: 4px;
@@ -1254,7 +1254,7 @@
 }
 
 .stage-head__queue-count--active {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
 }
 
@@ -1279,7 +1279,7 @@
 .stage-badge .n-icon { font-size: 14px; }
 
 .stage-badge--running {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 50%, transparent);
 }
@@ -1430,7 +1430,7 @@
   background: color-mix(in srgb, var(--surface-2) 40%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent);
 }
-.result-path .n-icon { flex: 0 0 auto; font-size: 16px; color: var(--primary-strong); }
+.result-path .n-icon { flex: 0 0 auto; font-size: 16px; color: var(--primary-ink); }
 .result-path code {
   flex: 1 1 auto;
   min-width: 0;
@@ -1562,7 +1562,7 @@
   padding: 2px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--primary-soft) 58%, transparent);
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   font-size: 10px;
   font-weight: 600;
 }
@@ -1800,7 +1800,7 @@
   font-family: inherit;
   font-size: 10px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--primary-strong) 82%, var(--on-surface-muted));
+  color: color-mix(in srgb, var(--primary-ink) 82%, var(--on-surface-muted));
   background: color-mix(in srgb, var(--primary-soft) 34%, transparent);
 }
 
@@ -1896,7 +1896,7 @@
 .stem-order-row--dragging { opacity: 0.55; }
 
 .stem-order-row .n-icon { color: var(--on-surface-muted); }
-.stem-order-row span { font-variant-numeric: tabular-nums; color: var(--primary-strong); }
+.stem-order-row span { font-variant-numeric: tabular-nums; color: var(--primary-ink); }
 .stem-order-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .stem-order-row__actions {
@@ -1927,7 +1927,7 @@
 }
 
 .parameter-guide-target--active { position: relative; }
-.field-block.parameter-guide-target--active > label { color: var(--primary-strong); }
+.field-block.parameter-guide-target--active > label { color: var(--primary-ink); }
 
 .field-block label {
   font-size: 12px;

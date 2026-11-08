@@ -5,7 +5,7 @@
 .audio-tools-nav section > strong { padding: 4px 8px; color: var(--on-surface-muted); font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .audio-tools-nav button { min-width: 0; min-height: 36px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--on-surface-muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .audio-tools-nav button:hover { border-color: var(--outline); color: var(--on-surface); background: var(--surface-2); }
-.audio-tools-nav button.active { border-color: color-mix(in srgb, var(--primary-border) 62%, var(--outline)); color: var(--primary-strong); background: color-mix(in srgb, var(--primary-soft) 26%, var(--surface-1)); }
+.audio-tools-nav button.active { border-color: color-mix(in srgb, var(--primary-border) 62%, var(--outline)); color: var(--primary-ink); background: color-mix(in srgb, var(--primary-soft) 26%, var(--surface-1)); }
 .audio-tools-nav button .n-icon { flex: 0 0 auto; font-size: 16px; }
 .audio-tools-nav button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audio-tools-content { min-width: 0; }
@@ -21,7 +21,7 @@
 .audio-tool-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
 .audio-tool-header h2 { margin: 0; font-size: 18px; }
 .audio-tool-header p { margin: 4px 0 0; color: var(--on-surface-muted); font-size: 13px; }
-.audio-tool-icon { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--primary-border) 55%, var(--outline)); border-radius: 11px; background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2)); color: var(--primary-strong); font-size: 18px; }
+.audio-tool-icon { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--primary-border) 55%, var(--outline)); border-radius: 11px; background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2)); color: var(--primary-ink); font-size: 18px; }
 .audio-tool-dependency { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -4px 0 20px; padding: 12px 13px; border: 1px solid var(--outline); border-radius: 11px; background: var(--surface-2); }
 .audio-tool-dependency > div { min-width: 0; display: grid; gap: 3px; }
 .audio-tool-dependency strong { color: var(--on-surface); font-size: 12px; }
@@ -30,9 +30,9 @@
 .audio-tool-dependency--error { border-color: color-mix(in srgb, var(--danger) 38%, var(--outline)); }
 .audio-tool-dependency--error span { color: color-mix(in srgb, var(--danger) 80%, var(--on-surface)); }
 .audio-tool-dependency-actions, .audio-tool-runtime-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-.audio-tool-dependency-button.n-button { background: color-mix(in srgb, var(--primary-soft) 20%, var(--surface-1)) !important; color: color-mix(in srgb, var(--primary-strong) 68%, var(--on-surface)) !important; }
+.audio-tool-dependency-button.n-button { background: color-mix(in srgb, var(--primary-soft) 20%, var(--surface-1)) !important; color: color-mix(in srgb, var(--primary-ink) 68%, var(--on-surface)) !important; }
 .audio-tool-dependency-button.n-button::before { border-color: color-mix(in srgb, var(--primary-border) 48%, var(--outline)) !important; }
-.audio-tool-dependency-button.n-button:not(.n-button--disabled):hover { background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-1)) !important; color: var(--primary-strong) !important; }
+.audio-tool-dependency-button.n-button:not(.n-button--disabled):hover { background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-1)) !important; color: var(--primary-ink) !important; }
 .audio-tool-runtime-ready { min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -10px 0 18px; padding-bottom: 9px; border-bottom: 1px solid color-mix(in srgb, var(--outline) 70%, transparent); }
 .audio-tool-runtime-ready > span { min-width: 0; display: inline-flex; align-items: center; gap: 7px; color: var(--on-surface-muted); font-size: 10px; }
 .audio-tool-runtime-ready i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--success); }
@@ -45,14 +45,14 @@
 .audio-tool-install-log__list article:last-child { border-bottom: 0; }
 .audio-tool-install-log__list time { color: var(--on-surface-muted); font: 10px/1.5 var(--font-mono); font-variant-numeric: tabular-nums; }
 .audio-tool-install-log__list article > span { min-width: 0; color: var(--on-surface-muted); font: 10px/1.5 var(--font-mono); overflow-wrap: anywhere; }
-.audio-tool-install-log__entry--stage > span { color: color-mix(in srgb, var(--primary-strong) 72%, var(--on-surface)); font-weight: 600; }
+.audio-tool-install-log__entry--stage > span { color: color-mix(in srgb, var(--primary-ink) 72%, var(--on-surface)); font-weight: 600; }
 .audio-tool-install-log__entry--success > span { color: var(--success); font-weight: 600; }
 .audio-tool-install-log__entry--error > span { color: var(--danger); }
 .audio-tool-field { min-width: 0; margin-bottom: 18px; }
 .audio-tool-field > label, .audio-tool-field-heading > label { display: block; margin-bottom: 7px; color: color-mix(in srgb, var(--on-surface) 88%, var(--on-surface-muted)); font-size: 12px; font-weight: 600; }
 .audio-tool-field-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .audio-tool-field-heading > span, .audio-tool-hint { color: var(--on-surface-muted); font-size: 11px; }
-.audio-tool-field-heading a { display: inline-flex; align-items: center; gap: 5px; color: var(--primary-strong); font-size: 11px; font-weight: 600; text-decoration: none; }
+.audio-tool-field-heading a { display: inline-flex; align-items: center; gap: 5px; color: var(--primary-ink); font-size: 11px; font-weight: 600; text-decoration: none; }
 .audio-tool-field-heading a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .audio-tool-hint { display: block; margin: 6px 0 0; line-height: 1.55; }
 .audio-tool-path { display: flex; gap: 8px; }
@@ -63,7 +63,7 @@
 .audio-tool-grid--four { grid-template-columns: repeat(4, minmax(110px, 1fr)); }
 .audio-tool-picker-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .audio-tool-picker { min-height: 70px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px dashed color-mix(in srgb, var(--outline) 82%, var(--primary-border)); border-radius: 12px; background: color-mix(in srgb, var(--surface-2) 38%, var(--surface-1)); color: var(--on-surface-muted); cursor: pointer; }
-.audio-tool-picker:hover:not(:disabled) { border-color: var(--primary-border); color: var(--primary-strong); background: color-mix(in srgb, var(--primary-soft) 20%, var(--surface-1)); }
+.audio-tool-picker:hover:not(:disabled) { border-color: var(--primary-border); color: var(--primary-ink); background: color-mix(in srgb, var(--primary-soft) 20%, var(--surface-1)); }
 .audio-tool-picker:disabled { opacity: .5; cursor: default; }
 .audio-tool-files { max-height: 148px; overflow: auto; margin-top: 8px; border: 1px solid color-mix(in srgb, var(--outline) 74%, transparent); border-radius: 10px; }
 .audio-tool-files > div { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid color-mix(in srgb, var(--outline) 52%, transparent); font-size: 12px; }
@@ -73,10 +73,10 @@
 .audio-tool-files button:hover:not(:disabled) { color: var(--danger); }
 .audio-tool-model-picker { width: 100%; min-height: 68px; display: flex; align-items: center; gap: 11px; padding: 10px 12px; border: 1px dashed color-mix(in srgb, var(--outline) 82%, var(--primary-border)); border-radius: 12px; background: color-mix(in srgb, var(--surface-2) 38%, var(--surface-1)); color: var(--on-surface); text-align: left; cursor: pointer; }
 .audio-tool-model-picker.selected { border-style: solid; }
-.audio-tool-model-picker > .n-icon { flex: 0 0 auto; color: var(--primary-strong); }
+.audio-tool-model-picker > .n-icon { flex: 0 0 auto; color: var(--primary-ink); }
 .audio-tool-model-picker > span { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .audio-tool-model-picker strong, .audio-tool-model-picker small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.audio-tool-model-picker strong { font-size: 12px; }.audio-tool-model-picker small { color: var(--on-surface-muted); font-size: 10px; }.audio-tool-model-picker em { flex: 0 0 auto; color: var(--primary-strong); font-size: 11px; font-style: normal; font-weight: 600; }
+.audio-tool-model-picker strong { font-size: 12px; }.audio-tool-model-picker small { color: var(--on-surface-muted); font-size: 10px; }.audio-tool-model-picker em { flex: 0 0 auto; color: var(--primary-ink); font-size: 11px; font-style: normal; font-weight: 600; }
 .audio-tool-model-meta { min-height: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
 .audio-tool-model-meta small { color: var(--on-surface-muted); font-size: 10px; line-height: 1.5; }
 .audio-tool-model-section { margin-bottom: 18px; }
@@ -100,7 +100,7 @@
 .audio-tool-profile-meta, .audio-tool-profile-capabilities { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .audio-tool-profile-meta span { color: var(--on-surface-muted); font-size: 10px; }
 .audio-tool-profile-meta span + span::before { margin-right: 6px; color: var(--outline-strong); content: '·'; }
-.audio-tool-profile-capabilities span { padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--primary-border) 52%, var(--outline)); border-radius: 999px; background: color-mix(in srgb, var(--primary-soft) 18%, var(--surface-1)); color: var(--primary-strong); font-size: 9px; line-height: 1.2; }
+.audio-tool-profile-capabilities span { padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--primary-border) 52%, var(--outline)); border-radius: 999px; background: color-mix(in srgb, var(--primary-soft) 18%, var(--surface-1)); color: var(--primary-ink); font-size: 9px; line-height: 1.2; }
 .audio-tool-profile-summary > .audio-tool-profile-warning { color: var(--warning); }
 .audio-tool-local-models { margin-top: 12px; }
 .audio-tool-local-models > .audio-tool-field { margin-bottom: 4px; }

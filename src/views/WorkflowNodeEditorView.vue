@@ -749,7 +749,7 @@ onBeforeUnmount(() => {
 }
 
 .workflow-name-trigger:hover {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
 }
 
 .workflow-name-trigger,

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
@@ -222,6 +222,6 @@ const workbenchSteps = computed(() => [{ title: t('factory.input'), text: t('fac
 
 <style scoped>
 .factory-path { display: flex; gap: 8px; align-items: center; }
-.factory-outputs { border-top: 1px solid var(--divider-color); padding-top: 12px; }
+.factory-outputs { border-top: 1px solid var(--outline); padding-top: 12px; }
 .factory-outputs-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 </style>

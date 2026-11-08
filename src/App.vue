@@ -428,7 +428,7 @@ const themeOverrides = computed(() => {
 }
 
 .update-install-panel__log-line time {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   font-variant-numeric: tabular-nums;
 }
 

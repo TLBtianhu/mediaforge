@@ -81,7 +81,7 @@ const { t } = useI18n()
 .task-input-files__list { display: grid; gap: var(--space-xs); }
 .task-input-file { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; padding: var(--space-sm); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--surface-2) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 76%, transparent); }
 .task-input-file--dragging { opacity: .55; }
-.task-input-file__handle, .task-input-file__glyph { flex: 0 0 auto; color: var(--primary-strong); }
+.task-input-file__handle, .task-input-file__glyph { flex: 0 0 auto; color: var(--primary-ink); }
 .task-input-file__main { display: grid; flex: 1; gap: 3px; min-width: 0; }
 .task-input-file__main strong, .task-input-file__main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-input-file__main strong { font-size: 12px; font-weight: 600; }

@@ -48,7 +48,7 @@
   height: 46px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--primary) 12%, transparent);
-  color: var(--primary);
+  color: var(--primary-ink);
   font-size: 22px;
 }
 
@@ -209,7 +209,7 @@
   border: 0;
   padding: 4px 0;
   background: transparent;
-  color: var(--primary);
+  color: var(--primary-ink);
   cursor: pointer;
   font-size: 12px;
 }
@@ -931,7 +931,7 @@
 
 .debug-log-insight--error strong { color: var(--danger); }
 .debug-log-insight--warn strong { color: var(--warning); }
-.debug-log-insight--traceback strong { color: var(--primary); }
+.debug-log-insight--traceback strong { color: var(--primary-ink); }
 
 .debug-log-filters {
   display: grid;
@@ -1174,7 +1174,7 @@
   place-items: center;
   width: 16px;
   height: 16px;
-  color: var(--primary);
+  color: var(--primary-ink);
   font-size: 20px;
   line-height: 1;
   transform: translateY(-1px);
@@ -1189,7 +1189,7 @@
 
 .runtime-tree__head em {
   margin-left: auto;
-  color: var(--primary);
+  color: var(--primary-ink);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -1397,7 +1397,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--primary) 12%, transparent);
-  color: var(--primary);
+  color: var(--primary-ink);
   font-size: 12px;
   text-align: center;
 }

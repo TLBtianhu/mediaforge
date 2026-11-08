@@ -183,7 +183,7 @@ onBeforeUnmount(() => {
 }
 
 .viewport-recovery__eyebrow {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -241,7 +241,7 @@ onBeforeUnmount(() => {
 
 .viewport-recovery__corner {
   position: absolute;
-  color: color-mix(in srgb, var(--primary-strong) 72%, var(--on-surface-muted));
+  color: color-mix(in srgb, var(--primary-ink) 72%, var(--on-surface-muted));
   font-size: clamp(22px, 4vw, 38px);
   opacity: 0.72;
   pointer-events: none;

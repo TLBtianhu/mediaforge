@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { dropSkippedSteps, precheckPlan, summarizePrecheck } from '../utils/mediaPrecheck.ts'
 import { DIRECTORY_ZONES, findDropZone, folderToReference, toCssPoint, type PathKind } from '../utils/dropZones.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -367,13 +367,13 @@ const workbenchSteps = computed(() => [
 <style scoped>
 .image-page { display: flex; flex-direction: column; gap: 12px; }
 .image-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.image-count { color: var(--text-color-3); font-size: 12px; }
+.image-count { color: var(--on-surface-muted); font-size: 12px; }
 .image-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-label { display: block; margin-bottom: 6px; color: var(--on-surface-muted); font-size: 12px; font-weight: 600; }
 .image-hint { margin: 4px 0 0; color: var(--on-surface-muted); font-size: 11px; }
 .image-path { display: flex; gap: 8px; align-items: center; }
 .image-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.image-outputs { border-top: 1px solid var(--divider-color); padding-top: 10px; }
+.image-outputs { border-top: 1px solid var(--outline); padding-top: 10px; }
 .image-outputs-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .image-compare { position: relative; overflow: hidden; border-radius: 8px; background: #111; }
 .compare-base, .compare-top { display: block; width: 100%; height: auto; }

@@ -1,4 +1,4 @@
-<!--
+﻿<!--
   单个槽位的控件。控件种类只由 `field.kind` 决定：
   bool → 开关 / enum → 下拉 / multi → 多选 / 其余 → 滑块。
 
@@ -101,7 +101,7 @@ const multipleValue = computed(() => (Array.isArray(props.value) ? (props.value 
 }
 
 .slot-field__hint {
-  color: var(--text-secondary, #888);
+  color: var(--on-surface-muted, #888);
   font-size: 12px;
   white-space: nowrap;
 }

@@ -182,7 +182,7 @@ onBeforeUnmount(() => observer?.disconnect())
 .workflow-preview__node--output rect { fill: color-mix(in srgb, var(--primary-soft) 28%, var(--surface-1)); }
 .workflow-preview__node circle { fill: var(--surface-1); stroke: var(--primary); stroke-width: 1.8; }
 .workflow-preview__node-copy { display: grid; gap: 5px; color: var(--on-surface); line-height: 1.25; }
-.workflow-preview__node-kind { font-size: 10px; font-weight: 650; color: var(--primary-strong); }
+.workflow-preview__node-kind { font-size: 10px; font-weight: 650; color: var(--primary-ink); }
 .workflow-preview__node-copy strong { font-size: 13px; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .workflow-preview__node-detail { font-size: 10px; color: var(--on-surface-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workflow-preview__hint { position: absolute; left: 14px; bottom: 12px; font-size: 10px; color: var(--on-surface-muted); pointer-events: none; }

@@ -129,7 +129,7 @@ watch(() => [props.nodeId, props.action], () => {
 .binding-selection-summary { display: flex; align-items: center; justify-content: space-between; min-height: 22px; color: var(--on-surface-muted); }
 .binding-files { display: grid; gap: 6px; padding-right: 6px; }
 .binding-file { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--surface-2) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 76%, transparent); }
-.binding-file__glyph { flex: 0 0 auto; color: var(--primary-strong); }
+.binding-file__glyph { flex: 0 0 auto; color: var(--primary-ink); }
 .binding-file__main { display: grid; gap: 3px; min-width: 0; flex: 1; }
 .binding-file__main strong, .binding-file__main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .binding-file__main strong { font-size: 12px; font-weight: 600; }

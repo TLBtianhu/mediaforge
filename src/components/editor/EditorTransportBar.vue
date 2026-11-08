@@ -642,7 +642,7 @@ function clearTransportPressed() {
 }
 
 .transport-chip--active {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
 }
 

@@ -166,7 +166,7 @@ function select(type: WorkflowCreateType) {
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--outline));
   border-radius: 12px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface-1));
   font-size: 21px;
 }
@@ -194,7 +194,7 @@ function select(type: WorkflowCreateType) {
   flex: 0 0 auto;
   padding: 3px 7px;
   border-radius: 999px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: color-mix(in srgb, var(--primary-soft) 40%, transparent);
   font-size: 11px;
   font-style: normal;
@@ -208,7 +208,7 @@ function select(type: WorkflowCreateType) {
 }
 
 .workflow-create-option__action {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   font-size: 13px;
   font-weight: 650;
 }
