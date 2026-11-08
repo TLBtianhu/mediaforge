@@ -367,12 +367,28 @@ fn runtime_python_command_path(python: &Path) -> Option<PathBuf> {
     )
 }
 
-fn resolve_active_runtime_record(file: &PathBuf) -> Option<ActiveRuntimeSelection> {
-    if !file.is_file() {
-        return None;
-    }
-    let content = std::fs::read_to_string(file).ok()?;
-    let record: ActiveRuntimeRecord = serde_json::from_str(&content).ok()?;
+/// Resolve `active-runtime.json`.
+///
+/// A missing file is a legitimate "no runtime activated". A file that exists but
+/// cannot be read, parsed, or resolved is an error: silently falling back to
+/// another interpreter would run work on a runtime the user did not activate.
+fn resolve_active_runtime_record(file: &Path) -> AppResult<Option<ActiveRuntimeSelection>> {
+    let content = match std::fs::read_to_string(file) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(AppError::Worker(format!(
+                "active runtime pointer {} cannot be read: {error}",
+                file.display()
+            )))
+        }
+    };
+    let record: ActiveRuntimeRecord = serde_json::from_str(&content).map_err(|error| {
+        AppError::Worker(format!(
+            "active runtime pointer {} is not a valid runtime record: {error}",
+            file.display()
+        ))
+    })?;
     let python = PathBuf::from(&record.python_path);
     // Resolve the directory, but retain the interpreter filename. On Unix a venv
     // python is usually a symlink to the base interpreter; canonicalizing that
@@ -380,14 +396,46 @@ fn resolve_active_runtime_record(file: &PathBuf) -> Option<ActiveRuntimeSelectio
     let resolved = if python.is_absolute() {
         python
     } else {
-        file.parent()?.join(python)
+        file.parent()
+            .ok_or_else(|| AppError::Worker(format!(
+                "active runtime pointer {} has no parent directory",
+                file.display()
+            )))?
+            .join(python)
     };
-    let executable = resolved.parent()?.canonicalize().ok()?.join(resolved.file_name()?);
-    executable.is_file().then(|| ActiveRuntimeSelection {
+    let filename = resolved.file_name().ok_or_else(|| {
+        AppError::Worker(format!(
+            "active runtime pointer {} has an invalid python path: {}",
+            file.display(),
+            resolved.display()
+        ))
+    })?;
+    let directory = resolved.parent().ok_or_else(|| {
+        AppError::Worker(format!(
+            "active runtime pointer {} has an invalid python path: {}",
+            file.display(),
+            resolved.display()
+        ))
+    })?;
+    let executable = directory.canonicalize().map_err(|error| {
+        AppError::Worker(format!(
+            "active runtime pointer {} has an unresolvable python directory {}: {error}",
+            file.display(),
+            directory.display()
+        ))
+    })?.join(filename);
+    if !executable.is_file() {
+        return Err(AppError::Worker(format!(
+            "active runtime pointer {} points to a missing interpreter: {}",
+            file.display(),
+            executable.display()
+        )));
+    }
+    Ok(Some(ActiveRuntimeSelection {
         python: executable.to_string_lossy().to_string(),
         source: record.source,
         asset_id: record.asset_id.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
-    })
+    }))
 }
 
 fn bundled_runtime_envs_dir(app: &AppHandle) -> AppResult<Option<PathBuf>> {
@@ -453,29 +501,26 @@ fn python_under_envs_dir(envs_dir: &Path, python_path: &str) -> bool {
 ///
 /// 抽成纯函数是为了能测：这里的"空壳目录"曾经让开发态连续四轮报
 /// "没有安装运行时"——单测比真机点四次便宜得多。
-fn select_active_record(candidates: &[PathBuf], development: bool) -> Option<ActiveRuntimeSelection> {
+fn select_active_record(candidates: &[PathBuf], development: bool) -> AppResult<Option<ActiveRuntimeSelection>> {
     for envs_dir in candidates {
         let file = envs_dir.join("active-runtime.json");
-        if !file.is_file() {
-            continue;
-        }
-        let Some(selection) = resolve_active_runtime_record(&file) else {
+        let Some(selection) = resolve_active_runtime_record(&file)? else {
             continue;
         };
         let managed = python_under_envs_dir(envs_dir, &selection.python);
         let debug_override = active_debug_override_path_allowed(&file, &selection.python, development);
         if (managed || debug_override) && active_path_backend_matches(&file, &selection.python) {
-            return Some(selection);
+            return Ok(Some(selection));
         }
     }
-    None
+    Ok(None)
 }
 
 fn active_runtime_selection(app: &AppHandle) -> AppResult<Option<ActiveRuntimeSelection>> {
-    Ok(select_active_record(
+    select_active_record(
         &runtime_envs_candidates(app),
         storage::is_development_executable(),
-    ))
+    )
 }
 
 fn runtime_asset_for_worker(active: Option<&ActiveRuntimeSelection>, desired: Option<String>) -> Option<String> {
@@ -521,7 +566,7 @@ mod runtime_record_tests {
         fs::write(shell.join(".runtime-management.lock"), b"").unwrap();
 
         let real = make_envs(&root.join("data"), "cuda");
-        let picked = select_active_record(&[shell, real.clone()], true);
+        let picked = select_active_record(&[shell, real.clone()], true).unwrap();
         assert!(picked.is_some(), "空壳目录应被跳过，改用后面那个有记录的");
         assert!(picked.unwrap().python.contains("python.exe"));
     }
@@ -536,7 +581,7 @@ mod runtime_record_tests {
             "backend": "cuda",
         });
         fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
-        assert_eq!(select_active_record(&[envs], false), None);
+        assert_eq!(select_active_record(&[envs], false).unwrap(), None);
     }
 
     #[test]
@@ -553,7 +598,7 @@ mod runtime_record_tests {
             "assetId": "runtime-cuda-2026.10.2",
         });
         fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
-        let selected = select_active_record(&[envs.clone()], false).unwrap();
+        let selected = select_active_record(&[envs.clone()], false).unwrap().unwrap();
         assert_eq!(selected.asset_id.as_deref(), Some("runtime-cuda-2026.10.2"));
 
         // 指针说 A、目录却是 B → 必须拒绝
@@ -563,7 +608,7 @@ mod runtime_record_tests {
             "assetId": "runtime-cuda-2026.10.1",
         });
         fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
-        assert_eq!(select_active_record(&[envs], false), None);
+        assert_eq!(select_active_record(&[envs], false).unwrap(), None);
     }
 
     #[test]
@@ -579,7 +624,7 @@ mod runtime_record_tests {
 
     #[test]
     fn returns_none_without_candidates() {
-        assert_eq!(select_active_record(&[], true), None);
+        assert_eq!(select_active_record(&[], true).unwrap(), None);
     }
 }
 
@@ -590,7 +635,7 @@ fn resolve_runtime_overlay_for_record(
 ) -> Option<PathBuf> {
     let content = std::fs::read_to_string(file).ok()?;
     let record: ActiveRuntimeRecord = serde_json::from_str(&content).ok()?;
-    let record_python = resolve_active_runtime_record(&file.to_path_buf())?.python;
+    let record_python = resolve_active_runtime_record(file).ok().flatten()?.python;
     let expected = runtime_python_command_path(Path::new(active_python))?;
     let recorded = runtime_python_command_path(Path::new(&record_python))?;
     if expected != recorded {
@@ -3087,7 +3132,7 @@ mod tests {
             fs::write(&pointer, serde_json::to_vec(&json!({
                 "pythonPath": recorded, "backend": "mlx"
             })).unwrap()).unwrap();
-            let resolved = super::resolve_active_runtime_record(&pointer).unwrap().python;
+            let resolved = super::resolve_active_runtime_record(&pointer).unwrap().unwrap().python;
             let active = super::active_path_backend_matches(&pointer, &resolved).then_some(resolved);
             let selected = super::select_worker_python("plugin_marketplace", "bootstrap", active);
             assert!(selected.is_ok(), "an installed MLX venv was rejected: {selected:?}");
@@ -3111,7 +3156,7 @@ mod tests {
             .unwrap();
             fs::write(&pointer, &bytes).unwrap();
             assert_eq!(
-                super::resolve_active_runtime_record(&pointer),
+                super::resolve_active_runtime_record(&pointer).unwrap(),
                 Some(super::ActiveRuntimeSelection {
                     python: python.canonicalize().unwrap().to_string_lossy().to_string(),
                     source: Some("bundled".into()),
@@ -3127,9 +3172,27 @@ mod tests {
             br#"{"pythonPath":"cpu"}"#,
         ] {
             fs::write(&pointer, bytes).unwrap();
-            assert_eq!(super::resolve_active_runtime_record(&pointer), None);
+            assert!(
+                super::resolve_active_runtime_record(&pointer).is_err(),
+                "corrupt pointer must not be treated as absent"
+            );
             assert_eq!(fs::read(&pointer).unwrap(), bytes);
         }
+        assert_eq!(
+            super::resolve_active_runtime_record(&fixture.0.join("missing.json")).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn corrupt_pointer_errors_name_the_file_and_keep_it() {
+        let fixture = ResourceFixture::new("pointer-error");
+        let pointer = fixture.0.join("active-runtime.json");
+        fs::write(&pointer, b"not json").unwrap();
+        let error = super::resolve_active_runtime_record(&pointer).unwrap_err().to_string();
+        assert!(error.contains("active-runtime.json"), "{error}");
+        assert!(error.contains("not a valid runtime record"), "{error}");
+        assert_eq!(fs::read(&pointer).unwrap(), b"not json");
     }
 
     #[cfg(unix)]
@@ -3159,7 +3222,7 @@ mod tests {
                 serde_json::to_vec(&json!({"backend": "cpu", "pythonPath": path})).unwrap(),
             )
             .unwrap();
-            let resolved = super::resolve_active_runtime_record(&pointer).unwrap().python;
+            let resolved = super::resolve_active_runtime_record(&pointer).unwrap().unwrap().python;
             assert_eq!(Path::new(&resolved), expected);
             assert_ne!(Path::new(&resolved), python.canonicalize().unwrap());
             assert!(super::active_path_backend_matches(&pointer, &resolved));
@@ -3249,6 +3312,7 @@ mod tests {
         )
         .unwrap();
         let active_python = super::resolve_active_runtime_record(&bundled_pointer)
+            .unwrap()
             .unwrap()
             .python;
         assert!(super::is_bundled_runtime_python_path(&bundled_pointer, &active_python).unwrap());
