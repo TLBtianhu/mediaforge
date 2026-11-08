@@ -226,6 +226,18 @@ def audio_tool_handlers() -> set[str]:
     return set()
 
 
+def python_source_text() -> str:
+    chunks: list[str] = []
+    for path in python_files(PY):
+        if "third_party" in path.relative_to(PY).parts:
+            continue
+        try:
+            chunks.append(path.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+    return "\n".join(chunks)
+
+
 def check_execution_manifest(manifest: dict) -> list[str]:
     """执行清单也只有一个真源：bootstrap 选择不能靠 Rust 再写一份命令名单。"""
     commands = set()
@@ -283,6 +295,36 @@ def check_execution_manifest(manifest: dict) -> list[str]:
     for name in list(execution.get("backgroundResult") or []):
         if name not in commands:
             problems.append(f"protocol: execution.backgroundResult 的 {name} 不是任何命令的 command")
+    terminal_events = execution.get("terminalEvents") or {}
+    canonical = set((manifest.get("events") or {}).get("canonical") or [])
+    emitted = python_source_text() if terminal_events else ""
+    for command, kinds in terminal_events.items():
+        if command not in known_bootstrap:
+            problems.append(f"protocol: execution.terminalEvents 的 {command} 不是任何命令的 command")
+        if len(set(kinds)) != len(kinds):
+            problems.append(f"protocol: execution.terminalEvents.{command} 有重复项")
+        for kind in kinds:
+            if "." in kind:
+                if kind not in canonical:
+                    problems.append(
+                        f"protocol: execution.terminalEvents.{command} 的 {kind} 不是 canonical 事件"
+                    )
+            elif f'"{kind}"' not in emitted and f"'{kind}'" not in emitted:
+                problems.append(
+                    f"protocol: execution.terminalEvents.{command} 的 {kind} 在 python/ 里找不到发出点"
+                )
+    for domain in (manifest.get("domains") or {}).values():
+        for entry in (domain.get("commands") or {}).values():
+            declared = entry.get("resultEvent")
+            command = entry.get("command")
+            if not isinstance(declared, str) or not declared or not isinstance(command, str):
+                continue
+            if command not in terminal_events:
+                problems.append(f"protocol: {command} 声明了 resultEvent 但 terminalEvents 没有该命令")
+            elif declared not in terminal_events[command]:
+                problems.append(
+                    f"protocol: {command} 的 resultEvent {declared} 不在 terminalEvents.{command} 里"
+                )
     if result_operations:
         routing_path = ROOT / "python" / "core" / "worker_tools.py"
         routing = routing_path.read_text(encoding="utf-8") if routing_path.is_file() else ""

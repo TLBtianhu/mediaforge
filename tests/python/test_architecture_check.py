@@ -177,6 +177,23 @@ class ExecutionManifestTests(unittest.TestCase):
         manifest["execution"]["bootstrap"]["updatesRuntime"] = ["update_runtime_core"]
         self.assertEqual(architecture.check_execution_manifest(manifest), [])
 
+    def test_terminal_events_must_be_real(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["events"] = {"canonical": ["task.result"]}
+        manifest["execution"]["terminalEvents"] = {
+            "runtime_info": ["error", "task.result", "ghost_event", "task.ghost"],
+        }
+        problems = architecture.check_execution_manifest(manifest)
+        self.assertTrue(any("ghost_event" in problem for problem in problems))
+        self.assertTrue(any("task.ghost" in problem for problem in problems))
+
+    def test_result_event_must_appear_in_its_terminal_list(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["domains"]["runtime"]["commands"]["info"]["resultEvent"] = "runtime_install_finished"
+        manifest["execution"]["terminalEvents"] = {"runtime_info": ["error"]}
+        problems = architecture.check_execution_manifest(manifest)
+        self.assertTrue(any("runtime_install_finished" in problem for problem in problems))
+
     def test_worker_and_native_must_not_overlap(self) -> None:
         problems = architecture.check_execution_manifest(
             self.manifest(["runtime_info"], ["runtime_info"])

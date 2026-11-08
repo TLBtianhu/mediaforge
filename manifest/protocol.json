@@ -425,7 +425,8 @@
       "worker 项必须能在 domains 的 command 里找到；native 项不在 worker 协议里。",
       "resultJobs 是“结果任务”的分类：commands 为 worker 命令，operations 为经 media 路由的操作名。",
       "outputScope 声明需要输出临时作用域的命令/操作；backgroundResult 声明必须有后台结果代理的命令。",
-      "bootstrap.withoutRuntime 是没有激活运行时也允许跑的查询/下载命令；updatesRuntime 是会替换运行时并把 bootstrap 使用者排除在外的命令。"
+      "bootstrap.withoutRuntime 是没有激活运行时也允许跑的查询/下载命令；updatesRuntime 是会替换运行时并把 bootstrap 使用者排除在外的命令。",
+      "terminalEvents 是后台监督进程的终态词表；未列出的命令只把 error 当终态。"
     ],
     "bootstrap": {
       "worker": [
@@ -489,6 +490,88 @@
       "export_editor_mix",
       "manage_plugin",
       "run_operation"
-    ]
+    ],
+    "terminalEvents": {
+      "model_download": [
+        "error",
+        "asset.done",
+        "task.cancelled"
+      ],
+      "delete_model": [
+        "error",
+        "model_delete_done",
+        "model_delete_failed"
+      ],
+      "cleanup_model_residual_files": [
+        "error",
+        "model_residual_cleanup_done",
+        "model_residual_cleanup_failed"
+      ],
+      "install_runtime": [
+        "error",
+        "runtime_install_finished",
+        "task.cancelled"
+      ],
+      "delete_runtime": [
+        "error",
+        "runtime_deleted",
+        "task.cancelled"
+      ],
+      "update_runtime_core": [
+        "error",
+        "runtime_core_update_finished",
+        "runtime_core_update_plan",
+        "task.cancelled"
+      ],
+      "manage_optional_package": [
+        "error",
+        "optional_package_status",
+        "task.cancelled"
+      ],
+      "manage_plugin": [
+        "error",
+        "plugin_manage_result",
+        "task.cancelled"
+      ],
+      "import_custom_model": [
+        "error",
+        "custom_model_import_finished",
+        "task.cancelled"
+      ],
+      "infer": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "infer_workflow": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "audio_tools": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "media_tool": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "run_operation": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "list_nodes": [
+        "error",
+        "nodes_list"
+      ],
+      "export_editor_mix": [
+        "error",
+        "editor_mix_exported",
+        "task.cancelled"
+      ]
+    }
   }
 }

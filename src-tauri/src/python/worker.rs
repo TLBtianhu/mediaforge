@@ -1497,58 +1497,7 @@ fn log_worker_parse_error(
 }
 
 fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
-    match command {
-        "model_download" => matches!(event_type, "error" | "asset.done" | "task.cancelled"),
-        "delete_model" => matches!(
-            event_type,
-            "error" | "model_delete_done" | "model_delete_failed"
-        ),
-        "cleanup_model_residual_files" => matches!(
-            event_type,
-            "error" | "model_residual_cleanup_done" | "model_residual_cleanup_failed"
-        ),
-            "install_runtime" => matches!(
-            event_type,
-            "error" | "runtime_install_finished" | "task.cancelled"
-        ),
-        "update_runtime_core" => matches!(
-            event_type,
-            "error"
-                | "runtime_core_update_finished"
-                | "runtime_core_update_plan"
-                | "task.cancelled"
-        ),
-        "manage_optional_package" => {
-            matches!(
-                event_type,
-                "error" | "optional_package_status" | "task.cancelled"
-            )
-        }
-        "manage_plugin" => {
-            matches!(event_type, "error" | "plugin_manage_result" | "task.cancelled")
-        }
-        "import_custom_model" => matches!(
-            event_type,
-            "error" | "custom_model_import_finished" | "task.cancelled"
-        ),
-        "infer" | "infer_workflow" => {
-            matches!(event_type, "error" | "task.result" | "task.cancelled")
-        }
-        "audio_tools" | "media_tool" => {
-            matches!(event_type, "error" | "task.result" | "task.cancelled")
-        }
-        "run_operation" => {
-            matches!(event_type, "error" | "task.result" | "task.cancelled")
-        }
-        "list_nodes" => matches!(event_type, "error" | "nodes_list"),
-        "export_editor_mix" => {
-            matches!(
-                event_type,
-                "error" | "editor_mix_exported" | "task.cancelled"
-            )
-        }
-        _ => matches!(event_type, "error"),
-    }
+    super::protocol::is_background_terminal_event(command, event_type)
 }
 
 fn is_supervisor_terminal_event(command: &str, envelope: &WorkerEnvelope) -> bool {

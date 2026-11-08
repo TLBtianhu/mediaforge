@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 /// The protocol manifest is embedded at compile time: the event vocabulary has
@@ -56,6 +57,8 @@ struct ManifestExecution {
     output_scope: ManifestOutputScope,
     #[serde(default)]
     background_result: Vec<String>,
+    #[serde(default)]
+    terminal_events: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +81,15 @@ pub fn is_canonical_event(kind: &str) -> bool {
 
 pub fn is_terminal_event(kind: &str) -> bool {
     manifest().events.terminal.iter().any(|name| name == kind)
+}
+
+/// Terminal events for a supervised background command; unlisted commands only
+/// treat `error` as terminal.
+pub fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
+    match manifest().execution.terminal_events.get(command) {
+        Some(events) => events.iter().any(|name| name == event_type),
+        None => event_type == "error",
+    }
 }
 
 /// Queries and downloads that may run before any runtime is activated.
@@ -200,6 +212,16 @@ mod tests {
         assert!(is_bootstrap_command("update_runtime_core"));
         assert!(!is_bootstrap_command("infer"));
         assert!(!bootstrap.native.iter().any(|name| bootstrap.worker.contains(name)));
+    }
+
+    #[test]
+    fn supervisor_terminal_events_come_from_the_manifest() {
+        assert!(is_background_terminal_event("model_download", "asset.done"));
+        assert!(is_background_terminal_event("delete_runtime", "runtime_deleted"));
+        assert!(is_background_terminal_event("infer", "task.result"));
+        assert!(!is_background_terminal_event("infer", "asset.done"));
+        assert!(is_background_terminal_event("not_supervised", "error"));
+        assert!(!is_background_terminal_event("not_supervised", "task.result"));
     }
 
     #[test]
