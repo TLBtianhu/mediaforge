@@ -322,6 +322,33 @@ class MultipleEnvironmentTests(unittest.TestCase):
                 self.active_file.write_text(json.dumps(record), encoding="utf-8")
                 self.assertIsNone(worker_bootstrap._resolve_runtime_state_from(self.active_file))
 
+    def test_corrupt_pointer_is_reported_but_write_paths_stay_lenient(self):
+        self._make_env("cpu", "2.7.1")
+        self.active_file.write_text("{not json", encoding="utf-8")
+        with self._runtime():
+            info = worker_bootstrap._runtime_info_payload({})
+            self.assertIsNone(info["installState"])
+            self.assertIn("active-runtime.json", info["activeRuntimeError"])
+            self.assertIn("not valid JSON", info["activeRuntimeError"])
+        # Activation/write paths keep treating it as absent instead of crashing.
+        self.assertIsNone(worker_bootstrap._resolve_runtime_state_from(self.active_file))
+        self.assertIsNone(worker_bootstrap._read_runtime_state())
+
+    def test_missing_pointer_has_no_diagnostic(self):
+        with self._runtime():
+            self.assertIsNone(worker_bootstrap._active_runtime_diagnostic())
+            self.assertIsNone(worker_bootstrap._runtime_info_payload({})["activeRuntimeError"])
+
+    def test_pointer_to_a_missing_interpreter_is_diagnosed(self):
+        self._make_env("cpu", "2.7.1")
+        self.active_file.write_text(json.dumps({
+            "backend": "cpu",
+            "pythonPath": str(self.envs_dir / "cpu" / "Scripts" / "gone.exe"),
+        }), encoding="utf-8")
+        with self._runtime():
+            diagnostic = worker_bootstrap._active_runtime_diagnostic()
+        self.assertIn("missing interpreter", diagnostic)
+
     def test_startup_managed_activation_preserves_a_pointer_created_during_probe(self):
         self._make_env("cpu", "2.7.1")
         self._make_env("cuda", "2.7.1+cu128")

@@ -609,28 +609,40 @@ def _make_posix_venv_relocatable(env_dir: Path) -> bool:
 
 
 # ===== primitives.py =====
-def _resolve_runtime_state_from(file: Path) -> dict[str, Any] | None:
-    """Read active-runtime.json and resolve relative pythonPath against its parent dir."""
+def _load_runtime_state_from(file: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """Read active-runtime.json and say why it was rejected.
+
+    A missing file means "nothing activated" and is not an error. A file that
+    exists but is unreadable, unparsable or points at a missing interpreter must
+    be reported: falling back to another environment would hide the damage.
+    """
     try:
-        state = json.loads(file.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+        text = file.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, None
+    except OSError as error:
+        return None, f"runtime pointer {file} cannot be read: {error}"
+    try:
+        state = json.loads(text)
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        return None, f"runtime pointer {file} is not valid JSON: {error}"
     if not isinstance(state, dict):
-        return None
+        return None, f"runtime pointer {file} is not a JSON object"
     python_path = state.get("pythonPath")
-    if python_path:
-        if not isinstance(python_path, str):
-            return None
-        p = Path(python_path)
-        if not p.is_absolute():
-            resolved = file.parent / p
-            if resolved.is_file():
-                # Keep the executable link: POSIX venvs locate pyvenv.cfg through argv[0].
-                state["pythonPath"] = str(resolved.parent.resolve() / resolved.name)
-            else:
-                return None
-        elif not p.is_file():
-            return None
+    if not python_path:
+        return None, f"runtime pointer {file} does not name a pythonPath"
+    if not isinstance(python_path, str):
+        return None, f"runtime pointer {file} has a non-string pythonPath"
+    p = Path(python_path)
+    if not p.is_absolute():
+        resolved = file.parent / p
+        if resolved.is_file():
+            # Keep the executable link: POSIX venvs locate pyvenv.cfg through argv[0].
+            state["pythonPath"] = str(resolved.parent.resolve() / resolved.name)
+        else:
+            return None, f"runtime pointer {file} points to a missing interpreter: {resolved}"
+    elif not p.is_file():
+        return None, f"runtime pointer {file} points to a missing interpreter: {p}"
     overlay_path = state.get("overlayPath")
     if overlay_path:
         overlay = Path(str(overlay_path))
@@ -642,7 +654,23 @@ def _resolve_runtime_state_from(file: Path) -> dict[str, Any] | None:
         else:
             state["overlayPath"] = str(resolved_overlay)
     state.pop("source", None)
+    return state, None
+
+
+def _resolve_runtime_state_from(file: Path) -> dict[str, Any] | None:
+    """Lenient view for write/activation paths; diagnostics use _load_runtime_state_from."""
+    state, _ = _load_runtime_state_from(file)
     return state
+
+
+def _active_runtime_diagnostic() -> str | None:
+    """Explain a rejected active pointer, or return None when it is usable or absent."""
+    state, error = _load_runtime_state_from(ACTIVE_RUNTIME_FILE)
+    if error:
+        return error
+    if state is not None and _read_runtime_state() is None:
+        return f"runtime pointer {ACTIVE_RUNTIME_FILE} is not a usable environment"
+    return None
 
 
 def _read_runtime_state() -> dict[str, Any] | None:
@@ -1837,6 +1865,7 @@ def _runtime_info_payload(payload: dict[str, Any], *, repair: bool = True) -> di
         "bootstrapPython": str(_bootstrap_python_path()),
         "runtimeEnvsDir": str(RUNTIME_ENVS_DIR),
         "activeRuntimeFile": str(ACTIVE_RUNTIME_FILE),
+        "activeRuntimeError": _active_runtime_diagnostic(),
         "backend": backend,
         "installedBackend": install_state.get("backend") if install_state else None,
         "installState": install_state,
