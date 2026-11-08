@@ -775,6 +775,7 @@ def dispatch(
     arguments: dict[str, Any] | None = None,
     *,
     retry: bool = True,
+    data_root: str | None = None,
 ) -> dict[str, Any]:
     """进程内执行一个工具；对可识别的失败**自动纠正一次**（有预算）。
 
@@ -794,7 +795,7 @@ def dispatch(
         payload.setdefault("operation", tool["operation"])
     budget_remaining = budget_from_env() if retry else 0
     attempts: list[dict[str, Any]] = []
-    outcome = _dispatch_once(tool_name, tool, payload)
+    outcome = _dispatch_once(tool_name, tool, payload, data_root=data_root)
     while True:
         result = outcome.get("result") or {}
         hint = recovery_from_result(result.get("payload") if isinstance(result.get("payload"), dict) else result)
@@ -814,14 +815,14 @@ def dispatch(
         budget_remaining -= 1
         attempts.append({"code": hint.get("code"), "applied": [action.get("action") for action in actions]})
         payload = adjusted
-        outcome = _dispatch_once(tool_name, tool, payload)
+        outcome = _dispatch_once(tool_name, tool, payload, data_root=data_root)
     if attempts:
         outcome["recoveryAttempts"] = attempts
         outcome["arguments"] = payload
     return outcome
 
 
-def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any], *, data_root: str | None = None) -> dict[str, Any]:
     """**进程内**执行一个工具：不起子进程、不走管道、不需要端口。
 
     这就是"内嵌 agent 与外部 agent 共用同一个执行器"的那一层：
@@ -851,6 +852,9 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
                 },
             },
         }
+    if tool["command"] == "media_library" and data_root is not None:
+        # Executor scope is not a caller argument and never changes process env.
+        payload = {**payload, "dataRoot": data_root}
     events: list[dict[str, Any]] = []
     import worker
     from shared import worker_protocol

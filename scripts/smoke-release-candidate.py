@@ -24,7 +24,7 @@ OWNER_FILE = ".mediaforge-candidate-test.json"
 PRODUCTION_APP_ID = "{34A687CC-EE1D-401D-8FE1-98E4061C32CB}"
 UNINSTALL_PREFIX = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
 PAYLOAD_FILES = (
-    "MediaForge.exe", "manifest/protocol.json", "manifest/runtime.json",
+    "MediaForge.exe", "manifest/protocol.json", "manifest/runtime.json", "manifest/library-schema.json",
     "python/plugin-sdk/pymss-sdk.js", "python/plugin-sdk/pymss-sdk.css",
 )
 

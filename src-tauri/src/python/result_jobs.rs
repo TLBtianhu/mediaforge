@@ -34,6 +34,7 @@ pub(crate) fn parse_reference_json(text: &str) -> AppResult<Value> { super::job_
 
 pub(crate) struct PathReferences(Vec<String>);
 impl PathReferences {
+    pub(crate) fn from_paths(paths: &[PathBuf]) -> Self { Self(paths.iter().map(|path| key(path)).collect()) }
     pub(crate) fn includes_directory(&self, directory: &Path) -> bool {
         let directory = key(directory);
         self.0.iter().any(|reference| within(reference, &directory))
@@ -338,6 +339,8 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
     crate::storage::with_editor_project_guard(|| {
         // New registrations cannot begin between the reference snapshot and recycle.
         let model_guard = crate::storage::model_reference_snapshot_guard();
+        // Hold the shared asset lease (and read transaction) through recycling.
+        let library_snapshot = delete_files.then(|| super::library_references::snapshot(root));
         if delete_files {
             let mut input_refs = Vec::new();
             let unresolved_graph = unresolved_audio_input(&library);
@@ -358,9 +361,9 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
             }
             let editor_refs = editor_references(root);
             let registry_ok = model_references(root).map(|refs| input_refs.extend(refs)).is_ok();
-            let library_present = match fs::symlink_metadata(root.join("library.db")) {
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-                _ => true,
+            let library_paths = match library_snapshot.as_ref().unwrap() {
+                Ok(snapshot) => Some(snapshot.paths().iter().map(|path| key(path)).collect::<Vec<_>>()),
+                Err(_) => None,
             };
             let protected = protection.roots.iter().map(|path| key(path)).collect::<Vec<_>>();
             let root_key = key(root);
@@ -384,7 +387,10 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
                     .or_else(|| protected.iter().any(|root| within(&normalized, root)).then_some("protected_asset_or_program"))
                     .or_else(|| input_refs.iter().any(|reference| within(&normalized, reference)).then_some("input_or_other_job_reference"))
                     .or_else(|| editor_open().then_some("editor_open"))
-                    .or_else(|| library_present.then_some("library_index_unavailable"))
+                    .or_else(|| match &library_paths {
+                        Some(paths) => paths.iter().any(|reference| within(&normalized, reference)).then_some("library_reference"),
+                        None => Some("library_index_unavailable"),
+                    })
                     .or_else(|| (!registry_ok).then_some("model_registry_unavailable"))
                     .or_else(|| match &editor_refs {
                         Ok(refs) => refs.iter().any(|reference| within(&normalized, reference)).then_some("editor_reference"),
@@ -501,6 +507,35 @@ mod tests {
                         recycle: &mut impl FnMut(&Path) -> Result<(), String>) -> AppResult<RemovalResult> {
             remove_with(&self.root, &ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(), RemovalKind::Audio,
                 files, check, &Protection { roots: vec![] }, || open, recycle)
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn current_library_protects_exact_sources_and_thumbnails_but_allows_unrelated_outputs() {
+        let f=Fixture::new();let source=f.file("source.wav");let thumbnail=f.file("thumb.jpg");let free=f.file("unrelated.wav");
+        for (id,path) in [("source",&source),("thumb",&thumbnail),("free",&free)] {f.save(&f.row(id,path));}
+        super::super::library_references::create_fixture(&f.root,&[(source.clone(),thumbnail.clone())]).unwrap();
+        let before=fs::read(f.root.join("library.db")).unwrap();let mut recycled=vec![];
+        let response=f.remove(&["source","thumb","free"],true,false,false,&mut |path| {
+            // The native read transaction and cross-process lease survive the complete recycle callback.
+            assert!(super::super::library_references::AssetLease::acquire(&f.root,std::time::Duration::ZERO).is_err());
+            recycled.push(path.to_path_buf());fs::remove_file(path).map_err(|error|error.to_string())
+        }).unwrap();
+        assert_eq!(recycled,vec![free]);assert_eq!(response.removed_job_ids.len(),3);
+        assert_eq!(response.retained.len(),2);assert!(response.retained.iter().all(|row|row.reason=="library_reference"));
+        assert!(source.is_file());assert!(thumbnail.is_file());assert_eq!(fs::read(f.root.join("library.db")).unwrap(),before);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn valid_empty_library_does_not_prevent_recycling_and_missing_library_is_not_created() {
+        for present in [true,false] {
+            let f=Fixture::new();let output=f.file("free.wav");f.save(&f.row("free",&output));
+            if present {super::super::library_references::create_fixture(&f.root,&[]).unwrap();}
+            let response=f.remove(&["free"],true,false,false,&mut |path|fs::remove_file(path).map_err(|error|error.to_string())).unwrap();
+            assert_eq!(response.trashed.len(),1);assert!(response.retained.is_empty());assert!(!output.exists());
+            assert_eq!(f.root.join("library.db").exists(),present);
         }
     }
     fn fake_recycle(path: &Path) -> Result<(), String> { fs::remove_file(path).map_err(|error| error.to_string()) }

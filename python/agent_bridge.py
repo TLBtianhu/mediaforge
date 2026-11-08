@@ -615,7 +615,7 @@ class Bridge:
             from core.failure_stats import collect
 
             return {"ok": True, "tool": name, **collect(self.data_root)}
-        outcome = agent_contract.dispatch(name, payload)
+        outcome = agent_contract.dispatch(name, payload, **({"data_root": str(self.data_root)} if tool["command"] == "media_library" else {}))
         terminal = outcome.get("result") or {}
         body = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}
         return {"ok": outcome["ok"], "tool": name, **body}

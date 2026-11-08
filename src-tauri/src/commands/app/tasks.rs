@@ -9,7 +9,7 @@ use crate::session_log;
 use crate::state::AppState;
 use crate::storage;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager, State};
 use crate::python::worker::kill_process_tree;
 use crate::workflow_editors::{RegistrySnapshot, WorkflowEditors};
@@ -64,10 +64,34 @@ pub fn get_workflow_editors(editors: State<'_, WorkflowEditors>) -> RegistrySnap
 
 
 #[tauri::command]
-pub async fn media_library(app: AppHandle, payload: Value) -> AppResult<Value> {
-    // All library actions may create/commit its index. Serialize the first import
-    // with result-file inspection/recycling, using the same order as editor saves.
-    storage::with_editor_project_guard(|| run_worker_with_payload(&app, "media_library", Some(payload)))
+pub async fn media_library(app: AppHandle, mut payload: Value) -> AppResult<Value> {
+    let root = storage::data_root_dir(&app)?;
+    payload = scoped_library_payload(&root, payload)?;
+    // The worker's cross-process asset lease owns serialization. Do not hold
+    // the editor/settings JSON guard while probing media or making thumbnails.
+    run_worker_with_payload(&app, "media_library", Some(payload))
+}
+
+fn scoped_library_payload(root: &Path, mut payload: Value) -> AppResult<Value> {
+    payload.as_object_mut().ok_or_else(|| AppError::Worker("invalid library request".into()))?
+        .insert("dataRoot".into(), serde_json::json!(root));
+    Ok(payload)
+}
+
+#[cfg(test)]
+mod library_scope_tests {
+    use super::*;
+
+    #[test]
+    fn library_requests_cannot_override_the_application_profile() {
+        let root = std::env::temp_dir().join("owned-library-profile");
+        let payload = scoped_library_payload(&root, serde_json::json!({"operation":"list","dataRoot":"outside-profile"})).unwrap();
+        assert_eq!(payload["dataRoot"], serde_json::json!(root));
+        assert_eq!(payload["operation"], "list");
+        for invalid in [Value::Null, serde_json::json!([]), serde_json::json!("outside-profile")] {
+            assert!(scoped_library_payload(&root, invalid).is_err());
+        }
+    }
 }
 
 #[tauri::command]

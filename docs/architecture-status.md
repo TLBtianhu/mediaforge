@@ -79,7 +79,9 @@ Vue 拆分          已拆分簇的测试直接实例化下列工厂，其余部
    UI/媒体/MCP共享并发配额已落地，各执行器仍运行本来源、内部FIFO；跨进程全局FIFO/物理GPU分区未做。
    媒体/Agent结果支持单条/批量移除记录及显式选择回收文件；同catalog内检查终态与owner释放，
    后端从当前job结果识别文件，保护输入/其它任务/编辑工程/程序与模型运行时，不递归清目录。
-   library.db存在时尚无完整只读引用查询，因此保留候选文件；打开的编辑器、旧MIDI归属不明产物也保留。
+   Windows已从library.db原库只读全量引用，跨进程asset lease覆盖库writer与回收；正常库仅保护真实path/thumbnail命中。
+   schema1/MFLB/DELETE由单manifest声明，旧0/坏库/WAL/忙/未知格式保留文件、不修复；非Windows已有库仍保守拒绝。
+   打开的编辑器、旧MIDI归属不明产物也保留。Bridge/native数据根已显式绑定，缩略图只清自有缓存。
    音频失败/取消/中断、无文件终态与完整混合批次已展示，active批次不可整组删除；清空只处理全终态组。
    export_editor_mix以唯一result.path进入统一展示/回收，Kernel与UI识别真实完成/取消事件。
    遗留工程清理由原生完整catalog复核任务/导出/路径引用，不信任前端可见ID，清理不扩大显式选择。

@@ -88,10 +88,21 @@ catalog及所选owner/write锁覆盖引用检查、文件动作和记录删除�
 同样检查其它来源任务明确的相对文件输入：媒体inputs列表、音频工具的源/参考文件、operation的file描述符等；
 不能确认位置则保留文件，不把scalar值、模型别名或普通查询字符串当文件路径。
 程序与resource目录采用整根保护；便携输出若嵌在程序目录下也保守保留，不为回收输出放宽程序资产边界。
-任意打开的编辑器可能有未保存引用，故保留文件；library.db存在时尚无完整只读引用查询及统一资产锁，
-候选文件均保留，不根据有条数上限的UI列表猜测。native媒体库调用与删除共用JSONguard，覆盖首次建库窗口；
+任意打开的编辑器可能有未保存引用，故保留文件；素材库精确引用从dataRoot/library.db全表读取path/thumbnail，
+不根据有条数上限的UI列表猜测。Windows从System32只读SQLite连接保持事务与资产lease至文件回收结束，
+正常库仅保留真实命中引用（library_reference）；无库/合法空库也持lease，允许无引用产物正常回收。
+所有library入口从扫描、probe、缩略图发布到commit/close持同一零正文.asset-references.lock，不unlink锁inode。
+native媒体库调用强制当前storage dataRoot并移除旧大JSONguard，worker仅拿asset→SQLite，不拿catalog/JSON，
+与删除的catalog→owner/write→JSON→model→asset顺序无反转；Bridge通过执行器scope传根，不改进程env。
 模型登记四条写命令持进程内mutation lease至实际reap，删除持同gate读快照至回收，busy或退出未确认即保留文件。
 此保护不宣称任意外部进程修改的事务一致性。
+
+素材库current schema1、application_id=MFLB、DELETE模式及全部DDL对象由manifest/library-schema.json唯一声明。
+旧0、未来版本、错误appid/编码、额外table/index/view/trigger、坏记录或完整性检查失败均拒绝并保原库，不建表修复/迁移。
+完整对象元组对比不能按name压字典（trigger与index可同名）；全表14字段与UTF-8/type/路径必须合法，不用LIMIT截断引用。
+SQLite open前检查header rollback模式及任何-wal/-shm/-journal；未知日志状态直接保留，不做checkpoint、恢复或immutable绕过。
+库缺失才创建当前格式。Python读取/修改前同样严检，缩略图删除只允许本根下确切源路径哈希的普通自有缓存文件。
+Windows用系统winsqlite3，无新SQLite依赖包；非Windows有库暂返回unsupported并保留文件，无库仍安全持lease。
 
 默认仅删记录；显式勾选文件回收才执行，无永久删除回退，不删除输出目录。响应固定schemaVersion2及
 checkedJobIds/removedJobIds/trashed/failed[{path,error}]/retained[{path,reason}]。
@@ -119,7 +130,8 @@ list_orphaned_editor_projects由后端strict完整catalog推导，不接收前�
 在catalog→JSON锁内重新读取当前工程v4与任务。sourceTaskId仍存在、export job引用project.id或任一现存job明确绝对路径位于工程内，
 均保留；损坏catalog或重复JSON键先报错，不把它们当空集合。只有命名和id/sourceTaskId双重证明归属的closed任务型项目才清，
 独立/另存工程保留。选择后有新任务引用须block，不把后来出现的其它孤立项目加入删除集。
-这不是所有相对路径、外部进程、SQLite或任意工程之间的通用资产删除事务；其引用协议仍需后续统一。
+工程清理也持LibrarySnapshot至显式删除结束：库source/thumbnail指向工程内时保留，坏/旧/忙库则先报错不清工程。
+这仍不是所有相对路径、外部进程、模型或任意独立工程之间的通用资产删除事务；其它引用协议仍需后续统一。
 
 目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
 执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。

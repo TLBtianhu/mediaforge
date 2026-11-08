@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "applicationId": 1296452674,
+  "databaseFile": "library.db",
+  "lockFile": ".asset-references.lock",
+  "journalMode": "delete",
+  "objects": [
+    {
+      "type": "table",
+      "name": "assets",
+      "table": "assets",
+      "sql": "CREATE TABLE assets (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL, format TEXT DEFAULT '', size INTEGER DEFAULT 0, duration REAL DEFAULT 0, width INTEGER DEFAULT 0, height INTEGER DEFAULT 0, fps REAL DEFAULT 0, thumbnail TEXT DEFAULT '', tags TEXT DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+      "create": true
+    },
+    {
+      "type": "table",
+      "name": "sqlite_sequence",
+      "table": "sqlite_sequence",
+      "sql": "CREATE TABLE sqlite_sequence(name,seq)",
+      "create": false
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_assets_1",
+      "table": "assets",
+      "sql": null,
+      "create": false
+    },
+    {
+      "type": "index",
+      "name": "idx_assets_kind",
+      "table": "assets",
+      "sql": "CREATE INDEX idx_assets_kind ON assets(kind)",
+      "create": true
+    },
+    {
+      "type": "index",
+      "name": "idx_assets_updated",
+      "table": "assets",
+      "sql": "CREATE INDEX idx_assets_updated ON assets(updated_at)",
+      "create": true
+    }
+  ]
+}

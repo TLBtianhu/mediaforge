@@ -159,6 +159,10 @@ fn with_current_orphaned_projects<T>(
 ) -> AppResult<T> {
     crate::python::task_journal::with_catalog_records(data_root, |records| {
         storage::with_editor_project_guard(|| {
+            // Keep the same cross-process asset lease as library writers until
+            // the selected project cleanup has finished, including a missing DB.
+            let library = crate::python::library_references::snapshot(data_root)?;
+            let library_paths = crate::python::result_jobs::PathReferences::from_paths(library.paths());
             let ids = records.iter().filter_map(|row| row["jobId"].as_str()).collect::<std::collections::HashSet<_>>();
             let export_projects = records.iter().filter(|row| row["command"] == "export_editor_mix")
                 .filter_map(|row| row.pointer("/payload/project/id").and_then(Value::as_str)).collect::<std::collections::HashSet<_>>();
@@ -188,6 +192,7 @@ fn with_current_orphaned_projects<T>(
                 let Some(source) = project["sourceTaskId"].as_str().filter(|id| !id.is_empty()) else { continue; };
                 // Independently named/copied projects are never task-owned cleanup targets.
                 if ids.contains(source) || export_projects.contains(project_id.as_str()) || referenced_paths.includes_directory(&entry.path())
+                    || library_paths.includes_directory(&entry.path())
                     || !crate::python::task_journal::valid_id(source)
                     || project["id"] != project_id || editor_project_id_for_task_id(source) != project_id
                     || validate_editor_project_id(&project_id).is_err() { continue; }
@@ -1457,6 +1462,52 @@ mod tests {
         }
         let longest_id = "a".repeat(96);
         assert_eq!(validate_editor_project_id(&longest_id).unwrap(), longest_id);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_orphan_cleanup_preserves_library_sources_inside_an_unlinked_project() {
+        let root=tempfile::tempdir().unwrap();
+        let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
+        let source=project.join("library-source.wav");fs::write(&source,b"referenced source").unwrap();
+        crate::python::library_references::create_fixture(root.path(),&[(source.clone(),std::path::PathBuf::new())]).unwrap();
+        let before=fs::read(root.path().join("library.db")).unwrap();
+        let projects=with_current_orphaned_projects(root.path(),|_,projects|Ok(projects)).unwrap();
+        assert!(projects.is_empty());
+        let result=delete_current_orphaned_projects(root.path(),&["edit_gone".into()],|_|vec![]).unwrap();
+        assert_eq!(result.blocked_project_ids,vec!["edit_gone"]);assert!(result.deleted_project_ids.is_empty());
+        assert_eq!(fs::read(source).unwrap(),b"referenced source");
+        assert_eq!(fs::read(root.path().join("library.db")).unwrap(),before);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_orphan_cleanup_allows_a_valid_library_without_a_project_reference() {
+        let root=tempfile::tempdir().unwrap();
+        let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
+        crate::python::library_references::create_fixture(root.path(),&[]).unwrap();
+        let before=fs::read(root.path().join("library.db")).unwrap();
+        let result=delete_current_orphaned_projects(root.path(),&["edit_gone".into()],|_|vec![]).unwrap();
+        assert_eq!(result.deleted_project_ids,vec!["edit_gone"]);assert!(!project.exists());
+        assert_eq!(fs::read(root.path().join("library.db")).unwrap(),before);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_orphan_cleanup_rejects_old_or_broken_libraries_before_project_deletion() {
+        for broken in [false,true] {
+            let root=tempfile::tempdir().unwrap();
+            let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
+            if broken {fs::write(root.path().join("library.db"),b"not a sqlite database").unwrap();}
+            else {
+                crate::python::library_references::create_fixture(root.path(),&[]).unwrap();
+                crate::python::library_references::fixture_execute(root.path(),"PRAGMA user_version=0").unwrap();
+            }
+            let before=fs::read(root.path().join("library.db")).unwrap();
+            assert!(delete_current_orphaned_projects(root.path(),&["edit_gone".into()],|_|vec![]).is_err());
+            assert!(project.join("project.json").is_file());
+            assert_eq!(fs::read(root.path().join("library.db")).unwrap(),before);
+        }
     }
 
     #[test]

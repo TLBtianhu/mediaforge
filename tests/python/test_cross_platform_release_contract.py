@@ -36,6 +36,7 @@ def write_fixture(root: Path) -> None:
         "manifest/protocol.json": json.dumps({"domains": {"test": {"commands": {"run": {"handler": "core.handler:run"}}}}}),
         "manifest/runtime.json": '{"schemaVersion":1}', "manifest/future-contract.json": '{"keep":true}',
         "manifest/execution-quota.json": (ROOT / "manifest/execution-quota.json").read_text(encoding="utf-8"),
+        "manifest/library-schema.json": (ROOT / "manifest/library-schema.json").read_text(encoding="utf-8"),
     }
     for name, content in files.items():
         path = root / name
@@ -126,6 +127,15 @@ class PosixResourceFixtureTests(unittest.TestCase):
             RELEASE.verify_resources(self.root)
         self.assertEqual({path.relative_to(self.root).as_posix(): path.read_bytes()
                           for path in self.root.rglob("*") if path.is_file()}, before)
+
+    def test_missing_library_schema_is_rejected_before_bundle_configuration(self):
+        write_fixture(self.root)
+        (self.root / "manifest/library-schema.json").unlink()
+        for platform in ("linux", "macos"):
+            with self.subTest(platform=platform), self.assertRaisesRegex(ValueError, "manifest/library-schema.json"):
+                RELEASE.bundle_config(self.root, platform)
+        with self.assertRaisesRegex(ValueError, "manifest/library-schema.json"):
+            RELEASE.verify_resources(self.root)
 
     def test_tauri_override_maps_complete_code_contract_tools_and_bootstrap_at_resource_root(self):
         write_fixture(self.root)

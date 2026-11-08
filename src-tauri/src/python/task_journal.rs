@@ -57,6 +57,14 @@ pub(super) fn read_job(path: &Path) -> AppResult<Option<Value>> {
 pub(super) struct FileLock(File);
 impl FileLock {
     pub(super) fn acquire(path: &Path, timeout: Duration) -> AppResult<Self> {
+        Self::acquire_inner(path, timeout, false)
+    }
+
+    pub(super) fn acquire_plain(path: &Path, timeout: Duration) -> AppResult<Self> {
+        Self::acquire_inner(path, timeout, true)
+    }
+
+    fn acquire_inner(path: &Path, timeout: Duration, deny_reparse: bool) -> AppResult<Self> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -68,8 +76,23 @@ impl FileLock {
             {
                 use std::os::windows::fs::OpenOptionsExt;
                 options.share_mode(0);
+                if deny_reparse { options.custom_flags(0x00200000); } // FILE_FLAG_OPEN_REPARSE_POINT
+            }
+            #[cfg(unix)]
+            if deny_reparse {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.custom_flags(libc::O_NOFOLLOW);
             }
             let attempt = options.open(path).and_then(|file| {
+                if deny_reparse {
+                    let metadata = file.metadata()?;
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::fs::MetadataExt;
+                        if metadata.file_attributes() & 0x400 != 0 { return Err(std::io::Error::other("asset lease cannot be a reparse point")); }
+                    }
+                    if !metadata.is_file() || metadata.file_type().is_symlink() { return Err(std::io::Error::other("asset lease must be a plain file")); }
+                }
                 #[cfg(unix)]
                 {
                     use std::os::fd::AsRawFd;

@@ -320,6 +320,15 @@ exit $result
         self.assertFalse(self.report.exists())
         self.assertEqual(json.loads(self.state.read_text()), self.production)
 
+    def test_missing_library_schema_is_rejected_before_any_compiler_process(self):
+        (self.stage / "manifest/library-schema.json").unlink()
+        with self.assertRaisesRegex(ValueError, "manifest/library-schema.json"):
+            SMOKE.validate_stage(self.stage)
+        result = self.run_smoke()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.trace.exists())
+        self.assertFalse(self.report.exists())
+
     def test_compiler_timeout_retains_owned_work_without_uninstall_or_deletion(self):
         args = type("Args", (), dict(stage=self.stage, version="0.0.33", iscc=self.compiler, installer=None, report=self.report))()
         with mock.patch.object(SMOKE, "ROOT", self.project), mock.patch.object(SMOKE.CANDIDATE, "registry_values", return_value=None), \
