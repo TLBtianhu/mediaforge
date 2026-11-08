@@ -39,6 +39,10 @@ impl PathReferences {
         let directory = key(directory);
         self.0.iter().any(|reference| within(reference, &directory))
     }
+    pub(crate) fn overlaps_directory(&self, directory: &Path) -> bool {
+        let directory = key(directory);
+        self.0.iter().any(|reference| within(reference, &directory) || within(&directory, reference))
+    }
 }
 
 /// A conservative in-memory view of the current catalog, never another index.
@@ -123,8 +127,7 @@ fn editor_references(root: &Path) -> AppResult<Vec<String>> {
         plain_path(&path).map_err(invalid)?;
         let project = super::job_schema::parse(&fs::read_to_string(path)?)?;
         crate::storage::validate_editor_project(&project)?;
-        if unresolved_editor_sources(&project) { return Err(invalid("editor source paths cannot be resolved safely")); }
-        references(&project, true, &mut refs);
+        refs.extend(project_path_references(&project)?.0);
     }
     Ok(refs)
 }
@@ -138,31 +141,56 @@ fn model_references(root: &Path) -> AppResult<Vec<String>> {
     }
     plain_path(&path).map_err(invalid)?;
     let registry = super::job_schema::parse(&fs::read_to_string(&path)?)?;
+    if registry["version"].as_u64() != Some(1) { return Err(invalid("unsupported user model registry schema")); }
     let entries = registry.get("models").and_then(Value::as_array).ok_or_else(|| invalid("invalid user model registry"))?;
     for entry in entries {
         if !entry.is_object() || ["name", "model_type", "model_path"].iter().any(|key| {
             !entry[*key].as_str().is_some_and(|value| !value.trim().is_empty())
         }) { return Err(invalid("invalid user model registry entry")); }
+        if !absolute_reference(&entry["model_path"], false)
+            || !absolute_reference(&entry["config_path"], true) {
+            return Err(invalid("user model paths cannot be resolved safely"));
+        }
     }
     let mut refs = Vec::new();
     references(&registry, true, &mut refs);
     Ok(refs)
 }
 
+pub(crate) fn model_path_references(root: &Path) -> AppResult<PathReferences> {
+    model_references(root).map(PathReferences)
+}
+
+fn absolute_reference(value: &Value, optional: bool) -> bool {
+    if optional && value.is_null() { return true; }
+    value.as_str().is_some_and(|path| {
+        (optional && path.is_empty()) || (!path.trim().is_empty() && !path.contains('\0')
+            && Path::new(path).is_absolute() && plain_path(Path::new(path)).is_ok())
+    })
+}
+
+/// relativePath/originRoot are relink hints, never a base for resolving path.
+pub(crate) fn project_path_references(project: &Value) -> AppResult<PathReferences> {
+    super::editor_references::persisted_project_references(project)
+}
+
 fn relative_file(value: &Value) -> bool {
     value.as_str().is_some_and(|path| !path.trim().is_empty() && !Path::new(path).is_absolute())
 }
 
-fn unresolved_editor_sources(project: &Value) -> bool {
-    ["sources", "assets"].iter().any(|name| project[*name].as_array().is_some_and(|sources| {
-        sources.iter().any(|source| relative_file(&source["path"]))
-    }))
+pub(crate) fn snapshot_has_unresolved_paths(records: &[Value]) -> bool {
+    unresolved_audio_input(records) || records.iter().any(|row| {
+        (row.get("audio").is_none() && unresolved_generic_input(row["command"].as_str().unwrap_or(""), &row["payload"]))
+            || (!task_journal::terminal(row) && ["output", "outputDir", "output_dir", "outputRoot", "exportDir"]
+                .iter().any(|name| relative_file(&row["payload"][*name])))
+            || candidates(row).iter().any(|(path, _)| !Path::new(path).is_absolute())
+    })
 }
 
 fn managed_editor_export(root: &Path, row: &Value, target: &Path) -> bool {
     if row["command"] != "export_editor_mix" { return false; }
     let project = &row["payload"]["project"];
-    if crate::storage::validate_editor_project(project).is_err() { return false; }
+    if super::editor_references::export_project_references(project).is_err() { return false; }
     let Some(id) = project["id"].as_str() else { return false; };
     if crate::commands::app::editor::validate_editor_project_id(id).is_err() || !task_journal::valid_id(id) { return false; }
     let Some(declared) = row.pointer("/payload/exportDir").and_then(Value::as_str).map(Path::new) else { return false; };
@@ -219,8 +247,14 @@ fn unresolved_audio_input(library: &[Value]) -> bool {
 }
 
 fn unresolved_generic_input(command: &str, payload: &Value) -> bool {
+    if matches!(command, "import_custom_model" | "relink_custom_model") {
+        return ["modelPath", "configPath"].iter().any(|name| relative_file(&payload[*name]));
+    }
+    if command == "waveform_peaks" {
+        return ["path", "cacheDir"].iter().any(|name| relative_file(&payload[*name]));
+    }
     if !COMMANDS.contains(&command) { return false; }
-    if command == "export_editor_mix" { return unresolved_editor_sources(&payload["project"]); }
+    if command == "export_editor_mix" { return super::editor_references::export_project_references(&payload["project"]).is_err(); }
     if command == "run_operation" {
         // Plain strings and scalar.value are operation values, not file paths.
         return payload["inputs"].as_object().is_some_and(|inputs| inputs.values().any(|input| {
@@ -467,14 +501,17 @@ mod tests {
         }
         fn export(&self, id: &str, output: &Path, source: &Path) -> Value {
             let mut row=self.row(id,output);row["command"]=json!("export_editor_mix");
-            row["payload"]=json!({"project":{"version":4,"id":"edit_fixture","sources":[{"id":"source","path":source}],"tracks":[]},"exportDir":output.parent().unwrap()});
+            row["payload"]=json!({"project":{"version":4,"id":"edit_fixture","assets":[{"id":"source","path":source}],"tracks":[]},"exportDir":output.parent().unwrap()});
             row["result"]=json!({"path":output,"duration":1.5,"sampleRate":44100,"channels":2,"format":"wav"});row
+        }
+        fn persisted_export_project(&self, row: &Value) -> Value {
+            json!({"version":4,"id":"edit_fixture","sources":row["payload"]["project"]["assets"],"tracks":[]})
         }
         fn managed_export(&self) -> (Value, PathBuf, PathBuf) {
             let project=self.root.join("editor-projects/edit_fixture");let exports=project.join("exports");
             fs::create_dir_all(&exports).unwrap();let output=exports.join("mix.wav");fs::write(&output,"fixture mix").unwrap();
             let source=self.file("source.wav");let row=self.export("export",&output,&source);
-            fs::write(project.join("project.json"),row["payload"]["project"].to_string()).unwrap();(row,output,source)
+            fs::write(project.join("project.json"),self.persisted_export_project(&row).to_string()).unwrap();(row,output,source)
         }
         fn save(&self, row: &Value) -> PathBuf {
             super::super::job_schema::validate(row).unwrap();
@@ -591,11 +628,11 @@ mod tests {
                 "wrong_root"=>row["payload"]["exportDir"]=json!(f.output),
                 "sibling"=> {mix=f.root.join("editor-projects/edit_fixture/sibling.wav");fs::write(&mix,"keep").unwrap();row["result"]["path"]=json!(mix);},
                 "non_audio_file"=> {mix=f.root.join("editor-projects/edit_fixture/exports/project.json");fs::write(&mix,"keep").unwrap();row["result"]["path"]=json!(mix);},
-                "saved_id"=> {let mut project=row["payload"]["project"].clone();project["id"]=json!("different");fs::write(f.root.join("editor-projects/edit_fixture/project.json"),project.to_string()).unwrap();},
+                "saved_id"=> {let mut project=f.persisted_export_project(&row);project["id"]=json!("different");fs::write(f.root.join("editor-projects/edit_fixture/project.json"),project.to_string()).unwrap();},
                 "schema"=>row["payload"]["project"]["version"]=json!(3),_=>(),
             }
             f.save(&row);let result=f.remove(&["export"],true,false,false,&mut never_recycle).unwrap();
-            assert_eq!(result.retained[0].reason,"protected_app_data","{mode}");assert!(mix.exists(),"{mode}");
+            assert_eq!(result.retained[0].reason,if mode=="schema" {"unresolved_input_reference"} else {"protected_app_data"},"{mode}");assert!(mix.exists(),"{mode}");
         }
     }
 
@@ -604,10 +641,10 @@ mod tests {
         for reason in ["input_or_other_job_reference","other_job","library_index_unavailable","editor_reference","editor_open","protected_asset_or_program","model_registry_busy"] {
             let f=Fixture::new();let (mut row,mix,_)=f.managed_export();
             match reason {
-                "input_or_other_job_reference"=>row["payload"]["project"]["sources"][0]["path"]=json!(mix),
+                "input_or_other_job_reference"=>row["payload"]["project"]["assets"][0]["path"]=json!(mix),
                 "other_job"=> {f.save(&f.row("consumer",&mix));},
                 "library_index_unavailable"=>fs::write(f.root.join("library.db"),"untouched").unwrap(),
-                "editor_reference"=> {let mut project=row["payload"]["project"].clone();project["sources"][0]["path"]=json!(mix);fs::write(f.root.join("editor-projects/edit_fixture/project.json"),project.to_string()).unwrap();},_=>(),
+                "editor_reference"=> {let mut project=f.persisted_export_project(&row);project["sources"][0]["path"]=json!(mix);fs::write(f.root.join("editor-projects/edit_fixture/project.json"),project.to_string()).unwrap();},_=>(),
             }
             let _model=if reason=="model_registry_busy" {crate::storage::model_reference_mutation("import_custom_model")}else{None};
             f.save(&row);let protection=Protection{roots:if reason=="protected_asset_or_program" {vec![mix.parent().unwrap().into()]}else{vec![]}};
@@ -621,7 +658,7 @@ mod tests {
         for collection in ["sources","assets"] {
             for saved_project in [false,true] {
                 let f=Fixture::new();let (mut row,mix,_)=f.managed_export();
-                if saved_project {let mut project=row["payload"]["project"].clone();project[collection]=json!([{"id":"source","path":"../source.wav"}]);fs::write(f.root.join("editor-projects/edit_fixture/project.json"),project.to_string()).unwrap();}
+                if saved_project {let mut project=f.persisted_export_project(&row);project[collection]=json!([{"id":"source","path":"../source.wav"}]);fs::write(f.root.join("editor-projects/edit_fixture/project.json"),project.to_string()).unwrap();}
                 else {row["payload"]["project"][collection]=json!([{"id":"source","path":"../source.wav"}]);}
                 f.save(&row);let result=f.remove(&["export"],true,false,false,&mut never_recycle).unwrap();
                 assert_eq!(result.retained[0].reason,if saved_project {"editor_index_unavailable"}else{"unresolved_input_reference"});assert!(mix.exists());
@@ -752,8 +789,8 @@ mod tests {
         for editor in [true,false] {
             let f=Fixture::new(); let output=f.file("keep.wav"); f.save(&f.row("job",&output));
             if editor { let dir=f.root.join("editor-projects/project");fs::create_dir_all(&dir).unwrap();
-                fs::write(dir.join("project.json"),json!({"version":4,"sources":[{"path":output}],"tracks":[]}).to_string()).unwrap();
-            } else { let dir=f.root.join("settings");fs::create_dir_all(&dir).unwrap();fs::write(dir.join("user_models.json"),json!({"models":[{"name":"test","model_type":"test","model_path":output}]}).to_string()).unwrap(); }
+                fs::write(dir.join("project.json"),json!({"version":4,"id":"project","sources":[{"path":output}],"tracks":[]}).to_string()).unwrap();
+            } else { let dir=f.root.join("settings");fs::create_dir_all(&dir).unwrap();fs::write(dir.join("user_models.json"),json!({"version":1,"models":[{"name":"test","model_type":"test","model_path":output}]}).to_string()).unwrap(); }
             let result=f.remove(&["job"],true,false,false,&mut never_recycle).unwrap();
             assert_eq!(result.retained[0].reason,if editor {"editor_reference"} else {"input_or_other_job_reference"}); assert!(output.exists());
         }
@@ -948,7 +985,7 @@ mod tests {
         for reason in ["library_index_unavailable","editor_open","editor_reference","model_registry_busy"] {
             let f=Fixture::new();let output=f.file("keep.wav");for row in f.audio("group",&[output.clone()]) {f.save(&row);}
             if reason=="library_index_unavailable" {fs::write(f.root.join("library.db"),"not touched").unwrap();}
-            if reason=="editor_reference" {let dir=f.root.join("editor-projects/independent");fs::create_dir_all(&dir).unwrap();fs::write(dir.join("project.json"),json!({"version":4,"sources":[{"path":output}],"tracks":[]}).to_string()).unwrap();}
+            if reason=="editor_reference" {let dir=f.root.join("editor-projects/independent");fs::create_dir_all(&dir).unwrap();fs::write(dir.join("project.json"),json!({"version":4,"id":"independent","sources":[{"path":output}],"tracks":[]}).to_string()).unwrap();}
             let _model=if reason=="model_registry_busy" {crate::storage::model_reference_mutation("import_custom_model")}else{None};
             let result=f.remove_audio(&["group_0"],true,false,reason=="editor_open",&mut never_recycle).unwrap();
             assert_eq!(result.removed_job_ids,vec!["group_0"]);assert_eq!(result.retained[0].reason,reason);assert!(output.exists());
@@ -1005,9 +1042,9 @@ mod tests {
         let project=f.root.join("editor-projects/new/project.json");
         let (started,ready)=std::sync::mpsc::channel();let mut writer=None;
         let result=f.remove(&["job"],true,false,false,&mut |path| {
-            let project=project.clone();let sender=started.clone();
+            let project=project.clone();let sender=started.clone();let root=f.root.clone();
             writer=Some(std::thread::spawn(move || {
-                crate::storage::write_editor_project_file(&project,&json!({"version":4,"sources":[],"tracks":[]})).unwrap();
+                crate::storage::write_editor_project_file(&root,&project,&json!({"version":4,"id":"new","sources":[],"tracks":[]})).unwrap();
                 sender.send(()).unwrap();
             }));
             assert!(ready.recv_timeout(std::time::Duration::from_millis(30)).is_err(),"editor save entered during recycle");

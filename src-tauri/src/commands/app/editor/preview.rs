@@ -103,13 +103,13 @@ pub async fn editor_preview_chunk(
 pub async fn generate_waveform_peaks(app: AppHandle, payload: Value) -> AppResult<Value> {
     let mut payload = payload;
     if let Some(object) = payload.as_object_mut() {
+        object.insert("dataRoot".into(), serde_json::json!(crate::storage::data_root_dir(&app)?));
         if !object.contains_key("cacheDir") {
             let project_id = object
                 .get("projectId")
                 .and_then(Value::as_str)
                 .unwrap_or("shared");
             let cache_dir = editor_project_dir(&app, project_id)?.join("peaks");
-            std::fs::create_dir_all(&cache_dir)?;
             object.insert(
                 "cacheDir".into(),
                 Value::String(cache_dir.to_string_lossy().to_string()),

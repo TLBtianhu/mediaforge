@@ -272,8 +272,11 @@ terminal output does not release capacity until the process is reaped.
 The Rust dispatcher and Python Kernel still execute their own sources. Each has local FIFO;
 this is shared cross-process admission, not global FIFO, a machine-wide GPU budget or a daemon
 that takes over all sources. Generic manual queued jobs resume at native startup, audio after
-frontend enqueue/start coordination, and Agent jobs when Kernel restarts. Media/Agent produced-file
-deletion remains a next step. See [the job contract](docs/job-ledger-contract.md).
+frontend enqueue/start coordination, and Agent jobs when Kernel restarts. Audio/media/Agent result
+removal shares the native reference checks and journal transaction. Project deletion also checks
+all current jobs, other projects, models and the original library while holding the shared asset
+lease; app-owned saves, recordings and waveform publication participate in that lease. See
+[the job contract](docs/job-ledger-contract.md).
 
 ### Headless installer smoke
 

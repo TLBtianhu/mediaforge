@@ -1,4 +1,4 @@
-"""The zero-content cross-process lease shared by library writers and file recycling."""
+"""One zero-content lease for app-owned asset references and file deletion."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -55,7 +55,7 @@ def asset_reference_lock(data_root: Path, *, timeout: float = 5.0):
     def wait_or_raise():
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise AssetReferencesBusy("Asset references are busy; no library files were changed")
+            raise AssetReferencesBusy("Asset references are busy; no asset files were changed")
         time.sleep(min(.05, remaining))
 
     if os.name == "nt":

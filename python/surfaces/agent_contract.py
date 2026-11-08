@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -352,7 +353,12 @@ def _native_tools() -> list[dict[str, Any]]:
         _tool("model.delete", "删除模型", "删除本地权重文件。", "model", "delete_model",
               approval="explicit", input_schema=_schema({"model": {"type": "string"}}, ["model"])),
         _tool("model.import_custom", "导入自定义模型", "把外部权重注册进分离模型库。", "model", "import_custom_model",
-              approval="explicit", cost="seconds", input_schema=_schema({"paths": inputs_array}, ["paths"])),
+              approval="explicit", cost="seconds", long_running=True, input_schema=_schema({
+                  "name":{"type":"string"}, "modelType":{"type":"string"}, "modelPath":{"type":"string"},
+                  "configPath":{"type":"string"}, "aliases":{"type":"array","items":{"type":"string"}},
+                  "importMode":{"type":"string","enum":["reference","copy"]},
+                  "verify":{"type":"boolean"}, "force":{"type":"boolean"},
+              }, ["name", "modelType", "modelPath"])),
         _tool("model.inspect_custom", "检查自定义模型", "在不注册的情况下检查权重是否可加载。", "model",
               "inspect_custom_model", cost="seconds", input_schema=_schema({"paths": inputs_array}, ["paths"])),
         _tool("model.storage", "模型存储概览", "各目录占用与可回收空间。", "model", "model_storage_summary"),
@@ -413,7 +419,7 @@ def _native_tools() -> list[dict[str, Any]]:
               approval="confirm", cost="seconds", input_schema=_schema({"project": {"type": "object"}}, ["project"]),
               produces="file"),
         _tool("editor.peaks", "波形峰值", "计算波形显示用峰值。", "editor", "waveform_peaks",
-              input_schema=_schema({"inputs": inputs_array}, ["inputs"])),
+              input_schema=_schema({"path":{"type":"string"}, "resolution":{"type":"integer"}, "cacheDir":{"type":"string"}}, ["path"])),
         _tool("media.metadata", "媒体元数据", "Read media metadata with ffprobe. Returns a compact probe summary.", "media", "media_tool",
               operation="media_probe", input_schema=_schema({"inputs": inputs_array}, ["inputs"]), produces="json"),
         _tool("media.library", "媒体库", "列出/刷新媒体库。", "media", "media_library"),
@@ -852,7 +858,7 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
                 },
             },
         }
-    if tool["command"] == "media_library" and data_root is not None:
+    if tool["command"] in {"media_library", "waveform_peaks"} and data_root is not None:
         # Executor scope is not a caller argument and never changes process env.
         payload = {**payload, "dataRoot": data_root}
     events: list[dict[str, Any]] = []
@@ -862,7 +868,11 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
     def sink(event_type: str, data: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
         events.append({"type": event_type, "payload": data})
 
-    with worker_protocol.bind_event_sink(sink):
+    with ExitStack() as scope:
+        if tool["command"] == "list_models" and data_root is not None:
+            from core.worker_models import user_model_registry_scope
+            scope.enter_context(user_model_registry_scope(data_root))
+        scope.enter_context(worker_protocol.bind_event_sink(sink))
         code = worker.run_command(tool["command"], payload)
 
     terminal = events[-1] if events else None

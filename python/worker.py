@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
 from shared.worker_protocol import debug_log, emit_error, load_payload, protocol_logging
 from shared.worker_proxy import ProxyConfigError
+from shared import worker_paths
 from surfaces.dispatch import run as dispatch_run
 
 
@@ -49,6 +51,9 @@ def main(argv: list[str]) -> int:
     # Refuse the old interpreter before payload handling or persistent logging.
     if not _check_python_runtime():
         return 1
+    # CLI startup is process scope, before any lazy pymss import. Inline dispatch
+    # must use an already configured registry rather than change another request's env.
+    os.environ["PYMSS_USER_MODELS"] = str(worker_paths.user_models_file())
     debug_log("worker.start", command=args.command)
     try:
         payload = load_payload(args.payload)

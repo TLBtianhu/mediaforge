@@ -426,16 +426,48 @@ pub(crate) fn write_json_file(path: &Path, data: &Value) -> AppResult<()> {
     write_json_file_locked(path, data)
 }
 
-pub(crate) fn write_editor_project_file(path: &Path, data: &Value) -> AppResult<()> {
+pub(crate) fn write_editor_project_file(data_root: &Path, path: &Path, data: &Value) -> AppResult<()> {
+    write_editor_project_file_with_replace(data_root, path, data, replace_file)
+}
+
+fn write_editor_project_file_with_replace(
+    data_root: &Path,
+    path: &Path,
+    data: &Value,
+    replace: impl FnOnce(&Path, &Path) -> AppResult<()>,
+) -> AppResult<()> {
     let _write_guard = JSON_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     validate_editor_project(data)?;
-    if path.is_file() {
-        let previous: Value = serde_json::from_slice(&std::fs::read(path)?)?;
-        validate_editor_project(&previous)?;
+    let id = data.get("id").and_then(Value::as_str)
+        .ok_or_else(|| AppError::Worker("missing editor project id; original file preserved".into()))?;
+    crate::commands::app::editor::validate_editor_project_id(id)?;
+    let expected = data_root.join("editor-projects").join(id).join("project.json");
+    if path != expected {
+        return Err(AppError::Worker("editor project path does not match its identity; original file preserved".into()));
     }
-    write_json_file_locked(path, data)
+    crate::python::result_jobs::plain_path(data_root).map_err(|reason| AppError::Worker(reason.into()))?;
+    crate::python::result_jobs::plain_path(path).map_err(|reason| AppError::Worker(reason.into()))?;
+    // Save and native deletion share JSON -> asset ordering. The OS lease also
+    // excludes saves from another process until the atomic replacement finishes.
+    let _asset = crate::python::library_references::AssetLease::acquire(data_root, Duration::from_secs(5))?;
+    crate::python::result_jobs::plain_path(path).map_err(|reason| AppError::Worker(reason.into()))?;
+    let previous = match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            let previous = crate::python::result_jobs::parse_reference_json(&std::fs::read_to_string(path)?)?;
+            validate_editor_project(&previous)?;
+            if previous.get("id").and_then(Value::as_str) != Some(id) {
+                return Err(AppError::Worker("stored editor project identity does not match; original file preserved".into()));
+            }
+            Some(previous)
+        }
+        Ok(_) => return Err(AppError::Worker("editor project must be a regular file; original file preserved".into())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    crate::python::editor_references::validate_managed_reference_targets(data_root, data, previous.as_ref())?;
+    write_json_file_with_replace(path, data, replace)
 }
 
 /// Hold the same guard as editor saves while inspecting references and recycling
@@ -1089,27 +1121,119 @@ mod tests {
 
     #[test]
     fn unsupported_editor_files_are_preserved_without_upgrade_backups() {
-        let root=tempfile::tempdir().unwrap(); let path=root.path().join("project.json");
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("editor-projects/p/project.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
         for version in [None,Some(2),Some(3),Some(5)] {
             let mut old=json!({"id":"p","sources":[],"tracks":[]});
             if let Some(version)=version { old["version"]=json!(version); }
             let raw=serde_json::to_vec(&old).unwrap(); std::fs::write(&path,&raw).unwrap();
-            assert!(super::write_editor_project_file(&path,&current).is_err());
+            assert!(super::write_editor_project_file(root.path(),&path,&current).is_err());
             assert_eq!(std::fs::read(&path).unwrap(),raw);
-            assert!(!root.path().join("project.pre-plugins.json").exists());
+            assert!(!path.parent().unwrap().join("project.pre-plugins.json").exists());
         }
     }
 
     #[test]
     fn current_editor_writes_replace_only_the_current_project() {
-        let root=tempfile::tempdir().unwrap(); let path=root.path().join("project.json");
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("editor-projects/p/project.json");
         for revision in 1..=3 {
-            super::write_editor_project_file(&path,&json!({"version":4,"sources":[],"tracks":[],"revision":revision})).unwrap();
+            super::write_editor_project_file(root.path(),&path,&json!({"id":"p","version":4,"sources":[],"tracks":[],"revision":revision})).unwrap();
         }
         let saved:Value=serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(saved["revision"],3);
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(),1);
+        assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(),1);
+    }
+
+    #[test]
+    fn editor_save_rejects_duplicate_or_mismatched_previous_identity_without_rewriting() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        for raw in [
+            r#"{"id":"other","id":"p","version":4,"sources":[],"tracks":[]}"#,
+            r#"{"id":"p","version":4,"sources":[{"path":"keep.wav","path":"hide.wav"}],"tracks":[]}"#,
+            r#"{"id":"other","version":4,"sources":[],"tracks":[]}"#,
+        ] {
+            std::fs::write(&path,raw).unwrap();
+            assert!(super::write_editor_project_file(root.path(),&path,&current).is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(),raw);
+            assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(),1);
+        }
+    }
+
+    #[test]
+    fn editor_save_requires_the_exact_profile_project_and_identity() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        super::write_editor_project_file(root.path(),&path,&current).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        for invalid in [json!({"version":4,"sources":[],"tracks":[]}),
+            json!({"id":"../outside","version":4,"sources":[],"tracks":[]}),
+            json!({"id":"other","version":4,"sources":[],"tracks":[]})] {
+            assert!(super::write_editor_project_file(root.path(),&path,&invalid).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(),before);
+        }
+        for invalid_path in [root.path().join("project.json"),root.path().join("editor-projects/p/other.json"),
+            root.path().join("editor-projects/p/../p/project.json")] {
+            assert!(super::write_editor_project_file(root.path(),&invalid_path,&current).is_err());
+        }
+        let relative_root=std::path::Path::new("relative-editor-save-root");
+        assert!(super::write_editor_project_file(relative_root,&relative_root.join("editor-projects/p/project.json"),&current).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(),before);
+    }
+
+    #[test]
+    fn editor_save_holds_asset_lease_through_atomic_replace_and_releases_it_on_failure() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        super::write_editor_project_file(root.path(),&path,&current).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        let mut replacing=false;
+        let result=super::write_editor_project_file_with_replace(root.path(),&path,&current,|temporary,destination| {
+            replacing=true;
+            assert!(crate::python::library_references::AssetLease::acquire(root.path(),std::time::Duration::ZERO).is_err());
+            assert_eq!(std::fs::read(destination).unwrap(),before);
+            assert!(temporary.is_file());
+            Err(crate::error::AppError::Worker("injected replacement failure".into()))
+        });
+        assert!(replacing && result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(),before);
+        assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(),1);
+        let _released=crate::python::library_references::AssetLease::acquire(root.path(),std::time::Duration::ZERO).unwrap();
+    }
+
+    #[test]
+    fn editor_save_rejects_new_missing_managed_assets_but_preserves_relinkable_missing_sources() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        super::write_editor_project_file(root.path(),&path,&current).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        let mut changed=current.clone();
+        changed["sources"]=json!([{"id":"source","path":root.path().join("editor-projects/deleted/recordings/take.wav"),"missing":true}]);
+        assert!(super::write_editor_project_file(root.path(),&path,&changed).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(),before);
+        // A previously saved missing reference must remain editable for relinking.
+        std::fs::write(&path,serde_json::to_vec(&changed).unwrap()).unwrap();
+        changed["name"]=json!("Editing while relinking");
+        super::write_editor_project_file(root.path(),&path,&changed).unwrap();
+        let outside=tempfile::tempdir().unwrap();
+        changed["sources"][0]["path"]=json!(outside.path().join("missing.wav"));
+        super::write_editor_project_file(root.path(),&path,&changed).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap()["sources"][0]["path"],changed["sources"][0]["path"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn editor_save_rejects_linked_project_paths_without_touching_the_target() {
+        let root=tempfile::tempdir().unwrap();let outside=tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("editor-projects")).unwrap();
+        std::os::unix::fs::symlink(outside.path(),root.path().join("editor-projects/p")).unwrap();
+        let path=root.path().join("editor-projects/p/project.json");
+        let raw=r#"{"id":"p","version":4,"sources":[],"tracks":[]}"#;
+        std::fs::write(outside.path().join("project.json"),raw).unwrap();
+        assert!(super::write_editor_project_file(root.path(),&path,&json!({"id":"p","version":4,"sources":[],"tracks":[]})).is_err());
+        assert_eq!(std::fs::read_to_string(outside.path().join("project.json")).unwrap(),raw);
     }
 
     #[cfg(windows)]

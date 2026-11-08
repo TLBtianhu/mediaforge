@@ -23,6 +23,7 @@ from typing import Any
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 from shared.worker_subprocess import hidden_subprocess_kwargs
+from shared import worker_paths
 from core import job_store
 from core import job_quota
 
@@ -651,7 +652,8 @@ class OperationKernel:
                         text=True,
                         encoding="utf-8",
                         errors="replace",
-                        env={**os.environ, "MEDIAFORGE_DATA_ROOT": str(self.data_root), "MEDIAFORGE_DATA_DIR": str(self.data_root)},
+                        env={**os.environ, "MEDIAFORGE_DATA_ROOT": str(self.data_root), "MEDIAFORGE_DATA_DIR": str(self.data_root),
+                             "PYMSS_USER_MODELS": str(worker_paths.user_models_file(self.data_root))},
                         **hidden_subprocess_kwargs(),
                     )
                     job.process = process

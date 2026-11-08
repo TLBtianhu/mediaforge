@@ -3,6 +3,11 @@
 //! 从 app_cmd.rs 拆出；命令形状与路径不变，main.rs 只改注册路径。
 
 pub(crate) mod export;
+mod cleanup;
+#[cfg(test)]
+use cleanup::with_current_orphaned_projects;
+#[cfg(test)]
+use cleanup::delete_current_orphaned_projects;
 pub(crate) mod preview;
 pub(crate) mod recording;
 
@@ -18,7 +23,6 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 
 use crate::commands::app::dialogs::path_to_string;
-use crate::commands::app::trash::is_link_metadata;
 use crate::commands::app::scan::{collect_audio_files, is_audio_file, scan_audio_paths};
 
 fn editor_projects_root(app: &AppHandle) -> AppResult<PathBuf> {
@@ -95,53 +99,6 @@ pub struct OrphanedEditorProject {
     pub(crate) name: String,
 }
 
-pub(crate) fn remove_editor_project_dirs(root: &Path, project_ids: &[String], task_ids: &[String]) -> EditorProjectCleanupResult {
-    let mut result = EditorProjectCleanupResult::default();
-    let task_ids: std::collections::HashSet<&str> = task_ids.iter().map(|task_id| task_id.trim()).filter(|task_id| !task_id.is_empty()).collect();
-    for project_id in project_ids {
-        if validate_editor_project_id(project_id).is_err() {
-            result.failed_project_ids.push(project_id.clone());
-            continue;
-        }
-        let project_dir = root.join(project_id);
-        let metadata = match std::fs::symlink_metadata(&project_dir) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                result.missing_project_ids.push(project_id.clone());
-                continue;
-            }
-            Err(_) => {
-                result.failed_project_ids.push(project_id.clone());
-                continue;
-            }
-        };
-        if !metadata.is_dir() || is_link_metadata(&metadata) {
-            result.failed_project_ids.push(project_id.clone());
-            continue;
-        }
-        let project_path = project_dir.join("project.json");
-        let project = std::fs::symlink_metadata(&project_path)
-            .ok()
-            .filter(|metadata| metadata.is_file() && !is_link_metadata(metadata))
-            .and_then(|_| std::fs::read_to_string(&project_path).ok())
-            .and_then(|content| serde_json::from_str::<Value>(&content).ok());
-        let owned = project.as_ref().is_some_and(|project| {
-            project.get("id").and_then(Value::as_str) == Some(project_id.as_str())
-                && project.get("sourceTaskId").and_then(Value::as_str)
-                    .is_some_and(|task_id| !task_id.is_empty() && task_ids.contains(task_id))
-        });
-        if !owned {
-            result.failed_project_ids.push(project_id.clone());
-            continue;
-        }
-        match std::fs::remove_dir_all(project_dir) {
-            Ok(()) => result.deleted_project_ids.push(project_id.clone()),
-            Err(_) => result.failed_project_ids.push(project_id.clone()),
-        }
-    }
-    result
-}
-
 fn open_editor_project_ids(app: &AppHandle, project_ids: &[String]) -> Vec<String> {
     project_ids
         .iter()
@@ -151,85 +108,6 @@ fn open_editor_project_ids(app: &AppHandle, project_ids: &[String]) -> Vec<Strin
         })
         .cloned()
         .collect()
-}
-
-fn with_current_orphaned_projects<T>(
-    data_root: &Path,
-    action: impl FnOnce(&Path, Vec<OrphanedEditorProject>) -> AppResult<T>,
-) -> AppResult<T> {
-    crate::python::task_journal::with_catalog_records(data_root, |records| {
-        storage::with_editor_project_guard(|| {
-            // Keep the same cross-process asset lease as library writers until
-            // the selected project cleanup has finished, including a missing DB.
-            let library = crate::python::library_references::snapshot(data_root)?;
-            let library_paths = crate::python::result_jobs::PathReferences::from_paths(library.paths());
-            let ids = records.iter().filter_map(|row| row["jobId"].as_str()).collect::<std::collections::HashSet<_>>();
-            let export_projects = records.iter().filter(|row| row["command"] == "export_editor_mix")
-                .filter_map(|row| row.pointer("/payload/project/id").and_then(Value::as_str)).collect::<std::collections::HashSet<_>>();
-            let referenced_paths = crate::python::result_jobs::snapshot_path_references(records);
-            let root = data_root.join("editor-projects");
-            crate::python::result_jobs::plain_path(&root).map_err(|reason| AppError::Worker(reason.into()))?;
-            match std::fs::symlink_metadata(&root) {
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return action(&root, vec![]),
-                Err(error) => return Err(error.into()),
-                Ok(_) => (),
-            }
-            let mut projects = Vec::new();
-            for entry in std::fs::read_dir(&root)? {
-                let entry = entry?;
-                crate::python::result_jobs::plain_path(&entry.path()).map_err(|reason| AppError::Worker(reason.into()))?;
-                if !entry.file_type()?.is_dir() { continue; }
-                let project_id = entry.file_name().into_string().map_err(|_| AppError::Worker("invalid editor project filename".into()))?;
-                let path = entry.path().join("project.json");
-                crate::python::result_jobs::plain_path(&path).map_err(|reason| AppError::Worker(reason.into()))?;
-                let text = match std::fs::read_to_string(&path) {
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(error) => return Err(error.into()),
-                    Ok(text) => text,
-                };
-                let project = crate::python::result_jobs::parse_reference_json(&text)?;
-                storage::validate_editor_project(&project)?;
-                let Some(source) = project["sourceTaskId"].as_str().filter(|id| !id.is_empty()) else { continue; };
-                // Independently named/copied projects are never task-owned cleanup targets.
-                if ids.contains(source) || export_projects.contains(project_id.as_str()) || referenced_paths.includes_directory(&entry.path())
-                    || library_paths.includes_directory(&entry.path())
-                    || !crate::python::task_journal::valid_id(source)
-                    || project["id"] != project_id || editor_project_id_for_task_id(source) != project_id
-                    || validate_editor_project_id(&project_id).is_err() { continue; }
-                let name = project["name"].as_str().filter(|name| !name.trim().is_empty()).unwrap_or(&project_id).to_string();
-                projects.push(OrphanedEditorProject { project_id, source_task_id: source.to_string(), name });
-            }
-            projects.sort_by(|a, b| a.name.cmp(&b.name).then(a.project_id.cmp(&b.project_id)));
-            action(&root, projects)
-        })
-    })
-}
-
-fn delete_current_orphaned_projects(
-    data_root: &Path,
-    selected_project_ids: &[String],
-    open: impl FnOnce(&[String]) -> Vec<String>,
-) -> AppResult<EditorProjectCleanupResult> {
-    with_current_orphaned_projects(data_root, |root, projects| {
-        let selected = selected_project_ids.iter().cloned().collect::<std::collections::BTreeSet<_>>();
-        let projects = projects.into_iter().filter(|project| selected.contains(&project.project_id)).collect::<Vec<_>>();
-        let project_ids = projects.iter().map(|project| project.project_id.clone()).collect::<Vec<_>>();
-        let mut rejected = EditorProjectCleanupResult::default();
-        for id in selected.iter().filter(|id| !project_ids.contains(id)) {
-            if validate_editor_project_id(id).is_err() { rejected.failed_project_ids.push(id.clone());continue; }
-            match std::fs::symlink_metadata(root.join(id)) {
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => rejected.missing_project_ids.push(id.clone()),
-                Err(_) => rejected.failed_project_ids.push(id.clone()),
-                Ok(_) => rejected.blocked_project_ids.push(id.clone()), // now linked to a job or not task-owned.
-            }
-        }
-        rejected.blocked_project_ids.extend(open(&project_ids));
-        if !rejected.blocked_project_ids.is_empty() || !rejected.failed_project_ids.is_empty() { return Ok(rejected); }
-        let task_ids = projects.iter().map(|project| project.source_task_id.clone()).collect::<Vec<_>>();
-        let mut result = remove_editor_project_dirs(root, &project_ids, &task_ids);
-        result.missing_project_ids.extend(rejected.missing_project_ids);
-        Ok(result)
-    })
 }
 
 #[derive(Serialize)]
@@ -366,7 +244,7 @@ fn write_editor_project(app: &AppHandle, project: &Value) -> AppResult<Value> {
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::Worker("missing editor project id".into()))?;
     let dir = editor_project_dir(app, project_id)?;
-    storage::write_editor_project_file(&dir.join("project.json"), project)?;
+    storage::write_editor_project_file(&storage::data_root_dir(app)?, &dir.join("project.json"), project)?;
     session_log::record_editor_project(project);
     Ok(project.clone())
 }
@@ -787,20 +665,49 @@ pub async fn create_blank_editor_project(app: AppHandle, payload: Value) -> AppR
     write_editor_project(&app, &project)
 }
 
+fn open_editor_blocks_deletion(app: &AppHandle, project_ids: &[String]) -> Vec<String> {
+    if app.webview_windows().keys().any(|label| label.starts_with("editor-")) {
+        project_ids.to_vec()
+    } else {
+        Vec::new()
+    }
+}
+
+fn editor_project_protection_from(
+    data_root: &Path,
+    mut asset_roots: Vec<PathBuf>,
+    executable: &Path,
+    program_roots: &[PathBuf],
+) -> crate::python::result_jobs::Protection {
+    // Model/runtime overrides remain protected even when they contain data_root.
+    // Only broad program/resource ancestors permit their managed project area.
+    asset_roots.push(executable.to_path_buf());
+    let data = crate::python::result_jobs::PathReferences::from_paths(&[data_root.to_path_buf()]);
+    asset_roots.extend(program_roots.iter().filter(|root| !data.includes_directory(root)).cloned());
+    crate::python::result_jobs::Protection { roots: asset_roots }
+}
+
+fn editor_project_protection(app: &AppHandle) -> AppResult<crate::python::result_jobs::Protection> {
+    let data_root = storage::data_root_dir(app)?;
+    let asset_roots = vec![storage::models_dir(app)?, storage::runtime_envs_dir(app)?, storage::runtime_root_dir(app)?];
+    let executable = std::env::current_exe()?;
+    let mut program_roots = executable.parent().map(PathBuf::from).into_iter().collect::<Vec<_>>();
+    if let Ok(resource) = app.path().resource_dir() { program_roots.extend(storage::resource_roots(&resource)); }
+    Ok(editor_project_protection_from(&data_root, asset_roots, &executable, &program_roots))
+}
+
 #[tauri::command]
 pub async fn delete_editor_project(app: AppHandle, project_id: String) -> AppResult<bool> {
-    let label = format!("editor-{}", safe_file_name(&project_id));
-    if app.get_webview_window(&label).is_some() {
-        return Err(AppError::Worker("请先关闭该工程窗口后再删除".into()));
+    let policy = editor_project_protection(&app)?;
+    let result = cleanup::delete_projects(&storage::data_root_dir(&app)?, &[project_id.clone()],
+        cleanup::Selection::Explicit, &policy.roots, |ids| open_editor_blocks_deletion(&app, ids))?;
+    if !result.blocked_project_ids.is_empty() {
+        return Err(AppError::Worker("工程仍被任务、模型、素材库或其它工程引用，或仍有编辑器窗口打开，无法删除".into()));
     }
-
-    let project_dir = editor_project_dir(&app, &project_id)?;
-    if !project_dir.exists() {
-        return Ok(false);
+    if !result.failed_project_ids.is_empty() {
+        return Err(AppError::Worker("工程目录检查或删除失败；请检查目录权限和链接".into()));
     }
-
-    std::fs::remove_dir_all(project_dir)?;
-    Ok(true)
+    Ok(result.deleted_project_ids.contains(&project_id))
 }
 
 #[tauri::command]
@@ -809,18 +716,10 @@ pub async fn delete_editor_projects_for_tasks(
     task_ids: Vec<String>,
 ) -> AppResult<EditorProjectCleanupResult> {
     let project_ids = editor_project_ids_for_task_ids(&task_ids);
-    let blocked_project_ids = open_editor_project_ids(&app, &project_ids);
-    if !blocked_project_ids.is_empty() {
-        return Ok(EditorProjectCleanupResult {
-            blocked_project_ids,
-            ..EditorProjectCleanupResult::default()
-        });
-    }
-
-    let root = editor_projects_root(&app)?;
-    Ok(remove_editor_project_dirs(&root, &project_ids, &task_ids))
+    let policy = editor_project_protection(&app)?;
+    cleanup::delete_projects(&storage::data_root_dir(&app)?, &project_ids,
+        cleanup::Selection::Tasks(&task_ids), &policy.roots, |ids| open_editor_blocks_deletion(&app, ids))
 }
-
 #[tauri::command]
 pub async fn list_open_editor_projects_for_tasks(
     app: AppHandle,
@@ -834,7 +733,8 @@ pub async fn list_open_editor_projects_for_tasks(
 pub async fn list_orphaned_editor_projects(
     app: AppHandle,
 ) -> AppResult<Vec<OrphanedEditorProject>> {
-    with_current_orphaned_projects(&storage::data_root_dir(&app)?, |_, projects| Ok(projects))
+    let policy = editor_project_protection(&app)?;
+    cleanup::list_orphaned_projects(&storage::data_root_dir(&app)?, &policy.roots)
 }
 
 #[tauri::command]
@@ -842,7 +742,9 @@ pub async fn delete_orphaned_editor_projects(
     app: AppHandle,
     project_ids: Vec<String>,
 ) -> AppResult<EditorProjectCleanupResult> {
-    delete_current_orphaned_projects(&storage::data_root_dir(&app)?, &project_ids, |ids| open_editor_project_ids(&app, ids))
+    let policy = editor_project_protection(&app)?;
+    cleanup::delete_projects(&storage::data_root_dir(&app)?, &project_ids,
+        cleanup::Selection::Orphans, &policy.roots, |ids| open_editor_blocks_deletion(&app, ids))
 }
 
 
@@ -1320,7 +1222,7 @@ mod tests {
     use crate::python::worker::cleanup_editor_export_temp_files;
     use crate::commands::app::scan::reveal_target_path;
     use crate::commands::app::editor::preview::decode_editor_preview_chunk;
-    use crate::commands::app::editor::{editor_project_id_for_task_id, editor_project_ids_for_task_ids, remove_editor_project_dirs, safe_file_name, validate_editor_project_id};
+    use crate::commands::app::editor::{editor_project_id_for_task_id, editor_project_ids_for_task_ids, safe_file_name, validate_editor_project_id};
     use crate::commands::app::debug::validate_debug_runtime_override;
     use super::*;
     use std::fs;
@@ -1350,6 +1252,7 @@ mod tests {
 
     #[test]
     fn canonical_orphan_scan_preserves_jobs_without_outputs_failed_jobs_and_agent_projects() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();let source=root.path().join("source.wav");fs::write(&source,"source").unwrap();
         let mut projects=vec![];
         for (id,origin,status) in [("no_output","manual","completed"),("failed","manual","failed"),("agent","agent","failed")] {
@@ -1364,6 +1267,7 @@ mod tests {
 
     #[test]
     fn canonical_orphan_cleanup_removes_only_closed_owned_projects_with_no_job_record() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();let owned=current_orphan_project(root.path(),"edit_gone",Some("gone"));
         let independent=current_orphan_project(root.path(),"independent",Some("gone"));let blank=current_orphan_project(root.path(),"edit_blank",None);
         let projects=with_current_orphaned_projects(root.path(),|_,projects|Ok(projects)).unwrap();
@@ -1376,6 +1280,7 @@ mod tests {
 
     #[test]
     fn canonical_orphan_cleanup_rejects_a_broken_catalog_before_touching_any_project() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
         let before=fs::read(project.join("project.json")).unwrap();fs::create_dir_all(root.path().join("agent-jobs")).unwrap();
         fs::write(root.path().join("agent-jobs/bad.json"),"{}").unwrap();
@@ -1385,10 +1290,12 @@ mod tests {
 
     #[test]
     fn canonical_orphan_snapshot_keeps_catalog_locked_through_the_cleanup_callback() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();current_orphan_project(root.path(),"edit_gone",Some("gone"));
         let (entered,enter)=std::sync::mpsc::channel();let mut writer=None;
         with_current_orphaned_projects(root.path(),|_,projects| {
             assert_eq!(projects.len(),1);let data=root.path().to_path_buf();
+            assert!(crate::python::library_references::AssetLease::acquire(root.path(), std::time::Duration::ZERO).is_err());
             writer=Some(std::thread::spawn(move ||crate::python::task_journal::with_catalog_records(&data,|_|{entered.send(()).unwrap();Ok(())}).unwrap()));
             assert!(enter.recv_timeout(std::time::Duration::from_millis(30)).is_err());Ok(())
         }).unwrap();
@@ -1397,6 +1304,7 @@ mod tests {
 
     #[test]
     fn canonical_orphan_cleanup_revalidates_prefetched_selection_against_new_job_records() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
         let selected=with_current_orphaned_projects(root.path(),|_,projects|Ok(projects.into_iter().map(|project|project.project_id).collect::<Vec<_>>())).unwrap();
         let source=root.path().join("source.wav");fs::write(&source,"source").unwrap();current_orphan_job(root.path(),"gone","agent","failed",&source);
@@ -1406,6 +1314,7 @@ mod tests {
 
     #[test]
     fn canonical_orphan_cleanup_never_expands_the_explicit_project_selection() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();let selected_project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
         let selected=with_current_orphaned_projects(root.path(),|_,projects|Ok(projects.into_iter().map(|project|project.project_id).collect::<Vec<_>>())).unwrap();
         let appeared_later=current_orphan_project(root.path(),"edit_new",Some("new"));
@@ -1415,10 +1324,11 @@ mod tests {
 
     #[test]
     fn canonical_orphan_scan_preserves_project_referenced_by_an_export_after_its_source_job_is_removed() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
         let outside=root.path().join("source.wav");fs::write(&outside,"source").unwrap();current_orphan_job(root.path(),"export","manual","completed",&outside);
         let job=root.path().join("agent-jobs/export.json");let mut row:Value=serde_json::from_str(&fs::read_to_string(&job).unwrap()).unwrap();
-        row["command"]=serde_json::json!("export_editor_mix");row["payload"]=serde_json::json!({"project":{"id":"edit_gone","version":4,"sources":[],"tracks":[]}});
+        row["command"]=serde_json::json!("export_editor_mix");row["payload"]=serde_json::json!({"project":{"id":"edit_gone","version":4,"assets":[],"tracks":[]}});
         fs::write(job,row.to_string()).unwrap();
         assert!(with_current_orphaned_projects(root.path(),|_,projects|Ok(projects)).unwrap().is_empty());
         let result=delete_current_orphaned_projects(root.path(),&["edit_gone".into()],|_|vec![]).unwrap();
@@ -1427,6 +1337,7 @@ mod tests {
 
     #[test]
     fn canonical_orphan_scan_preserves_any_current_job_input_or_result_inside_the_project_directory() {
+        let _model = crate::storage::model_reference_test_guard();
         for result_reference in [false,true] {
             let root=tempfile::tempdir().unwrap();let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
             let output=project.join("exports/mix.wav");fs::create_dir_all(output.parent().unwrap()).unwrap();fs::write(&output,"mix").unwrap();
@@ -1441,6 +1352,7 @@ mod tests {
 
     #[test]
     fn canonical_orphan_cleanup_rejects_duplicate_project_identity_or_source_keys_and_preserves_bytes() {
+        let _model = crate::storage::model_reference_test_guard();
         for duplicate in ["id","sourceTaskId"] {
             let root=tempfile::tempdir().unwrap();let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
             let raw=if duplicate=="id" {r#"{"version":4,"id":"edit_live","id":"edit_gone","sourceTaskId":"gone","sources":[],"tracks":[]}"#}
@@ -1467,6 +1379,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn canonical_orphan_cleanup_preserves_library_sources_inside_an_unlinked_project() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();
         let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
         let source=project.join("library-source.wav");fs::write(&source,b"referenced source").unwrap();
@@ -1483,6 +1396,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn canonical_orphan_cleanup_allows_a_valid_library_without_a_project_reference() {
+        let _model = crate::storage::model_reference_test_guard();
         let root=tempfile::tempdir().unwrap();
         let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
         crate::python::library_references::create_fixture(root.path(),&[]).unwrap();
@@ -1495,6 +1409,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn canonical_orphan_cleanup_rejects_old_or_broken_libraries_before_project_deletion() {
+        let _model = crate::storage::model_reference_test_guard();
         for broken in [false,true] {
             let root=tempfile::tempdir().unwrap();
             let project=current_orphan_project(root.path(),"edit_gone",Some("gone"));
@@ -1654,55 +1569,51 @@ mod tests {
 
     #[test]
     fn editor_project_cleanup_removes_existing_dirs_and_reports_missing_ones() {
-        let root = temp_test_dir("editor-project-cleanup");
+        let _model = crate::storage::model_reference_test_guard();
+        let root = tempfile::tempdir().unwrap();
         let existing_id = "edit_existing".to_string();
         let missing_id = "edit_missing".to_string();
-        let recordings = root.join(&existing_id).join("recordings");
-        fs::create_dir_all(&recordings).expect("create editor project directory");
-        fs::write(recordings.join("take.wav"), b"audio").expect("write editor recording");
-        fs::write(
-            root.join(&existing_id).join("project.json"),
-            r#"{"id":"edit_existing","sourceTaskId":"existing"}"#,
-        ).expect("write editor project ownership");
-
-        let result = remove_editor_project_dirs(
-            &root,
-            &[existing_id.clone(), missing_id.clone()],
-            &["existing".to_string()],
-        );
-
-        assert_eq!(result.deleted_project_ids, vec![existing_id.clone()]);
+        let project = current_orphan_project(root.path(), &existing_id, Some("existing"));
+        fs::create_dir_all(project.join("recordings")).unwrap();
+        fs::write(project.join("recordings/take.wav"), b"audio").unwrap();
+        let result = cleanup::delete_projects(root.path(), &[existing_id.clone(), missing_id.clone()],
+            cleanup::Selection::Tasks(&["existing".to_string()]), &[], |_| vec![]).unwrap();
+        assert_eq!(result.deleted_project_ids, vec![existing_id]);
         assert_eq!(result.missing_project_ids, vec![missing_id]);
         assert!(result.blocked_project_ids.is_empty());
         assert!(result.failed_project_ids.is_empty());
-        assert!(!root.join(existing_id).exists());
-        fs::remove_dir_all(&root).expect("remove editor cleanup test root");
+        assert!(!project.exists());
     }
 
     #[test]
     fn editor_project_cleanup_rejects_lossy_task_id_collisions_and_unknown_ownership() {
-        let root = temp_test_dir("editor-project-ownership");
+        let _model = crate::storage::model_reference_test_guard();
+        let root = tempfile::tempdir().unwrap();
         let project_id = editor_project_id_for_task_id("a:b");
         assert_eq!(project_id, editor_project_id_for_task_id("a/b"));
-        let project_dir = root.join(&project_id);
-        fs::create_dir_all(&project_dir).expect("create project directory");
-        let project_path = project_dir.join("project.json");
-        fs::write(&project_path, r#"{"id":"edit_a_b","sourceTaskId":"a:b"}"#).unwrap();
-        let result = remove_editor_project_dirs(&root, &[project_id.clone()], &["a/b".to_string()]);
-        assert_eq!(result.failed_project_ids, vec![project_id.clone()]);
-        assert!(project_dir.is_dir());
-        for content in [r#"{"id":"edit_a_b"}"#, r#"{"id":"other","sourceTaskId":"a:b"}"#, "invalid"] {
+        let project = current_orphan_project(root.path(), &project_id, Some("a:b"));
+        let result = cleanup::delete_projects(root.path(), &[project_id.clone()],
+            cleanup::Selection::Tasks(&["a/b".into()]), &[], |_| vec![]).unwrap();
+        assert_eq!(result.blocked_project_ids, vec![project_id.clone()]);
+        assert!(project.exists());
+        let project_path = project.join("project.json");
+        for content in [r#"{"version":4,"id":"edit_a_b","sources":[],"tracks":[]}"#,
+            r#"{"version":4,"id":"other","sourceTaskId":"a:b","sources":[],"tracks":[]}"#, "invalid",
+            r#"{"id":"edit_a_b","sourceTaskId":"a:b"}"#] {
             fs::write(&project_path, content).unwrap();
-            let result = remove_editor_project_dirs(&root, &[project_id.clone()], &["a:b".to_string()]);
-            assert_eq!(result.failed_project_ids, vec![project_id.clone()]);
-            assert!(project_dir.is_dir());
+            let result = cleanup::delete_projects(root.path(), &[project_id.clone()],
+                cleanup::Selection::Tasks(&["a:b".into()]), &[], |_| vec![]);
+            assert!(result.is_err() || !result.unwrap().blocked_project_ids.is_empty());
+            assert_eq!(fs::read(&project_path).unwrap(), content.as_bytes());
         }
-        fs::write(&project_path, r#"{"id":"edit_a_b","sourceTaskId":"a:b"}"#).unwrap();
-        let result = remove_editor_project_dirs(&root, &[project_id.clone()], &[" a:b ".to_string()]);
-        assert_eq!(result.deleted_project_ids, vec![project_id]);
-        fs::remove_dir_all(&root).unwrap();
+        // A valid current task's exact identity still permits explicit task cleanup.
+        fs::remove_dir_all(&project).unwrap();
+        let current = current_orphan_project(root.path(), "edit_current", Some("current"));
+        let result = cleanup::delete_projects(root.path(), &["edit_current".into()],
+            cleanup::Selection::Tasks(&[" current ".into()]), &[], |_| vec![]).unwrap();
+        assert_eq!(result.deleted_project_ids, vec!["edit_current"]);
+        assert!(!current.exists());
     }
-
     #[test]
     fn native_path_keys_preserve_posix_case_and_literal_backslashes() {
         if cfg!(windows) {
@@ -1716,7 +1627,9 @@ mod tests {
 
     #[test]
     fn empty_directory_checks_do_not_follow_links_or_directory_cycles() {
-        let root = temp_test_dir("empty-directory-links");
+        let _model = crate::storage::model_reference_test_guard();
+        let data_root = tempfile::tempdir().unwrap();
+        let root = data_root.path().join("editor-projects");
         fs::create_dir_all(&root).unwrap();
         assert!(is_effectively_empty_dir(&root));
         fs::write(root.join(".DS_Store"), b"metadata").unwrap();
@@ -1734,8 +1647,9 @@ mod tests {
         }
         assert!(!is_effectively_empty_dir(&link));
         assert!(!is_effectively_empty_dir(&root));
-        let result = remove_editor_project_dirs(&root, &["loop".to_string()], &["task".to_string()]);
-        assert_eq!(result.failed_project_ids, vec!["loop".to_string()]);
+        let result = cleanup::delete_projects(data_root.path(), &["loop".into()],
+            cleanup::Selection::Explicit, &[], |_| vec![]);
+        assert!(result.is_err());
         assert!(root.is_dir());
         #[cfg(unix)]
         fs::remove_file(&link).unwrap();

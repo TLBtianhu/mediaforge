@@ -42,6 +42,11 @@ def data_root(override: Any = None) -> Path:
     return default_layout()[0]
 
 
+def user_models_file(root: Any = None) -> Path:
+    """The custom registry shares the canonical app data root, including MCP workers."""
+    return data_root(root).absolute() / "settings" / "user_models.json"
+
+
 def _sibling_or_child(root: Path, name: str) -> Path:
     # 只认实际安装/便携布局，不能根据任意临时目录名为 data 就逃出显式数据根。
     layout = default_layout()

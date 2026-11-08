@@ -127,11 +127,27 @@ worker主动取消不重新触发外部取消watcher去终止自身收尾，外�
 
 编辑工程仅在用户单独确认时清理，确认说明会删除其目录中的录音、缓存和默认导出。
 list_orphaned_editor_projects由后端strict完整catalog推导，不接收前端activeTaskIds；delete仅接显式projectIds，
-在catalog→JSON锁内重新读取当前工程v4与任务。sourceTaskId仍存在、export job引用project.id或任一现存job明确绝对路径位于工程内，
+在catalog→JSON→model→asset锁内重新读取当前工程v4与任务。sourceTaskId仍存在、export job引用project.id或任一现存job明确绝对路径与工程相交，
 均保留；损坏catalog或重复JSON键先报错，不把它们当空集合。只有命名和id/sourceTaskId双重证明归属的closed任务型项目才清，
 独立/另存工程保留。选择后有新任务引用须block，不把后来出现的其它孤立项目加入删除集。
-工程清理也持LibrarySnapshot至显式删除结束：库source/thumbnail指向工程内时保留，坏/旧/忙库则先报错不清工程。
-这仍不是所有相对路径、外部进程、模型或任意独立工程之间的通用资产删除事务；其它引用协议仍需后续统一。
+单工程、按任务和孤立工程删除共用同一引用快照，持LibrarySnapshot至显式删除结束；库source/thumbnail、模型权重/config、
+其它工程source/peaks/plugin路径与目标相交时保留，目录型输入是目标祖先也保护。当前registry必须version1，未知/坏/忙数据先报错，
+非空相对文件引用不按工程目录或relativePath猜位置。其它被选工程之间的交叉引用同样保留，不靠批次顺序消除保护。
+任一编辑器窗口打开时阻止本批删除；未知的未保存内存引用不能视作不存在。整批先预检，包括项目内所有嵌套后代，拒reparse/特殊文件；
+任一预检失败或项目被引用，尚未开始删除的整批都不执行。文件系统删除本身仍可能部分失败，不能承诺多目录断电/失败回滚。
+工程保存持JSON→asset到原子替换结束；首次加入本数据根editor-projects内的缺失文件引用会拒绝并保留原工程，
+已经保存的缺失引用与外部缺失源仍允许保留以便重链。自有引用不阻止删除其所属工程。
+录音的每次mutation及波形worker也持asset lease，获锁后复核工程仍存在/id/schema和普通路径，再创建或发布文件；
+等待删除结束的旧波形请求不能重建该项目。原生不提前mkdir，也不持同一lease等待child；派生cache文件拒reparse。
+工程删除专用policy允许便携程序根内的正常managed data；只去掉包含dataRoot的宽泛program/resource祖先，
+模型/运行时保护不被过滤，实际EXE及嵌入工程的program/resource仍保留。
+持久工程sources与导出worker投影assets是两个当前v4契约，分别验证，不能为检查复制一份sources。
+自定义模型四个writer从验证/复制到注册/sidecar/rollback同样持asset lease，worker CLI和Kernel固定canonical registry根，
+应用内inline查询显式scope，不修改线程共享env。外部第三方pymss CLI、其它应用与任意文件系统修改没有参与此协议；
+跨进程未保存编辑器状态及任意外部修改仍不属于完整资产事务。
+MCP model.import_custom使用真实name/modelType/modelPath等参数并经Kernel持久执行；editor.peaks使用path/resolution/cacheDir。
+原paths/inputs错误参数入口已删除，不加旧入口回退。两种模型列表读取同一root的registry及sidecar；未知/坏registry明确报错，
+不能把读取失败显示成空自定义模型集合。模型列表不创建持久镜像，自定义模型不宣称可经catalog下载。
 
 目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
 执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。

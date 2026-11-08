@@ -104,11 +104,27 @@ class Bridge:
 
     def models_list(self, query: str = "", modality: str = "all") -> dict[str, Any]:
         data = model_hub.list_models(query, modality, root=str(self.model_root))
+        records = list(data["models"])
+        if modality in {"all", "audio"}:
+            from core import worker_models
+            with worker_models.user_model_registry_scope(self.data_root):
+                entries = worker_models.list_registered_user_models()
+            text = str(query or "").strip().lower()
+            for entry in entries:
+                if text and not any(text in value.lower() for value in (
+                    entry.name, Path(entry.name).stem, entry.primary_category_cn, entry.secondary_category_cn, entry.architecture)):
+                    continue
+                path = worker_models.model_path_for(entry, str(self.model_root))
+                config = worker_models.config_path_for(entry, str(self.model_root))
+                records.append({"id": f"audio:{entry.name}", "label": Path(entry.name).stem, "modalities": ["audio"],
+                                "task": entry.model_type, "size": worker_models._entry_size_bytes(entry, path),
+                                "downloaded": path.is_file() and (config is None or config.is_file()),
+                                "implemented": entry.supported, "source": "user", "downloadable": False})
         return {
             "ok": True,
             "modelDir": data["modelDir"],
-            "count": data["count"],
-            "downloadedCount": data["downloadedCount"],
+            "count": len(records),
+            "downloadedCount": sum(bool(item["downloaded"]) for item in records),
             "environment": data["environment"],
             "models": [
                 {
@@ -119,8 +135,9 @@ class Bridge:
                     "size": item["size"],
                     "downloaded": item["downloaded"],
                     "implemented": item["implemented"],
+                    **({"source":"user", "downloadable":False} if item.get("source") == "user" else {}),
                 }
-                for item in data["models"]
+                for item in records
             ],
         }
 
@@ -615,7 +632,7 @@ class Bridge:
             from core.failure_stats import collect
 
             return {"ok": True, "tool": name, **collect(self.data_root)}
-        outcome = agent_contract.dispatch(name, payload, **({"data_root": str(self.data_root)} if tool["command"] == "media_library" else {}))
+        outcome = agent_contract.dispatch(name, payload, **({"data_root": str(self.data_root)} if tool["command"] in {"media_library", "list_models", "waveform_peaks"} else {}))
         terminal = outcome.get("result") or {}
         body = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}
         return {"ok": outcome["ok"], "tool": name, **body}

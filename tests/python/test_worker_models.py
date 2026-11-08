@@ -136,7 +136,8 @@ class LightweightModelDiscoveryTests(unittest.TestCase):
     def test_user_registry_is_read_without_importing_pymss(self):
         weights = self.root / "model.ckpt"
         config = self.root / "model.yaml"
-        registry = self.root / "user-models.json"
+        registry = self.root / "settings" / "user_models.json"
+        registry.parent.mkdir()
         registry.write_text(json.dumps({
             "version": 1,
             "models": [{
@@ -149,7 +150,7 @@ class LightweightModelDiscoveryTests(unittest.TestCase):
             }],
         }), encoding="utf-8")
 
-        with mock.patch.dict("os.environ", {"PYMSS_USER_MODELS": str(registry)}):
+        with mock.patch.dict("os.environ", {"MEDIAFORGE_DATA_ROOT": str(self.root), "PYMSS_USER_MODELS": str(registry)}):
             entries = worker_models._load_registered_user_models()
 
         self.assertEqual(len(entries), 1)
@@ -782,11 +783,12 @@ class ListMergesImportedModelsTests(unittest.TestCase):
         _, payload = self._list({"includeCustom": False}, [entry])
         self.assertEqual([m["name"] for m in payload["models"]], ["catalog_model.ckpt"])
 
-    def test_an_unreadable_registry_does_not_break_the_model_list(self):
-        # The catalog is what the app primarily needs; a broken registry must degrade, not fail.
+    def test_an_unreadable_registry_reports_an_error_instead_of_an_empty_custom_list(self):
         code, payload = self._list({}, [], raises=RuntimeError("corrupt registry"))
-        self.assertEqual(code, 0)
-        self.assertEqual([m["name"] for m in payload["models"]], ["catalog_model.ckpt"])
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["code"], "MODEL_REGISTRY_UNAVAILABLE")
+        self.assertIn("corrupt registry", payload["message"])
+        self.assertNotIn("models", payload)
 
     def test_the_custom_category_is_offered_for_filtering(self):
         entry = FakeUserModelEntry("my_model", self.weights)

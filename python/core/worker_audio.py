@@ -365,7 +365,62 @@ def cmd_audio_metadata(payload: dict[str, Any]) -> int:
         return emit_error("AUDIO_METADATA_FAILED", str(exc), traceback.format_exc())
 
 
+def _validate_waveform_projects(root: Path, paths: tuple[Path, ...]) -> None:
+    from shared.asset_references import ensure_plain_path
+
+    managed = (root / "editor-projects").resolve()
+    for path in paths:
+        ensure_plain_path(path)
+        try:
+            relative = path.resolve().relative_to(managed)
+        except ValueError:
+            continue
+        if not relative.parts:
+            raise ValueError("Waveform target must belong to an existing editor project")
+        project_id = relative.parts[0]
+        project_path = managed / project_id / "project.json"
+        ensure_plain_path(project_path)
+
+        def strict_object(pairs):
+            value = {}
+            for key, item in pairs:
+                if key in value:
+                    raise ValueError("Duplicate editor project key")
+                value[key] = item
+            return value
+
+        project = json.loads(project_path.read_text(encoding="utf-8"), object_pairs_hook=strict_object,
+                             parse_constant=lambda value: (_ for _ in ()).throw(ValueError("Invalid editor project number")))
+        if (not isinstance(project, dict) or type(project.get("version")) is not int or project["version"] != 4
+                or project.get("id") != project_id or not isinstance(project.get("sources"), list)
+                or not isinstance(project.get("tracks"), list)
+                or any(not isinstance(track, dict) or "effects" in track
+                       or not isinstance(track.get("clips"), list) or type(track.get("autoName")) is not bool
+                       for track in project["tracks"])):
+            raise ValueError("Unsupported or mismatched editor project; original files preserved")
+
+
 def cmd_waveform_peaks(payload: dict[str, Any]) -> int:
+    from shared.asset_references import asset_reference_lock, ensure_plain_path
+    from shared.worker_paths import data_root
+
+    try:
+        root = data_root(payload.get("dataRoot")).absolute()
+        path = Path(payload.get("path") or "")
+        cache = Path(payload.get("cacheDir") or path.parent / ".pymss-peaks")
+        if not path.is_absolute() or not cache.is_absolute():
+            raise ValueError("Waveform source and cache paths must be absolute")
+        with asset_reference_lock(root):
+            ensure_plain_path(root / "editor-projects")
+            _validate_waveform_projects(root, (path, cache))
+            if not path.is_file():
+                raise FileNotFoundError(str(path))
+            return _cmd_waveform_peaks_locked(payload)
+    except Exception as exc:
+        return emit_error("WAVEFORM_PEAKS_FAILED", str(exc), traceback.format_exc())
+
+
+def _cmd_waveform_peaks_locked(payload: dict[str, Any]) -> int:
     path_value = payload.get("path")
     if not path_value:
         return emit_error("WAVEFORM_PEAKS_FAILED", "Missing audio path")
@@ -378,6 +433,8 @@ def cmd_waveform_peaks(payload: dict[str, Any]) -> int:
     cache_name = f"{path.stem}_{cache_key}_{resolution}_v2.json"
     peaks_path = cache_dir / cache_name
     try:
+        from shared.asset_references import ensure_plain_path
+        ensure_plain_path(peaks_path)
         if peaks_path.is_file() and peaks_path.stat().st_mtime >= path.stat().st_mtime:
             data = json.loads(peaks_path.read_text(encoding="utf-8"))
             channel_peaks = data.get("channelPeaks") or []
