@@ -56,7 +56,8 @@ Name: "dshbridge"; Description: "附带 DSH 集成桥（由 DSH 插件管理器�
 
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion
-Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "{#MyAppExeName},mediaforge.portable,python-runtime\runtime-envs\*,integrations\*,models\*,data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Root anchors preserve code directories such as pip/_internal/models and distlib/data.
+Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "\{#MyAppExeName},\mediaforge.portable,\python-runtime\runtime-envs\*,\integrations\*,\models\*,\data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\integrations\*"; DestDir: "{app}\integrations"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Tasks: dshbridge
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 

@@ -171,3 +171,14 @@ DSH 插件元数据曾因为内嵌 PNG 图标超过 256 KiB 而加载失败。�
 > 把“安装程序能做什么”误当成“应用应该替用户做什么”。
 
 安装器不应该替用户修复运行时、迁移数据、修改外部宿主或删除历史。它只负责部署程序；其余生命周期必须由应用内部明确、可验证地管理。
+
+## 安装器排除规则必须锚定包根目录（2026-11-08）
+
+0.0.34 的真实独立身份验收发现，未锚定的 models\*、data\* 会匹配深层同名目录，
+误排除 python-runtime/Lib/site-packages/pip/_internal/models/candidate.py 等依赖代码。
+仅验证 EXE 或 health 不足以确认 bootstrap 完整，必须逐文件核对完整 stage 的安装结果。
+
+Inno Excludes 的前置反斜杠将匹配范围限定在输入树根部，因此用户资产排除使用
+\models\*、\data\*、\python-runtime\runtime-envs\*；不按目录名全树误杀依赖源码。
+依据：[Inno Setup 官方 Files/Excludes 文档](https://jrsoftware.org/ishelp/topic_filessection.htm)。
+这属于打包完整性修复，不是旧格式兼容或迁移。

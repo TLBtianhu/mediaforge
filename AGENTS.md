@@ -45,6 +45,7 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 保留stdout/stderr日志、退出码、超时和取消能力，不用`pythonw.exe`丢弃诊断，也不全局monkeypatch subprocess。
 - 用户明确禁止ComputerUse/桌面操控；不为验收弹窗而启动GUI、操作现有窗口或强杀旧测试实例。
 - 安装验收用`smoke-installer.ps1`显式stage/版本/Python3.12/编译器，重编唯一测试身份，只跑bootstrap health；正式安装包只读记录哈希，不拿生产AppId覆盖用户安装来冒烟。
+- Inno `[Files]`的可变资产排除须从包根锚定，不能以任意层级`models/data`排除合法Python依赖代码；安装验收逐文件比对完整stage，不能只验EXE/health或关键文件抽样。
 
 ## Architecture
 
