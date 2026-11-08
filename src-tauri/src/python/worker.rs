@@ -1608,6 +1608,7 @@ fn run_worker_with_payload_inner(
     payload: Option<Value>,
     operation_id: &str,
 ) -> AppResult<Value> {
+    let mut reference_mutation = storage::model_reference_mutation(command);
     let _application_access = acquire_application_operation()?;
     let _runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
     let payload_file = match payload {
@@ -1640,6 +1641,7 @@ fn run_worker_with_payload_inner(
         }
     };
 
+    if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
     let stdout = child
         .stdout
         .take()
@@ -1709,6 +1711,7 @@ fn run_worker_with_payload_inner(
         }
     });
     let status = child.wait()?;
+    if let Some(mutation) = reference_mutation.as_mut() { mutation.reaped(); }
     session_log::append(
         app,
         if status.success() {
@@ -2001,6 +2004,7 @@ fn wait_reaped_child(child: &Arc<Mutex<Child>>, mut report: impl FnMut(&std::io:
 }
 
 struct WorkerStartResources {
+    reference_mutation: Option<storage::ModelReferenceMutation>,
     audio_scope: Option<audio_output::AudioOutputScope>,
     runtime_access: Option<RuntimeAccessGuard<'static>>,
     application_access: Option<Box<dyn Send>>,
@@ -2013,6 +2017,7 @@ impl WorkerStartResources {
         drop(self.cancel.take());
         if let Some(stderr) = self.stderr.take() { let _ = stderr.join(); }
         if let Some(mut scope) = self.audio_scope.take() { scope.finish(); }
+        if let Some(mut mutation) = self.reference_mutation.take() { mutation.reaped(); }
         drop(self.runtime_access.take());
         drop(self.application_access.take());
     }
@@ -2089,6 +2094,7 @@ fn spawn_worker_background_inner(
     operation_id: String,
     journal: Option<JournalHandle>,
 ) -> AppResult<()> {
+    let mut reference_mutation = storage::model_reference_mutation(command);
     let mut application_access = Some(acquire_application_operation()?);
     let mut runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
     let registered_task_ids = task_journal::registered_ids(&task_id, &payload);
@@ -2167,6 +2173,7 @@ fn spawn_worker_background_inner(
             return Err(error.into());
         }
     };
+    if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
     let shared_child = Arc::new(Mutex::new(child));
     for registered_task_id in &registered_task_ids {
         task_registry.insert(registered_task_id.clone(), shared_child.clone());
@@ -2175,6 +2182,7 @@ fn spawn_worker_background_inner(
     let mut startup_guard = WorkerStartGuard {
         child: shared_child.clone(), _journal: journal.clone(), reaped: false, owns_cleanup: true,
         resources: Arc::new(Mutex::new(WorkerStartResources {
+            reference_mutation,
             audio_scope: audio_scope.take(), runtime_access: runtime_access.take(),
             application_access: application_access.take().map(|guard| Box::new(guard) as Box<dyn Send>), stderr: None, cancel: None,
         })),
@@ -2500,8 +2508,11 @@ mod tests {
         let slot_held = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut scope = super::audio_output::AudioOutputScope::create(&root.path().join("receipts"), root.path().join("output")).unwrap();
         scope.attach(child.lock().unwrap().id()).unwrap();
+        let mut reference_mutation = crate::storage::model_reference_mutation("import_custom_model").unwrap();
+        reference_mutation.spawned();
         let guard = super::WorkerStartGuard { child: child.clone(), _journal: Some(journal), cleanup: None, reaped: false, owns_cleanup: true,
             resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, stderr: None, cancel: None,
+                reference_mutation: Some(reference_mutation),
                 application_access: Some(Box::new(StartupReleaseProbe { child: child.clone(), root: root.path().into(), reaped: reaped.clone(), slot_held: slot_held.clone() })) })),
         };
         let stdout = child.lock().unwrap().stdout.take().unwrap();
@@ -2520,6 +2531,7 @@ mod tests {
 
     #[test]
     fn worker_startup_thread_failure_reaps_before_releasing_scope_or_quota() {
+        let _serial = crate::storage::model_reference_test_guard();
         use std::sync::atomic::Ordering;
         for name in ["mediaforge-worker-stderr", "mediaforge-worker-cancel", "mediaforge-worker-supervisor"] {
             let (root, guard, reaped, slot_held) = owned_startup_fixture(60.0);
@@ -2532,6 +2544,7 @@ mod tests {
             assert!(child.lock().unwrap().try_wait().unwrap().is_some());
             assert!(reaped.load(Ordering::SeqCst), "resources released before reap: {name}");
             assert!(slot_held.load(Ordering::SeqCst), "quota released before startup cleanup: {name}");
+            assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0, "mutation lease retained after reap: {name}");
             assert_eq!(fs::read_dir(root.path().join("receipts")).unwrap().count(), 0);
             drop(guard);
             assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(), super::task_journal::ClaimAttempt::Ready(_, _, _)));
@@ -2540,6 +2553,7 @@ mod tests {
 
     #[test]
     fn worker_startup_success_hands_off_without_killing_the_owned_child() {
+        let _serial = crate::storage::model_reference_test_guard();
         use std::sync::atomic::Ordering;
         let (_root, mut guard, reaped, slot_held) = owned_startup_fixture(0.15);
         let mut supervisor = guard.fork();
@@ -2551,10 +2565,12 @@ mod tests {
         guard.handoff(); drop(guard);
         assert!(thread.join().unwrap().success());
         assert!(reaped.load(Ordering::SeqCst)); assert!(slot_held.load(Ordering::SeqCst));
+        assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0);
     }
 
     #[test]
     fn worker_startup_supervisor_unwind_still_reaps_before_releasing_resources() {
+        let _serial = crate::storage::model_reference_test_guard();
         use std::sync::atomic::Ordering;
         let (_root, mut guard, reaped, slot_held) = owned_startup_fixture(60.0);
         let child = guard.child.clone();
@@ -2567,6 +2583,7 @@ mod tests {
         assert!(thread.join().is_err());
         assert!(child.lock().unwrap().try_wait().unwrap().is_some());
         assert!(reaped.load(Ordering::SeqCst)); assert!(slot_held.load(Ordering::SeqCst));
+        assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0);
     }
 
     #[test]

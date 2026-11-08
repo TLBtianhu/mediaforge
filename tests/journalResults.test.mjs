@@ -89,3 +89,27 @@ test('millisecond timestamps and explicit extensionless file descriptors remain 
   assert.equal(row.outputs[0].name, 'LICENSE')
   assert.equal(row.outputs[0].preview, null)
 })
+
+for (const operation of ['convert', 'slicer', 'asr', 'loudness']) {
+  test(`current audio_tools ${operation} exposes only outputPaths and preserves partial outputs`, () => {
+    const [row] = buildJournalResults([job(operation, { status: 'failed', payload: { operation, inputPath: '/input/source.wav' },
+      result: { operation, outputDir: '/out', outputPaths: ['/out/first.wav', '/out/transcript.srt', '/out/first.wav'],
+        failed: [{ path: '/input/failed.wav' }], outputPath: '/out/not-the-current-plural-contract.wav' } })])
+    assert.deepEqual(row.outputs.map(output => output.path), ['/out/first.wav', '/out/transcript.srt'])
+    assert.equal(row.status, 'failed')
+  })
+}
+
+for (const operation of ['merge', 'midi']) {
+  test(`current audio_tools ${operation} exposes its explicit outputPath`, () => {
+    const [row] = buildJournalResults([job(operation, { payload: { operation }, result: { operation, outputPath: `/out/${operation}.mid` } })])
+    assert.deepEqual(row.outputs.map(output => output.path), [`/out/${operation}.mid`])
+  })
+}
+
+test('unknown tool operations and other commands do not promote outputPath or failure paths to files', () => {
+  for (const [command, operation] of [['audio_tools', 'inspect'], ['audio_tools', 'unknown'], ['run_operation', 'convert'], ['export_editor_mix', 'merge']]) {
+    assert.deepEqual(buildJournalResults([job('not-files', { command, payload: { operation },
+      result: { outputPaths: ['/out/plural.wav'], outputPath: '/out/single.wav', failed: [{ path: '/input/source.wav' }] } })]), [])
+  }
+})

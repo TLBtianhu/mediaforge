@@ -1,4 +1,5 @@
-/** Read-only file results from the persistent task journal; never audio-store tasks. */
+/** File results from the persistent task journal; never synthetic audio-store tasks. */
+import { RESULT_JOB_COMMANDS } from '../../features/tasks/resultCommands.ts'
 export type JournalResultJob = {
   jobId: string
   command: string
@@ -31,7 +32,8 @@ export type JournalResultSort = 'time_desc' | 'time_asc' | 'name_asc' | 'name_de
 
 const TERMINAL = new Set(['completed', 'done', 'failed', 'cancelled', 'interrupted'])
 const AUDIO_RUNS = new Set(['infer', 'infer_workflow'])
-const RESULT_COMMANDS = new Set(['infer', 'infer_workflow', 'audio_tools', 'media_tool', 'media_image', 'media_video', 'media_workflow', 'media_convert', 'run_operation'])
+const TOOL_PATHS = new Set(['convert', 'slicer', 'asr', 'loudness'])
+const TOOL_PATH = new Set(['merge', 'midi'])
 const NON_RESULT_OPERATIONS = new Set(['media_probe', 'probe', 'inspect', 'model_download', 'runtime_install'])
 const IMAGE = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif'])
 const VIDEO = new Set(['mp4', 'mkv', 'mov', 'webm', 'avi', 'm4v'])
@@ -41,9 +43,13 @@ const text = (value: unknown) => typeof value === 'string' ? value : ''
 export const journalFileName = (path: string) => path.split(/[\\/]/).pop() || path
 const timestamp = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value < 1e12 ? value * 1000 : value : 0
 
-function outputFiles(result: Record<string, unknown>, payload: Record<string, unknown>): JournalOutput[] {
+function outputFiles(result: Record<string, unknown>, payload: Record<string, unknown>, command: string, operation: string): JournalOutput[] {
   const raw = result.outputs
-  const values = Array.isArray(raw) ? raw : record(raw) ? Object.values(raw) : []
+  const descriptors = Array.isArray(raw) ? raw : record(raw) ? Object.values(raw) : []
+  // These are current audio-tool result contracts, not arbitrary nested paths.
+  const paths = command !== 'audio_tools' ? [] : TOOL_PATHS.has(operation) && Array.isArray(result.outputPaths) ? result.outputPaths
+    : TOOL_PATH.has(operation) ? [result.outputPath] : []
+  const values = [...descriptors, ...paths.filter((path): path is string => typeof path === 'string').map(path => ({ kind: 'file', path }))]
   const directories = new Set([text(result.outputDir), text(result.outputDirectory), text(payload.outputDir)].filter(Boolean))
   const seen = new Set<string>()
   return values.flatMap(value => {
@@ -67,7 +73,7 @@ function outputFiles(result: Record<string, unknown>, payload: Record<string, un
 export function buildJournalResults(jobs: readonly JournalResultJob[], audioTaskIds: ReadonlySet<string> = new Set()): JournalResult[] {
   const results = new Map<string, JournalResult>()
   for (const job of jobs) {
-    if (!TERMINAL.has(job.status) || !RESULT_COMMANDS.has(job.command)) continue
+    if (!TERMINAL.has(job.status) || !RESULT_JOB_COMMANDS.has(job.command)) continue
     const payload = job.payload || {}
     const result = job.result || {}
     const operation = text(result.operation) || text(payload.operation) || job.command
@@ -79,7 +85,7 @@ export function buildJournalResults(jobs: readonly JournalResultJob[], audioTask
       const identities = [job.jobId, job.cancelTaskId, text(payload.taskId), text(payload.jobId)]
       if (identities.some(id => id && audioTaskIds.has(id))) continue
     }
-    const outputs = outputFiles(result, payload)
+    const outputs = outputFiles(result, payload, job.command, operation)
     if (!outputs.length) continue
     const rawInputs = payload.inputs
     const inputs = Array.isArray(rawInputs) ? rawInputs.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))

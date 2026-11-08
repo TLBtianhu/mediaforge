@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isTauriRuntime } from '../../utils/appStore.ts'
 import { CURRENT_INFERENCE_PARAMS_VERSION } from '../../stores/taskNormalize.ts'
+import { RESULT_JOB_COMMANDS } from './resultCommands.ts'
 
 export type AudioJobRequest = { input: string | null; output: string; inputIndex?: number; inputs?: Record<string, unknown>; workbenchOutputs?: Record<string, unknown> }
 export type AudioPresentation = { workflowId?: string; sourceUpdatedAt?: number; workbench?: { nativeGraph: boolean } }
@@ -155,4 +156,46 @@ export async function removeAudioJobs(jobIds: string[], checkOnly = false): Prom
   if (removing.some(job => !['completed', 'failed', 'cancelled', 'interrupted'].includes(job.status))) throw new Error('Cannot remove an active audio job')
   if (!checkOnly) removing.forEach(job => localStorage.removeItem(PREFIX + job.jobId))
   return removing.map(job => job.jobId)
+}
+
+export type ResultRemovalResponse = {
+  schemaVersion: 2
+  checkedJobIds: string[]
+  removedJobIds: string[]
+  trashed: string[]
+  failed: { path: string; error: string }[]
+  retained: { path: string; reason: string }[]
+}
+
+export async function removeResultJobs(jobIds: string[], options: { deleteFiles?: boolean; checkOnly?: boolean } = {}): Promise<ResultRemovalResponse> {
+  if (!Array.isArray(jobIds) || jobIds.some(id => !identifier(id)) || new Set(jobIds).size !== jobIds.length) return invalid()
+  const response = (value: unknown): ResultRemovalResponse => {
+    if (!isRecord(value) || value.schemaVersion !== 2
+      || !keys(value, ['schemaVersion', 'checkedJobIds', 'removedJobIds', 'trashed', 'failed', 'retained'])
+      || !['checkedJobIds', 'removedJobIds'].every(key => Array.isArray(value[key])
+        && value[key].every((id: unknown) => identifier(id) && jobIds.includes(id))
+        && new Set(value[key]).size === value[key].length)
+      || value.checkedJobIds.length !== jobIds.length
+      || !Array.isArray(value.trashed) || value.trashed.some((path: unknown) => !text(path))
+      || !Array.isArray(value.failed) || value.failed.some((item: unknown) => !isRecord(item) || !keys(item, ['path', 'error']) || !text(item.path) || !text(item.error))
+      || !Array.isArray(value.retained) || value.retained.some((item: unknown) => !isRecord(item) || !keys(item, ['path', 'reason']) || !text(item.path) || !text(item.reason))
+      || options.checkOnly && (value.removedJobIds.length > 0 || value.trashed.length > 0 || value.failed.length > 0)
+      || !options.deleteFiles && (value.trashed.length > 0 || value.failed.length > 0)
+      || value.failed.length > 0 && value.removedJobIds.length > 0
+      || !options.checkOnly && value.failed.length === 0 && value.removedJobIds.length !== jobIds.length) return invalid()
+    return value as ResultRemovalResponse
+  }
+  if (isTauriRuntime()) return response(await invoke('remove_result_jobs', {
+    jobIds, deleteFiles: options.deleteFiles === true, checkOnly: options.checkOnly === true,
+  }))
+  const jobs = previewJobs()
+  const removing = jobIds.map(id => {
+    const job = jobs.find(row => row.jobId === id)
+    if (!job || job.audio || !RESULT_JOB_COMMANDS.has(job.command)) throw new Error('Result job is missing or is not a generic result')
+    if (!['completed', 'failed', 'cancelled', 'interrupted'].includes(job.status) || job.owner !== null) throw new Error('Cannot remove an active result job')
+    return job
+  })
+  if (options.deleteFiles && !options.checkOnly) throw new Error('File recycling requires the desktop app')
+  if (!options.checkOnly) removing.forEach(job => localStorage.removeItem(PREFIX + job.jobId))
+  return response({ schemaVersion: 2, checkedJobIds: jobIds, removedJobIds: options.checkOnly ? [] : jobIds, trashed: [], failed: [], retained: [] })
 }

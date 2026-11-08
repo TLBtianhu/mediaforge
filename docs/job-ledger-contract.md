@@ -62,7 +62,32 @@ Kernel默认retention只作用于Agent历史；manual音频历史保留到显式
 Kernel清理子进程失败时继续持有owner lease与临时请求文件，终态记录也不可被retention删除。
 同一Kernel可通过再次cancel有限重试清理，确认wait回收后才释放；没有自动后台重试保证。
 结果删除先用`remove_audio_jobs(checkOnly=true)`确认全终态且释放lease，再处理用户明确选择的文件/工程清理，
-最后提交元数据删除。删除记录不等于删除媒体文件，本轮不新增媒体产物统一删除或自动清理用户资产。
+最后提交元数据删除。删除记录不等于删除媒体文件，不自动清理用户资产。
+
+媒体/Agent通用结果使用`remove_result_jobs(jobIds, deleteFiles=false, checkOnly=false)`，不接收前端文件列表。
+仅接受当前结果命令白名单的非audio记录，整次选中记录须全终态且owner lease已释放；audio仍走完整组专用入口。
+文件由后端按当前命令的明确结果字段推导，不扫输出目录，不把failed输入、scalar或任意嵌套路径当成产物。
+支持infer/media的outputs描述符、工具outputPaths/outputPath以及operation的audio_file描述符；旧MIDI报告
+存在猜取旧文件的归属风险，故可删记录但保留其文件。producer已移除目录glob回退，缺明确现存绝对文件报告则失败。
+
+catalog及所选owner/write锁覆盖引用检查、文件动作和记录删除；已存编辑工程读取至文件动作复用JSON写锁，
+防本进程保存穿过检查。输入、其它任务的输入/已知产物、活动任务声明输出范围、编辑工程引用、模型与运行时、
+程序及非outputs应用数据受保护；链接/reparse祖先、非普通文件和无法可靠检查的路径保留。
+程序与resource目录采用整根保护；便携输出若嵌在程序目录下也保守保留，不为回收输出放宽程序资产边界。
+任意打开的编辑器可能有未保存引用，故保留文件；library.db存在时尚无完整只读引用查询及统一资产锁，
+候选文件均保留，不根据有条数上限的UI列表猜测。native媒体库调用与删除共用JSONguard，覆盖首次建库窗口；
+模型登记四条写命令持进程内mutation lease至实际reap，删除持同gate读快照至回收，busy或退出未确认即保留文件。
+此保护不宣称任意外部进程修改的事务一致性。
+
+默认仅删记录；显式勾选文件回收才执行，无永久删除回退，不删除输出目录。响应固定schemaVersion2及
+checkedJobIds/removedJobIds/trashed/failed[{path,error}]/retained[{path,reason}]。
+任一文件回收失败则本次全部任务记录保留，可能已有部分文件移入回收站；UI须再次明确确认才能只删记录。
+受保护文件的retained不是回收失败，UI必须告知保留数量，不能报告全部文件已回收。预检无文件/记录删除动作，
+最终提交重新检查；前端仅按后端removedJobIds安装内存删除标记，不另存删除清单或回写job生命周期。
+Windows使用专用STA线程与recycle-only/no-UI操作；自动化以临时文件和注入回收器验证失败/引用边界，
+不触发系统回收站或GUI。export_editor_mix及未知输出形状尚未纳入结果页，不承诺任意插件文件的回收归属。
+音频结果仍使用前述既有独立文件清理流程，尚未迁入本轮通用结果的native资产保护入口；
+其跨媒体/Agent、素材库及模型登记引用互斥需要后续统一，不能称所有结果文件回收已采用同一保护协议。
 
 目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
 执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。

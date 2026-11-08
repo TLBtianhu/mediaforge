@@ -9,7 +9,8 @@ use crate::session_log;
 use crate::state::AppState;
 use crate::storage;
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use std::path::PathBuf;
+use tauri::{AppHandle, Emitter, Manager, State};
 use crate::python::worker::kill_process_tree;
 use crate::workflow_editors::{RegistrySnapshot, WorkflowEditors};
 
@@ -64,7 +65,9 @@ pub fn get_workflow_editors(editors: State<'_, WorkflowEditors>) -> RegistrySnap
 
 #[tauri::command]
 pub async fn media_library(app: AppHandle, payload: Value) -> AppResult<Value> {
-    run_worker_with_payload(&app, "media_library", Some(payload))
+    // All library actions may create/commit its index. Serialize the first import
+    // with result-file inspection/recycling, using the same order as editor saves.
+    storage::with_editor_project_guard(|| run_worker_with_payload(&app, "media_library", Some(payload)))
 }
 
 #[tauri::command]
@@ -104,6 +107,21 @@ pub async fn remove_audio_jobs(app: AppHandle, job_ids: Vec<String>, check_only:
         return Ok(serde_json::json!({"schemaVersion": 2, "removedJobIds": [], "checkedJobIds": audio_jobs::check_remove(&root, &job_ids)?}));
     }
     Ok(serde_json::json!({"schemaVersion": 2, "removedJobIds": audio_jobs::remove(&root, &job_ids)?}))
+}
+
+#[tauri::command]
+pub async fn remove_result_jobs(app: AppHandle, job_ids: Vec<String>, delete_files: Option<bool>, check_only: Option<bool>) -> AppResult<Value> {
+    let root = storage::data_root_dir(&app)?;
+    let mut roots = vec![storage::models_dir(&app)?, storage::runtime_envs_dir(&app)?, storage::runtime_root_dir(&app)?];
+    let executable = std::env::current_exe()?;
+    roots.push(executable.clone());
+    let mut program_roots = executable.parent().map(PathBuf::from).into_iter().collect::<Vec<_>>();
+    if let Ok(resource) = app.path().resource_dir() { program_roots.extend(storage::resource_roots(&resource)); }
+    roots.extend(program_roots);
+    let policy = crate::python::result_jobs::Protection { roots };
+    let result = crate::python::result_jobs::remove(&root, &job_ids, delete_files == Some(true), check_only == Some(true), &policy,
+        || app.webview_windows().keys().any(|label| label.starts_with("editor-")))?;
+    Ok(serde_json::to_value(result)?)
 }
 
 #[tauri::command]

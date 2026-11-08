@@ -23,6 +23,39 @@ static JSON_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // Multiple WebView windows can autosave the same store at once. Serialize the temporary-file
 // replacement in the Rust process so a second writer never races the first ReplaceFileW call.
 static JSON_WRITE_LOCK: Mutex<()> = Mutex::new(());
+static MODEL_REFERENCE_MUTATIONS: Mutex<usize> = Mutex::new(0);
+#[cfg(test)]
+static MODEL_REFERENCE_TEST_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(test)]
+pub(crate) fn model_reference_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    MODEL_REFERENCE_TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+pub(crate) struct ModelReferenceMutation { pending_reap: bool }
+impl ModelReferenceMutation {
+    pub(crate) fn spawned(&mut self) { self.pending_reap = true; }
+    pub(crate) fn reaped(&mut self) { self.pending_reap = false; }
+}
+impl Drop for ModelReferenceMutation {
+    fn drop(&mut self) {
+        if self.pending_reap {
+            // An uncertain child must never make result files appear unreferenced.
+            // Keep deletion fail-closed for this process rather than guess it exited.
+            eprintln!("model registry mutation exit is unconfirmed; result-file recycling remains blocked");
+            return;
+        }
+        let mut count = MODEL_REFERENCE_MUTATIONS.lock().unwrap_or_else(|error| error.into_inner());
+        *count -= 1;
+    }
+}
+pub(crate) fn model_reference_mutation(command: &str) -> Option<ModelReferenceMutation> {
+    if !matches!(command, "import_custom_model" | "relink_custom_model" | "remap_custom_model_paths" | "unregister_custom_model") { return None; }
+    *MODEL_REFERENCE_MUTATIONS.lock().unwrap_or_else(|error| error.into_inner()) += 1;
+    Some(ModelReferenceMutation { pending_reap: false })
+}
+pub(crate) fn model_reference_snapshot_guard() -> std::sync::MutexGuard<'static, usize> {
+    MODEL_REFERENCE_MUTATIONS.lock().unwrap_or_else(|error| error.into_inner())
+}
 const PORTABLE_MARKER_FILE_NAME: &str = "mediaforge.portable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -403,6 +436,13 @@ pub(crate) fn write_editor_project_file(path: &Path, data: &Value) -> AppResult<
         validate_editor_project(&previous)?;
     }
     write_json_file_locked(path, data)
+}
+
+/// Hold the same guard as editor saves while inspecting references and recycling
+/// result files. The callback must not call another JSON-writing storage API.
+pub(crate) fn with_editor_project_guard<T>(action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+    let _guard = JSON_WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    action()
 }
 
 pub(crate) fn validate_editor_project(project: &Value) -> AppResult<()> {

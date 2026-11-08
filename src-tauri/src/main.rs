@@ -160,6 +160,7 @@ fn main() {
             commands::app::tasks::agent_jobs,
             commands::app::tasks::enqueue_audio_jobs,
             commands::app::tasks::remove_audio_jobs,
+            commands::app::tasks::remove_result_jobs,
             commands::app::tasks::cancel_agent_job,
             commands::app::tasks::media_precheck,
         commands::app::tasks::start_audio_tool,
