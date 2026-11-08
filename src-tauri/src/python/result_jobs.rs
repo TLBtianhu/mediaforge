@@ -27,6 +27,9 @@ pub(crate) struct RemovalResult {
 
 pub(crate) struct Protection { pub roots: Vec<PathBuf> }
 
+#[derive(Clone, Copy, PartialEq)]
+enum RemovalKind { Generic, Audio }
+
 fn invalid(message: &str) -> AppError { AppError::Worker(message.into()) }
 
 fn linked(metadata: &fs::Metadata) -> bool {
@@ -69,12 +72,16 @@ fn within(path: &str, root: &str) -> bool { path == root || path.strip_prefix(ro
 // Payloads may contain graph input bindings several levels deep. Only declared
 // output-location fields are omitted, and never when inside an input binding.
 fn references(value: &Value, bindings: bool, output: &mut Vec<String>) {
+    // Current graph save nodes contain output widgets, not source assets. A
+    // live writer still protects these locations through bindings=true.
+    if !bindings && matches!(value.get("type").and_then(Value::as_str),
+        Some("pymss_save_audio" | "SaveAudio" | "SaveAudioMP3" | "SaveAudioOpus" | "SaveAudioAdvanced")) { return; }
     match value {
         Value::String(value) if Path::new(value).is_absolute() => output.push(key(Path::new(value))),
         Value::Array(values) => for value in values { references(value, bindings, output); },
         Value::Object(values) => for (name, value) in values {
-            let input = bindings || matches!(name.as_str(), "input" | "inputs" | "workbenchOutputs");
-            if !input && matches!(name.as_str(), "output" | "outputDir" | "output_dir" | "outputRoot") { continue; }
+            let input = bindings || matches!(name.as_str(), "input" | "inputs");
+            if !input && matches!(name.as_str(), "output" | "outputDir" | "output_dir" | "outputRoot" | "workbenchOutputs" | "outputDirectory" | "outputDirectories") { continue; }
             references(value, input, output);
         },
         _ => (),
@@ -123,6 +130,69 @@ fn model_references(root: &Path) -> AppResult<Vec<String>> {
     Ok(refs)
 }
 
+fn relative_file(value: &Value) -> bool {
+    value.as_str().is_some_and(|path| !path.trim().is_empty() && !Path::new(path).is_absolute())
+}
+
+fn unresolved_graph_nodes(payload: &Value, request: &Value) -> bool {
+    let input = request["input"].as_str().filter(|value| !value.trim().is_empty());
+    let inputs = request["inputs"].as_object();
+    // Only the non-workbench executor replaces embedded load widgets with
+    // the global picker. Workbench graphs keep independent load sources.
+    if input.is_some() && payload["workbench"].as_bool() != Some(true) { return false; }
+    let Some(nodes) = payload.pointer("/workflow/nodes").and_then(Value::as_array) else { return false; };
+    for node in nodes {
+        let slot = match node["type"].as_str() {
+            Some("pymss_load_audio" | "LoadAudio") => 1,
+            Some("pymss_load_audio_batch") => 3,
+            _ => continue,
+        };
+        let widgets = node["widgets_values"].as_array();
+        let widget = widgets.and_then(|values| values.first()).and_then(Value::as_str).unwrap_or("");
+        let name = widgets.and_then(|values| values.get(slot)).and_then(Value::as_str).unwrap_or("");
+        let explicitly_bound = !name.is_empty() && inputs.and_then(|values| values.get(name)).and_then(Value::as_str)
+            .is_some_and(|path| Path::new(path).is_absolute());
+        if !explicitly_bound && !widget.is_empty() && !Path::new(widget).is_absolute() { return true; }
+    }
+    false
+}
+
+fn unresolved_audio_input(library: &[Value]) -> bool {
+    let by_id = library.iter().map(|row| (row["jobId"].as_str().unwrap(), row)).collect::<BTreeMap<_, _>>();
+    for row in library.iter().filter(|row| row.get("audio").is_some()) {
+        let request = &row["audio"]["request"];
+        let input = request["input"].as_str().filter(|value| !value.trim().is_empty());
+        if input.is_some_and(|value| !Path::new(value).is_absolute()) { return true; }
+        let inputs = request["inputs"].as_object();
+        if inputs.is_some_and(|values| values.values().filter_map(Value::as_str)
+            .any(|value| !value.is_empty() && !Path::new(value).is_absolute())) { return true; }
+        let primary = by_id[row["audio"]["primaryJobId"].as_str().unwrap()];
+        if unresolved_graph_nodes(&primary["payload"], request) { return true; }
+    }
+    false
+}
+
+fn unresolved_generic_input(command: &str, payload: &Value) -> bool {
+    if !COMMANDS.contains(&command) { return false; }
+    if command == "run_operation" {
+        // Plain strings and scalar.value are operation values, not file paths.
+        return payload["inputs"].as_object().is_some_and(|inputs| inputs.values().any(|input| {
+            matches!(input["kind"].as_str(), Some("file" | "audio_file" | "path")) && relative_file(&input["path"])
+        }));
+    }
+    if ["input", "inputPath"].iter().any(|name| relative_file(&payload[*name])) { return true; }
+    if payload["inputs"].as_array().is_some_and(|inputs| inputs.iter().any(relative_file)) { return true; }
+    if command == "audio_tools" && ["referencePath", "estimatedPath"].iter().any(|name| relative_file(&payload[*name])) { return true; }
+    if command == "infer_workflow" {
+        if payload["inputs"].as_object().is_some_and(|inputs| inputs.values().any(relative_file)) { return true; }
+        if unresolved_graph_nodes(payload, payload) { return true; }
+    }
+    if matches!(command, "infer" | "infer_workflow") && payload["tasks"].as_array().is_some_and(|tasks| {
+        tasks.iter().any(|task| unresolved_generic_input(command, task))
+    }) { return true; }
+    false
+}
+
 fn candidates(row: &Value) -> Vec<(String, Option<&'static str>)> {
     let result = &row["result"];
     let command = row["command"].as_str().unwrap();
@@ -162,27 +232,49 @@ fn candidates(row: &Value) -> Vec<(String, Option<&'static str>)> {
 
 pub(crate) fn remove(root: &Path, ids: &[String], delete_files: bool, check_only: bool, protection: &Protection,
                      editor_open: impl Fn() -> bool) -> AppResult<RemovalResult> {
-    remove_with(root, ids, delete_files, check_only, protection, editor_open,
+    remove_with(root, ids, RemovalKind::Generic, delete_files, check_only, protection, editor_open,
                 &mut crate::commands::app::recycle::recycle_file)
 }
 
-fn remove_with(root: &Path, ids: &[String], delete_files: bool, check_only: bool, protection: &Protection,
+pub(crate) fn remove_audio(root: &Path, ids: &[String], delete_files: bool, check_only: bool, protection: &Protection,
+                          editor_open: impl Fn() -> bool) -> AppResult<RemovalResult> {
+    remove_with(root, ids, RemovalKind::Audio, delete_files, check_only, protection, editor_open,
+                &mut crate::commands::app::recycle::recycle_file)
+}
+
+fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: bool, check_only: bool, protection: &Protection,
                editor_open: impl Fn() -> bool, recycle: &mut impl FnMut(&Path) -> Result<(), String>) -> AppResult<RemovalResult> {
-    let selected = ids.iter().cloned().collect::<BTreeSet<_>>();
-    if selected.iter().any(|id| !task_journal::valid_id(id)) { return Err(invalid("invalid result job id")); }
-    let mut response = RemovalResult { schema_version: 2, checked_job_ids: selected.iter().cloned().collect(),
+    let requested = ids.iter().cloned().collect::<BTreeSet<_>>();
+    if requested.iter().any(|id| !task_journal::valid_id(id)) { return Err(invalid("invalid result job id")); }
+    let mut response = RemovalResult { schema_version: 2, checked_job_ids: vec![],
         removed_job_ids: vec![], trashed: vec![], failed: vec![], retained: vec![] };
-    if selected.is_empty() { return Ok(response); }
+    if requested.is_empty() { return Ok(response); }
     for path in [root.to_path_buf(), root.join("agent-jobs"), root.join("agent-jobs/.owners"), root.join("agent-jobs/.writes")] {
         plain_path(&path).map_err(invalid)?;
     }
     let _catalog = task_journal::catalog_lock(root)?;
     let library = task_journal::read_all_unlocked(root)?;
+    let mut groups = BTreeSet::new();
+    for id in &requested {
+        let row = library.iter().find(|row| row["jobId"] == *id).ok_or_else(|| invalid("result job is missing"))?;
+        match kind {
+            RemovalKind::Audio => {
+                groups.insert(row.pointer("/audio/primaryJobId").and_then(Value::as_str)
+                    .ok_or_else(|| invalid("audio deletion requires audio group jobs"))?.to_string());
+            }
+            RemovalKind::Generic if row.get("audio").is_some() || !COMMANDS.contains(&row["command"].as_str().unwrap()) => {
+                return Err(invalid("only generic result jobs can be removed here"));
+            }
+            _ => (),
+        }
+    }
+    let selected = if kind == RemovalKind::Audio {
+        library.iter().filter(|row| row.pointer("/audio/primaryJobId").and_then(Value::as_str).is_some_and(|id| groups.contains(id)))
+            .map(|row| row["jobId"].as_str().unwrap().to_string()).collect::<BTreeSet<_>>()
+    } else { requested };
+    response.checked_job_ids = selected.iter().cloned().collect();
     for id in &selected {
         let row = library.iter().find(|row| row["jobId"] == *id).ok_or_else(|| invalid("result job is missing"))?;
-        if row.get("audio").is_some() || !COMMANDS.contains(&row["command"].as_str().unwrap()) {
-            return Err(invalid("only generic result jobs can be removed here"));
-        }
         if !task_journal::terminal(row) { return Err(invalid("cannot remove an active result job")); }
         if library.iter().any(|row| !selected.contains(row["jobId"].as_str().unwrap()) && row["payloadRef"] == *id) {
             return Err(invalid("result job is still a payload anchor"));
@@ -198,10 +290,16 @@ fn remove_with(root: &Path, ids: &[String], delete_files: bool, check_only: bool
         let model_guard = crate::storage::model_reference_snapshot_guard();
         if delete_files {
             let mut input_refs = Vec::new();
+            let unresolved_graph = unresolved_audio_input(&library);
+            let unresolved_input = library.iter().filter(|row| row.get("audio").is_none())
+                .any(|row| unresolved_generic_input(row["command"].as_str().unwrap(), &row["payload"]));
+            let active_audio_groups = library.iter().filter(|row| !task_journal::terminal(row))
+                .filter_map(|row| row.pointer("/audio/primaryJobId").and_then(Value::as_str)).collect::<BTreeSet<_>>();
             for row in &library {
-                let active_other = !selected.contains(row["jobId"].as_str().unwrap()) && !task_journal::terminal(row);
+                let active_group = row.pointer("/audio/primaryJobId").and_then(Value::as_str).is_some_and(|primary| active_audio_groups.contains(primary));
+                let active_other = !selected.contains(row["jobId"].as_str().unwrap()) && (!task_journal::terminal(row) || active_group);
                 references(&row["payload"], active_other, &mut input_refs);
-                if let Some(audio) = row.get("audio") { references(&audio["request"], true, &mut input_refs); }
+                if let Some(audio) = row.get("audio") { references(&audio["request"], active_other, &mut input_refs); }
                 if !selected.contains(row["jobId"].as_str().unwrap()) {
                     references(&row["result"], false, &mut input_refs);
                     references(&row["runtime"], false, &mut input_refs);
@@ -226,6 +324,8 @@ fn remove_with(root: &Path, ids: &[String], delete_files: bool, check_only: bool
                 let target = Path::new(&path);
                 let normalized = key(target);
                 let reason = forced.or_else(|| plain_path(target).err())
+                    .or_else(|| unresolved_input.then_some("unresolved_input_reference"))
+                    .or_else(|| unresolved_graph.then_some("unresolved_graph_input"))
                     .or_else(|| (*model_guard > 0).then_some("model_registry_busy"))
                     .or_else(|| (within(&normalized, &root_key) && !within(&normalized, &outputs_key)).then_some("protected_app_data"))
                     .or_else(|| protected.iter().any(|root| within(&normalized, root)).then_some("protected_asset_or_program"))
@@ -313,8 +413,30 @@ mod tests {
         }
         fn remove(&self, ids: &[&str], files: bool, check: bool, open: bool,
                   recycle: &mut impl FnMut(&Path) -> Result<(), String>) -> AppResult<RemovalResult> {
-            remove_with(&self.root, &ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(), files, check,
+            remove_with(&self.root, &ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(), RemovalKind::Generic, files, check,
                 &Protection { roots: vec![] }, || open, recycle)
+        }
+        fn audio(&self, prefix: &str, outputs: &[PathBuf]) -> Vec<Value> {
+            let ids = (0..outputs.len()).map(|index| format!("{prefix}_{index}")).collect::<Vec<_>>();
+            outputs.iter().enumerate().map(|(index, output)| {
+                let mut row = self.row(&ids[index], output);
+                row["source"]=json!("manual"); row["command"]=json!("infer_workflow");
+                row["audio"]=json!({"groupId":ids[0],"primaryJobId":ids[0],"index":index,
+                    "request":{"input":self.file(&format!("{prefix}-input-{index}.wav")),"output":self.output.join(format!("{prefix}-{index}")),
+                        "workbenchOutputs":{"saved":output}}});
+                if index==0 {
+                    row["audio"]["memberJobIds"]=json!(ids);
+                    row["payload"]=json!({"workflowName":"fixture","workflow":{"version":0.4,"nodes":[],"links":[]},"output":self.output});
+                } else {
+                    row.as_object_mut().unwrap().remove("payload");row["payloadRef"]=json!(ids[0]);
+                }
+                row
+            }).collect()
+        }
+        fn remove_audio(&self, ids: &[&str], files: bool, check: bool, open: bool,
+                        recycle: &mut impl FnMut(&Path) -> Result<(), String>) -> AppResult<RemovalResult> {
+            remove_with(&self.root, &ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(), RemovalKind::Audio,
+                files, check, &Protection { roots: vec![] }, || open, recycle)
         }
     }
     fn fake_recycle(path: &Path) -> Result<(), String> { fs::remove_file(path).map_err(|error| error.to_string()) }
@@ -403,7 +525,7 @@ mod tests {
     fn model_runtime_and_app_state_paths_are_never_recycled() {
         let f=Fixture::new(); let model=f.file("model.wav");
         f.save(&f.row("job",&model));
-        let result=remove_with(&f.root,&["job".into()],true,false,&Protection{roots:vec![f.output.clone()]},||false,&mut never_recycle).unwrap();
+        let result=remove_with(&f.root,&["job".into()],RemovalKind::Generic,true,false,&Protection{roots:vec![f.output.clone()]},||false,&mut never_recycle).unwrap();
         assert_eq!(result.retained[0].reason,"protected_asset_or_program"); assert!(model.exists());
         let settings=f.root.join("settings"); fs::create_dir_all(&settings).unwrap();
         let config=settings.join("app.json"); fs::write(&config,"{}").unwrap(); f.save(&f.row("config",&config));
@@ -478,6 +600,159 @@ mod tests {
         let f=Fixture::new();let output=f.file("keep.wav");let path=f.save(&f.row("job",&output));let before=fs::read(&path).unwrap();
         fs::write(f.root.join("agent-jobs/broken.json"),"{broken").unwrap();
         assert!(f.remove(&["job"],true,false,false,&mut never_recycle).is_err());assert_eq!(fs::read(path).unwrap(),before);assert!(output.exists());
+    }
+
+    #[test]
+    fn audio_leaf_expands_entire_group_for_preflight_metadata_and_file_removal() {
+        for files in [false,true] {
+            let f=Fixture::new();let a=f.file("a.wav");let b=f.file("b.wav");let rows=f.audio("group",&[a.clone(),b.clone()]);
+            for row in &rows {f.save(row);}
+            let before=rows.iter().map(|row|fs::read(task_journal::job_path(&f.root,row["jobId"].as_str().unwrap()).unwrap()).unwrap()).collect::<Vec<_>>();
+            let checked=f.remove_audio(&["group_1"],files,true,false,&mut never_recycle).unwrap();
+            assert_eq!(checked.checked_job_ids,vec!["group_0","group_1"]);assert!(checked.removed_job_ids.is_empty());
+            assert!(checked.trashed.is_empty());assert!(checked.retained.is_empty());
+            for (row,bytes) in rows.iter().zip(before) { assert_eq!(fs::read(task_journal::job_path(&f.root,row["jobId"].as_str().unwrap()).unwrap()).unwrap(),bytes); }
+            fs::write(f.root.join("agent-jobs/group_1.cancel"),"").unwrap();
+            let response=f.remove_audio(&["group_1","group_0","group_1"],files,false,false,&mut fake_recycle).unwrap();
+            assert_eq!(response.checked_job_ids,checked.checked_job_ids);assert_eq!(response.removed_job_ids,checked.checked_job_ids);
+            assert_eq!(response.trashed.len(),if files {2}else{0});assert!(response.retained.is_empty());
+            for row in rows { assert!(!task_journal::job_path(&f.root,row["jobId"].as_str().unwrap()).unwrap().exists());
+                assert!(Path::new(row["audio"]["request"]["input"].as_str().unwrap()).exists()); }
+            assert_eq!(a.exists(),!files);assert_eq!(b.exists(),!files);assert!(!f.root.join("agent-jobs/group_1.cancel").exists());
+        }
+    }
+
+    #[test]
+    fn audio_whole_group_terminal_owner_and_type_checks_precede_any_recycling() {
+        for mode in ["queued_sibling","leased_sibling","generic_id","missing_id","bad_library"] {
+            let f=Fixture::new();let a=f.file("a.wav");let b=f.file("b.wav");let mut rows=f.audio("group",&[a.clone(),b.clone()]);
+            if mode=="queued_sibling" {rows[1]["status"]=json!("queued");rows[1]["finishedAt"]=Value::Null;}
+            for row in &rows {f.save(row);}
+            let pa=task_journal::job_path(&f.root,"group_0").unwrap();let pb=task_journal::job_path(&f.root,"group_1").unwrap();
+            let before=(fs::read(&pa).unwrap(),fs::read(&pb).unwrap());
+            let _lease=if mode=="leased_sibling" {Some(task_journal::owner_lock(&f.root,"group_1").unwrap())}else{None};
+            if mode=="generic_id" {f.save(&f.row("generic",&a));}
+            if mode=="bad_library" {fs::write(f.root.join("agent-jobs/bad.json"),"{}").unwrap();}
+            let ids=match mode {"generic_id"=>vec!["group_0","generic"],"missing_id"=>vec!["group_0","missing"],_=>vec!["group_0"]};
+            assert!(f.remove_audio(&ids,true,false,false,&mut never_recycle).is_err(),"{mode}");
+            assert_eq!((fs::read(pa).unwrap(),fs::read(pb).unwrap()),before);assert!(a.exists());assert!(b.exists());
+        }
+    }
+
+    #[test]
+    fn audio_partial_recycle_failure_keeps_every_group_record_and_retries_missing_outputs() {
+        let f=Fixture::new();let a=f.file("a.wav");let b=f.file("b.wav");
+        let mut rows=f.audio("first",&[a.clone()]);rows.extend(f.audio("second",&[b.clone()]));for row in &rows {f.save(row);}
+        let before=rows.iter().map(|row|fs::read(task_journal::job_path(&f.root,row["jobId"].as_str().unwrap()).unwrap()).unwrap()).collect::<Vec<_>>();
+        let response=f.remove_audio(&["first_0","second_0"],true,false,false,&mut |path| if path==b {Err("fixture failed".into())}else{fake_recycle(path)}).unwrap();
+        assert!(response.removed_job_ids.is_empty());assert_eq!(response.failed.len(),1);assert_eq!(response.trashed.len(),1);
+        for (row,bytes) in rows.iter().zip(before) {assert_eq!(fs::read(task_journal::job_path(&f.root,row["jobId"].as_str().unwrap()).unwrap()).unwrap(),bytes);}
+        let retry=f.remove_audio(&["first_0","second_0"],true,false,false,&mut fake_recycle).unwrap();
+        assert_eq!(retry.removed_job_ids,vec!["first_0","second_0"]);assert_eq!(retry.trashed.len(),2);assert!(retry.failed.is_empty());
+    }
+
+    #[test]
+    fn audio_same_root_terminal_history_does_not_claim_selected_outputs_but_active_group_does() {
+        for active in [false,true] {
+            let f=Fixture::new();let output=f.file("selected.wav");let other=f.file("other.wav");
+            for row in f.audio("selected",&[output.clone()]) {f.save(&row);}
+            let mut group=f.audio("other",&[other.clone(),other.clone()]);
+            group[0]["payload"]["workflow"]["nodes"]=json!([{"type":"pymss_save_audio","widgets_values":[f.output]}]);
+            group[0]["payload"]["output"]=json!(f.output.join("unrelated-root"));
+            for row in &mut group {row["result"]["outputDirectories"]=json!([f.output]);row["result"]["outputDirectory"]=json!(f.output);}
+            if active {group[0]["status"]=json!("cancelled");group[1]["status"]=json!("queued");group[1]["finishedAt"]=Value::Null;group[1]["result"]=Value::Null;}
+            for row in &group {f.save(row);}
+            let mut calls=0;
+            let response=f.remove_audio(&["selected_0"],true,false,false,&mut |path|{calls+=1;fake_recycle(path)}).unwrap();
+            assert_eq!(calls,if active {0}else{1});assert_eq!(output.exists(),active);assert!(other.exists());
+            if active {assert_eq!(response.retained[0].reason,"input_or_other_job_reference");}
+        }
+    }
+
+    #[test]
+    fn audio_graph_save_widgets_are_outputs_while_load_folder_and_named_input_bindings_are_sources() {
+        for source in ["save","folder","named_input"] {
+            let f=Fixture::new();let a=f.file("a.wav");let b=f.file("b.wav");let mut rows=f.audio("group",&[a.clone(),b.clone()]);
+            rows[0]["payload"]["workflow"]["nodes"]=json!([{"type":"pymss_save_audio","widgets_values":[f.output]}]);
+            if source=="folder" {
+                rows[0]["payload"]["workflow"]["nodes"].as_array_mut().unwrap().push(json!({"type":"pymss_load_audio_batch","widgets_values":[f.output,false,true,""]}));
+                for row in &mut rows {row["audio"]["request"]["input"]=Value::Null;}
+            }else if source=="named_input" {
+                for row in &mut rows {row["audio"]["request"]["inputs"]=json!({"output":f.output});}
+            }
+            for row in &rows {f.save(row);}
+            let mut calls=0;let response=f.remove_audio(&["group_1"],true,false,false,&mut |path|{calls+=1;fake_recycle(path)}).unwrap();
+            assert_eq!(calls,if source=="save" {2}else{0});assert_eq!(a.exists(),source!="save");assert_eq!(b.exists(),source!="save");
+            assert_eq!(response.retained.len(),if source=="save" {0}else{2});
+        }
+    }
+
+    #[test]
+    fn audio_unresolved_relative_graph_inputs_are_retained_unless_an_absolute_picker_or_slot_overrides_them() {
+        for binding in ["none","picker","slot"] {
+            let f=Fixture::new();let output=f.file("keep.wav");let mut rows=f.audio("group",&[output.clone()]);
+            rows[0]["payload"]["workflow"]["nodes"]=json!([{"type":"pymss_load_audio","widgets_values":["../source.wav","named"]}]);
+            if binding!="picker" {rows[0]["audio"]["request"]["input"]=Value::Null;}
+            if binding=="slot" {rows[0]["audio"]["request"]["inputs"]=json!({"named":f.file("source.wav")});}
+            f.save(&rows[0]);let mut calls=0;
+            let result=f.remove_audio(&["group_0"],true,false,false,&mut |path|{calls+=1;fake_recycle(path)}).unwrap();
+            assert_eq!(calls,if binding=="none" {0}else{1});assert_eq!(output.exists(),binding=="none");
+            if binding=="none" {assert_eq!(result.retained[0].reason,"unresolved_graph_input");}
+        }
+    }
+
+    #[test]
+    fn workbench_global_picker_does_not_hide_an_independent_relative_graph_input() {
+        let f=Fixture::new();let output=f.file("keep.wav");let mut rows=f.audio("group",&[output.clone()]);
+        rows[0]["payload"]["workbench"]=json!(true);
+        rows[0]["payload"]["workflow"]["nodes"]=json!([
+            {"id":1,"type":"input_audio","widgets_values":[]},
+            {"id":2,"type":"pymss_load_audio","widgets_values":["../independent-source.wav","independent"]}
+        ]);
+        assert!(Path::new(rows[0]["audio"]["request"]["input"].as_str().unwrap()).is_absolute());
+        f.save(&rows[0]);
+        let result=f.remove_audio(&["group_0"],true,false,false,&mut never_recycle).unwrap();
+        assert_eq!(result.retained[0].reason,"unresolved_graph_input");
+        assert_eq!(result.removed_job_ids,vec!["group_0"]);assert!(output.exists());
+    }
+
+    #[test]
+    fn audio_outputs_are_protected_by_cross_source_relative_file_inputs_but_not_operation_scalars() {
+        let cases = vec![
+            ("infer",json!({"input":"../shared.wav"}),true),
+            ("infer",json!({"tasks":[{"input":"../shared.wav"}]}),true),
+            ("audio_tools",json!({"operation":"asr","inputPath":"../shared.wav"}),true),
+            ("audio_tools",json!({"operation":"convert","inputs":["../shared.wav"]}),true),
+            ("audio_tools",json!({"operation":"sdr","estimatedPath":"../shared.wav"}),true),
+            ("media_workflow",json!({"inputs":["../shared.wav"]}),true),
+            ("run_operation",json!({"inputs":{"audio":{"kind":"file","path":"../shared.wav"}}}),true),
+            ("run_operation",json!({"inputs":{"audio":{"kind":"audio_file","path":"../shared.wav"}}}),true),
+            ("run_operation",json!({"inputs":{"audio":{"kind":"path","path":"../shared.wav"}}}),true),
+            ("infer_workflow",json!({"workbench":true,"workflow":{"nodes":[{"type":"LoadAudio","widgets_values":["../shared.wav",""]}]}}),true),
+            ("run_operation",json!({"inputs":{"value":{"kind":"scalar","value":"../not-an-input.wav"},"model":"htdemucs"},"params":{"model":"../model-alias"}}),false),
+            ("health",json!({"inputPath":"../not-an-input.wav"}),false),
+        ];
+        for (command,payload,blocked) in cases {
+            let f=Fixture::new();let output=f.file("keep.wav");for row in f.audio("group",&[output.clone()]) {f.save(&row);}
+            let mut consumer=f.row("consumer",&output);consumer["command"]=json!(command);consumer["payload"]=payload;
+            consumer["result"]=Value::Null;f.save(&consumer);
+            let mut calls=0;let result=f.remove_audio(&["group_0"],true,false,false,&mut |path|{calls+=1;fake_recycle(path)}).unwrap();
+            assert_eq!(calls,if blocked {0}else{1},"{command}");assert_eq!(output.exists(),blocked,"{command}");
+            if blocked {assert_eq!(result.retained[0].reason,"unresolved_input_reference");}
+            assert!(task_journal::job_path(&f.root,"consumer").unwrap().exists());
+        }
+    }
+
+    #[test]
+    fn audio_uses_the_same_library_editor_and_model_mutation_protection_as_generic_results() {
+        for reason in ["library_index_unavailable","editor_open","editor_reference","model_registry_busy"] {
+            let f=Fixture::new();let output=f.file("keep.wav");for row in f.audio("group",&[output.clone()]) {f.save(&row);}
+            if reason=="library_index_unavailable" {fs::write(f.root.join("library.db"),"not touched").unwrap();}
+            if reason=="editor_reference" {let dir=f.root.join("editor-projects/independent");fs::create_dir_all(&dir).unwrap();fs::write(dir.join("project.json"),json!({"version":4,"sources":[{"path":output}],"tracks":[]}).to_string()).unwrap();}
+            let _model=if reason=="model_registry_busy" {crate::storage::model_reference_mutation("import_custom_model")}else{None};
+            let result=f.remove_audio(&["group_0"],true,false,reason=="editor_open",&mut never_recycle).unwrap();
+            assert_eq!(result.removed_job_ids,vec!["group_0"]);assert_eq!(result.retained[0].reason,reason);assert!(output.exists());
+        }
     }
 
     #[test]

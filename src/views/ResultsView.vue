@@ -19,7 +19,8 @@ import { useEditorStore, type OrphanedEditorProject } from '@/stores/editor'
 import { usePagedSelection } from '@/composables/usePagedSelection'
 import { resultType, RESULT_TYPE_KEYS, type ResultType } from '@/utils/resultType'
 import { makeResultListing, type ResultGroup } from './results/listing'
-import { NCheckbox, useDialog, useMessage } from 'naive-ui'
+import { NCheckbox, useDialog, useMessage, type DialogReactive } from 'naive-ui'
+import type { ResultRemovalResponse } from '@/features/tasks/journal'
 import { useMediaJobsStore } from '@/stores/mediaJobs'
 import JournalResults from './results/JournalResults.vue'
 import { buildJournalResults, filterJournalResults } from './results/journalResults'
@@ -121,10 +122,13 @@ async function openInEditor(item: SeparationTask) {
   }
 }
 
-// 删除结果时回收当前结果对应的输出文件；分层输出的结果目录仅在已空时清理。
-function trashEmptyDirs(item: SeparationTask) {
-  return task.resultTrashEmptyDirs(item)
-}
+const removingResults = ref(false)
+const resultRemovalDialogOpen = ref(false)
+const resultRemovalBlocked = computed(() => removingResults.value || resultRemovalDialogOpen.value)
+let resultRemovalDialog: DialogReactive | null = null
+let recordOnlyDialog: DialogReactive | null = null
+let cancelRecordOnlyConfirmation: (() => void) | null = null
+let resultsDisposed = false
 
 function groupTaskIds(group: ResultGroup) {
   return group.items.map(item => item.id)
@@ -139,54 +143,14 @@ function removalItems(ids: string[]) {
   catch (error) { message.warning(String(error instanceof Error ? error.message : error)); return null }
 }
 
-async function removeResultRecords(items: SeparationTask[]) {
-  if (!await cleanupLinkedEditorProjects(items)) return false
+async function prepareResultRemoval(items: SeparationTask[], deleteFiles: boolean) {
   try {
-    await task.removeResults(items.map(item => item.id))
-    return true
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : t('results.removeRecordsFailed'))
-    return false
-  }
-}
-
-async function prepareResultRemoval(items: SeparationTask[]) {
-  try {
-    await task.checkRemoval(items.map(item => item.id))
+    await task.checkRemoval(items.map(item => item.id), deleteFiles)
     return true
   } catch {
     message.warning(t('results.removeNotReady'))
     return false
   }
-}
-
-async function cleanupLinkedEditorProjects(items: SeparationTask[]) {
-  try {
-    const result = await editor.deleteProjectsForTasks(items.map(item => item.id))
-    if (result.blockedProjectIds.length) {
-      message.warning(t('results.removeEditorProjectsOpen', { count: result.blockedProjectIds.length }))
-      return false
-    }
-    if (result.failedProjectIds.length) {
-      message.error(t('results.removeEditorProjectsFailed', { count: result.failedProjectIds.length }))
-      return false
-    }
-    return true
-  } catch {
-    message.error(t('results.removeEditorProjectsFailed', { count: items.length }))
-    return false
-  }
-}
-
-async function ensureLinkedEditorProjectsClosed(items: SeparationTask[]) {
-  try {
-    const openProjectIds = await editor.listOpenProjectsForTasks(items.map(item => item.id))
-    if (!openProjectIds.length) return true
-    message.warning(t('results.removeEditorProjectsOpen', { count: openProjectIds.length }))
-  } catch {
-    message.error(t('results.removeEditorProjectsFailed', { count: items.length }))
-  }
-  return false
 }
 
 async function refreshOrphanedEditorProjects(force = false) {
@@ -251,34 +215,40 @@ function handleCleanupOrphanedEditorProjects() {
   })
 }
 
-function trashTargetsForItems(items: SeparationTask[]) {
-  return task.resultTrashTargetsForTasks(items)
-}
-
-function trashEmptyDirsForItems(items: SeparationTask[]) {
-  const seen = new Set<string>()
-  return items.flatMap((item) => trashEmptyDirs(item)).filter((path) => {
-    if (seen.has(path)) return false
-    seen.add(path)
-    return true
-  })
-}
-
 type RemoveMessageMode = 'single' | 'multiple'
+type ResultRemovalMode = 'single' | 'selected' | 'all'
 
-function confirmRemoveListOnly(failedCount: number, totalCount: number, mode: RemoveMessageMode) {
+function showResultRemovalDialog(options: Parameters<typeof dialog.warning>[0]) {
+  resultRemovalDialogOpen.value = true
+  const entry = dialog.warning({
+    ...options,
+    onAfterLeave: () => {
+      // The first dialog may finish leaving after the record-only fallback opens.
+      if (resultRemovalDialog === entry) {
+        resultRemovalDialog = null
+        resultRemovalDialogOpen.value = false
+      }
+      options.onAfterLeave?.()
+    },
+  })
+  resultRemovalDialog = entry
+  return entry
+}
+
+function confirmRemoveListOnly(failedCount: number, mode: RemoveMessageMode) {
   return new Promise<boolean>((resolve) => {
     let settled = false
     const finish = (value: boolean) => {
       if (settled) return
       settled = true
+      cancelRecordOnlyConfirmation = null
       resolve(value)
     }
-    dialog.warning({
+    cancelRecordOnlyConfirmation = () => finish(false)
+    const entry = dialog.warning({
       title: t('results.removeFilesConfirmTitle'),
       content: t(mode === 'single' ? 'results.removeFilesConfirmContentSingle' : 'results.removeFilesConfirmContentMultiple', {
         failed: failedCount,
-        total: totalCount,
       }),
       positiveText: t('results.removeListOnlyAction'),
       negativeText: t('results.keepResultAction'),
@@ -287,237 +257,119 @@ function confirmRemoveListOnly(failedCount: number, totalCount: number, mode: Re
       onPositiveClick: () => finish(true),
       onNegativeClick: () => finish(false),
       onClose: () => finish(false),
+      onAfterLeave: () => { if (recordOnlyDialog === entry) recordOnlyDialog = null },
     })
+    recordOnlyDialog = entry
+  })
+}
+
+async function executeResultRemoval(items: SeparationTask[], deleteFiles: boolean, mode: ResultRemovalMode) {
+  const ids = items.map(item => item.id)
+  const messageMode = mode === 'single' ? 'single' : 'multiple'
+  const retained = new Set<string>()
+  async function remove(files: boolean): Promise<ResultRemovalResponse | null> {
+    // The native catalog owns output references and validates the complete batch.
+    if (resultsDisposed || !await prepareResultRemoval(items, files)) return null
+    if (resultsDisposed) return null
+    return task.removeResults(ids, { deleteFiles: files })
+  }
+  try {
+    let result = await remove(deleteFiles)
+    if (!result) return false
+    result.retained.forEach(item => retained.add(item.path))
+    if (result.failed.length) {
+      if (resultsDisposed) return false
+      // A failed native recycling operation keeps every selected job record.
+      // Never turn an IPC exception into an implicit record-only deletion.
+      if (!await confirmRemoveListOnly(result.failed.length, messageMode)) {
+        if (!resultsDisposed) {
+          message.warning(t(messageMode === 'single' ? 'results.removeFilesKeptSingle' : 'results.removeFilesKeptMultiple'))
+          if (retained.size) message.warning(t('results.removeFilesRetained', { count: retained.size }))
+        }
+        return false
+      }
+      result = await remove(false)
+      if (!result) return false
+      result.retained.forEach(item => retained.add(item.path))
+    }
+    if (!ids.every(id => result.removedJobIds.includes(id))) throw new Error(t('results.removeRecordsFailed'))
+    if (!resultsDisposed && retained.size) message.warning(t('results.removeFilesRetained', { count: retained.size }))
+    return true
+  } catch (error) {
+    if (!resultsDisposed) message.error(error instanceof Error ? error.message : t('results.removeRecordsFailed'))
+    return false
+  }
+}
+
+function confirmResultRemoval(groups: ResultGroup[], mode: ResultRemovalMode) {
+  if (resultRemovalBlocked.value || resultsDisposed || !groups.length) return
+  const items = removalItems(groups.flatMap(groupTaskIds))
+  if (!items?.length) return
+  const deleteFiles = ref(false)
+  const count = groups.length
+  const labels = mode === 'single'
+    ? { title: 'results.removeTitle', content: 'results.removeContent', positive: 'results.removeAction', success: 'results.removeSuccess' }
+    : mode === 'selected'
+      ? { title: 'results.removeSelectedTitle', content: 'results.removeSelectedContent', positive: 'results.removeSelectedPositive', success: 'results.removeSelectedSuccess' }
+      : { title: 'results.clearTitle', content: 'results.clearContent', positive: 'results.clearPositive', success: 'results.clearSuccess' }
+  let confirming = false
+  showResultRemovalDialog({
+    title: t(labels.title),
+    content: () => h('div', { style: 'display:grid;gap:12px;' }, [
+      h('span', t(labels.content, { count })),
+      h('span', { class: 'result-remove__editor-hint' }, t('results.removeEditorProjectHint')),
+      h('span', { class: 'result-remove__editor-hint' }, t('results.journal.removeProtectedHint')),
+      h(NCheckbox, {
+        checked: deleteFiles.value,
+        disabled: removingResults.value,
+        'onUpdate:checked': (value: boolean) => { if (!removingResults.value) deleteFiles.value = value },
+      }, { default: () => t('results.removeDeleteFiles') }),
+    ]),
+    positiveText: t(labels.positive),
+    negativeText: t('common.cancel'),
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: async () => {
+      if (confirming || resultsDisposed) return false
+      confirming = true
+      removingResults.value = true
+      if (resultRemovalDialog) {
+        resultRemovalDialog.closable = false
+        resultRemovalDialog.maskClosable = false
+        resultRemovalDialog.closeOnEsc = false
+        resultRemovalDialog.negativeButtonProps = { disabled: true }
+      }
+      try {
+        if (!await executeResultRemoval(items, deleteFiles.value, mode)) return false
+        if (mode !== 'single' && !resultsDisposed) {
+          selectedResultIds.value = []
+          selecting.value = false
+        }
+        if (!resultsDisposed) message.success(t(labels.success, { count }))
+      } finally {
+        confirming = false
+        removingResults.value = false
+        if (resultRemovalDialog && !resultsDisposed) {
+          resultRemovalDialog.closable = true
+          resultRemovalDialog.maskClosable = true
+          resultRemovalDialog.closeOnEsc = true
+          resultRemovalDialog.negativeButtonProps = {}
+        }
+      }
+    },
   })
 }
 
 function handleRemoveResult(group: ResultGroup) {
-  const ids = groupTaskIds(group)
-  const items = removalItems(ids)
-  if (!items?.length) return
-  const deleteFiles = ref(false)
-  dialog.warning({
-    title: t('results.removeTitle'),
-    content: () => h('div', { style: 'display:grid;gap:12px;' }, [
-      h('span', t('results.removeContent')),
-      h('span', { class: 'result-remove__editor-hint' }, t('results.removeEditorProjectHint')),
-      h(NCheckbox, {
-        checked: deleteFiles.value,
-        'onUpdate:checked': (value: boolean) => { deleteFiles.value = value },
-      }, { default: () => t('results.removeDeleteFiles') }),
-    ]),
-    positiveText: t('results.removeAction'),
-    negativeText: t('common.cancel'),
-    positiveButtonProps: { type: 'error' },
-    onPositiveClick: async () => {
-      const finishRemove = async () => {
-        return removeResultRecords(items)
-      }
-      if (!await prepareResultRemoval(items)) return false
-      if (!deleteFiles.value) {
-        if (!await finishRemove()) return false
-        message.success(t('results.removeSuccess'))
-        return
-      }
-      if (!await ensureLinkedEditorProjectsClosed(items)) return false
-
-      const { paths: targets, retained } = trashTargetsForItems(items)
-      if (!targets.length) {
-        if (!await finishRemove()) return false
-        if (retained) message.success(t('results.removeFilesRetained', { count: retained }))
-        else message.warning(t('results.removeNoFilesSingle'))
-        return
-      }
-
-      try {
-        const result = await task.trashResultPaths(targets, trashEmptyDirsForItems(items))
-        if (!result.failed.length) {
-          if (!await finishRemove()) return false
-          if (retained) message.success(t('results.removeFilesRetained', { count: retained }))
-          else message.success(t('results.removeFilesSuccessSingle'))
-          return
-        }
-
-        const removeListOnly = await confirmRemoveListOnly(result.failed.length, targets.length, 'single')
-        if (!removeListOnly) {
-          message.warning(t('results.removeFilesKeptSingle'))
-          return
-        }
-        if (!await finishRemove()) return false
-        if (result.failed.length === targets.length) {
-          message.warning(t('results.removeFilesAllFailedListOnly'))
-        } else {
-          message.warning(t('results.removeFilesPartialListOnly', { count: result.failed.length + retained }))
-        }
-      } catch (error) {
-        const removeListOnly = await confirmRemoveListOnly(targets.length, targets.length, 'single')
-        if (!removeListOnly) {
-          message.error(error instanceof Error ? error.message : t('results.removeFilesFailed'))
-          return
-        }
-        if (!await finishRemove()) return false
-        message.warning(t('results.removeFilesAllFailedListOnly'))
-      }
-    },
-  })
+  confirmResultRemoval([group], 'single')
 }
 
 function handleRemoveSelected() {
-  const ids = [...selectedResultIds.value]
-  if (!ids.length) return
-  const groups = resultGroups.value.filter((group) => ids.includes(group.id))
-  const taskIds = groups.flatMap(groupTaskIds)
-  const items = removalItems(taskIds)
-  if (!items?.length) return
-  const deleteFiles = ref(false)
-  dialog.warning({
-    title: t('results.removeSelectedTitle'),
-    content: () => h('div', { style: 'display:grid;gap:12px;' }, [
-      h('span', t('results.removeSelectedContent', { count: ids.length })),
-      h('span', { class: 'result-remove__editor-hint' }, t('results.removeEditorProjectHint')),
-      h(NCheckbox, {
-        checked: deleteFiles.value,
-        'onUpdate:checked': (value: boolean) => { deleteFiles.value = value },
-      }, { default: () => t('results.removeDeleteFiles') }),
-    ]),
-    positiveText: t('results.removeSelectedPositive'),
-    negativeText: t('common.cancel'),
-    positiveButtonProps: { type: 'error' },
-    onPositiveClick: async () => {
-      const finishRemove = async (silent = false) => {
-        if (!await removeResultRecords(items)) return false
-        if (!silent) {
-          message.success(t('results.removeSelectedSuccess', { count: ids.length }))
-        }
-        selectedResultIds.value = []
-        selecting.value = false
-        return true
-      }
-
-      if (!await prepareResultRemoval(items)) return false
-
-      if (!deleteFiles.value) {
-        return await finishRemove() ? undefined : false
-      }
-      if (!await ensureLinkedEditorProjectsClosed(items)) return false
-
-      const { paths: targets, retained } = trashTargetsForItems(items)
-      if (!targets.length) {
-        if (!await finishRemove(true)) return false
-        if (retained) message.success(t('results.removeFilesRetained', { count: retained }))
-        else message.warning(t('results.removeNoFilesMultiple'))
-        return
-      }
-
-      try {
-        const result = await task.trashResultPaths(targets, trashEmptyDirsForItems(items))
-        if (!result.failed.length) {
-          if (!await finishRemove(true)) return false
-          if (retained) message.success(t('results.removeFilesRetained', { count: retained }))
-          else message.success(t('results.removeFilesSuccessMultiple'))
-          return
-        }
-
-        const removeListOnly = await confirmRemoveListOnly(result.failed.length, targets.length, 'multiple')
-        if (!removeListOnly) {
-          message.warning(t('results.removeFilesKeptMultiple'))
-          return
-        }
-        if (!await finishRemove(true)) return false
-        if (result.failed.length === targets.length) {
-          message.warning(t('results.removeFilesAllFailedListOnly'))
-        } else {
-          message.warning(t('results.removeFilesPartialListOnly', { count: result.failed.length + retained }))
-        }
-      } catch (error) {
-        const removeListOnly = await confirmRemoveListOnly(targets.length, targets.length, 'multiple')
-        if (!removeListOnly) {
-          message.error(error instanceof Error ? error.message : t('results.removeFilesFailed'))
-          return
-        }
-        if (!await finishRemove(true)) return false
-        message.warning(t('results.removeFilesAllFailedListOnly'))
-      }
-    },
-  })
+  const selected = new Set(selectedResultIds.value)
+  confirmResultRemoval(resultGroups.value.filter(group => selected.has(group.id)), 'selected')
 }
 
 function handleClearResults() {
-  const groups = [...resultGroups.value]
-  if (!groups.length) return
-  const items = removalItems(groups.flatMap(groupTaskIds))
-  if (!items?.length) return
-  const deleteFiles = ref(false)
-  dialog.warning({
-    title: t('results.clearTitle'),
-    content: () => h('div', { style: 'display:grid;gap:12px;' }, [
-      h('span', t('results.clearContent', { count: groups.length })),
-      h('span', { class: 'result-remove__editor-hint' }, t('results.removeEditorProjectHint')),
-      h(NCheckbox, {
-        checked: deleteFiles.value,
-        'onUpdate:checked': (value: boolean) => { deleteFiles.value = value },
-      }, { default: () => t('results.removeDeleteFiles') }),
-    ]),
-    positiveText: t('results.clearPositive'),
-    negativeText: t('common.cancel'),
-    positiveButtonProps: { type: 'error' },
-    onPositiveClick: async () => {
-      const finishClear = async (silent = false) => {
-        if (!await removeResultRecords(items)) return false
-        if (!silent) {
-          message.success(t('results.clearSuccess', { count: groups.length }))
-        }
-        selectedResultIds.value = []
-        selecting.value = false
-        return true
-      }
-
-      if (!await prepareResultRemoval(items)) return false
-
-      if (!deleteFiles.value) {
-        return await finishClear() ? undefined : false
-      }
-      if (!await ensureLinkedEditorProjectsClosed(items)) return false
-
-      const { paths: targets, retained } = trashTargetsForItems(items)
-      if (!targets.length) {
-        if (!await finishClear(true)) return false
-        if (retained) message.success(t('results.removeFilesRetained', { count: retained }))
-        else message.warning(t('results.removeNoFilesMultiple'))
-        return
-      }
-
-      try {
-        const result = await task.trashResultPaths(targets, trashEmptyDirsForItems(items))
-        if (!result.failed.length) {
-          if (!await finishClear(true)) return false
-          if (retained) message.success(t('results.removeFilesRetained', { count: retained }))
-          else message.success(t('results.removeFilesSuccessMultiple'))
-          return
-        }
-
-        const removeListOnly = await confirmRemoveListOnly(result.failed.length, targets.length, 'multiple')
-        if (!removeListOnly) {
-          message.warning(t('results.removeFilesKeptMultiple'))
-          return
-        }
-        if (!await finishClear(true)) return false
-        if (result.failed.length === targets.length) {
-          message.warning(t('results.removeFilesAllFailedListOnly'))
-        } else {
-          message.warning(t('results.removeFilesPartialListOnly', { count: result.failed.length + retained }))
-        }
-      } catch (error) {
-        const removeListOnly = await confirmRemoveListOnly(targets.length, targets.length, 'multiple')
-        if (!removeListOnly) {
-          message.error(error instanceof Error ? error.message : t('results.removeFilesFailed'))
-          return
-        }
-        if (!await finishClear(true)) return false
-        message.warning(t('results.removeFilesAllFailedListOnly'))
-      }
-    },
-  })
+  confirmResultRemoval([...resultGroups.value], 'all')
 }
 
 function setResultSelected(id: string, selected: boolean) {
@@ -676,6 +528,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  resultsDisposed = true
+  cancelRecordOnlyConfirmation?.()
+  recordOnlyDialog?.destroy()
+  resultRemovalDialog?.destroy()
   window.removeEventListener('keydown', handleResultsKeydown)
   window.removeEventListener('pointerup', finishResultDragSelection)
   window.removeEventListener('pointercancel', finishResultDragSelection)
@@ -720,7 +576,7 @@ function formatDurationMs(value: number | undefined) {
           <n-button
             secondary
             type="error"
-            :disabled="!selectedResultIds.length"
+            :disabled="!selectedResultIds.length || resultRemovalBlocked"
             @click="handleRemoveSelected"
           >
             <template #icon><n-icon :component="TrashOutline" /></template>
@@ -752,6 +608,7 @@ function formatDurationMs(value: number | undefined) {
             v-if="task.resultTasks.length"
             secondary
             type="error"
+            :disabled="resultRemovalBlocked"
             @click="handleClearResults"
           >
             <template #icon><n-icon :component="TrashOutline" /></template>
@@ -858,7 +715,7 @@ function formatDurationMs(value: number | undefined) {
         </button>
 
         <div v-if="!selecting" class="result-row__actions" data-guide="result-actions">
-          <n-button v-if="item.inputCount === 1" size="small" type="primary" @click.stop="openInEditor(item.primary)">
+          <n-button v-if="item.inputCount === 1" size="small" type="primary" :disabled="removingResults" @click.stop="openInEditor(item.primary)">
             <template #icon><n-icon :component="ColorWandOutline" /></template>
             {{ t('results.openInEditor') }}
           </n-button>
@@ -866,7 +723,7 @@ function formatDurationMs(value: number | undefined) {
             <template #icon><n-icon :component="FolderOpenOutline" /></template>
             {{ t('results.openDirectory') }}
           </n-button>
-          <n-button size="small" quaternary type="error" @click.stop="handleRemoveResult(item)">
+          <n-button size="small" quaternary type="error" :disabled="resultRemovalBlocked" @click.stop="handleRemoveResult(item)">
             <template #icon><n-icon :component="TrashOutline" /></template>
             {{ t('results.removeAction') }}
           </n-button>
@@ -885,7 +742,7 @@ function formatDurationMs(value: number | undefined) {
                   <span>{{ result.outputs.length }} {{ t('results.stemUnit') }} · {{ formatDurationMs(taskDurationMs(result)) }}</span>
                 </div>
                 <div class="result-detail-card__actions">
-                  <n-button size="tiny" secondary @click.stop="openInEditor(result)">
+                  <n-button size="tiny" secondary :disabled="removingResults" @click.stop="openInEditor(result)">
                     <template #icon><n-icon :component="ColorWandOutline" /></template>
                     {{ t('results.openInEditor') }}
                   </n-button>

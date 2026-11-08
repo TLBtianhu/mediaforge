@@ -27,7 +27,7 @@ import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunI
 import { CURRENT_INFERENCE_PARAMS_VERSION, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming } from '@/stores/taskNormalize'
 import { JOURNAL_POLL_INTERVAL_MS, useMediaJobsStore } from '@/stores/mediaJobs'
 import { audioTasksFromJobs, audioEnqueueFromTasks } from '@/features/tasks/audioJobs'
-import { enqueueAudioJobs, removeAudioJobs } from '@/features/tasks/journal'
+import { enqueueAudioJobs, removeAudioJobs, type ResultRemovalResponse } from '@/features/tasks/journal'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
 import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
@@ -35,7 +35,7 @@ import { validateSeparateWorkflowInput, workflowDefinitionValidationError } from
 import { resolveRetryOutput } from '@/stores/taskRetry'
 import { buildInferenceParams as buildInferenceParamsFromValues, modelInferenceParamsFromState as modelInferenceParamsFromValues } from '@/stores/taskInferenceParams'
 import { buildJobs, findJobById } from '@/stores/taskJobs'
-import { getRemovalTasks as getRemovalTasksFromState, primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets, resultTrashTargetsForTasks as planResultTrashTargets } from '@/stores/taskResultCleanup'
+import { getRemovalTasks as getRemovalTasksFromState, primaryRevealPath } from '@/stores/taskResultCleanup'
 import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, type WorkflowRuntimeBindings, type WorkflowWorkbenchSnapshot, type WorkflowNodeState } from '@/workflows/workbench'
@@ -774,24 +774,6 @@ export const useTaskStore = defineStore('task', () => {
     return invoke<{ trashed: string[]; failed: string[] }>('move_paths_to_trash', { paths: valid, emptyDirs: [] })
   }
 
-  async function trashResultPaths(paths: string[], emptyDirs: string[] = []) {
-    const valid = paths.filter((p) => p?.trim())
-    const validEmptyDirs = emptyDirs.filter((p) => p?.trim())
-    if (!valid.length && !validEmptyDirs.length) return { trashed: [] as string[], failed: [] as string[] }
-    return invoke<{ trashed: string[]; failed: string[] }>('move_paths_to_trash', { paths: valid, emptyDirs: validEmptyDirs })
-  }
-
-  // 删除结果时始终仅回收当前结果对应的输出文件，避免误删共享目录、
-  // 任务目录中的附加文件或后续派生产物。
-  function resultTrashEmptyDirs(task: SeparationTask): string[] {
-    return resultTrashEmptyDirsForTask(task, windowsPaths.value)
-  }
-
-  function resultTrashTargetsForTasks(items: SeparationTask[]): { paths: string[]; retained: number } {
-    const removing = getRemovalTasks(items.map(item => item.id))
-    return planResultTrashTargets(tasks.value, removing, windowsPaths.value)
-  }
-
   function getTaskById(id: string) {
     return tasks.value.find((task) => task.id === id) || null
   }
@@ -815,22 +797,25 @@ export const useTaskStore = defineStore('task', () => {
     return getRemovalTasksFromState(tasks.value, ids, i18n.global.t('results.removeRunningBatch'))
   }
 
-  // Result deletion owns the complete run record, including failed siblings.
-  // Editor projects and optional file recycling are handled before this call.
-  function removeResult(id: string) {
-    return removeResults([id])
+  // The native transaction owns the complete group and optional file recycling.
+  async function removeResult(id: string) {
+    return (await removeResults([id])).removedJobIds.length
   }
 
-  async function checkRemoval(ids: string[]) {
+  async function checkRemoval(ids: string[], deleteFiles = false) {
     const related = getRemovalTasks(ids)
-    const checked = new Set(await removeAudioJobs(related.map(task => task.id), true))
-    if (related.some(task => !checked.has(task.id))) throw new Error('Result removal preflight did not confirm every job')
+    const response = await removeAudioJobs(related.map(task => task.id), { deleteFiles, checkOnly: true })
+    if (response.checkedJobIds.length !== related.length || related.some(task => !response.checkedJobIds.includes(task.id))) throw new Error('Result removal preflight did not confirm the exact group')
+    return response
   }
 
-  async function removeResults(ids: string[]) {
+  async function removeResults(ids: string[], options: { deleteFiles?: boolean } = {}): Promise<ResultRemovalResponse> {
     const related = getRemovalTasks(ids)
-    if (!related.length) return 0
-    const removed = await removeAudioJobs(related.map(task => task.id))
+    if (!related.length) return { schemaVersion: 2, checkedJobIds: [], removedJobIds: [], trashed: [], failed: [], retained: [] }
+    const response = await removeAudioJobs(related.map(task => task.id), options)
+    if (response.checkedJobIds.length !== related.length || related.some(task => !response.checkedJobIds.includes(task.id))) throw new Error('Result removal did not confirm the exact group')
+    const removed = response.removedJobIds
+    if (!removed.length) return response
     journal.forget(removed)
     syncJournalTasks()
     const removedIds = new Set(removed)
@@ -838,7 +823,7 @@ export const useTaskStore = defineStore('task', () => {
     if (activeTaskId.value && removedIds.has(activeTaskId.value)) activeTaskId.value = tasks.value[0]?.id || null
     if (focusedTaskId.value && removedIds.has(focusedTaskId.value)) focusedTaskId.value = null
     if (focusedResultTaskId.value && removedIds.has(focusedResultTaskId.value)) focusedResultTaskId.value = null
-    return removed.length
+    return response
   }
 
   async function removeWorkflowRun(workflowId: string, jobId: string) {
@@ -856,12 +841,12 @@ export const useTaskStore = defineStore('task', () => {
     const related = tasks.value.filter(task => selected.has(taskJobId(task)))
     if (related.some(task => task.runConfig?.workbench)) throw new Error(i18n.global.t('workbench.runNotFound'))
     if (related.some(hasResultPresence)) throw new Error(i18n.global.t('workbench.removeRunHasResults'))
-    return removeResults(related.map(task => task.id))
+    return (await removeResults(related.map(task => task.id))).removedJobIds.length
   }
 
   // Empty selections must not turn into a request to remove all results.
-  function clearResults(ids?: string[]) {
-    return removeResults(ids ?? resultTasks.value.map(task => task.id))
+  async function clearResults(ids?: string[]) {
+    return (await removeResults(ids ?? resultTasks.value.map(task => task.id))).removedJobIds.length
   }
 
   async function cancelAllTasks() {
@@ -1138,10 +1123,6 @@ export const useTaskStore = defineStore('task', () => {
     clearInputFiles,
     revealPath,
     trashPaths,
-    trashResultPaths,
-    resultTrashEmptyDirs,
-    resultTrashTargets,
-    resultTrashTargetsForTasks,
     primaryRevealPath,
     getTaskById,
     getJobById,

@@ -101,24 +101,28 @@ pub async fn enqueue_audio_jobs(app: AppHandle, payload: Value) -> AppResult<Val
 }
 
 #[tauri::command]
-pub async fn remove_audio_jobs(app: AppHandle, job_ids: Vec<String>, check_only: Option<bool>) -> AppResult<Value> {
+pub async fn remove_audio_jobs(app: AppHandle, job_ids: Vec<String>, delete_files: Option<bool>, check_only: Option<bool>) -> AppResult<Value> {
     let root = storage::data_root_dir(&app)?;
-    if check_only == Some(true) {
-        return Ok(serde_json::json!({"schemaVersion": 2, "removedJobIds": [], "checkedJobIds": audio_jobs::check_remove(&root, &job_ids)?}));
-    }
-    Ok(serde_json::json!({"schemaVersion": 2, "removedJobIds": audio_jobs::remove(&root, &job_ids)?}))
+    let policy = result_protection(&app)?;
+    let result = crate::python::result_jobs::remove_audio(&root, &job_ids, delete_files == Some(true), check_only == Some(true), &policy,
+        || app.webview_windows().keys().any(|label| label.starts_with("editor-")))?;
+    Ok(serde_json::to_value(result)?)
 }
 
-#[tauri::command]
-pub async fn remove_result_jobs(app: AppHandle, job_ids: Vec<String>, delete_files: Option<bool>, check_only: Option<bool>) -> AppResult<Value> {
-    let root = storage::data_root_dir(&app)?;
+fn result_protection(app: &AppHandle) -> AppResult<crate::python::result_jobs::Protection> {
     let mut roots = vec![storage::models_dir(&app)?, storage::runtime_envs_dir(&app)?, storage::runtime_root_dir(&app)?];
     let executable = std::env::current_exe()?;
     roots.push(executable.clone());
     let mut program_roots = executable.parent().map(PathBuf::from).into_iter().collect::<Vec<_>>();
     if let Ok(resource) = app.path().resource_dir() { program_roots.extend(storage::resource_roots(&resource)); }
     roots.extend(program_roots);
-    let policy = crate::python::result_jobs::Protection { roots };
+    Ok(crate::python::result_jobs::Protection { roots })
+}
+
+#[tauri::command]
+pub async fn remove_result_jobs(app: AppHandle, job_ids: Vec<String>, delete_files: Option<bool>, check_only: Option<bool>) -> AppResult<Value> {
+    let root = storage::data_root_dir(&app)?;
+    let policy = result_protection(&app)?;
     let result = crate::python::result_jobs::remove(&root, &job_ids, delete_files == Some(true), check_only == Some(true), &policy,
         || app.webview_windows().keys().any(|label| label.starts_with("editor-")))?;
     Ok(serde_json::to_value(result)?)

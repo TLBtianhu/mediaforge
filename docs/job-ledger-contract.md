@@ -61,11 +61,15 @@ Kernel默认retention只作用于Agent历史；manual音频历史保留到显式
 不能删掉仍被child引用的primary；不隐式把列表裁成最近100条。
 Kernel清理子进程失败时继续持有owner lease与临时请求文件，终态记录也不可被retention删除。
 同一Kernel可通过再次cancel有限重试清理，确认wait回收后才释放；没有自动后台重试保证。
-结果删除先用`remove_audio_jobs(checkOnly=true)`确认全终态且释放lease，再处理用户明确选择的文件/工程清理，
-最后提交元数据删除。删除记录不等于删除媒体文件，不自动清理用户资产。
+结果删除先用checkOnly预检全终态与owner释放，再由最终后端事务重做检查、回收用户明确选择的文件并删除记录。
+删除记录不等于删除媒体文件；关联编辑工程作为独立资产保留，不自动删除工程来绕过文件引用保护。
+孤立编辑工程仍需通过单独入口明确清理；删除结果时不递归删除工程或输出目录。
 
 媒体/Agent通用结果使用`remove_result_jobs(jobIds, deleteFiles=false, checkOnly=false)`，不接收前端文件列表。
-仅接受当前结果命令白名单的非audio记录，整次选中记录须全终态且owner lease已释放；audio仍走完整组专用入口。
+仅接受当前结果命令白名单的非audio记录。音频入口为`remove_audio_jobs(jobIds, deleteFiles=false, checkOnly=false)`，
+接受primary或任一child并在catalog内展开整组，两入口共用同一result_jobs引擎、文件保护策略与删除事务；
+旧独立audio_jobs删除事务已移除，不保留旧响应回退。checkedJobIds/removedJobIds均返回完整组选中ID，
+整次所有组须全终态且owner lease已释放。
 文件由后端按当前命令的明确结果字段推导，不扫输出目录，不把failed输入、scalar或任意嵌套路径当成产物。
 支持infer/media的outputs描述符、工具outputPaths/outputPath以及operation的audio_file描述符；旧MIDI报告
 存在猜取旧文件的归属风险，故可删记录但保留其文件。producer已移除目录glob回退，缺明确现存绝对文件报告则失败。
@@ -73,6 +77,12 @@ Kernel清理子进程失败时继续持有owner lease与临时请求文件，终
 catalog及所选owner/write锁覆盖引用检查、文件动作和记录删除；已存编辑工程读取至文件动作复用JSON写锁，
 防本进程保存穿过检查。输入、其它任务的输入/已知产物、活动任务声明输出范围、编辑工程引用、模型与运行时、
 程序及非outputs应用数据受保护；链接/reparse祖先、非普通文件和无法可靠检查的路径保留。
+音频request.output/workbenchOutputs及已知SaveAudio节点路径是写目标，不当作选中任务自身输入；
+其它终态任务保护明确产物，活任务保护未来输出目录，cancelled primary仍按有活child的完整组保护共享图。
+图内load文件/批量文件夹及真实命名输入须保护；没有被有效绝对picker/绑定覆盖的相对输入无法确定CWD时保留候选文件，
+不从输出目录猜测路径。workbench=true不将global input视作覆盖所有图输入。
+同样检查其它来源任务明确的相对文件输入：媒体inputs列表、音频工具的源/参考文件、operation的file描述符等；
+不能确认位置则保留文件，不把scalar值、模型别名或普通查询字符串当文件路径。
 程序与resource目录采用整根保护；便携输出若嵌在程序目录下也保守保留，不为回收输出放宽程序资产边界。
 任意打开的编辑器可能有未保存引用，故保留文件；library.db存在时尚无完整只读引用查询及统一资产锁，
 候选文件均保留，不根据有条数上限的UI列表猜测。native媒体库调用与删除共用JSONguard，覆盖首次建库窗口；
@@ -86,8 +96,9 @@ checkedJobIds/removedJobIds/trashed/failed[{path,error}]/retained[{path,reason}]
 最终提交重新检查；前端仅按后端removedJobIds安装内存删除标记，不另存删除清单或回写job生命周期。
 Windows使用专用STA线程与recycle-only/no-UI操作；自动化以临时文件和注入回收器验证失败/引用边界，
 不触发系统回收站或GUI。export_editor_mix及未知输出形状尚未纳入结果页，不承诺任意插件文件的回收归属。
-音频结果仍使用前述既有独立文件清理流程，尚未迁入本轮通用结果的native资产保护入口；
-其跨媒体/Agent、素材库及模型登记引用互斥需要后续统一，不能称所有结果文件回收已采用同一保护协议。
+音频单条、多选与清空统一使用ID-only预检及最终事务；前端不再规划回收路径、共享引用或空目录链。
+浏览器预览只支持严格当前格式的整组记录删除，文件回收明确要求桌面端；教程使用同一响应形状并保留虚拟资产。
+组件在预检等待中卸载后不得再发最终删除；已提交的原生事务按实际回执更新store，不能因路由离开伪造取消。
 
 目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
 执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。

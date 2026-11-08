@@ -98,8 +98,10 @@ function confirmRecordsOnly(failed: number): Promise<boolean> {
   })
 }
 async function requestRemoval(ids: string[], deleteFiles: boolean): Promise<ResultRemovalResponse | null> {
+  if (disposed) return null
   try {
     const checked = await removeResultJobs(ids, { deleteFiles, checkOnly: true })
+    if (disposed) return null
     if (!ids.every(id => checked.checkedJobIds.includes(id))) throw new Error('Incomplete result preflight')
   } catch {
     if (!disposed) message.warning(t('results.removeNotReady'))

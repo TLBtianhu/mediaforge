@@ -167,11 +167,14 @@ export function createDemoRuntime(config: DemoConfig) {
     }
     if (command === 'remove_audio_jobs') {
       const selected = new Set(args.jobIds)
+      if ([...selected].some(id => !jobs.get(String(id))?.audio)) throw new Error('Tutorial audio job is missing')
       const groups = new Set([...jobs.values()].filter(job => selected.has(job.jobId)).map(job => job.audio?.groupId))
       const removing = [...jobs.values()].filter(job => job.audio && groups.has(job.audio.groupId))
       if (removing.some(job => !['completed','failed','cancelled','interrupted'].includes(job.status))) throw new Error('Tutorial audio job is active')
-      removing.forEach(job => jobs.delete(job.jobId))
-      return {schemaVersion: 2, removedJobIds: removing.map(job => job.jobId)}
+      if (!args.checkOnly) removing.forEach(job => jobs.delete(job.jobId))
+      return { schemaVersion: 2, checkedJobIds: removing.map(job => job.jobId), removedJobIds: args.checkOnly ? [] : removing.map(job => job.jobId),
+        trashed: [], failed: [], retained: args.deleteFiles ? removing.flatMap(job => Array.isArray(job.result?.outputs) ? job.result.outputs
+          .filter((item: any) => typeof item?.path === 'string').map((item: any) => ({ path: item.path, reason: 'tutorial_asset' })) : []) : [] }
     }
     if (command === 'cancel_task') {
       const selected = jobs.get(args.taskId)

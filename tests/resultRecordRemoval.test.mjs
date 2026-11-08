@@ -22,13 +22,14 @@ const vite=await createServer({configFile:false,server:{watch:null,middlewareMod
     if(command==='load_app_store'){if(args.name==='task-history')throw Error('Removed store');return {version:1}};
     if(command==='save_app_store')return;
     if(command==='remove_audio_jobs'){
-     if(removeHook)await removeHook(args);
+     if(removeHook){const reply=await removeHook(args);if(reply!==undefined)return reply;}
      const selected=new Set(args.jobIds),groups=new Set(records.filter(job=>selected.has(job.jobId)).map(job=>job.audio.groupId));
      const removing=records.filter(job=>groups.has(job.audio.groupId));
      if(removing.some(job=>!['completed','failed','cancelled','interrupted'].includes(job.status)))throw Error('Active group');
-     if(args.checkOnly)return {schemaVersion:2,removedJobIds:[],checkedJobIds:removing.map(job=>job.jobId)};
+     const checkedJobIds=removing.map(job=>job.jobId);
+     if(args.checkOnly)return {schemaVersion:2,removedJobIds:[],checkedJobIds,trashed:[],failed:[],retained:[]};
      records=records.filter(job=>!groups.has(job.audio.groupId));
-     return {schemaVersion:2,removedJobIds:removing.map(job=>job.jobId)};
+     return {schemaVersion:2,removedJobIds:checkedJobIds,checkedJobIds,trashed:[],failed:[],retained:[]};
     }
     throw Error('Unexpected '+command)
    }`
@@ -107,4 +108,54 @@ test('metadata preflight is non-destructive and rejects an owned cleanup lease',
  fixture.setRemoveHook(()=>{throw Error('runtime cleanup lease is busy')})
  await assert.rejects(store.checkRemoval(['result-0']),/cleanup lease/)
  assert.equal(fixture.rows().length,1);assert.equal(store.tasks.length,1)
+})
+
+test('native audio recycling receives complete canonical group IDs and explicit choices only',async t=>{
+ const {store,journal}=await setup(t,group('batch',['completed','failed']))
+ await store.checkRemoval(['batch-1'],true)
+ const checked=fixture.calls.at(-1)
+ assert.deepEqual(checked,{command:'remove_audio_jobs',args:{jobIds:['batch-0','batch-1'],deleteFiles:true,checkOnly:true}})
+ const response=await store.removeResults(['batch-1'],{deleteFiles:true})
+ assert.deepEqual(response.removedJobIds,['batch-0','batch-1'])
+ assert.equal(journal.jobs.length,0)
+ assert.deepEqual(fixture.calls.at(-1),{command:'remove_audio_jobs',args:{jobIds:['batch-0','batch-1'],deleteFiles:true,checkOnly:false}})
+ assert.equal(fixture.calls.some(call=>call.command==='move_paths_to_trash'),false)
+ assert.equal('trashResultPaths' in store,false)
+})
+
+test('partial recycling failure preserves the complete group and its current UI projection',async t=>{
+ const {store,journal}=await setup(t,group('batch',['completed','failed']))
+ const original=[...store.tasks],before=fixture.rows()
+ fixture.setRemoveHook(()=>({schemaVersion:2,checkedJobIds:['batch-0','batch-1'],removedJobIds:[],
+  trashed:['D:/out/first.wav'],failed:[{path:'D:/out/locked.wav',error:'in use'}],retained:[{path:'D:/out/shared.wav',reason:'editor_reference'}]}))
+ const response=await store.removeResults(['batch-0'],{deleteFiles:true})
+ assert.equal(response.failed.length,1);assert.equal(response.retained.length,1)
+ assert.deepEqual(store.tasks,original);assert.equal(journal.jobs.length,2)
+ assert.deepEqual(fixture.rows(),before)
+ fixture.setRemoveHook(undefined)
+ assert.equal(await store.removeResult('batch-0'),2)
+ assert.equal(journal.jobs.length,0)
+})
+
+test('legacy, incomplete or out-of-scope acknowledgements cannot hide the current group',async t=>{
+ const {store,journal}=await setup(t,group('batch',['completed','completed']))
+ for(const reply of [
+  {schemaVersion:2,removedJobIds:['batch-0','batch-1']},
+  {schemaVersion:2,checkedJobIds:['batch-0'],removedJobIds:['batch-0'],trashed:[],failed:[],retained:[]},
+  {schemaVersion:2,checkedJobIds:['batch-0','batch-1','unrelated'],removedJobIds:['batch-0','batch-1','unrelated'],trashed:[],failed:[],retained:[]},
+ ]){
+  fixture.setRemoveHook(()=>reply)
+  await assert.rejects(store.removeResults(['batch-0']))
+  assert.equal(store.tasks.length,2);assert.equal(journal.jobs.length,2);assert.equal(fixture.rows().length,2)
+ }
+})
+
+test('missing selected jobs reject before IPC and an empty selection remains a no-op',async t=>{
+ const {store}=await setup(t,group('result'))
+ const before=fixture.calls.length
+ await assert.rejects(store.checkRemoval(['missing']))
+ await assert.rejects(store.removeResults(['result-0','missing']))
+ assert.deepEqual((await store.removeResults([])).removedJobIds,[])
+ assert.equal(fixture.calls.length,before)
+ assert.equal(store.tasks.length,1)
 })

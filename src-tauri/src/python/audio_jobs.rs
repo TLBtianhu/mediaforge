@@ -413,95 +413,18 @@ pub(super) fn claim_unlocked(root: &Path, command: &str, primary_id: &str, libra
     })
 }
 
-pub(crate) fn remove(root: &Path, ids: &[String]) -> AppResult<Vec<String>> {
-    remove_impl(root, ids, false)
-}
-
-pub(crate) fn check_remove(root: &Path, ids: &[String]) -> AppResult<Vec<String>> {
-    remove_impl(root, ids, true)
-}
-
-fn remove_impl(root: &Path, ids: &[String], check_only: bool) -> AppResult<Vec<String>> {
-    if ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    let _catalog = task_journal::catalog_lock(root)?;
-    let library = task_journal::read_all_unlocked(root)?;
-    let mut groups = BTreeSet::new();
-    for id in ids {
-        if !task_journal::valid_id(id) {
-            return Err(invalid("delete id"));
-        }
-        let row = library
-            .iter()
-            .find(|row| row["jobId"] == *id)
-            .ok_or_else(|| invalid("delete job missing"))?;
-        groups.insert(
-            row.pointer("/audio/primaryJobId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| invalid("delete non-audio job"))?
-                .to_string(),
-        );
-    }
-    let mut selected = library
-        .iter()
-        .filter(|row| {
-            row.pointer("/audio/primaryJobId")
-                .and_then(Value::as_str)
-                .is_some_and(|id| groups.contains(id))
-        })
-        .map(|row| row["jobId"].as_str().unwrap().to_string())
-        .collect::<Vec<_>>();
-    selected.sort();
-    let _owners = selected
-        .iter()
-        .map(|id| task_journal::owner_lock(root, id))
-        .collect::<AppResult<Vec<_>>>()?;
-    let _writes = selected
-        .iter()
-        .map(|id| task_journal::write_lock(root, id))
-        .collect::<AppResult<Vec<_>>>()?;
-    for id in &selected {
-        let row = task_journal::read_job(&task_journal::job_path(root, id)?)?
-            .ok_or_else(|| invalid("delete member missing"))?;
-        if !task_journal::terminal(&row) {
-            return Err(invalid("cannot delete queued or running group"));
-        }
-    }
-    if check_only {
-        return Ok(selected);
-    }
-    // A catalog reader cannot observe an ordinary half-delete. Roll back failed renames.
-    let nonce = format!("{}-{}", std::process::id(), task_journal::now().to_bits());
-    let mut renamed = Vec::new();
-    for id in &selected {
-        let path = task_journal::job_path(root, id)?;
-        let pending = path.with_file_name(format!(".{id}.{nonce}.removing"));
-        if let Err(error) = fs::rename(&path, &pending) {
-            for (original, pending) in renamed.iter().rev() {
-                let _ = fs::rename(pending, original);
-            }
-            return Err(error.into());
-        }
-        renamed.push((path, pending));
-    }
-    for (_, pending) in renamed {
-        fs::remove_file(pending)?;
-    }
-    for id in &selected {
-        match fs::remove_file(root.join("agent-jobs").join(format!("{id}.cancel"))) {
-            Ok(()) => (),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-            Err(error) => return Err(error.into()),
-        }
-    }
-    Ok(selected)
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::{protocol::WorkerEnvelope, task_journal::WorkerJournal};
     use super::*;
+
+    fn remove(root: &Path, ids: &[String]) -> AppResult<super::super::result_jobs::RemovalResult> {
+        super::super::result_jobs::remove_audio(root, ids, false, false, &super::super::result_jobs::Protection { roots: vec![] }, || false)
+    }
+
+    fn check_remove(root: &Path, ids: &[String]) -> AppResult<super::super::result_jobs::RemovalResult> {
+        super::super::result_jobs::remove_audio(root, ids, false, true, &super::super::result_jobs::Protection { roots: vec![] }, || false)
+    }
 
     fn request() -> Value {
         json!({"schemaVersion": 2, "command": "infer_workflow", "groupId": "group_1", "primaryJobId": "a_1",
@@ -621,7 +544,7 @@ mod tests {
         drop(journal);
         fs::write(root.path().join("agent-jobs/a_1.cancel"), b"cancel").unwrap();
         assert_eq!(
-            remove(root.path(), &["b_1".into()]).unwrap(),
+            remove(root.path(), &["b_1".into()]).unwrap().removed_job_ids,
             vec!["a_1", "b_1"]
         );
         assert!(task_journal::list(root.path()).unwrap().is_empty());
@@ -642,7 +565,7 @@ mod tests {
         assert_eq!(task_journal::list(root.path()).unwrap().len(), 2);
         drop(_owner);
         assert_eq!(
-            check_remove(root.path(), &["a_1".into()]).unwrap(),
+            check_remove(root.path(), &["a_1".into()]).unwrap().checked_job_ids,
             vec!["a_1", "b_1"]
         );
         assert_eq!(task_journal::list(root.path()).unwrap().len(), 2);

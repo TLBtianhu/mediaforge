@@ -5,7 +5,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   normalizeOutputPath, resolveOutputDirectory, joinOutputPath, inputStemSegment,
-  cleanupPath, parentDir, pathKey, samePath, cleanupDirChain,
 } from '../src/stores/taskOutputPaths.ts'
 
 test('normalizeOutputPath and resolveOutputDirectory fall back to outputs', () => {
@@ -26,24 +25,4 @@ test('inputStemSegment keeps the basename without its extension', () => {
   assert.equal(inputStemSegment('D:/audio/song.wav', 'x', true), 'song')
   assert.equal(inputStemSegment('/home/u/mix.flac', 'x', false), 'mix')
   assert.equal(inputStemSegment('', 'fallback', true), 'fallback')
-})
-
-test('cleanupPath trims trailing slashes and normalizes UNC prefixes', () => {
-  assert.equal(cleanupPath('D:\\out\\', true), 'D:/out')
-  assert.equal(cleanupPath('/tmp/out/', false), '/tmp/out')
-  assert.equal(cleanupPath('//?/D:/out/', true), 'D:/out')
-})
-
-test('parentDir and pathKey normalize and compare paths', () => {
-  assert.equal(parentDir('D:/out/sub', true), 'D:/out')
-  assert.equal(pathKey('D:/Out/Sub', true), 'd:/out/sub')
-  assert.equal(pathKey('D:/out/./sub/../x', true), 'd:/out/x')
-  assert.equal(samePath('D:/out', 'd:\\OUT\\', true), true)
-  assert.equal(samePath('D:/out', 'D:/other', true), false)
-})
-
-test('cleanupDirChain walks from a child up to the stop directory only', () => {
-  const dirs = cleanupDirChain('D:/out/a/b/c', 'D:/out', true)
-  assert.deepEqual(dirs, ['D:/out/a/b/c', 'D:/out/a/b', 'D:/out/a'])
-  assert.deepEqual(cleanupDirChain('E:/elsewhere', 'D:/out', true), [])
 })

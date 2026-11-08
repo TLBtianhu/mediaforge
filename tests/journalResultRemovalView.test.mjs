@@ -207,6 +207,29 @@ test('duplicate confirms cannot submit twice and unmount still installs acknowle
   assert.equal(dialog.destroyed, true)
 })
 
+test('unmount while preflight is pending never starts the final removal request', async t => {
+  for (const deleteFiles of [false, true]) {
+    const gate = deferred()
+    const { store, state, app } = await mount(t, undefined, async args => {
+      if (args.checkOnly) await gate.promise
+    })
+    const dialog = open(state)
+    chooseFiles(dialog, deleteFiles)
+    const pending = dialog.onPositiveClick(); await flush()
+    assert.equal(removals().length, 1)
+    assert.equal(removals()[0].args.checkOnly, true)
+    assert.equal(removals()[0].args.deleteFiles, deleteFiles)
+    app.unmount()
+    gate.resolve()
+    assert.equal(await pending, false)
+    assert.equal(removals().length, 1)
+    assert.equal(store.jobs.length, 2)
+    assert.equal(fixture.remote.size, 2)
+    assert.equal(fixture.messages.length, 0)
+    assert.equal(dialog.destroyed, true)
+  }
+})
+
 test('page selection can remove a multi-page batch without sending unrelated records', async t => {
   const { store, state } = await mount(t, Array.from({ length: 14 }, (_, index) => job('media-' + index)))
   state.toggleSelecting(); state.selectPage()
