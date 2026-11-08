@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia, disposePinia } from 'pinia'
@@ -30,7 +30,7 @@ const vite = await createServer({
         export function setHook(next){hook=next}
         export function response(args,extra={}){return {schemaVersion:2,checkedJobIds:[...args.jobIds],removedJobIds:args.checkOnly?[]:[...args.jobIds],trashed:[],failed:[],retained:[],...extra}}
         export async function invoke(command,args){calls.push({command,args:structuredClone(args)});
-          if(command==='agent_jobs')return {schemaVersion:2,jobs:structuredClone([...remote.values()]),dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'};
+          if(command==='agent_jobs')return {schemaVersion:3,full:true,removed:[],jobs:structuredClone([...remote.values()]),dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'};
           if(command==='remove_result_jobs'){
             if(hook){const result=await hook(args);if(result!==undefined)return result}
             if(!args.checkOnly)args.jobIds.forEach(id=>remote.delete(id));return response(args);
@@ -115,7 +115,7 @@ test('record-only removal is unchecked by default and forgets only acknowledged 
     { jobIds: ['media'], deleteFiles: false, checkOnly: true }, { jobIds: ['media'], deleteFiles: false, checkOnly: false },
   ])
   assert.deepEqual(store.jobs.map(row => row.jobId), ['agent'])
-  store.adoptSnapshot({ schemaVersion: 2, jobs: records, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' })
+  store.adoptSnapshot({ schemaVersion: 3, full: true, removed: [], jobs: records, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' })
   assert.deepEqual(store.jobs.map(row => row.jobId), ['agent'])
   assert.equal(fixture.calls.some(call => ['move_paths_to_trash', 'delete_editor_projects_for_tasks'].includes(call.command)), false)
 })

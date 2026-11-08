@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 export type { JournalJob } from '@/features/tasks/journal'
-import { readJournal, validateJournalSnapshot, type JournalJob, type JournalSnapshot } from '@/features/tasks/journal'
+import { readJournal, validateJournalGroups, validateJournalSnapshot, type JournalJob, type JournalSnapshot } from '@/features/tasks/journal'
 import { audioJobEvent, isAudioJob } from '@/features/tasks/audioJobs'
 import { useSettingsStore } from '@/stores/settings'
 import { isTauriRuntime } from '@/utils/appStore'
@@ -17,6 +17,9 @@ export const journalOperation = (job: JournalJob) => String(job.payload?.operati
 const now = () => Date.now() / 1000
 const snapshot = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 export const JOURNAL_POLL_INTERVAL_MS = 2000
+export const JOURNAL_IDLE_POLL_INTERVAL_MS = 10000
+/** Incremental replies are re-anchored to a full snapshot at least this often. */
+export const JOURNAL_FULL_RECONCILE_MS = 5 * 60_000
 
 // A Pinia lifetime, rather than a route lifetime, owns the event subscription.
 // The backend journal remains the durable source of truth across app restarts.
@@ -37,15 +40,24 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
   let disposed = false
   let pollTimer: ReturnType<typeof setTimeout> | undefined
   let unlisten: (() => void) | undefined
+  /** When the last authoritative full snapshot was applied (0 = none yet). */
+  let lastFullAt = 0
+  let visibilityListening = false
 
   function schedulePoll() {
     if (disposed || pollTimer !== undefined || !isTauriRuntime()) return
     pollTimer = setTimeout(() => {
       pollTimer = undefined
       void refresh().finally(schedulePoll)
-    }, JOURNAL_POLL_INTERVAL_MS)
+    }, active.value.length ? JOURNAL_POLL_INTERVAL_MS : JOURNAL_IDLE_POLL_INTERVAL_MS)
     // Node component tests have no application event loop to keep alive.
     ;(pollTimer as unknown as { unref?: () => void }).unref?.()
+  }
+
+  // A hidden window can have its timers throttled; reconcile when it is back.
+  function onVisibilityChange() {
+    if (disposed || typeof document === 'undefined' || document.visibilityState !== 'visible') return
+    void refresh({ full: true })
   }
 
   onScopeDispose(() => {
@@ -54,6 +66,10 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
     pollTimer = undefined
     unlisten?.()
     unlisten = undefined
+    if (visibilityListening && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+    visibilityListening = false
   })
 
   function put(job: JournalJob) {
@@ -120,6 +136,39 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
     jobsDir.value = response.jobsDir
   }
 
+  /** An incremental reply only touches the ids it mentions. */
+  function applyDelta(raw: JournalSnapshot, atStart = revision) {
+    const response = validateJournalSnapshot(raw)
+    const current = new Map(jobs.value.map(job => [job.jobId, job]))
+    for (const incoming of response.jobs) {
+      if (deletedIds.has(incoming.jobId)) continue
+      const previous = current.get(incoming.jobId)
+      const updated = (revisions.get(incoming.jobId) || 0) > atStart
+        || previous && (previous.updatedAt > incoming.updatedAt
+          || previous.updatedAt === incoming.updatedAt && previous.status === incoming.status && (revisions.get(incoming.jobId) || 0) > 0
+          || isJournalTerminal(previous.status) && !isJournalTerminal(incoming.status))
+      current.set(incoming.jobId, previous && updated ? previous : snapshot(incoming))
+    }
+    for (const removedId of response.removed) {
+      // A record this window just submitted may not be visible on disk yet.
+      if (pendingIds.has(removedId)) continue
+      current.delete(removedId)
+      revisions.delete(removedId)
+    }
+    const merged = [...current.values()]
+    // The merged set, not the delta subset, must still be a closed catalog.
+    // Validate before publishing so a corrupt reply cannot half-apply.
+    validateJournalGroups(merged)
+    jobs.value = merged
+    dataRoot.value = response.dataRoot
+    jobsDir.value = response.jobsDir
+  }
+
+  function applySnapshot(raw: JournalSnapshot, atStart = revision) {
+    if (raw.full) adoptSnapshot(raw, atStart)
+    else applyDelta(raw, atStart)
+  }
+
   function acceptJobs(raw: JournalSnapshot) {
     const response = validateJournalSnapshot(raw)
     for (const job of response.jobs) {
@@ -138,16 +187,36 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
     jobs.value = jobs.value.filter(job => !deletedIds.has(job.jobId))
   }
 
-  function refresh(): Promise<void> {
+  function knownJobs(): Record<string, number> {
+    const known: Record<string, number> = {}
+    for (const job of jobs.value) known[job.jobId] = job.updatedAt
+    return known
+  }
+
+  /**
+   * Incremental replies are an optimization, never the only source of truth:
+   * a full snapshot is forced on first load, after the calibration window, and
+   * whenever the window becomes visible again. That bounds any merge drift to
+   * one window instead of an app restart.
+   */
+  function shouldReconcileFully(options: { full?: boolean } = {}): boolean {
+    if (options.full === true) return true
+    if (!lastFullAt) return true
+    return Date.now() - lastFullAt >= JOURNAL_FULL_RECONCILE_MS
+  }
+
+  function refresh(options: { full?: boolean } = {}): Promise<void> {
     if (disposed) return Promise.resolve()
     if (refreshing) return refreshing
     const atStart = revision
     loading.value = true
     refreshing = (async () => {
       try {
-        const response = await readJournal()
+        const known = shouldReconcileFully(options) ? {} : knownJobs()
+        const response = await readJournal(Object.keys(known).length ? known : undefined)
         if (!disposed) {
-          adoptSnapshot(response, atStart)
+          applySnapshot(response, atStart)
+          if (response.full) lastFullAt = Date.now()
           error.value = ''
         }
       } catch (cause) {
@@ -170,7 +239,11 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
         unlisten = stop
         listening = true
       }
-      await refresh()
+      await refresh({ full: true })
+      if (!visibilityListening && typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', onVisibilityChange)
+        visibilityListening = true
+      }
       schedulePoll()
     })().finally(() => { initializing = undefined })
     return initializing

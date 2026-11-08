@@ -15,7 +15,16 @@ export type JournalJob = {
   logs: Record<string, unknown>[]
   audio?: { groupId: string; primaryJobId: string; index: number; request: AudioJobRequest; memberJobIds?: string[] }
 }
-export type JournalSnapshot = { schemaVersion: 2; jobs: JournalJob[]; dataRoot: string; jobsDir: string }
+export type JournalSnapshot = {
+  schemaVersion: 3
+  /** True for the authoritative full catalog read; false for an incremental reply. */
+  full: boolean
+  jobs: JournalJob[]
+  /** Ids the caller already knew but the disk no longer has. */
+  removed: string[]
+  dataRoot: string
+  jobsDir: string
+}
 export type AudioEnqueue = { schemaVersion: 2; command: 'infer' | 'infer_workflow'; groupId: string; primaryJobId: string; payload: Record<string, unknown>; presentation?: AudioPresentation; tasks: { jobId: string; request: AudioJobRequest }[] }
 export const isRecord = (value: unknown): value is Record<string, any> => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
@@ -82,17 +91,25 @@ export function validateJournalJob(value: unknown): JournalJob {
   return value as JournalJob
 }
 
-export function validateJournalSnapshot(value: unknown): JournalSnapshot {
-  if (!isRecord(value) || value.schemaVersion !== 2 || !Array.isArray(value.jobs) || typeof value.dataRoot !== 'string' || typeof value.jobsDir !== 'string') return invalid()
-  const jobs = value.jobs.map(validateJournalJob)
+/** Group closure is checked on a complete set, never on a delta subset. */
+export function validateJournalGroups(jobs: readonly JournalJob[]): void {
   const byId = new Map(jobs.map(job => [job.jobId, job]))
-  if (byId.size !== jobs.length) return invalid()
   for (const job of jobs) if (job.audio) {
     const primary = byId.get(job.audio.primaryJobId)
     if (!primary?.audio || primary.audio.primaryJobId !== primary.jobId || primary.audio.groupId !== job.audio.groupId
       || primary.command !== job.command || primary.audio.memberJobIds?.[job.audio.index] !== job.jobId) return invalid()
     if (job.jobId === primary.jobId && primary.audio.memberJobIds.some(id => !byId.get(id)?.audio || byId.get(id)!.audio!.primaryJobId !== job.jobId)) return invalid()
   }
+}
+
+export function validateJournalSnapshot(value: unknown): JournalSnapshot {
+  if (!isRecord(value) || value.schemaVersion !== 3 || typeof value.full !== 'boolean'
+    || !Array.isArray(value.jobs) || !Array.isArray(value.removed) || typeof value.dataRoot !== 'string' || typeof value.jobsDir !== 'string'
+    || value.removed.some((id: unknown) => !identifier(id)) || new Set(value.removed).size !== value.removed.length) return invalid()
+  const jobs = value.jobs.map(validateJournalJob)
+  if (new Set(jobs.map(job => job.jobId)).size !== jobs.length) return invalid()
+  // A delta carries only what changed, so closure is only knowable in full mode.
+  if (value.full) validateJournalGroups(jobs)
   return { ...value, jobs } as JournalSnapshot
 }
 
@@ -115,11 +132,14 @@ function previewJobs(): JournalJob[] {
       jobs.push(job)
     }
   }
-  return validateJournalSnapshot({ schemaVersion: 2, jobs, dataRoot: '', jobsDir: '' }).jobs
+  return validateJournalSnapshot({ schemaVersion: 3, full: true, jobs, removed: [], dataRoot: '', jobsDir: '' }).jobs
 }
 
-export async function readJournal(): Promise<JournalSnapshot> {
-  return validateJournalSnapshot(isTauriRuntime() ? await invoke('agent_jobs') : { schemaVersion: 2, jobs: previewJobs(), dataRoot: '', jobsDir: '' })
+/** Ask the backend for the catalog; `known` turns the reply into a delta. */
+export async function readJournal(known?: Readonly<Record<string, number>>): Promise<JournalSnapshot> {
+  if (!isTauriRuntime()) return validateJournalSnapshot({ schemaVersion: 3, full: true, jobs: previewJobs(), removed: [], dataRoot: '', jobsDir: '' })
+  const args = known && Object.keys(known).length ? { known } : {}
+  return validateJournalSnapshot(await invoke('agent_jobs', args))
 }
 
 export async function enqueueAudioJobs(payload: AudioEnqueue): Promise<JournalSnapshot> {
@@ -137,9 +157,9 @@ export async function enqueueAudioJobs(payload: AudioEnqueue): Promise<JournalSn
     ...(index === 0 ? { payload: payload.payload, ...(payload.presentation ? { presentation: payload.presentation } : {}) } : { payloadRef: payload.primaryJobId }),
   }))
   if (jobs.some(job => current.some(item => item.jobId === job.jobId))) throw new Error('Task ID already exists')
-  const snapshot = validateJournalSnapshot({ schemaVersion: 2, jobs: [...current, ...jobs], dataRoot: '', jobsDir: '' })
+  validateJournalSnapshot({ schemaVersion: 3, full: true, jobs: [...current, ...jobs], removed: [], dataRoot: '', jobsDir: '' })
   jobs.forEach(job => localStorage.setItem(PREFIX + job.jobId, JSON.stringify(job)))
-  return snapshot
+  return validateJournalSnapshot({ schemaVersion: 3, full: false, jobs, removed: [], dataRoot: '', jobsDir: '' })
 }
 
 export type ResultRemovalResponse = {

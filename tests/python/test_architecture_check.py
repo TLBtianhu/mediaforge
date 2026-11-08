@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import importlib.util
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+spec = importlib.util.spec_from_file_location("check_architecture", ROOT / "scripts" / "check-architecture.py")
+architecture = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(architecture)
+
+
+class EventCoverageTests(unittest.TestCase):
+    def check(self, root: Path, source: str, directory: str) -> list[str]:
+        (root / directory).mkdir()
+        (root / directory / "fixture.py").write_text(source, encoding="utf-8")
+        manifest = architecture.load_manifest()
+        previous = architecture.PY, architecture.ROOT
+        architecture.PY = root
+        architecture.ROOT = root
+        try:
+            return architecture.check_event_coverage(manifest)
+        finally:
+            architecture.PY, architecture.ROOT = previous
+
+    def test_dotted_and_multiline_events_are_checked_outside_the_media_engine(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="architecture-events-") as raw:
+            problems = self.check(
+                Path(raw),
+                "from shared.worker_protocol import emit\n"
+                "emit(\n    'task.not_declared',\n    {},\n)\n"
+                "emit('command_result', {})\n",
+                "core",
+            )
+            self.assertEqual(len(problems), 1)
+            self.assertIn("task.not_declared", problems[0])
+            self.assertIn(f"{Path('core') / 'fixture.py'}:2", problems[0])
+
+    def test_current_dotted_events_pass(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="architecture-events-") as raw:
+            problems = self.check(
+                Path(raw),
+                "from shared.worker_protocol import emit\nemit('task.progress', {})\nemit('task.result', {})\n",
+                "audio_tools",
+            )
+            self.assertEqual(problems, [])
+
+
+class RustEventLiteralTests(unittest.TestCase):
+    def check(self, root: Path, source: str, manifest: dict | None = None) -> list[str]:
+        source_dir = root / "src-tauri" / "src"
+        source_dir.mkdir(parents=True)
+        (source_dir / "fixture.rs").write_text(source, encoding="utf-8")
+        effective = manifest if manifest is not None else architecture.load_manifest()
+        previous_root, previous_rust = architecture.ROOT, architecture.RUST_SRC
+        architecture.ROOT = root
+        architecture.RUST_SRC = source_dir
+        try:
+            return architecture.check_rust_event_literals(effective)
+        finally:
+            architecture.ROOT, architecture.RUST_SRC = previous_root, previous_rust
+
+    def test_undeclared_rust_event_fails(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="architecture-rust-") as raw:
+            problems = self.check(Path(raw), 'fn f() { let kind = "task.not_declared"; }\n')
+            self.assertEqual(len(problems), 1)
+            self.assertIn("task.not_declared", problems[0])
+
+    def test_canonical_rust_events_pass_and_comments_are_ignored(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="architecture-rust-") as raw:
+            problems = self.check(
+                Path(raw),
+                '// historical: "task.done" must not be emitted\n'
+                'fn f() { let kind = "task.progress"; let other = "asset.done"; }\n'
+                'fn g() { session_log::append(app, "WARN", "task.journal_failed", vec![]); }\n',
+            )
+            self.assertEqual(problems, [])
+
+    def test_terminal_events_must_be_canonical(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="architecture-rust-") as raw:
+            manifest = {
+                "events": {"canonical": ["task.result"], "terminal": ["task.result", "task.ghost"]}
+            }
+            problems = self.check(Path(raw), "fn f() {}\n", manifest)
+            self.assertTrue(any("task.ghost" in problem for problem in problems))
+
+
+if __name__ == "__main__":
+    unittest.main()

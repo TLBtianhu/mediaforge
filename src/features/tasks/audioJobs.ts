@@ -14,8 +14,23 @@ const ms = (value: number | null) => value == null ? undefined : value * 1000
 export const isAudioJob = (job: JournalJob) => job.source === 'manual' && Boolean(job.audio) && ['infer', 'infer_workflow'].includes(job.command)
 
 type ErrorFormatter = (code: unknown, message: unknown, input?: string) => string
-export function audioTaskFromJob(job: JournalJob, jobs: readonly JournalJob[], windows = false, formatError: ErrorFormatter = (_code,message) => String(message || 'Task failed')): SeparationTask {
-  const primary = primaryJob(job, jobs)
+type AudioJobIndex = { byId: Map<string, JournalJob>; members: Map<string, JournalJob[]> }
+
+function indexAudioJobs(jobs: readonly JournalJob[]): AudioJobIndex {
+  const byId = new Map(jobs.map(job => [job.jobId, job]))
+  const members = new Map<string, JournalJob[]>()
+  for (const job of jobs) {
+    if (!job.audio) continue
+    const group = members.get(job.audio.primaryJobId) || []
+    group.push(job)
+    members.set(job.audio.primaryJobId, group)
+  }
+  for (const group of members.values()) group.sort((a, b) => a.audio!.index - b.audio!.index)
+  return { byId, members }
+}
+
+export function audioTaskFromJob(job: JournalJob, jobs: readonly JournalJob[], windows = false, formatError: ErrorFormatter = (_code,message) => String(message || 'Task failed'), index?: AudioJobIndex): SeparationTask {
+  const primary = index ? index.byId.get(job.audio!.primaryJobId)! : primaryJob(job, jobs)
   const payload = primary.payload!
   const request = job.audio!.request
   const result = job.result || {}
@@ -26,7 +41,9 @@ export function audioTaskFromJob(job: JournalJob, jobs: readonly JournalJob[], w
   const status = job.status === 'completed' ? 'done' : job.status === 'interrupted' ? 'failed'
     : job.status === 'running' ? (job.runtime.stage && job.runtime.stage in STAGE_META && !isTerminalTaskStatus(job.runtime.stage as SeparationTask['status']) && job.runtime.stage !== 'queued' ? job.runtime.stage as SeparationTask['status'] : 'preparing')
       : job.status as SeparationTask['status']
-  const members = jobs.filter(item => item.audio?.primaryJobId === primary.jobId).sort((a, b) => a.audio!.index - b.audio!.index)
+  const members = index
+    ? index.members.get(primary.jobId) || []
+    : jobs.filter(item => item.audio?.primaryJobId === primary.jobId).sort((a, b) => a.audio!.index - b.audio!.index)
   const inputNodes = definition ? workflowInputNodes(definition) : []
   const bindings: WorkflowRuntimeBindings = {
     inputs: Object.fromEntries(inputNodes.map(node => [node.id, { files: [...new Set(members.map(item => item.audio!.request.input || node.embeddedPath || '').filter(Boolean))] }])),
@@ -76,7 +93,8 @@ export function audioTaskFromJob(job: JournalJob, jobs: readonly JournalJob[], w
 }
 
 export function audioTasksFromJobs(jobs: readonly JournalJob[], windows = false, formatError?: ErrorFormatter): SeparationTask[] {
-  return jobs.filter(isAudioJob).map(job => audioTaskFromJob(job, jobs, windows, formatError)).sort((a, b) => b.createdAt - a.createdAt)
+  const index = indexAudioJobs(jobs)
+  return jobs.filter(isAudioJob).map(job => audioTaskFromJob(job, jobs, windows, formatError, index)).sort((a, b) => b.createdAt - a.createdAt)
 }
 
 /** Only the effective worker request and its small origin metadata cross the persistence boundary. */

@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after, afterEach } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia, setActivePinia } from 'pinia'
@@ -152,7 +152,7 @@ test('session task queue resets on restart without deleting persisted task histo
     updatedAt: now, startedAt: job.createdAt, finishedAt: now,
     result: { outputs: [{ stem: 'Vocals', path: `D:/Outputs/${job.jobId}.wav` }] } }))
   putJobs(storage.values, completed)
-  useMediaJobsStore(pinia).adoptSnapshot({ schemaVersion: 2, jobs: completed, dataRoot: '', jobsDir: '' })
+  useMediaJobsStore(pinia).adoptSnapshot({ schemaVersion: 3, full: true, removed: [], jobs: completed, dataRoot: '', jobsDir: '' })
   await Promise.resolve()
   assert.equal(taskStore.sessionJobs[0].status, 'done')
   assert.equal(taskStore.resultJobs.length, 1)

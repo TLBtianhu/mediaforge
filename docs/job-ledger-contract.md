@@ -48,7 +48,14 @@ inputIndex若提供为从1开始的整数；绑定是节点ID到路径字符串�
 - worker仅使用临时payload.json传输请求，回收本次自建进程后删除该文件，保留诊断日志和其它工作区产物。
 - 前端只维护内存投影：files来自outputs，nodeLogs从结构化日志分组，duration/stageLabel等派生，
   不再通过防抖autosave写整个任务历史，也不能回写status/result。
-- 完整列表是权威快照；缺席的旧记录应移出UI，且迟到刷新不能盖掉新事件或复活已删除记录。
+- 列表响应为 `schemaVersion 3` 信封：`{schemaVersion, full, jobs, removed, dataRoot, jobsDir}`。
+  - 请求不带 `known` 时 `full=true`，返回权威全量快照（首次加载、恢复、诊断与测试）。
+  - 请求带 `known`（`{jobId: updatedAt}`）时返回增量：只含 `updatedAt` 变化的记录，`removed` 列出
+    磁盘上已不存在的已知ID。后端仍每次读取目录成员并按当前格式校验全部记录，只是不再重传未变化内容。
+  - 前端合并后必须对整个集合重做音频组闭包校验；增量子集本身不校验闭包。
+  - `known` 缺省、缺失或非法时明确报错，不退化成空列表，也不接受旧信封。
+- 完整列表仍是权威快照；缺席的旧记录应移出UI，且迟到刷新不能盖掉新事件或复活已删除记录。
+  增量响应同样遵守该规则：未提及的ID保持现状，`removed` 中的ID被移除（本地尚未落盘的pending除外）。
 
 ## 取消、删除与保留策略
 
@@ -151,7 +158,10 @@ MCP model.import_custom使用真实name/modelType/modelPath等参数并经Kernel
 
 目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
 执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。
-catalog读列表时也按对应write锁读取单文件，避免Windows原子替换与打开文件相撞；已持write锁的内部读取不重复加锁。
+catalog读列表时，指纹（长度/修改时间/创建时间/文件索引）未变的单文件直接使用上一版已校验快照，
+不打开文件也不抢写锁；需要重新解析的单文件仍按对应write锁读取，避免Windows原子替换与打开文件相撞；
+已持write锁的内部读取不重复加锁。原子替换不会产生半写状态，因此读取不会看到未发布的中间内容，
+只可能看到上一次已提交的完整版本；替换提交后指纹改变，下一次读取必然重新解析。
 多文件操作失败时只回滚本次明确拥有的路径；遗留不完整事务或损坏引用报错，不能静默重建。
 
 ## 共享处理任务配额
@@ -167,8 +177,9 @@ Rust/Python共用`.quota/global-0.lock`至`global-3.lock`的无正文OS lease；
 Rust线程接管失败/unwind也由owned child守卫先回收再释锁。
 
 Rust以每应用一个内存pending表/dispatcher接回任务，重启仅恢复通用manual queued；音频仍由前端确认后交接。
-Kernel以一个可关闭、弱引用pump恢复Agent queued；双方不代跑另一来源。前端常驻每2秒串行同步账本，
-不依赖Queue路由；ACK丢失经权威刷新后有界重发，同组登记幂等，等待不会伪造failed。
+Kernel以一个可关闭、弱引用pump恢复Agent queued；双方不代跑另一来源。前端活动任务每2秒串行同步账本，
+空闲时降为每10秒；不依赖Queue路由。ACK丢失经权威刷新后有界重发，同组登记幂等，等待不会伪造failed。
+worker必须发出通用或protocol.json resultEvent声明的终态；非法事件、无结果退出均失败，退出码0本身不代表成功。
 
 本阶段只共享同数据根的处理worker上限；各执行器内部FIFO，不承诺全局FIFO、跨数据根配额或物理GPU分区。
 查询、下载、运行时管理不占处理slot；原有运行时/应用互斥机制仍独立。执行器自身崩溃后的孤儿子树监督，

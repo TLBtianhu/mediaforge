@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createRenderer, nextTick } from 'vue'
@@ -41,7 +41,7 @@ const vite = await createServer({
           calls.push({ command, args })
           if (hook) return hook(command, args)
           if (command === 'runtime_asset_status') return { installed: false, size: 0 }
-          if (command === 'agent_jobs') return {schemaVersion:2,jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'}
+          if (command === 'agent_jobs') return {schemaVersion:3,full:true,removed:[],jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'}
           return {}
         }
         export async function listen(name, callback) { if (listenHook) await listenHook(name); listeners.set(name, callback); return () => listeners.delete(name) }
@@ -142,7 +142,7 @@ test('media workflow keeps partial outputs while reporting partial failure', asy
 test('media workflow survives route unmount and restores outputs and the submitted plan on remount', async t => {
   const durable = []
   fixture.reset(async (command, args) => {
-    if (command === 'agent_jobs') return { schemaVersion: 2, jobs: durable, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' }
+    if (command === 'agent_jobs') return { schemaVersion: 3, full: true, removed: [], jobs: durable, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' }
     if (command === 'start_audio_tool') {
       const now = Date.now()/1000
       durable.push({ schemaVersion: 2, jobId: args.payload.requestId, command: 'audio_tools', source: 'manual', status: 'running',

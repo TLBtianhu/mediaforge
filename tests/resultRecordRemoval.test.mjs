@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test,{after} from 'node:test'
 import {fileURLToPath} from 'node:url'
 import {createServer} from 'vite'
@@ -18,7 +18,7 @@ const vite=await createServer({configFile:false,server:{watch:null,middlewareMod
    export function setRemoveHook(hook){removeHook=hook}
    export function rows(){return structuredClone(records)}
    export async function invoke(command,args){calls.push({command,args});
-    if(command==='agent_jobs')return {schemaVersion:2,jobs:rows(),dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'};
+    if(command==='agent_jobs')return {schemaVersion:3,full:true,removed:[],jobs:rows(),dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'};
     if(command==='load_app_store'){if(args.name==='task-history')throw Error('Removed store');return {version:1}};
     if(command==='save_app_store')return;
     if(command==='remove_audio_jobs'){

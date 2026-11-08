@@ -438,3 +438,61 @@ class EventTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkerTerminalContractTests(unittest.TestCase):
+    def test_command_specific_result_events_come_from_the_protocol(self) -> None:
+        from core.operation_kernel import _result_events
+
+        expected = {
+            "import_custom_model": "custom_model_import_finished",
+            "install_runtime": "runtime_install_finished",
+            "delete_runtime": "runtime_deleted",
+            "manage_optional_package": "optional_package_status",
+            "manage_plugin": "plugin_manage_result",
+            "run_operation": "task.result",
+        }
+        for command, event in expected.items():
+            self.assertEqual(_result_events().get(command), event)
+
+    def test_declared_management_result_is_persisted_as_the_job_result(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            kernel = OperationKernel(Path(raw))
+            job = owned_job("install_result", "install_runtime", {}, Path(raw))
+            job.update(status="running")
+            result = {"backend": "cpu", "state": {"pythonPath": "fixture"}}
+            kernel._consume(job, {"type": "runtime_install_finished", "payload": result})
+            snapshot = kernel.get(job.job_id).snapshot()
+            self.assertEqual(snapshot["status"], "completed")
+            self.assertEqual(snapshot["result"], result)
+
+    def _run_fake_worker(self, source: str) -> dict:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            worker = root / "worker.py"
+            worker.write_text(source, encoding="utf-8")
+            with mock.patch("core.operation_kernel.WORKER", worker):
+                kernel = OperationKernel(root, sys.executable)
+                try:
+                    job = kernel.start("fixture", {"requestId": "fixture_exit"})
+                    deadline = time.monotonic() + 5
+                    while (not job._process_reaped or job._lease is not None) and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(job._process_reaped, "fake worker did not exit")
+                    self.assertIsNone(job._lease, "fake worker retained its owner lease")
+                    return kernel.get(job.job_id).snapshot()
+                finally:
+                    kernel.close()
+                    for job in kernel._jobs.values():
+                        kernel._cleanup_process(job)
+                        kernel._release_job_lease(job)
+
+    def test_invalid_output_and_successful_exit_without_result_are_failures(self) -> None:
+        invalid = self._run_fake_worker("print('not-json', flush=True)\n")
+        self.assertEqual(invalid["status"], "failed")
+        self.assertIsNone(invalid["result"])
+        self.assertIn("Invalid worker event", invalid["error"])
+        empty = self._run_fake_worker("")
+        self.assertEqual(empty["status"], "failed")
+        self.assertIsNone(empty["result"])
+        self.assertEqual(empty["error"], "worker exited without a result")

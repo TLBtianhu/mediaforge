@@ -18,6 +18,7 @@ import time
 import traceback
 import uuid
 import weakref
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,17 @@ CANCEL_POLL_SECONDS = 1.0
 # Startup and queue listing scan these records; retain 30 days / 500 terminal jobs.
 RETENTION_DAYS = 30.0
 RETENTION_COUNT = 500
+
+
+@lru_cache(maxsize=1)
+def _result_events() -> dict[str, str]:
+    from shared.protocol_contract import command_entries
+
+    return {
+        command: str(entry["resultEvent"])
+        for command, entry in command_entries().items()
+        if isinstance(entry.get("resultEvent"), str) and entry["resultEvent"]
+    }
 
 
 def _retention_limits() -> tuple[float, int]:
@@ -660,6 +672,7 @@ class OperationKernel:
                     job._process_reaped = False
                     assert process.stdout is not None
                     threading.Thread(target=self._watch_cancel, args=(job, process), daemon=True).start()
+                    protocol_error = None
                     for line in process.stdout:
                         line = line.strip()
                         if not line:
@@ -668,16 +681,21 @@ class OperationKernel:
                         stdout.flush()
                         try:
                             event = json.loads(line)
-                        except json.JSONDecodeError:
+                            if not isinstance(event, dict):
+                                raise ValueError("worker event must be a JSON object")
+                        except (json.JSONDecodeError, ValueError) as error:
+                            protocol_error = f"Invalid worker event: {error}"
+                            print(f"[kernel] {protocol_error}", file=sys.stderr)
                             continue
                         self._consume(job, event)
                     code = process.wait()
                     job._process_reaped = True
                 job.update(finished_at=time.time())
                 if job.status not in TERMINAL_STATES:
-                    job.update(status="completed" if code == 0 else "failed", message="worker exited",
-                               error=f"worker exited with code {code}" if code else None,
-                               fraction=1.0 if code == 0 else job.fraction)
+                    message = protocol_error or (
+                        "worker exited without a result" if code == 0 else f"worker exited with code {code}"
+                    )
+                    job.update(status="failed", message=message, error=message)
                 self._persist(job, force=True)
             except Exception as exc:  # noqa: BLE001
                 job.update(status="failed", error=f"{exc}\n{traceback.format_exc()}", finished_at=time.time())
@@ -759,7 +777,7 @@ class OperationKernel:
                 fraction=min(1.0, max(0.0, float(fraction or 0))),
                 message=str(payload.get("current") or payload.get("message") or "running"),
             )
-        elif kind in {"task.result", "asset.done", "editor_mix_exported"}:
+        elif kind in {"task.result", "asset.done", "editor_mix_exported"} or kind == _result_events().get(job.command):
             failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
             if failed:
                 first = failed[0] if isinstance(failed[0], dict) else {"error": str(failed[0])}

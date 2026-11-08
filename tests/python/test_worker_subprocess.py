@@ -300,7 +300,7 @@ class WorkerChildInvocationTests(unittest.TestCase):
         work.mkdir()
         job = kernel_module.Job("job_hidden_child", "audio_tools", {}, work)
         job.owner = {"kind": "operation-kernel", "kernelId": "fixture", "pid": os.getpid()}
-        process = mock.Mock(stdout=io.StringIO('{"type":"task.progress","payload":{"fraction":0.5}}\n'))
+        process = mock.Mock(stdout=io.StringIO('{"type":"task.progress","payload":{"fraction":0.5}}\n{"type":"task.result","payload":{"outputs":{}}}\n'))
         process.wait.return_value = 0
         with mock.patch.object(kernel_module.subprocess, "Popen", return_value=process) as popen, \
              mock.patch.object(kernel_module.threading, "Thread"):

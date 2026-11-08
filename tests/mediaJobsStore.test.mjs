@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia } from 'pinia'
@@ -35,7 +35,7 @@ const vite = await createServer({
               runtime:{stage:null,progress:null,nodes:{},order:[]},logs:[],payload:JSON.parse(JSON.stringify(args.payload))})
           }
           if(invokeHook) return invokeHook(command,args)
-          return command==='agent_jobs' ? {schemaVersion:2,jobs:[...remote.values()],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {started:true}
+          return command==='agent_jobs' ? {schemaVersion:3,full:true,removed:[],jobs:[...remote.values()],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {started:true}
         }
         export async function listen(name,callback) {
           timeline.push('listen:start')
@@ -62,7 +62,7 @@ const vite = await createServer({
 after(() => vite.close())
 globalThis.window={__TAURI_INTERNALS__:{}}
 const fixture = await vite.ssrLoadModule(fixtureId)
-const { useMediaJobsStore, JOURNAL_POLL_INTERVAL_MS } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
+const { useMediaJobsStore, JOURNAL_POLL_INTERVAL_MS, JOURNAL_IDLE_POLL_INTERVAL_MS, JOURNAL_FULL_RECONCILE_MS } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
 const { useMediaJob } = await vite.ssrLoadModule('/src/composables/useMediaJob.ts')
 const deferred = () => {
   let resolve, reject
@@ -76,7 +76,7 @@ const journal = (jobId, overrides = {}) => ({
   finishedAt:['completed','failed','cancelled','interrupted'].includes(overrides.status)?101:null,
   runtime:{stage:null,progress:null,nodes:{},order:[]},logs:[],payload:{operation:'media_image'},result:null,...overrides,
 })
-const response = jobs => ({schemaVersion:2,jobs,dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'})
+const response = jobs => ({schemaVersion:3,full:true,removed:[],jobs,dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'})
 function setup(t, invokeHook, listenHook) {
   fixture.reset(invokeHook, listenHook)
   const pinia = createPinia()
@@ -409,6 +409,26 @@ test('a lost media ACK preserves the authoritative queued waiter instead of inve
   assert.equal(fixture.calls.filter(call => call.command === 'start_audio_tool').length, 1)
 })
 
+test('resident polling idles slowly and returns to the active interval after discovering work', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let currentJobs = []
+  const { store } = setup(t, () => response(currentJobs))
+  await store.initialize()
+  const reads = () => fixture.calls.filter(call => call.command === 'agent_jobs').length
+  assert.equal(reads(), 1)
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), 1)
+  currentJobs = [journal('active-external')]
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS - JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), 2)
+  assert.equal(store.active.length, 1)
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), 3)
+})
+
 test('resident polling discovers external jobs without a Queue page and disposes its timer and listener', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const { store } = setup(t)
@@ -416,19 +436,19 @@ test('resident polling discovers external jobs without a Queue page and disposes
   fixture.remote.set('external', journal('external', { source: 'agent', command: 'run_operation' }))
   const reads = () => fixture.calls.filter(call => call.command === 'agent_jobs').length
   assert.equal(reads(), 1)
-  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS)
   await flush()
   assert.equal(store.jobs[0].jobId, 'external')
   assert.equal(reads(), 2)
   await Promise.all([store.initialize(), store.initialize()])
   const beforePoll = reads()
-  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS)
   await flush()
   assert.equal(reads(), beforePoll + 1)
   store.$dispose()
   assert.equal(fixture.listeners.size, 0)
   const beforeDispose = reads()
-  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 4)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 4)
   await flush()
   assert.equal(reads(), beforeDispose)
 })
@@ -441,16 +461,16 @@ test('resident polling never overlaps a pending read or updates a disposed store
     if (command === 'agent_jobs') return ++reads === 1 ? response([]) : pending.promise
   })
   await store.initialize()
-  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS)
   await flush()
-  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 5)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 5)
   await flush()
   assert.equal(reads, 2)
   store.$dispose()
   pending.resolve(response([journal('late-external')]))
   await flush()
   assert.equal(store.jobs.length, 0)
-  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 4)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 4)
   await flush()
   assert.equal(reads, 2)
 })
@@ -463,7 +483,7 @@ test('disposal during initialization releases the late event listener without cr
   store.$dispose()
   pending.resolve()
   await initializing
-  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS * 3)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 3)
   await flush()
   assert.equal(fixture.listeners.size, 0)
   assert.equal(fixture.calls.length, 0)
@@ -594,4 +614,108 @@ test('export cancellation keeps existing artifacts and only a literal boolean re
   assert.equal(store.jobs[0].result.path, 'D:/out/published.wav')
   fixture.emit({ taskId: 'strict', type: 'error', payload: { recoverable: 'true', message: 'failed' } })
   assert.equal(store.jobs[1].status, 'failed')
+})
+
+const delta = (jobs, removed = []) => ({ schemaVersion: 3, full: false, removed, jobs, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' })
+
+const audioPair = () => {
+  const primary = journal('primary', {
+    command: 'infer', payload: { model: 'model.ckpt', output: 'D:/out' },
+    audio: { groupId: 'group', primaryJobId: 'primary', index: 0, request: { input: 'D:/in.wav', output: 'D:/out' }, memberJobIds: ['primary', 'child'] },
+  })
+  const child = journal('child', {
+    command: 'infer', payloadRef: 'primary',
+    audio: { groupId: 'group', primaryJobId: 'primary', index: 1, request: { input: 'D:/in2.wav', output: 'D:/out2' } },
+  })
+  delete child.payload
+  return [primary, child]
+}
+
+test('incremental replies send the known versions and merge only what changed', async t => {
+  let reads = 0
+  let knownSeen
+  const { store } = setup(t, async (command, args) => {
+    if (command !== 'agent_jobs') return { started: true }
+    reads += 1
+    if (reads === 1) return response([journal('keep'), journal('changed'), journal('gone')])
+    knownSeen = args.known
+    return delta([journal('changed', { updatedAt: 300, message: 'updated' })], ['gone'])
+  })
+  await store.initialize()
+  assert.equal(store.jobs.length, 3)
+  await store.refresh()
+  assert.deepEqual(knownSeen, { keep: 100, changed: 100, gone: 100 })
+  assert.deepEqual(store.jobs.map(job => job.jobId).sort(), ['changed', 'keep'])
+  assert.equal(store.jobs.find(job => job.jobId === 'changed').message, 'updated')
+  await store.refresh()
+  assert.ok(knownSeen.changed === 300, 'the next poll must advertise the merged version')
+})
+
+test('a stale delta cannot regress live progress and a broken group is rejected before publishing', async t => {
+  let reads = 0
+  const { store } = setup(t, async (command) => {
+    if (command !== 'agent_jobs') return { started: true }
+    reads += 1
+    if (reads === 1) return response([journal('live'), ...audioPair()])
+    if (reads === 2) return delta([journal('live', { updatedAt: 50, fraction: 0 })])
+    return delta([], ['primary'])
+  })
+  await store.initialize()
+  fixture.emit({ taskId: 'live', type: 'task.progress', payload: { fraction: 0.5, message: 'half' } })
+  assert.equal(store.jobs.find(job => job.jobId === 'live').fraction, 0.5)
+  await store.refresh()
+  assert.equal(store.jobs.find(job => job.jobId === 'live').fraction, 0.5, 'a stale reply must not undo live progress')
+
+  // Removing the primary while its child stays would break the audio group.
+  const before = JSON.stringify(store.jobs)
+  await store.refresh()
+  assert.match(store.error, /Unsupported task journal schema/i)
+  assert.equal(JSON.stringify(store.jobs), before, 'a corrupt delta must not half-apply')
+})
+
+test('a delta cannot resurrect a group the user removed', async t => {
+  let reads = 0
+  const jobs = [journal('gone')]
+  const { store } = setup(t, async (command) => {
+    if (command !== 'agent_jobs') return { started: true }
+    reads += 1
+    return reads === 1 ? response(jobs) : delta([journal('gone', { updatedAt: 400 })])
+  })
+  await store.initialize()
+  store.forget(['gone'])
+  assert.equal(store.jobs.length, 0)
+  await store.refresh()
+  assert.equal(store.jobs.length, 0)
+})
+
+test('incremental polling is re-anchored by a periodic full reconcile', async t => {
+  const seen = []
+  const { store } = setup(t, async (command, args) => {
+    if (command !== 'agent_jobs') return { started: true }
+    seen.push(args)
+    // The backend answers full or incremental depending on what was asked.
+    return args && args.known ? delta([journal('anchored')]) : response([journal('anchored')])
+  })
+  await store.initialize()
+  assert.deepEqual(seen[0], {}, 'the first load must ask for an authoritative snapshot')
+  await store.refresh()
+  assert.deepEqual(seen[1], { known: { anchored: 100 } }, 'the next poll sends its known versions')
+
+  const realNow = Date.now
+  const base = realNow()
+  try {
+    // Inside the calibration window incremental polling stays incremental.
+    Date.now = () => base + JOURNAL_FULL_RECONCILE_MS - 60_000
+    await store.refresh()
+    assert.deepEqual(seen[2], { known: { anchored: 100 } })
+    // Past it, the next poll re-anchors on a full snapshot.
+    Date.now = () => base + JOURNAL_FULL_RECONCILE_MS + 60_000
+    await store.refresh()
+    assert.deepEqual(seen[3], {})
+    // After a successful reconcile the window restarts.
+    await store.refresh()
+    assert.deepEqual(seen[4], { known: { anchored: 100 } })
+  } finally {
+    Date.now = realNow
+  }
 })

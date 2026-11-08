@@ -4,7 +4,9 @@ from __future__ import annotations
 import copy
 import json
 import math
+import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -176,15 +178,78 @@ def catalog_lock(jobs_root: Path):
     return runtime_lock(jobs_root / ".catalog.lock", timeout=5)
 
 
+# Job files are immutable between atomic replacements, so an unchanged file
+# stamp identifies the same validated record. Nothing persistent is created and
+# the map only holds revisions this process has actually read.
+_CACHE_LOCK = threading.Lock()
+_CACHE: dict[str, tuple[tuple[int, int, int, int], dict[str, Any]]] = {}
+_CACHE_LIMIT = 2048
+
+
+def _file_stamp(path: Path) -> tuple[int, int, int, int] | None:
+    try:
+        metadata = path.stat()
+    except OSError:
+        return None
+    return (metadata.st_ino, metadata.st_mtime_ns, metadata.st_size, metadata.st_ctime_ns)
+
+
+def cached_job(jobs_root: Path, path: Path) -> dict[str, Any] | None:
+    """Return the validated record for `path`, re-reading only changed files.
+
+    The fast path returns a **shallow copy** (the top-level dict is per-caller,
+    nested containers are shared with the cache). Editing a record in place is
+    therefore unsupported: use `read_jobs_copy()` when a caller will mutate one.
+    The shallow copy is what stops the common accident (`record["status"] = ...`)
+    from poisoning every later read, without paying for a deep copy on each poll.
+    """
+    stamp = _file_stamp(path)
+    key = str(path)
+    if stamp is not None:
+        with _CACHE_LOCK:
+            entry = _CACHE.get(key)
+        if entry is not None and entry[0] == stamp:
+            return dict(entry[1])
+    # A cache miss means the file was just written; coordinate the open with
+    # the writer's atomic replacement exactly like the uncached reader did.
+    with write_lock(jobs_root, path.stem):
+        value = read_job(path)
+        if value is not None:
+            stamp = _file_stamp(path) or (0, 0, 0, 0)
+    if value is None:
+        with _CACHE_LOCK:
+            _CACHE.pop(key, None)
+        return None
+    with _CACHE_LOCK:
+        _CACHE[key] = (stamp or (0, 0, 0, 0), value)
+        # Multiple profiles/tests can be read by one process; keep the map bounded.
+        while len(_CACHE) > _CACHE_LIMIT:
+            oldest = next(iter(_CACHE))
+            if oldest == key:
+                break
+            _CACHE.pop(oldest, None)
+    return dict(value)
+
+
+def forget_cached_jobs(jobs_root: Path, present: set[str]) -> None:
+    """Drop cache entries for files this root no longer has."""
+    prefix = str(jobs_root) + os.sep
+    with _CACHE_LOCK:
+        for key in [key for key in _CACHE if key.startswith(prefix) and key not in present]:
+            _CACHE.pop(key, None)
+
+
 def read_jobs_unlocked(jobs_root: Path) -> dict[str, dict[str, Any]]:
     _require(not any(jobs_root.glob("*.removing")), "incomplete job removal transaction; files preserved")
     records = {}
+    present: set[str] = set()
     for path in sorted(jobs_root.glob("*.json")):
-        # Catalog protects membership; a writer can still replace one snapshot.
-        with write_lock(jobs_root, path.stem):
-            value = read_job(path)
+        # Unchanged files need no open, so a poll does not take a lease per job.
+        present.add(str(path))
+        value = cached_job(jobs_root, path)
         if value is not None:
             records[value["jobId"]] = value
+    forget_cached_jobs(jobs_root, present)
     for value in records.values():
         if "audio" in value:
             _audio_primary(value, records)
@@ -194,6 +259,18 @@ def read_jobs_unlocked(jobs_root: Path) -> dict[str, dict[str, Any]]:
 def read_jobs(jobs_root: Path) -> dict[str, dict[str, Any]]:
     with catalog_lock(jobs_root):
         return read_jobs_unlocked(jobs_root)
+
+
+def read_jobs_copy(jobs_root: Path) -> dict[str, dict[str, Any]]:
+    """Independent snapshot for a caller that will mutate records.
+
+    `read_jobs()` is optimized for readers: it reuses cached nested containers
+    and only copies each record's top level. Any code that edits a record in
+    place must go through this deep copy instead, or the shared cache would be
+    modified without a corresponding file write.
+    """
+    with catalog_lock(jobs_root):
+        return copy.deepcopy(read_jobs_unlocked(jobs_root))
 
 
 def _audio_primary(record: dict[str, Any], records: dict[str, dict[str, Any]]) -> dict[str, Any]:

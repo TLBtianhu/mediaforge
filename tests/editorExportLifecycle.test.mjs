@@ -53,6 +53,14 @@ function environment({ startGate, cancelAccepted = true, nativeRenderGate, orpha
         calls.push({ command, args })
         if (command === 'plugin_host_capabilities') return { enabled: true, experimental: true }
         if (command === 'save_editor_project') return args.project
+        if (command === 'editor_project_ids_for_tasks') return args.taskIds.map(id => `native_${id}`)
+        if (command === 'delete_editor_projects_for_tasks') return {
+          deletedProjectIds: args.taskIds.map(id => `native_${id}`), missingProjectIds: [], blockedProjectIds: [], failedProjectIds: [],
+        }
+        if (command === 'create_editor_project_from_task') return {
+          version: 4, id: `native_${args.payload.taskId}`, name: args.payload.input, sourceTaskId: args.payload.taskId,
+          sources: [], tracks: [], masterVolume: 1, masterPan: 0, createdAt: 1, updatedAt: 1,
+        }
         if (command === 'list_orphaned_editor_projects') return structuredClone(orphanedProjects)
         if (command === 'delete_orphaned_editor_projects') return orphanCleanup || {
           deletedProjectIds: args.projectIds, missingProjectIds: [], blockedProjectIds: [], failedProjectIds: [],
@@ -454,4 +462,29 @@ test('an export error with a nonboolean recoverable value still rejects the edit
   await failed
   assert.equal(env.store.exporting, false)
   assert.equal(env.store.lastExport, null)
+})
+
+
+test('task projects use the native identity without a frontend exists check or a second create request', async () => {
+  const env = environment()
+  const task = { id: 'sep_a', input: 'D:/input.wav', output: 'D:/out', outputs: [] }
+  const project = await env.store.ensureProjectForTask(task, { loadIntoSession: false })
+  assert.equal(project.id, 'native_sep_a')
+  assert.equal(env.calls.filter(call => call.command === 'create_editor_project_from_task').length, 1)
+  assert.equal(env.calls.some(call => call.command === 'editor_project_exists'), false)
+})
+
+test('task project cleanup suspends and removes the native identities for unique task IDs', async () => {
+  const env = environment()
+  env.store.session.id = 'native_a'
+  env.store.projectSummaries = [
+    { id: 'native_a', name: 'A', updatedAt: 2 },
+    { id: 'native_b', name: 'B', updatedAt: 1 },
+  ]
+  const result = await env.store.deleteProjectsForTasks(['a', 'a', 'b'])
+  assert.deepEqual(result.deletedProjectIds, ['native_a', 'native_b'])
+  assert.deepEqual(env.calls.find(call => call.command === 'editor_project_ids_for_tasks').args, { taskIds: ['a', 'b'] })
+  assert.deepEqual(env.calls.find(call => call.command === 'delete_editor_projects_for_tasks').args, { taskIds: ['a', 'b'] })
+  assert.deepEqual(env.store.projectSummaries, [])
+  assert.equal(env.store.session, null)
 })

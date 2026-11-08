@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia, disposePinia } from 'pinia'
@@ -23,7 +23,7 @@ const vite = await createServer({
         export function emit(event){listeners.get('pymss://worker-event')?.({payload:event})}
         export async function listen(name,callback){listeners.set(name,callback);return ()=>listeners.delete(name)}
         export async function invoke(command,args){calls.push({command,args});
-          if(command==='agent_jobs')return {schemaVersion:2,jobs:structuredClone([...remote.values()]),dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'};
+          if(command==='agent_jobs')return {schemaVersion:3,full:true,removed:[],jobs:structuredClone([...remote.values()]),dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'};
           if(command==='load_app_store')return {version:1};
           if(command==='save_app_store')return;
           if(command==='start_separation'||command==='start_workflow_inference')return startHook?startHook(args.payload):{queued:true,started:false};

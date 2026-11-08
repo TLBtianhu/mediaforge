@@ -627,15 +627,16 @@ finally:
                 finally:
                     kernel._release_job_lease(job)
 
-    def test_catalog_reader_serializes_with_real_atomic_snapshot_writer_for_ten_rounds(self):
+    def test_catalog_reader_never_observes_a_partial_snapshot_and_sees_the_published_revision(self):
         path = write_record(self.jobs, job_record("atomic_reader", status="running"))
         for index in range(10):
             with self.subTest(round=index):
                 writer_entered = threading.Event()
-                reader_entered = threading.Event()
                 publish = threading.Event()
-                reader_done = threading.Event()
                 errors, observed = [], []
+                # Refresh the read cache to the revision currently on disk; an
+                # unchanged file is then answered without opening it.
+                committed = job_store.read_jobs(self.jobs)["atomic_reader"]
                 replacement = job_record("atomic_reader", status="running", message=f"publication-{index}")
 
                 def writer():
@@ -651,12 +652,9 @@ finally:
                 def reader():
                     try:
                         with job_store.catalog_lock(self.jobs):
-                            reader_entered.set()
                             observed.append(job_store.read_jobs_unlocked(self.jobs)["atomic_reader"])
                     except BaseException as error:
                         errors.append(error)
-                    finally:
-                        reader_done.set()
 
                 write_thread = threading.Thread(target=writer, daemon=True)
                 read_thread = threading.Thread(target=reader, daemon=True)
@@ -664,17 +662,20 @@ finally:
                 try:
                     self.assertTrue(writer_entered.wait(2))
                     read_thread.start()
-                    self.assertTrue(reader_entered.wait(2))
-                    self.assertFalse(reader_done.wait(0.02), "catalog-only readers must wait for the snapshot writer")
+                    read_thread.join(timeout=3)
+                    # An unchanged file is answered from the last validated
+                    # revision, without waiting for the in-flight writer.
+                    self.assertFalse(read_thread.is_alive(), "an unchanged file must not block on the writer")
+                    self.assertEqual(observed, [committed])
                 finally:
                     publish.set()
                     write_thread.join(timeout=3)
                     if read_thread.ident is not None:
                         read_thread.join(timeout=3)
                 self.assertFalse(write_thread.is_alive())
-                self.assertFalse(read_thread.is_alive())
                 self.assertEqual(errors, [])
-                self.assertEqual(observed, [replacement])
+                # Once published, the replacement is what every later reader sees.
+                self.assertEqual(job_store.read_jobs(self.jobs)["atomic_reader"], replacement)
 
 
 if __name__ == "__main__":

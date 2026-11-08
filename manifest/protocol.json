@@ -5,7 +5,8 @@
     "唯一契约：命令表、事件表、以及历史命名到规范事件的映射。",
     "schemaVersion 2：handler 从“命令名字符串”改为“module:function”，",
     "dispatch 按这张表构建，worker 里不再有 if 链。",
-    "proxy 决定执行前如何配置网络：configured=读用户设置，payload=用本次参数，none=不配置。"
+    "proxy 决定执行前如何配置网络：configured=读用户设置，payload=用本次参数，none=不配置。",
+    "resultEvent 声明非通用 task.result 的命令成功终态；Agent 没有终态事件时不得按退出码0假报成功。"
   ],
   "domains": {
     "system": {
@@ -190,6 +191,7 @@
         "custom.import": {
           "handler": "core.worker_custom_models:cmd_import_custom_model",
           "command": "import_custom_model",
+          "resultEvent": "custom_model_import_finished",
           "proxy": "configured",
           "kind": "task",
           "summary": ""
@@ -265,6 +267,7 @@
         "install": {
           "handler": "core.worker_bootstrap:cmd_install_runtime",
           "command": "install_runtime",
+          "resultEvent": "runtime_install_finished",
           "proxy": "configured",
           "kind": "task",
           "summary": ""
@@ -293,6 +296,7 @@
         "delete": {
           "handler": "core.worker_bootstrap:cmd_delete_runtime",
           "command": "delete_runtime",
+          "resultEvent": "runtime_deleted",
           "proxy": "none",
           "kind": "task",
           "summary": ""
@@ -307,6 +311,7 @@
         "optional_manage": {
           "handler": "core.worker_optional_packages:cmd_manage_optional_package",
           "command": "manage_optional_package",
+          "resultEvent": "optional_package_status",
           "proxy": "configured",
           "kind": "task",
           "summary": ""
@@ -326,6 +331,7 @@
         "manage": {
           "handler": "core.worker_plugins:cmd_manage_plugin",
           "command": "manage_plugin",
+          "resultEvent": "plugin_manage_result",
           "proxy": "configured",
           "kind": "task",
           "summary": ""
@@ -391,7 +397,8 @@
       "流式事件的唯一词表：<域>.<动词>，域是 task（任务）或 asset（资产获取）。",
       "终态只有一个名字 task.result（原 task.done 已收敛进来）。",
       "命令结果型事件（models / env_info …）不在此列，它们与命令同名。",
-      "emit() 只发这里有的名字；scripts/check-architecture.py 会拒绝 task_* / download_* 这类历史写法。"
+      "emit() 只发这里有的名字；scripts/check-architecture.py 会拒绝 task_* / download_* 这类历史写法。",
+      "终态事件是 canonical 的子集：任务或资产到此不再产生进度。"
     ],
     "canonical": [
       "task.started",
@@ -404,6 +411,11 @@
       "asset.stage",
       "asset.progress",
       "asset.log",
+      "asset.done"
+    ],
+    "terminal": [
+      "task.result",
+      "task.cancelled",
       "asset.done"
     ]
   }

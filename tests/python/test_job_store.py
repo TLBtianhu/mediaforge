@@ -505,5 +505,82 @@ class JobStoreTests(unittest.TestCase):
             job._lease = None
 
 
+class JobReadCacheTests(unittest.TestCase):
+    """Unchanged files are not reparsed; every replacement is observed."""
+
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="mediaforge-job-cache-")))
+        self.jobs = self.root / "agent-jobs"
+        self.jobs.mkdir()
+        for job_id in ("cache_a", "cache_b"):
+            write_record(self.jobs, job_record(job_id))
+
+    def counted_reads(self):
+        calls = []
+        original = job_store.read_job
+
+        def counting(path):
+            calls.append(path.name)
+            return original(path)
+
+        return calls, mock.patch.object(job_store, "read_job", counting)
+
+    def test_unchanged_jobs_are_parsed_once_and_replacements_are_reread(self):
+        calls, patcher = self.counted_reads()
+        with patcher:
+            first = job_store.read_jobs(self.jobs)
+            self.assertEqual(sorted(calls), ["cache_a.json", "cache_b.json"])
+            # Polling an unchanged catalog performs no file reads at all.
+            self.assertEqual(job_store.read_jobs(self.jobs), first)
+            self.assertEqual(sorted(calls), ["cache_a.json", "cache_b.json"])
+
+            # A real write is a new file, so exactly that record is reparsed.
+            record = json.loads((self.jobs / "cache_a.json").read_text(encoding="utf-8"))
+            record.update(status="failed", message="changed", finishedAt=time.time(), updatedAt=time.time())
+            write_record(self.jobs, record)
+            changed = job_store.read_jobs(self.jobs)
+            self.assertEqual(changed["cache_a"]["message"], "changed")
+            self.assertEqual(calls.count("cache_a.json"), 2)
+            self.assertEqual(calls.count("cache_b.json"), 1)
+
+    def test_removed_jobs_leave_no_cached_record(self):
+        calls, patcher = self.counted_reads()
+        with patcher:
+            self.assertEqual(len(job_store.read_jobs(self.jobs)), 2)
+            (self.jobs / "cache_b.json").unlink()
+            self.assertEqual(list(job_store.read_jobs(self.jobs)), ["cache_a"])
+            # Re-creating the same file name reads the new content, not the cache.
+            write_record(self.jobs, job_record("cache_b", message="recreated"))
+            self.assertEqual(job_store.read_jobs(self.jobs)["cache_b"]["message"], "recreated")
+
+    def test_a_corrupt_replacement_is_never_served_from_cache(self):
+        job_store.read_jobs(self.jobs)
+        (self.jobs / "cache_a.json").write_text("{not json", encoding="utf-8")
+        with self.assertRaises(job_store.JobStoreError):
+            job_store.read_jobs(self.jobs)
+
+    def test_editing_a_returned_record_cannot_poison_the_cache(self):
+        original = job_store.read_jobs(self.jobs)["cache_a"]
+        first = job_store.read_jobs(self.jobs)["cache_a"]
+        second = job_store.read_jobs(self.jobs)["cache_a"]
+        self.assertIsNot(first, second, "each read must return its own top-level dict")
+        first["status"] = "failed"
+        first["message"] = "poisoned"
+        after = job_store.read_jobs(self.jobs)["cache_a"]
+        self.assertEqual(after["status"], original["status"])
+        self.assertEqual(after["message"], original["message"])
+        # Nested containers stay shared on the fast path; that is the documented
+        # trade-off which keeps polling cheap, so mutation must use the deep copy.
+        self.assertIs(first["runtime"], second["runtime"])
+
+    def test_deep_copy_snapshot_is_safe_for_mutating_callers(self):
+        copied = job_store.read_jobs_copy(self.jobs)
+        copied["cache_a"]["status"] = "failed"
+        copied["cache_a"]["runtime"]["nodes"]["node"] = {"status": "running"}
+        stored = job_store.read_jobs(self.jobs)
+        self.assertEqual(stored["cache_a"]["status"], "completed")
+        self.assertEqual(stored["cache_a"]["runtime"]["nodes"], {})
+
+
 if __name__ == "__main__":
     unittest.main()

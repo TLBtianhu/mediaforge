@@ -5,12 +5,13 @@
   2. shared 层不许 import core / surfaces / media_ops；
   3. core 层不许 import surfaces；
   4. python/ 根目录只许白名单文件；
-  5. media_ops 里出现的事件名必须在 manifest/protocol.json 里声明；
+  5. worker 各层出现的点号事件名必须在 manifest/protocol.json 里声明；
   6. 任何 emit() 都不许再用 task_* / download_* 这类历史事件名；
   7. protocol.json 声明的 handler 必须真的存在于 worker 分发里；
   8. capabilities 引用的每个模型都在 catalog 里，且有 size / url / licenseSpdx；
   9. model_registry.json 的音频接口投影必须能由 audio_catalog.json 无损重建；
-  10. 每个可下载媒体模型都必须声明有效 SHA-256。
+  10. 每个可下载媒体模型都必须声明有效 SHA-256；
+  11. Rust 里硬编码的 task.* / asset.* 事件名必须在 protocol.json 里声明，且 events.terminal 是 canonical 的子集。
 
 退出码非 0 即视为不变量被破坏。放进 CI 与 check-command-surface.py 并列。
 """
@@ -37,6 +38,7 @@ from sync_model_registry import generate_registry
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / "python"
+RUST_SRC = ROOT / "src-tauri" / "src"
 ENGINE = PY / "media_ops"
 
 # 引擎允许依赖的东西：标准库、第三方推理库、引擎自己的子模块。
@@ -148,16 +150,52 @@ def check_shared_direction() -> list[str]:
 def check_event_coverage(manifest: dict) -> list[str]:
     declared = declared_events(manifest)
     problems: list[str] = []
-    pattern = re.compile(r"""emit\(\s*["']([a-z_]+)["']""")
-    for path in python_files(ENGINE):
-        text = path.read_text(encoding="utf-8")
-        for match in pattern.finditer(text):
-            name = match.group(1)
-            if name not in declared:
-                line = text[: match.start()].count("\n") + 1
+    for path in python_files(PY):
+        if "third_party" in path.relative_to(PY).parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "emit":
+                continue
+            if not node.args or not isinstance(node.args[0], ast.Constant) or not isinstance(node.args[0].value, str):
+                continue
+            name = node.args[0].value
+            if "." in name and name not in declared:
                 problems.append(
-                    f"{path.relative_to(ROOT)}:{line} 发出不是规范名的事件 {name}（只能发 events.canonical 里的名字）"
+                    f"{path.relative_to(ROOT)}:{node.lineno} 发出不是规范名的事件 {name}（只能发 events.canonical 里的名字）"
                 )
+    return problems
+
+
+RUST_EVENT_LITERAL = re.compile(r'"(task\.[a-z0-9_.]+|asset\.[a-z0-9_.]+)"')
+
+
+def rust_files(directory: Path) -> list[Path]:
+    return sorted(path for path in directory.rglob("*.rs") if "target" not in path.parts)
+
+
+def check_rust_event_literals(manifest: dict) -> list[str]:
+    """Rust 的运行时事件词表必须来自协议，不能自成一套。"""
+    events = manifest.get("events") or {}
+    declared = set(events.get("canonical") or [])
+    terminal = set(events.get("terminal") or [])
+    problems: list[str] = []
+    if not terminal <= declared:
+        problems.append(f"protocol: events.terminal 不在 canonical 里：{sorted(terminal - declared)}")
+    for path in rust_files(RUST_SRC):
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), 1):
+            code = line.split("//", 1)[0]
+            # Session-log categories (e.g. editor.playback) are diagnostics, not
+            # the engine's stream vocabulary; they share the dotted style only.
+            if "session_log::append" in code:
+                continue
+            for match in RUST_EVENT_LITERAL.finditer(code):
+                name = match.group(1)
+                if name not in declared:
+                    problems.append(
+                        f"{path.relative_to(ROOT)}:{line_number} 硬编码事件 {name} 不在 events.canonical"
+                    )
     return problems
 
 
@@ -250,6 +288,7 @@ def main() -> int:
         "根目录白名单": check_root_allowlist(),
         "事件覆盖": check_event_coverage(manifest),
         "事件命名": check_event_names(),
+        "Rust 事件名": check_rust_event_literals(manifest),
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),
         "接口投影": check_registry_projection(),

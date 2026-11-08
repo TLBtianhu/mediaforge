@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after, afterEach } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia, setActivePinia } from 'pinia'
@@ -570,7 +570,7 @@ async function resumeRestoredQueue(snapshots, concurrency = 1) {
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
     async invoke(command, args) {
-      if (command === 'agent_jobs') return { schemaVersion: 2, jobs: readJobs(persistedValues), dataRoot: '', jobsDir: '' }
+      if (command === 'agent_jobs') return { schemaVersion: 3, full: true, removed: [], jobs: readJobs(persistedValues), dataRoot: '', jobsDir: '' }
       if (command === 'start_workflow_inference' || command === 'start_separation') {
         assert.deepEqual(Object.keys(args.payload), ['jobId'])
         const job = readJobs(persistedValues).find(job => job.jobId === args.payload.jobId)

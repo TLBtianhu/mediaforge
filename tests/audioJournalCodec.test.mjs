@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import test, { after } from 'node:test'
@@ -12,7 +12,7 @@ const {audioTaskFromJob,audioTasksFromJobs,audioEnqueueFromTasks,audioJobEvent}=
 const {createWorkflowBindings,prepareWorkbenchRun,workbenchExecutionMatches}=await vite.ssrLoadModule('/src/workflows/workbench.ts')
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/jobs/current-contract.json',import.meta.url),'utf8'))
 const clone=value=>JSON.parse(JSON.stringify(value))
-const snapshot=jobs=>({schemaVersion:2,jobs,dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'})
+const snapshot=jobs=>({schemaVersion:3,full:true,removed:[],jobs,dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'})
 
 test('all shared current records validate together without materializing child payloads',()=>{
   const raw=clone(fixture.records),before=JSON.stringify(raw)

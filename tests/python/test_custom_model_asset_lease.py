@@ -212,7 +212,7 @@ class CustomModelAssetLeaseTests(unittest.TestCase):
         kernel.data_root = self.root
         kernel.python_path = sys.executable
         kernel._persist = mock.Mock()
-        process = mock.Mock(stdout=io.StringIO(""))
+        process = mock.Mock(stdout=io.StringIO('{"type":"custom_model_import_finished","payload":{"name":"fixture"}}\n'))
         process.wait.return_value = 0
         job = Job("fixture", "import_custom_model", {}, self.root / "bridge-jobs/fixture")
         with mock.patch.dict(os.environ, {"PYMSS_USER_MODELS":"foreign"}), \

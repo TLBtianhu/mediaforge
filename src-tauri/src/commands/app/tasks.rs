@@ -9,6 +9,7 @@ use crate::session_log;
 use crate::state::AppState;
 use crate::storage;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager, State};
 use crate::python::worker::kill_process_tree;
@@ -28,7 +29,7 @@ pub async fn start_separation(
     session_log::append(
         &app,
         "INFO",
-        "task.start_requested",
+        "worker.start_requested",
         vec![("kind", "separation".to_string()), ("taskId", task_id.clone())],
     );
     spawn_worker_background(app, state, "infer", task_id.clone(), payload)?;
@@ -49,7 +50,7 @@ pub async fn start_workflow_inference(
     session_log::append(
         &app,
         "INFO",
-        "task.start_requested",
+        "worker.start_requested",
         vec![("kind", "workflow".to_string()), ("taskId", task_id.clone())],
     );
     spawn_worker_background(app, state, "infer_workflow", task_id.clone(), payload)?;
@@ -105,23 +106,57 @@ pub async fn media_capabilities(app: AppHandle, payload: Option<Value>) -> AppRe
     run_worker_with_payload(&app, "media_capabilities", payload)
 }
 
+/// Journal snapshot for the UI.
+///
+/// `known` is the caller's `{jobId: updatedAt}` map. With it the backend returns
+/// only changed records plus the ids that disappeared; without it the caller
+/// gets the authoritative full snapshot (first load, recovery, diagnostics).
 #[tauri::command]
-pub async fn agent_jobs(app: AppHandle) -> AppResult<Value> {
+pub async fn agent_jobs(app: AppHandle, known: Option<Value>) -> AppResult<Value> {
     let root = storage::data_root_dir(&app)?;
-    let jobs = task_journal::list(&root)?;
+    let known = parse_known_jobs(known)?;
+    let delta = task_journal::read_delta(&root, known.as_ref())?;
     Ok(serde_json::json!({
-        "schemaVersion": 2,
+        "schemaVersion": 3,
+        "full": delta.full,
         "dataRoot": root,
         "jobsDir": root.join("agent-jobs"),
-        "jobs": jobs,
+        "jobs": delta.jobs,
+        "removed": delta.removed,
     }))
+}
+
+fn parse_known_jobs(known: Option<Value>) -> AppResult<Option<HashMap<String, f64>>> {
+    let Some(known) = known.filter(|value| !value.is_null()) else { return Ok(None) };
+    let object = known
+        .as_object()
+        .ok_or_else(|| AppError::Worker("known journal state must be an object".into()))?;
+    let mut map = HashMap::with_capacity(object.len());
+    for (id, value) in object {
+        if !task_journal::valid_id(id) {
+            return Err(AppError::Worker("invalid job id in known journal state".into()));
+        }
+        let updated = value
+            .as_f64()
+            .filter(|updated| updated.is_finite())
+            .ok_or_else(|| AppError::Worker("invalid updatedAt in known journal state".into()))?;
+        map.insert(id.clone(), updated);
+    }
+    Ok(Some(map))
 }
 
 #[tauri::command]
 pub async fn enqueue_audio_jobs(app: AppHandle, payload: Value) -> AppResult<Value> {
     let root = storage::data_root_dir(&app)?;
     let jobs = audio_jobs::enqueue(&root, payload)?;
-    Ok(serde_json::json!({"schemaVersion": 2, "jobs": jobs, "dataRoot": root, "jobsDir": root.join("agent-jobs")}))
+    Ok(serde_json::json!({
+        "schemaVersion": 3,
+        "full": false,
+        "dataRoot": root,
+        "jobsDir": root.join("agent-jobs"),
+        "jobs": jobs,
+        "removed": [],
+    }))
 }
 
 #[tauri::command]
@@ -266,7 +301,7 @@ pub async fn cancel_task(
         if let Ok(root) = storage::data_root_dir(&app) {
             for id in &cancelled_task_ids {
                 if let Err(error) = task_journal::cancel(&root, id) {
-                    session_log::append(&app, "WARN", "task.journal_failed", vec![("taskId", id.clone()), ("message", error.to_string())]);
+                    session_log::append(&app, "WARN", "worker.journal_failed", vec![("taskId", id.clone()), ("message", error.to_string())]);
                 }
             }
         }

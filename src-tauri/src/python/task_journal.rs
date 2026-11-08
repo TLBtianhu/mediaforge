@@ -3,10 +3,11 @@ use crate::error::{AppError, AppResult};
 use crate::python::protocol::WorkerEnvelope;
 use crate::storage;
 use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 const OWNER_KIND: &str = "tauri-worker";
 const WRITE_INTERVAL: Duration = Duration::from_millis(250);
@@ -160,10 +161,112 @@ pub(super) fn owner_lock(root: &Path, id: &str) -> AppResult<FileLock> {
     FileLock::acquire(&root.join("agent-jobs/.owners").join(format!("{id}.lock")), Duration::ZERO)
 }
 
-pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
+/// Identity of one job file revision.
+///
+/// `len` alone is not enough: two atomic replacements within the same clock
+/// tick can produce the same length and the same coarse modification time.
+/// Every replacement creates a new file, so its creation time (and on Windows
+/// its file index) changes too; a stamp is only trusted when all of them match.
+#[derive(PartialEq, Eq)]
+struct JobStamp {
+    len: u64,
+    modified: Option<SystemTime>,
+    created: Option<SystemTime>,
+}
+
+fn job_stamp(metadata: &fs::Metadata) -> JobStamp {
+    JobStamp {
+        len: metadata.len(),
+        modified: metadata.modified().ok(),
+        created: metadata.created().ok(),
+    }
+}
+
+/// Job files are immutable between atomic replacements, so an unchanged
+/// (len, modified) stamp identifies the same validated record. The cache never
+/// outlives the file it describes: any replacement changes the stamp, and a
+/// removed file is pruned from the map.
+fn job_snapshots() -> &'static Mutex<HashMap<PathBuf, (JobStamp, Value)>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, (JobStamp, Value)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(test)]
+fn parse_counts() -> &'static Mutex<HashMap<PathBuf, usize>> {
+    static COUNTS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
+    COUNTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(test)]
+fn bump_parse_count(root: &Path) {
+    *parse_counts()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entry(root.to_path_buf())
+        .or_default() += 1;
+}
+
+#[cfg(test)]
+pub(super) fn journal_parse_count(root: &Path) -> usize {
+    parse_counts()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(root)
+        .copied()
+        .unwrap_or(0)
+}
+
+/// Read one job through the stamp cache. Returns false when the file vanished.
+fn ensure_cached(root: &Path, path: &Path, id: &str, metadata: &fs::Metadata) -> AppResult<bool> {
+    let stamp = job_stamp(metadata);
+    if let Some((known, _)) = job_snapshots()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(path)
+    {
+        if *known == stamp {
+            return Ok(true);
+        }
+    }
+    // Progress writers intentionally do not take the catalog lock. Coordinate
+    // the actual open/read with their per-job atomic replacement on Windows.
+    let _read_guard = write_lock(root, id)?;
+    let Some(parsed) = read_job(path)? else {
+        job_snapshots()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(path);
+        return Ok(false);
+    };
+    #[cfg(test)]
+    bump_parse_count(root);
+    job_snapshots()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(path.to_path_buf(), (stamp, parsed));
+    Ok(true)
+}
+
+fn cached_value(path: &Path) -> Option<Value> {
+    job_snapshots()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(path)
+        .map(|(_, value)| value.clone())
+}
+
+fn prune_cache(directory: &Path, present: &HashSet<PathBuf>) {
+    job_snapshots()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retain(|cached, _| !cached.starts_with(directory) || present.contains(cached));
+}
+
+/// Every current catalog member, after rejecting unsupported filenames and links.
+fn catalog_members(root: &Path) -> AppResult<Vec<(String, PathBuf, fs::Metadata)>> {
     let directory = root.join("agent-jobs");
     if !directory.is_dir() { return Ok(Vec::new()); }
-    let mut jobs = Vec::new();
+    let mut members = Vec::new();
     for entry in fs::read_dir(&directory)? {
         let path = entry?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("removing") {
@@ -179,14 +282,25 @@ pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
             if metadata.file_attributes() & 0x400 != 0 { return Err(AppError::Worker("job reparse point is not allowed".into())); }
         }
         if metadata.file_type().is_symlink() { return Err(AppError::Worker("job symlink is not allowed".into())); }
-        // Progress writers intentionally do not take the catalog lock. Coordinate
-        // the actual open/read with their per-job atomic replacement on Windows.
-        let _read_guard = write_lock(root, id)?;
-        if let Some(value) = read_job(&path)? {
-            if value["jobId"] != id { return Err(AppError::Worker("job id does not match its filename".into())); }
-            jobs.push(value);
-        }
+        members.push((id.to_string(), path, metadata));
     }
+    Ok(members)
+}
+
+pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
+    let directory = root.join("agent-jobs");
+    if !directory.is_dir() { return Ok(Vec::new()); }
+    let members = catalog_members(root)?;
+    let mut jobs = Vec::new();
+    let mut present: HashSet<PathBuf> = HashSet::new();
+    for (id, path, metadata) in &members {
+        present.insert(path.clone());
+        if !ensure_cached(root, path, id, metadata)? { continue; }
+        let Some(value) = cached_value(path) else { continue };
+        if value["jobId"] != id.as_str() { return Err(AppError::Worker("job id does not match its filename".into())); }
+        jobs.push(value);
+    }
+    prune_cache(&directory, &present);
     super::audio_jobs::validate_library(&jobs)?;
     Ok(jobs)
 }
@@ -533,19 +647,7 @@ impl WorkerJournal {
 
     pub(crate) fn observe(&mut self, event: &WorkerEnvelope) -> AppResult<()> {
         let kind = event.event_type.as_str();
-        if !matches!(
-            kind,
-            "task.started"
-                | "task.stage"
-                | "task.progress"
-                | "workflow_execution"
-                | "task.result"
-                | "editor_mix_exported"
-                | "error"
-                | "task.cancelled"
-                | "task.log"
-                | "worker_log"
-        ) {
+        if !super::protocol::is_journal_event(kind) {
             return Ok(());
         }
         let explicit = event.task_id.as_deref().or(event.request_id.as_deref());
@@ -588,11 +690,19 @@ impl WorkerJournal {
                 }
                 self.finish_job(index, "failed", message, Some(&event.payload))?;
             } else if kind == "task.cancelled" {
+                debug_assert!(
+                    super::protocol::is_terminal_event(kind),
+                    "manifest must declare task.cancelled as terminal"
+                );
                 self.finish_job(index, "cancelled", message, Some(&event.payload))?;
             } else if matches!(
                 kind,
                 "task.result" | "editor_mix_exported"
             ) {
+                debug_assert!(
+                    kind == "editor_mix_exported" || super::protocol::is_terminal_event(kind),
+                    "manifest must declare task.result as terminal"
+                );
                 let failed = event
                     .payload
                     .get("failed")
@@ -770,7 +880,7 @@ pub(crate) fn cancel_queued(root: &Path, id: &str) -> AppResult<bool> {
     let _catalog = catalog_lock(root)?;
     let rows = read_all_unlocked(root)?;
     let Some(row) = rows.iter().find(|row| row["jobId"] == id) else { return Ok(false); };
-    if row["source"] != "manual" || row["status"] != "queued" || !row["owner"].is_null() { return Ok(false); }
+    if row["status"] != "queued" || !row["owner"].is_null() { return Ok(false); }
     let _write = write_lock(root, id)?;
     let mut row = read_job(&job_path(root, id)?)?.ok_or_else(|| AppError::Worker("queued job disappeared".into()))?;
     if row["status"] != "queued" || !row["owner"].is_null() { return Ok(false); }
@@ -836,10 +946,247 @@ pub(crate) fn list(root: &Path) -> AppResult<Vec<Value>> {
     Ok(jobs)
 }
 
+/// Result of one journal read: the changed records, the ids the caller must
+/// drop, and whether this was an authoritative full snapshot.
+pub(crate) struct JournalDelta {
+    pub jobs: Vec<Value>,
+    pub removed: Vec<String>,
+    pub full: bool,
+}
+
+/// Read the catalog incrementally.
+///
+/// `known` maps the job ids a caller already holds to their `updatedAt`. Only
+/// records whose `updatedAt` differs are returned, and ids the caller knows but
+/// the disk no longer has are reported as removed. Passing `None` returns the
+/// authoritative full snapshot used for first load, recovery and tests; the
+/// catalog itself stays the single source of truth in both modes.
+pub(crate) fn read_delta(root: &Path, known: Option<&HashMap<String, f64>>) -> AppResult<JournalDelta> {
+    let Some(known) = known else {
+        return Ok(JournalDelta { jobs: list(root)?, removed: Vec::new(), full: true });
+    };
+    let _catalog = catalog_lock(root)?;
+    let directory = root.join("agent-jobs");
+    let members = catalog_members(root)?;
+    for (id, path, metadata) in &members {
+        ensure_cached(root, path, id, metadata)?;
+    }
+    let present: HashSet<PathBuf> = members.iter().map(|(_, path, _)| path.clone()).collect();
+    prune_cache(&directory, &present);
+
+    // A live owner is only trusted while its lease is held. Recovering the few
+    // non-terminal rows keeps an exited process from pinning a job as running.
+    let owned: Vec<(String, PathBuf)> = {
+        let cache = job_snapshots().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        members
+            .iter()
+            .filter_map(|(id, path, _)| {
+                let (_, value) = cache.get(path)?;
+                (!value["owner"].is_null() && !terminal(value)).then(|| (id.clone(), path.clone()))
+            })
+            .collect()
+    };
+    for (id, path) in owned {
+        let Some(value) = cached_value(&path) else { continue };
+        let recovered = recover(root, &id, value)?;
+        if let Ok(metadata) = fs::metadata(&path) {
+            job_snapshots()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(path, (job_stamp(&metadata), recovered));
+        }
+    }
+
+    // Group closure only involves audio records; cloning just those keeps an
+    // idle poll from copying the whole history.
+    let audio: Vec<Value> = {
+        let cache = job_snapshots().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        members
+            .iter()
+            .filter_map(|(_, path, _)| cache.get(path).map(|(_, value)| value))
+            .filter(|value| value.get("audio").is_some())
+            .cloned()
+            .collect()
+    };
+    super::audio_jobs::validate_library(&audio)?;
+
+    let cache = job_snapshots().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut changed = Vec::new();
+    let mut present_ids: HashSet<String> = HashSet::new();
+    for (_, path, _) in &members {
+        let Some((_, value)) = cache.get(path) else { continue };
+        let Some(id) = value["jobId"].as_str() else { continue };
+        present_ids.insert(id.to_string());
+        let updated = value["updatedAt"].as_f64().unwrap_or_default();
+        if known.get(id) != Some(&updated) {
+            changed.push(value.clone());
+        }
+    }
+    drop(cache);
+    let removed = known
+        .keys()
+        .filter(|id| !present_ids.contains(*id))
+        .cloned()
+        .collect();
+    Ok(JournalDelta { jobs: changed, removed, full: false })
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn journal_cache_reflects_replaced_and_removed_job_files() {
+        let root = tempfile::tempdir().unwrap();
+        enqueue_manual(root.path(), "run_operation", "cached_job", &json!({"operation": "fixture"})).unwrap();
+        let path = job_path(root.path(), "cached_job").unwrap();
+        assert_eq!(list(root.path()).unwrap().len(), 1);
+        // An atomic replacement is the only way this process writes a job.
+        let mut row = read_job(&path).unwrap().unwrap();
+        row["message"] = json!("replaced");
+        row["updatedAt"] = json!(row["updatedAt"].as_f64().unwrap() + 1.0);
+        storage::write_json_file(&path, &row).unwrap();
+        let rows = list(root.path()).unwrap();
+        assert_eq!(rows[0]["message"], "replaced", "a replaced file must be re-read");
+        // A removed record leaves the snapshot instead of lingering in the cache.
+        fs::remove_file(&path).unwrap();
+        assert!(list(root.path()).unwrap().is_empty());
+        // Re-creating it is a new file, not the cached one.
+        enqueue_manual(root.path(), "run_operation", "cached_job", &json!({"operation": "fixture"})).unwrap();
+        assert_eq!(list(root.path()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn unchanged_job_files_are_not_reparsed_between_polls() {
+        let root = tempfile::tempdir().unwrap();
+        enqueue_manual(root.path(), "run_operation", "steady_job", &json!({"operation": "fixture"})).unwrap();
+        // The enqueue path may already have populated the cache; what matters is
+        // that repeated polls do not parse the same unchanged file again.
+        assert_eq!(list(root.path()).unwrap().len(), 1);
+        let settled = journal_parse_count(root.path());
+        for _ in 0..4 {
+            assert_eq!(list(root.path()).unwrap().len(), 1);
+        }
+        assert_eq!(
+            journal_parse_count(root.path()),
+            settled,
+            "an unchanged job file must not be parsed once per poll"
+        );
+        // Exactly one reparse after a real write, then steady again.
+        let path = job_path(root.path(), "steady_job").unwrap();
+        let mut row = read_job(&path).unwrap().unwrap();
+        row["fraction"] = json!(0.5);
+        row["updatedAt"] = json!(row["updatedAt"].as_f64().unwrap() + 1.0);
+        storage::write_json_file(&path, &row).unwrap();
+        list(root.path()).unwrap();
+        let after_write = journal_parse_count(root.path());
+        assert_eq!(after_write, settled + 1, "a replaced file is parsed exactly once");
+        list(root.path()).unwrap();
+        assert_eq!(journal_parse_count(root.path()), after_write);
+    }
+
+
+    #[test]
+    fn journal_delta_reports_only_changed_records_and_removed_ids() {
+        let root = tempfile::tempdir().unwrap();
+        for id in ["delta_a", "delta_b"] {
+            enqueue_manual(root.path(), "run_operation", id, &json!({"operation": "fixture"})).unwrap();
+        }
+        let full = read_delta(root.path(), None).unwrap();
+        assert!(full.full, "no known state must return the authoritative snapshot");
+        assert_eq!(full.jobs.len(), 2);
+        assert!(full.removed.is_empty());
+        let mut known: HashMap<String, f64> = full
+            .jobs
+            .iter()
+            .map(|job| (job["jobId"].as_str().unwrap().to_string(), job["updatedAt"].as_f64().unwrap()))
+            .collect();
+
+        let quiet = read_delta(root.path(), Some(&known)).unwrap();
+        assert!(!quiet.full);
+        assert!(quiet.jobs.is_empty(), "an unchanged catalog must send no records");
+        assert!(quiet.removed.is_empty());
+
+        let path = job_path(root.path(), "delta_a").unwrap();
+        let mut row = read_job(&path).unwrap().unwrap();
+        row["message"] = json!("changed");
+        row["updatedAt"] = json!(row["updatedAt"].as_f64().unwrap() + 5.0);
+        storage::write_json_file(&path, &row).unwrap();
+        let changed = read_delta(root.path(), Some(&known)).unwrap();
+        assert_eq!(changed.jobs.len(), 1);
+        assert_eq!(changed.jobs[0]["jobId"], "delta_a");
+
+        known = read_delta(root.path(), None)
+            .unwrap()
+            .jobs
+            .iter()
+            .map(|job| (job["jobId"].as_str().unwrap().to_string(), job["updatedAt"].as_f64().unwrap()))
+            .collect();
+        fs::remove_file(job_path(root.path(), "delta_b").unwrap()).unwrap();
+        let removed = read_delta(root.path(), Some(&known)).unwrap();
+        assert!(removed.jobs.is_empty());
+        assert_eq!(removed.removed, vec!["delta_b".to_string()]);
+    }
+
+    #[test]
+    fn a_long_history_delta_never_loses_or_duplicates_records() {
+        let root = tempfile::tempdir().unwrap();
+        let total = 240usize;
+        for index in 0..total {
+            enqueue_manual(root.path(), "run_operation", &format!("history_{index:03}"), &json!({"operation": "fixture"})).unwrap();
+        }
+        let full = read_delta(root.path(), None).unwrap();
+        assert!(full.full);
+        assert_eq!(full.jobs.len(), total);
+        assert!(full.removed.is_empty());
+        let known: HashMap<String, f64> = full
+            .jobs
+            .iter()
+            .map(|job| (job["jobId"].as_str().unwrap().to_string(), job["updatedAt"].as_f64().unwrap()))
+            .collect();
+
+        // An idle poll moves zero records.
+        let idle = read_delta(root.path(), Some(&known)).unwrap();
+        assert!(idle.jobs.is_empty());
+        assert!(idle.removed.is_empty());
+
+        // Every fourth record changes; exactly those come back, once each.
+        for index in (0..total).step_by(4) {
+            let id = format!("history_{index:03}");
+            let path = job_path(root.path(), &id).unwrap();
+            let mut row = read_job(&path).unwrap().unwrap();
+            row["message"] = json!("changed");
+            row["updatedAt"] = json!(row["updatedAt"].as_f64().unwrap() + 3.0);
+            storage::write_json_file(&path, &row).unwrap();
+        }
+        let changed = read_delta(root.path(), Some(&known)).unwrap();
+        assert_eq!(changed.jobs.len(), total / 4);
+        let mut ids: Vec<&str> = changed.jobs.iter().map(|job| job["jobId"].as_str().unwrap()).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), total / 4, "no changed record may repeat");
+
+        // Deleting a tenth of the history reports exactly those ids and keeps the rest.
+        let mut current: HashMap<String, f64> = known.clone();
+        for job in &changed.jobs {
+            current.insert(job["jobId"].as_str().unwrap().to_string(), job["updatedAt"].as_f64().unwrap());
+        }
+        let mut deleted = Vec::new();
+        for index in (0..total).step_by(10) {
+            let id = format!("history_{index:03}");
+            fs::remove_file(job_path(root.path(), &id).unwrap()).unwrap();
+            deleted.push(id);
+        }
+        let removed = read_delta(root.path(), Some(&current)).unwrap();
+        assert!(removed.jobs.is_empty());
+        let mut removed_ids = removed.removed;
+        removed_ids.sort();
+        deleted.sort();
+        assert_eq!(removed_ids, deleted);
+        assert_eq!(read_delta(root.path(), None).unwrap().jobs.len(), total - deleted.len());
+    }
+
 
     #[test]
     fn durable_manual_enqueue_is_ownerless_and_idempotent_until_admission() {
@@ -870,6 +1217,22 @@ mod tests {
         let row = read_job(&job_path(root.path(), "cancel_before_run").unwrap()).unwrap().unwrap();
         assert_eq!(row["status"], "cancelled"); assert!(row["owner"].is_null()); assert!(row["startedAt"].is_null());
         assert!(!root.path().join("agent-jobs/.quota").exists());
+    }
+
+    #[test]
+    fn queued_agent_cancel_is_terminal_without_creating_a_cancel_file() {
+        let root = tempfile::tempdir().unwrap();
+        enqueue_manual(root.path(), "run_operation", "agent_queued", &json!({"operation": "fixture"})).unwrap();
+        let path = job_path(root.path(), "agent_queued").unwrap();
+        let mut row = read_job(&path).unwrap().unwrap();
+        row["source"] = json!("agent");
+        storage::write_json_file(&path, &row).unwrap();
+        assert!(request_cancel(root.path(), "agent_queued").unwrap());
+        let cancelled = read_job(&path).unwrap().unwrap();
+        assert_eq!(cancelled["status"], "cancelled");
+        assert!(cancelled["owner"].is_null());
+        assert!(cancelled["startedAt"].is_null());
+        assert!(!root.path().join("agent-jobs/agent_queued.cancel").exists());
     }
 
     #[test]
