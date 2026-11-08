@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 from surfaces import agent_contract  # noqa: E402
 from core import media_eval  # noqa: E402
 from core import model_hub  # noqa: E402
-from shared import runtime_pointer, worker_paths  # noqa: E402
+from shared import protocol_contract, runtime_pointer, worker_paths  # noqa: E402
 from media_ops import capabilities, task_params  # noqa: E402
 
 
@@ -42,6 +42,16 @@ def _data_root(override: str = "") -> Path:
 
 def _json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def _runtime_bound_commands() -> frozenset[str]:
+    """Commands that need the activated runtime; downloads and queries do not."""
+    try:
+        protocol = protocol_contract.load_protocol()
+    except Exception:  # noqa: BLE001 - a broken manifest must not block queries
+        return frozenset()
+    result_jobs = (protocol.get("execution") or {}).get("resultJobs") or {}
+    return frozenset(result_jobs.get("commands") or [])
 
 
 def _active_runtime_python(runtime_envs: Path) -> tuple[str | None, str | None]:
@@ -62,6 +72,7 @@ class Bridge:
         self.data_root = data_root
         runtime_envs = worker_paths.runtime_envs_root(data_root=data_root)
         self.python_path, self.runtime_error = _active_runtime_python(runtime_envs)
+        self.runtime_bound_commands = _runtime_bound_commands()
         self.jobs = OperationKernel(data_root, self.python_path)
         # 每个作业已用掉几次自动重试（异步重试必须自己记，台账不存这个）
         self._retry_counts: dict[str, int] = {}
@@ -74,6 +85,19 @@ class Bridge:
         self._feedback_lock = threading.Lock()
 
     # ---- tool implementations ------------------------------------------------
+
+    def _runtime_blocked(self, command: str) -> dict[str, Any] | None:
+        """Refuse runtime-bound work when the activated pointer is damaged."""
+        error = getattr(self, "runtime_error", None)
+        if not error or command not in getattr(self, "runtime_bound_commands", frozenset()):
+            return None
+        return {
+            "ok": False,
+            "code": "RUNTIME_POINTER_INVALID",
+            "command": command,
+            "error": error,
+            "hint": "Repair or reactivate the runtime, then retry; status and model.list still work.",
+        }
 
     def status(self) -> dict[str, Any]:
         try:
@@ -171,6 +195,9 @@ class Bridge:
     def probe(self, inputs: list[str]) -> dict[str, Any]:
         if not inputs:
             return {"ok": False, "error": "inputs must contain at least one file"}
+        blocked = self._runtime_blocked("media_tool")
+        if blocked:
+            return blocked
         job = self.jobs.start("media_tool", {"operation": "media_probe", "inputs": inputs})
         return self._wait(job, timeout=55)
 
@@ -187,6 +214,9 @@ class Bridge:
         if not output_dir:
             return {"ok": False, "error": "outputDir is required"}
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+        blocked = self._runtime_blocked("audio_tools")
+        if blocked:
+            return blocked
         job = self.jobs.start(
             "audio_tools",
             {
@@ -246,6 +276,9 @@ class Bridge:
             )
         if "tile" in options:
             payload["tile"] = task_params.value(options, "tile", 0)
+        blocked = self._runtime_blocked("media_tool")
+        if blocked:
+            return blocked
         job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
@@ -296,6 +329,9 @@ class Bridge:
         }
         if "tile" in options:
             payload["tile"] = task_params.value(options, "tile", 0)
+        blocked = self._runtime_blocked("media_tool")
+        if blocked:
+            return blocked
         job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
@@ -594,7 +630,11 @@ class Bridge:
                 {**task, "taskId": retry_id if len(payload["tasks"]) == 1 else f"{retry_id}-t{index + 1}"}
                 for index, task in enumerate(payload["tasks"])
             ]
-        retried = self.jobs.start(str(snapshot.get("command") or job.command), payload)
+        command = str(snapshot.get("command") or job.command)
+        blocked = self._runtime_blocked(command)
+        if blocked:
+            return blocked
+        retried = self.jobs.start(command, payload)
         return {
             "ok": True,
             "jobId": retried.job_id,
@@ -623,6 +663,9 @@ class Bridge:
         if tool["command"] == "media_tool" and tool["operation"] != "media_probe":
             payload.setdefault("modelDir", str(self.model_root))
         if tool["admission"] == "kernel":
+            blocked = self._runtime_blocked(tool["command"])
+            if blocked:
+                return blocked
             job = self.jobs.start(tool["command"], payload)
             return {
                 "ok": True,

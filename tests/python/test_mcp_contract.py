@@ -111,5 +111,46 @@ class ActiveRuntimeBridgeTests(unittest.TestCase):
         self.assertIn("not valid JSON", status["runtimeError"])
 
 
+class RuntimeGuardTests(unittest.TestCase):
+    def bridge(self, error: str | None, commands: set[str]):
+        from agent_bridge import Bridge  # noqa: E402
+
+        bridge = Bridge.__new__(Bridge)
+        bridge.runtime_error = error
+        bridge.runtime_bound_commands = frozenset(commands)
+        return bridge
+
+    def test_runtime_bound_commands_come_from_the_manifest(self) -> None:
+        from agent_bridge import _runtime_bound_commands  # noqa: E402
+
+        commands = _runtime_bound_commands()
+        self.assertIn("infer", commands)
+        self.assertIn("media_tool", commands)
+        self.assertNotIn("model_download", commands)
+
+    def test_runtime_bound_work_is_refused_when_the_pointer_is_corrupt(self) -> None:
+        bridge = self.bridge("runtime pointer x is not valid JSON", {"media_tool", "infer"})
+        probe = bridge.probe(["input.wav"])
+        self.assertEqual(probe["code"], "RUNTIME_POINTER_INVALID")
+        self.assertIn("not valid JSON", probe["error"])
+        blocked = bridge._runtime_blocked("infer")
+        self.assertEqual(blocked["command"], "infer")
+
+    def test_model_queries_and_downloads_are_not_blocked(self) -> None:
+        bridge = self.bridge("corrupt", {"media_tool"})
+        self.assertIsNone(bridge._runtime_blocked("model_download"))
+        with mock.patch("agent_bridge.model_hub.list_models", return_value={"models": [], "count": 0, "downloadedCount": 0, "modelDir": "models", "environment": {}}), \
+             mock.patch("core.worker_models.list_registered_user_models", return_value=[]), \
+             mock.patch("core.worker_models.user_model_registry_scope", mock.MagicMock()):
+            bridge.model_root = Path("models")
+            bridge.data_root = Path("data")
+            result = bridge.models_list()
+        self.assertTrue(result["ok"])
+
+    def test_healthy_pointer_blocks_nothing(self) -> None:
+        bridge = self.bridge(None, {"media_tool"})
+        self.assertIsNone(bridge._runtime_blocked("media_tool"))
+
+
 if __name__ == "__main__":
     unittest.main()
