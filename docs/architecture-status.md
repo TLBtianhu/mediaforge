@@ -44,7 +44,7 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   Pinia mediaJobs常驻监听，四媒体页切走后继续更新、重进恢复提交快照
 持久真源          音频/媒体/Agent统一schema2逐job账本，无tasks.json/index/workspace副本；
                   批次common payload/图只存primary，child引用，files/nodeLogs/耗时仅读时投影
-当前格式          jobs2/params3/workbench2/workflow wrapper1/Comfy0.4/editor4；
+当前格式          jobs2/params3/workbench2/settings1/workflow wrapper1/Comfy0.4/editor4；
                   缺失/旧/未来结构拒绝且保留原文件，无backend回退/隐式迁移/升级备份
 ABI门禁           worker与安装器实际核对3.12；资产校验解释器/DLL/扩展/prefix，
                   不从bootstrap覆盖解释器；旧venv在任何恢复、pip或状态写入前拒绝
@@ -69,6 +69,9 @@ ABI门禁           worker与安装器实际核对3.12；资产校验解释器/D
 Vue 拆分          已拆分簇的测试直接实例化下列工厂，其余部分测试仍提取SFC实际函数：
                   makeInferenceDefaults / makePlayback / makeStemSelection / makeQueue /
                   makeOutputDirectory / makeExecutionLog / makeRuntimeDebugFiles
+主题 token        check-theme-tokens.py 四条：字面颜色按理由登记并按文件预算棘轮、var(--x) 必须有定义、
+                  theme.ts 与 global.scss 同名同集、过期登记即失败；未定义变量已清零，
+                  幽灵词表（--text-color-1/2/3、--divider-color 等）已映射到现有 token
 ```
 
 ## 还有两条的地方
@@ -76,6 +79,10 @@ Vue 拆分          已拆分簇的测试直接实例化下列工厂，其余部
 ```
 1. 调度与持久存储
    持久存储已统一逐job/schema2，排队/运行/结果无音频history镜像；共享锁及引用组删除已落地。
+   列表读取已有增量：Rust 与 Python 都按文件指纹缓存已校验记录，未变化的记录不重解析、不再逐个抢写锁；
+   `agent_jobs` 的 `schemaVersion 3` 信封支持 `known` 增量请求与 `removed` 删除语义，并保留权威全量对账。
+   仍存在的两条：各执行器运行本来源、内部FIFO（跨进程全局FIFO/物理GPU分区未做）；
+   增量只省传输与解析，目录成员与全部记录仍每次按当前格式校验；Peak/Python 共享记录为只读约定。
    UI/媒体/MCP共享并发配额已落地，各执行器仍运行本来源、内部FIFO；跨进程全局FIFO/物理GPU分区未做。
    媒体/Agent结果支持单条/批量移除记录及显式选择回收文件；同catalog内检查终态与owner释放，
    后端从当前job结果识别文件，保护输入/其它任务/编辑工程/程序与模型运行时，不递归清目录。
@@ -125,10 +132,11 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
 
 ```
 巨文件（行数）   SettingsView.vue 1349 / ModelsView.vue 1511 / SeparateView.vue 2285 /
-                 DebugView.vue 1736 / stores/task.ts 1160 / stores/editor.ts 2027
+                 DebugView.vue 1736 / stores/task.ts 1155 / stores/editor.ts 2001
                  SeparateView 与 DebugView 已按工厂拆过一轮，剩下的先把有测试契约的簇外移。
 门面间接         已移除：worker_bootstrap.py 合并为普通模块，bootstrap_parts 分包已删除。
 测试稳定性       editorParameterSlider.test.mjs 已统一焦点、active 状态和生命周期拖拽准备；
+                 plugin dialog fixtures 消除关闭时的二次 panic，以 pending 语义替代墙钟断言；
                  定向连续 20 轮、完整前端与综合 CI 均通过
 ```
 

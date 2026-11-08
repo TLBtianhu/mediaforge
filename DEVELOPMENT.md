@@ -15,7 +15,7 @@
 5. **`src-tauri/target/{debug,release}` 都是开发构建。**
    应用会把它们识别为 development executable；狗粮和干净包验证必须使用**安装后的 exe**。
 6. **配置分四类：**
-   - 设置：小JSON，带明确schema/version；1.0前只接收当前格式，不写结构迁移
+   - 设置：小JSON，带明确schema/version（`settings/app.json`当前`version=1`）；1.0前只接收当前格式，不写结构迁移
    - 模型/索引/缓存：可重建，放用户数据目录
    - 密钥：系统 keyring，不放 JSON
    - 日志/临时文件：可轮转、可清理

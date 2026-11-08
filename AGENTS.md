@@ -2,6 +2,11 @@
 
 Guidance for future OpenCode sessions working on pymss-desktop.
 
+## 当前交接（2026-11-08）
+
+- DeepSeek Harness/后续 Agent 先读 [docs/handoff-2026-11-08.md](docs/handoff-2026-11-08.md)，其中记录当前修复、测试证据和下一步验收顺序。
+- 当前修复均未提交；接手先检查 `git status`/`git diff`，不得用 reset、clean 或旧包覆盖工作区。
+
 ## 强制规则：环境与数据隔离
 
 阅读 [DEVELOPMENT.md](DEVELOPMENT.md)。任何 UI 测试、后端测试、打包和升级验证都必须遵守：

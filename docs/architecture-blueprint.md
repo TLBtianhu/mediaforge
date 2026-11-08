@@ -134,6 +134,12 @@ pymss 以外部包形式存在，通过 `core` 里的 audio 适配器接入同�
 6. 每个命令的 handler 都能解析到 `module:function`，且模块/函数真实存在
 7. capabilities 引用的每个模型都在 catalog 里，且有 `size` / `url` / `licenseSpdx`
 8. 发布物里没有机器相关的绝对路径；启动器由脚本生成
+9. 界面颜色只走主题 token：字面颜色按理由登记、`var(--x)` 必须有定义、
+   `theme.ts` 与 `global.scss` 的 token 同名同集（`scripts/check-theme-tokens.py`，
+   设计说明见 [theme-tokens](theme-tokens.md)）
+10. Rust 里硬编码的 `task.*` / `asset.*` 事件名必须在 `protocol.json.events.canonical` 里；
+    `events.terminal` 必须是 canonical 的子集（`scripts/check-architecture.py`）。
+    诊断日志（`session_log::append` 的类别）不属于引擎事件词表，不得占用 `task.*` 前缀
 
 ## 4. 明确不做
 
@@ -157,7 +163,7 @@ pymss 以外部包形式存在，通过 `core` 里的 audio 适配器接入同�
 冻结项：
 
 - `protocol.json` schemaVersion = 2（handler 为 module:function、协议查表 dispatch）；
-  `runtime.json` schemaVersion = 1；不兼容变更走主版本号。
+  `runtime.json` schemaVersion = 2；不兼容变更走主版本号。
 - 版本轴只有两条：app 与 runtime；catalog 随应用走，不再声明独立轴。
 - 管道上只有 `task.*` / 资产事件；旧 `audio_tool_*` 别名已从代码、协议和测试里删除，`emit()` 不再做名字翻译。
 
