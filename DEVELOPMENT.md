@@ -394,6 +394,8 @@ $env:CARGO_BUILD_JOBS = '4'
 `-SkipBuild`仍校验源EXE的ProductName/ProductVersion；三个源码版本与Cargo.lock须由
 `scripts/sync-build-version.ps1`一起同步。程序打包不再兼做推理资产构建。
 默认打包从当前源码运行官方Tauri构建，再检查EXE版本；各外部调用隐藏控制台并保留双流诊断与退出码。
+前端构建入口统一为`scripts/build-frontend.mjs`，直接运行已安装的vue-tsc/Vite；
+构建不隐式执行pnpm install，不清空或重建node_modules，缺依赖则报错要求显式准备。
 本地候选的verification.json还须绑定干净源码提交、构建前后源码SHA与EXE/stage/归档全量哈希；
 版本号一致本身不能证明-SkipBuild使用了最新源码。
 `BootstrapDir`明确选择工作区内已准备好的3.12最小解释器，源或旧stage的实际版本不符就拒绝。
