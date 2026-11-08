@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 from surfaces import agent_contract  # noqa: E402
 from core import media_eval  # noqa: E402
 from core import model_hub  # noqa: E402
-from shared import worker_paths  # noqa: E402
+from shared import runtime_pointer, worker_paths  # noqa: E402
 from media_ops import capabilities, task_params  # noqa: E402
 
 
@@ -44,17 +44,12 @@ def _json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
-def _active_runtime_python(runtime_envs: Path) -> str | None:
-    state_path = runtime_envs / "active-runtime.json"
-    try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    python_path = state.get("pythonPath") if isinstance(state, dict) else None
-    if not isinstance(python_path, str):
-        return None
-    candidate = Path(python_path).expanduser()
-    return str(candidate) if candidate.is_file() else None
+def _active_runtime_python(runtime_envs: Path) -> tuple[str | None, str | None]:
+    """Return the activated interpreter and why a present pointer was rejected."""
+    state, error = runtime_pointer.load_active_runtime(runtime_envs / "active-runtime.json")
+    if state is None:
+        return None, error
+    return str(Path(str(state["pythonPath"]))), None
 
 
 from core.operation_kernel import Job, OperationKernel
@@ -66,7 +61,7 @@ class Bridge:
         self.port = port
         self.data_root = data_root
         runtime_envs = worker_paths.runtime_envs_root(data_root=data_root)
-        self.python_path = _active_runtime_python(runtime_envs)
+        self.python_path, self.runtime_error = _active_runtime_python(runtime_envs)
         self.jobs = OperationKernel(data_root, self.python_path)
         # 每个作业已用掉几次自动重试（异步重试必须自己记，台账不存这个）
         self._retry_counts: dict[str, int] = {}
@@ -98,6 +93,7 @@ class Bridge:
             "dataRoot": str(self.data_root),
             "modelDir": str(self.model_root),
             "models": {"count": model_count, "downloaded": downloaded, "error": model_error},
+            "runtimeError": self.runtime_error,
             "jobs": self.jobs.count(),
             "pid": os.getpid(),
         }

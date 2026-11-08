@@ -23,7 +23,7 @@ from pip._vendor.packaging.utils import canonicalize_name
 from pip._vendor.packaging.version import Version
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
-from shared import worker_paths
+from shared import runtime_pointer, worker_paths
 from shared.worker_subprocess import HiddenVenvBuilder, hidden_subprocess_kwargs
 
 
@@ -612,37 +612,12 @@ def _make_posix_venv_relocatable(env_dir: Path) -> bool:
 def _load_runtime_state_from(file: Path) -> tuple[dict[str, Any] | None, str | None]:
     """Read active-runtime.json and say why it was rejected.
 
-    A missing file means "nothing activated" and is not an error. A file that
-    exists but is unreadable, unparsable or points at a missing interpreter must
-    be reported: falling back to another environment would hide the damage.
+    Missing file means "nothing activated"; anything else is reported so a
+    damaged pointer never turns into "no runtime" by accident.
     """
-    try:
-        text = file.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None, None
-    except OSError as error:
-        return None, f"runtime pointer {file} cannot be read: {error}"
-    try:
-        state = json.loads(text)
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        return None, f"runtime pointer {file} is not valid JSON: {error}"
-    if not isinstance(state, dict):
-        return None, f"runtime pointer {file} is not a JSON object"
-    python_path = state.get("pythonPath")
-    if not python_path:
-        return None, f"runtime pointer {file} does not name a pythonPath"
-    if not isinstance(python_path, str):
-        return None, f"runtime pointer {file} has a non-string pythonPath"
-    p = Path(python_path)
-    if not p.is_absolute():
-        resolved = file.parent / p
-        if resolved.is_file():
-            # Keep the executable link: POSIX venvs locate pyvenv.cfg through argv[0].
-            state["pythonPath"] = str(resolved.parent.resolve() / resolved.name)
-        else:
-            return None, f"runtime pointer {file} points to a missing interpreter: {resolved}"
-    elif not p.is_file():
-        return None, f"runtime pointer {file} points to a missing interpreter: {p}"
+    state, error = runtime_pointer.load_active_runtime(file)
+    if state is None:
+        return None, error
     overlay_path = state.get("overlayPath")
     if overlay_path:
         overlay = Path(str(overlay_path))
