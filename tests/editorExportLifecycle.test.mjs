@@ -33,7 +33,7 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
-function environment({ startGate, cancelAccepted = true, nativeRenderGate } = {}) {
+function environment({ startGate, cancelAccepted = true, nativeRenderGate, orphanedProjects = [], orphanCleanup } = {}) {
   const callbacks = new Map()
   const listeners = new Map()
   const calls = []
@@ -53,6 +53,10 @@ function environment({ startGate, cancelAccepted = true, nativeRenderGate } = {}
         calls.push({ command, args })
         if (command === 'plugin_host_capabilities') return { enabled: true, experimental: true }
         if (command === 'save_editor_project') return args.project
+        if (command === 'list_orphaned_editor_projects') return structuredClone(orphanedProjects)
+        if (command === 'delete_orphaned_editor_projects') return orphanCleanup || {
+          deletedProjectIds: args.projectIds, missingProjectIds: [], blockedProjectIds: [], failedProjectIds: [],
+        }
         if (command === 'plugin_host_render') {
           if (nativeRenderGate) return nativeRenderGate.promise
           return { path: 'D:/native-render.wav', duration: 1.5, sampleRate: 48000, channels: 2, tailLimited: true }
@@ -394,4 +398,60 @@ test('direct encoding rejects invalid or regressive progress without changing it
   env.dispatch('pymss://worker-event', { type: 'editor_mix_exported', taskId,
     payload: { path: 'D:/mix.wav', duration: 1, sampleRate: 48000, channels: 2, format: 'wav' } })
   await exporting
+})
+
+test('orphan cleanup relies on native catalog membership and submits only the reviewed project identities', async () => {
+  const env = environment({ orphanedProjects: [{ projectId: 'edit_dead', sourceTaskId: 'dead', name: 'Old run' }] })
+  env.store.projectSummaries = [{ id: 'edit_dead', name: 'Old run', updatedAt: 1 }, { id: 'project', name: 'Independent project', updatedAt: 2 }]
+  assert.equal((await env.store.listOrphanedProjects()).length, 1)
+  const result = await env.store.deleteOrphanedProjects()
+  assert.deepEqual(result.deletedProjectIds, ['edit_dead'])
+  const listCalls = env.calls.filter(call => call.command === 'list_orphaned_editor_projects')
+  assert.ok(listCalls.length >= 1)
+  assert.ok(listCalls.every(call => Object.keys(call.args || {}).length === 0))
+  assert.deepEqual(env.calls.find(call => call.command === 'delete_orphaned_editor_projects').args, { projectIds: ['edit_dead'] })
+  assert.deepEqual(env.store.projectSummaries.map(project => project.id), ['project'])
+  assert.equal(env.store.session.id, 'project')
+})
+
+test('empty orphan lists do not issue cleanup and native blocked projects remain in the editor library', async () => {
+  const empty = environment()
+  assert.deepEqual((await empty.store.deleteOrphanedProjects()).deletedProjectIds, [])
+  assert.equal(empty.calls.some(call => call.command === 'delete_orphaned_editor_projects'), false)
+  const env = environment({ orphanedProjects: [{ projectId: 'edit_returned', sourceTaskId: 'returned', name: 'Existing task' }],
+    orphanCleanup: { deletedProjectIds: [], missingProjectIds: [], blockedProjectIds: ['edit_returned'], failedProjectIds: [] } })
+  env.store.projectSummaries = [{ id: 'edit_returned', name: 'Existing task', updatedAt: 1 }]
+  const result = await env.store.deleteOrphanedProjects()
+  assert.deepEqual(result.blockedProjectIds, ['edit_returned'])
+  assert.deepEqual(env.store.projectSummaries.map(project => project.id), ['edit_returned'])
+  assert.equal(env.store.session.id, 'project')
+})
+
+test('a recoverable export diagnostic keeps the pending editor promise until its real result', async () => {
+  const env = environment()
+  const exporting = env.store.exportMix()
+  let outcome = 'pending'
+  exporting.then(() => { outcome = 'completed' }, () => { outcome = 'failed' })
+  await flush()
+  const taskId = env.calls.find(call => call.command === 'start_editor_mix_export').args.payload.taskId
+  env.dispatch('pymss://worker-event', { type: 'error', taskId, payload: { recoverable: true, message: 'Optional analysis skipped' } })
+  await flush()
+  assert.equal(outcome, 'pending')
+  assert.equal(env.store.exporting, true)
+  env.dispatch('pymss://worker-event', { type: 'editor_mix_exported', taskId,
+    payload: { path: 'D:/final.wav', duration: 1, sampleRate: 48000, channels: 2, format: 'wav' } })
+  assert.equal((await exporting).path, 'D:/final.wav')
+  assert.equal(env.store.lastExport.path, 'D:/final.wav')
+})
+
+test('an export error with a nonboolean recoverable value still rejects the editor promise', async () => {
+  const env = environment()
+  const exporting = env.store.exportMix()
+  const failed = assert.rejects(exporting, /Export failed/)
+  await flush()
+  const taskId = env.calls.find(call => call.command === 'start_editor_mix_export').args.payload.taskId
+  env.dispatch('pymss://worker-event', { type: 'error', taskId, payload: { recoverable: 'true', message: 'Export failed' } })
+  await failed
+  assert.equal(env.store.exporting, false)
+  assert.equal(env.store.lastExport, null)
 })

@@ -3,13 +3,13 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { makeResultListing } from '../src/views/results/listing.ts'
+import { makeResultListing, resultTaskOutcome } from '../src/views/results/listing.ts'
 
 const computed = source => ({ get value() { return source() } })
 const t = (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key)
 
 function job(id, input, updatedAt, resultType = 'audio') {
-  const task = { id: `task-${id}`, input, output: `D:/out/${id}`, outputs: [{ stem: 'vocals', path: `D:/out/${id}/vocals.wav` }] }
+  const task = { id: `task-${id}`, status: 'done', input, output: `D:/out/${id}`, outputs: [{ stem: 'vocals', path: `D:/out/${id}/vocals.wav` }] }
   return { id, model: 'm', output: `D:/out/${id}`, primary: task, tasks: [task], inputCount: 1, updatedAt, resultType }
 }
 
@@ -57,4 +57,37 @@ test('filteredResults respects the type filter and sort order', () => {
 test('getGroupTitle uses the filename for single-input groups', () => {
   const { listing } = harness([job('a', '/a/song.wav', 100)])
   assert.equal(listing.getGroupTitle(listing.resultGroups.value[0]), 'song.wav')
+})
+
+test('full group outcomes retain failed, cancelled and interrupted members without claiming success', () => {
+  const group = job('batch', '/a/song.wav', 100)
+  group.tasks = [group.primary, ...['failed', 'cancelled', 'failed'].map((status, index) => ({ ...group.primary, id: 'sibling-' + index, status, outputs: [] }))]
+  group.inputCount = 4
+  const { listing } = harness([group], { taskOutcome: item => resultTaskOutcome(item, item.id === 'sibling-2' ? 'interrupted' : undefined) })
+  const [row] = listing.resultGroups.value
+  assert.equal(row.items.length, 4)
+  assert.equal(row.inputCount, 4)
+  assert.equal(row.outcome, 'mixed')
+  assert.deepEqual(row.outcomeCounts, { completed: 1, failed: 1, cancelled: 1, interrupted: 1 })
+  assert.equal(row.removable, true)
+})
+
+test('a group with an active sibling remains visible and not removable even when a member completed', () => {
+  for (const status of ['queued', 'separating']) {
+    const group = job('batch', '/a/song.wav', 100)
+    group.tasks.push({ ...group.primary, id: 'active', status, outputs: [] })
+    const [row] = harness([group]).listing.resultGroups.value
+    assert.equal(row.items.length, 2)
+    assert.equal(row.outcome, status === 'queued' ? 'queued' : 'running')
+    assert.equal(row.removable, false)
+  }
+})
+
+test('empty terminal groups retain their real outcome and remain removable', () => {
+  const group = job('empty', '/a/song.wav', 100)
+  group.primary.status = 'cancelled'; group.primary.outputs = []
+  const [row] = harness([group]).listing.resultGroups.value
+  assert.equal(row.outcome, 'cancelled')
+  assert.equal(row.removable, true)
+  assert.deepEqual(row.items[0].outputs, [])
 })

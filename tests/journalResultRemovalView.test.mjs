@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createPinia, disposePinia } from 'pinia'
 import { createRenderer, h, nextTick } from 'vue'
 import { createServer, transformWithEsbuild } from 'vite'
-import { parse, compileScript } from 'vue/compiler-sfc'
+import { parse, compileScript, compileTemplate } from 'vue/compiler-sfc'
 
 const id = '\0journal-removal-view-fixture'
 const stubs = {
@@ -45,7 +45,10 @@ const vite = await createServer({
       filename = filename.replaceAll('\\', '/')
       if (filename.endsWith('/src/views/results/JournalResults.vue')) {
         const { descriptor } = parse(code, { filename })
-        return transformWithEsbuild(compileScript(descriptor, { id: filename }).content, filename + '.ts', { loader: 'ts', tsconfigRaw: {} })
+        const script = compileScript(descriptor, { id: filename })
+        const template = compileTemplate({ source: descriptor.template.content, filename, id: filename, compilerOptions: { bindingMetadata: script.bindings } })
+        assert.deepEqual(template.errors, [])
+        return transformWithEsbuild(script.content + '\n' + template.code, filename + '.ts', { loader: 'ts', tsconfigRaw: {} })
       }
       if (filename.endsWith('/src/stores/settings.ts')) return 'export const useSettingsStore=()=>({developerMode:false})'
     },
@@ -54,14 +57,15 @@ const vite = await createServer({
 after(() => vite.close())
 globalThis.window = { __TAURI_INTERNALS__: {} }
 const fixture = await vite.ssrLoadModule(id)
-const Component = (await vite.ssrLoadModule('/src/views/results/JournalResults.vue')).default
+const viewModule = await vite.ssrLoadModule('/src/views/results/JournalResults.vue')
+const Component = viewModule.default
 Component.render = () => null
 const { useMediaJobsStore } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
 const { buildJournalResults } = await vite.ssrLoadModule('/src/views/results/journalResults.ts')
 const renderer = createRenderer({
-  createComment: text => ({ text }), createText: text => ({ text }), createElement: tag => ({ tag, children: [] }),
+  createComment: () => ({ children: [] }), createText: text => ({ text }), createElement: tag => ({ tag, props: {}, children: [] }),
   insert(node, parent) { node.parent = parent; parent.children.push(node) }, remove(node) { node.parent.children = node.parent.children.filter(child => child !== node) },
-  parentNode: node => node.parent, nextSibling: () => null, setText() {}, setElementText() {}, patchProp() {},
+  parentNode: node => node.parent, nextSibling: () => null, setText(node, text) { node.text = text }, setElementText(node, text) { node.text = text }, patchProp(node, key, _prev, value) { node.props[key] = value },
 })
 const flush = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick() }
 const job = (jobId, extra = {}) => ({
@@ -72,16 +76,24 @@ const job = (jobId, extra = {}) => ({
 })
 const removals = () => fixture.calls.filter(call => call.command === 'remove_result_jobs')
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
-async function mount(t, records = [job('media'), job('agent', { source: 'agent' })], hook) {
+async function mount(t, records = [job('media'), job('agent', { source: 'agent' })], hook, template = false) {
   fixture.reset(records, hook)
   const pinia = createPinia(), store = useMediaJobsStore(pinia)
   await store.initialize()
-  const app = renderer.createApp({ setup() { return () => { const results = buildJournalResults(store.jobs); return h(Component, { results, total: results.length, loading: store.loading, error: store.error }) } } })
-  app.use(pinia); app.mount({ children: [] })
+  const View = template ? { ...Component, render: viewModule.render } : Component
+  const app = renderer.createApp({ setup() { return () => { const results = buildJournalResults(store.jobs); return h(View, { results, total: results.length, loading: store.loading, error: store.error }) } } })
+  app.config.warnHandler = () => {}
+  for (const name of ['NButton', 'NTag', 'NIcon', 'NCheckbox', 'NAlert', 'NPagination']) {
+    app.component(name, { inheritAttrs: false, setup(_props, { attrs, slots }) { return () => h('fixture-' + name.toLowerCase(), attrs, slots.default?.()) } })
+  }
+  const root = { children: [] }
+  app.use(pinia); app.mount(root)
   t.after(() => { if (app._instance) app.unmount(); disposePinia(pinia) })
   await flush()
-  return { store, app, state: app._instance.subTree.component.setupState }
+  return { store, app, root, state: app._instance.subTree.component.setupState }
 }
+const allNodes = node => [node, ...(node.children ?? []).flatMap(allNodes)]
+const visibleText = root => allNodes(root).map(node => node.text ?? '').join(' ')
 function open(state, ids = ['media']) {
   state.handleRemove(state.pageResults.filter(row => ids.includes(row.id)))
   return fixture.dialogs.at(-1)
@@ -280,4 +292,26 @@ test('an older dialog leaving cannot detach the current removal handle', async t
   assert.equal(second.loading, true)
   assert.equal(second.negativeButtonProps.disabled, true)
   gate.resolve(); await pending
+})
+
+for (const status of ['completed', 'failed', 'cancelled', 'interrupted']) test(`rendered ${status} fileless processing records remain explicit and removable`, async t => {
+  const { root, state, store } = await mount(t, [job('empty', { command: 'media_convert', payload: {}, result: null, status })], undefined, true)
+  assert.ok(visibleText(root).includes('results.noFiles'))
+  assert.ok(visibleText(root).includes('results.journal.status.' + status))
+  assert.equal(allNodes(root).some(node => node.tag === 'details'), false)
+  assert.equal(allNodes(root).some(node => node.props?.['aria-label']?.startsWith('results.journal.openOutput')), false)
+  await open(state, ['empty']).onPositiveClick()
+  assert.equal(store.jobs.length, 0)
+  assert.deepEqual(removals()[1].args, { jobIds: ['empty'], deleteFiles: false, checkOnly: false })
+})
+
+test('rendered editor mix exports expose the canonical file and use the existing ID-only removal flow', async t => {
+  const { root, state, store } = await mount(t, [job('editor', { command: 'export_editor_mix', payload: { project: { name: 'Session', assets: [{ path: '/input/voice.wav' }] } }, result: { path: '/exports/Mix.wav' } })], undefined, true)
+  assert.ok(visibleText(root).includes('results.journal.editorExport'))
+  assert.ok(visibleText(root).includes('Mix.wav'))
+  assert.equal(state.pageResults[0].outputs[0].path, '/exports/Mix.wav')
+  const dialog = open(state, ['editor']); chooseFiles(dialog, true)
+  await dialog.onPositiveClick()
+  assert.equal(store.jobs.length, 0)
+  assert.deepEqual(removals()[1].args, { jobIds: ['editor'], deleteFiles: true, checkOnly: false })
 })

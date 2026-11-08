@@ -45,6 +45,7 @@ onBeforeUnmount(() => {
 const operationKeys: Record<string, string> = {
   media_image: 'results.journal.image', media_video: 'results.journal.video', media_workflow: 'results.journal.workflow',
   media_convert: 'results.journal.convert', infer: 'results.journal.separate', infer_workflow: 'results.journal.audioWorkflow',
+  export_editor_mix: 'results.journal.editorExport',
 }
 function operationLabel(operation: string) { return operationKeys[operation] ? t(operationKeys[operation]) : operation }
 function statusLabel(status: string) { return t(`results.journal.status.${status === 'done' ? 'completed' : status}`) }
@@ -199,8 +200,9 @@ function removeSelected() { handleRemove(props.results.filter(result => selected
         <div class="journal-result__identity"><strong :title="result.inputs[0] || result.title">{{ result.title }}</strong><span>{{ operationLabel(result.operation) }} · {{ time(result.updatedAt) }}</span></div>
         <div class="journal-result__tags"><n-checkbox v-if="selecting" :checked="selected.has(result.id)" :disabled="blocked" :aria-label="t('results.journal.selectResult', { name: result.title })" @update:checked="value => toggleSelection(result.id, value)" /><n-tag size="small" :bordered="false">{{ t(`results.journal.source.${result.source}`) }}</n-tag><n-tag size="small" :type="['done', 'completed'].includes(result.status) ? 'success' : 'warning'" :bordered="false">{{ statusLabel(result.status) }}</n-tag><n-button quaternary size="small" :disabled="blocked" :aria-label="t('results.journal.removeNamed', { name: result.title })" @click="handleRemove([result])"><template #icon><n-icon :component="TrashOutline" /></template></n-button></div>
       </div>
-      <p v-if="result.status !== 'completed' && result.status !== 'done'" class="journal-result__partial">{{ t('results.journal.partial') }}<span v-if="result.message"> · {{ result.message }}</span></p>
-      <details class="journal-result__files" :open="result.outputs.length <= 3">
+      <p v-if="result.status !== 'completed' && result.status !== 'done'" class="journal-result__partial">{{ result.outputs.length ? t('results.journal.partial') : t('results.noFiles') }}<span v-if="result.message"> · {{ result.message }}</span></p>
+      <p v-else-if="!result.outputs.length" class="journal-result__partial">{{ t('results.noFiles') }}</p>
+      <details v-if="result.outputs.length" class="journal-result__files" :open="result.outputs.length <= 3">
       <summary>{{ t('results.journal.outputs', { count: result.outputs.length }) }}</summary>
       <ul class="journal-result__outputs">
         <li v-for="output in result.outputs" :key="output.path">

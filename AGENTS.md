@@ -26,6 +26,7 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 音频先持久入队确认，再仅按jobId领取执行；共享图/参数仅存primary，child保存引用与输入差异，前端不回写生命周期。
 - 目录成员与引用读取使用共享catalog锁；整组删除须全终态且owner lease释放，资产清理前先预检。
 - 音频/媒体/Agent结果删除共用后端保护与事务，只传jobId及选择，后端按当前命令结果契约推导文件；音频须展开整组。默认仅删记录并保留关联编辑工程。文件只回收普通文件，不递归删除输出目录；输入、其它任务/编辑器引用、模型与运行时须保护。输入位置或媒体库引用未能完整确认、编辑器打开时保留文件；回收失败保留本次全部任务记录。
+- 结果展示从全任务组派生，包含无文件终态与失败/取消部分产物；不能只按成功leaf重组而伪报整组完成。编辑器导出唯一文件字段为result.path，不复制outputs。孤立编辑工程须由后端完整catalog确认，不能按结果页可见ID判断；显式选择清理还须复核当前job/导出/明确绝对路径引用。
 - manual历史保留到显式删除，不套用Kernel默认Agent保留策略；仅清当前自建worker回收后的临时请求正文。
 - UI/媒体/MCP处理任务按`manifest/execution-quota.json`共享同数据根的worker配额，配置只读`settings/app.json`的现有并发字段；排队不占owner/slot，领取顺序为catalog→quota→owner→write，进程确认回收后才释放。
 - 不恢复独立前端并发计数；批次按一个worker计数，查询/下载/运行时管理不占处理配额。当前仅各执行器内部FIFO，不宣称跨进程全局FIFO或物理GPU分区。

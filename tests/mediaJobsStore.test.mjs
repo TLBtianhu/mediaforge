@@ -47,7 +47,7 @@ const vite = await createServer({
           const job=remote.get(event.taskId||event.requestId),payload=event.payload||{}
           if(job){
             job.updatedAt=Date.now()/1000
-            if(['task.result','error','task.cancelled'].includes(event.type)){
+            if((['task.result','error','task.cancelled'].includes(event.type)||event.type==='editor_mix_exported'&&job.command==='export_editor_mix')&&!(event.type==='error'&&payload.recoverable===true)){
               job.status=event.type==='error'||payload.failed?.length?'failed':event.type==='task.cancelled'?'cancelled':'completed'
               job.finishedAt=job.updatedAt;job.result=payload
             }
@@ -549,4 +549,49 @@ test('a newly registered IPC failure notifies once through its mounted terminal 
   assert.equal(messages.length, 1)
   assert.equal(messages[0][0], 'error')
   assert.match(messages[0][1], /launch rejected/)
+})
+
+test('editor export canonical events project progress and one result path without materializing an outputs copy', async t => {
+  const { store } = setup(t, () => response([journal('export', { command: 'export_editor_mix', payload: { project: { id: 'project' } } })]))
+  await store.initialize()
+  fixture.emit({ taskId: 'export', type: 'editor_export_progress', payload: { completed: 40, total: 100, current: 'mix.wav' } })
+  assert.equal(store.jobs[0].fraction, 0.4)
+  assert.equal(store.jobs[0].status, 'running')
+  const result = { path: 'D:/out/mix.wav', duration: 2, sampleRate: 48000, channels: 2, format: 'wav' }
+  fixture.emit({ taskId: 'export', type: 'editor_mix_exported', payload: result })
+  assert.equal(store.jobs[0].status, 'completed')
+  assert.equal(store.jobs[0].fraction, 1)
+  assert.deepEqual(store.jobs[0].result, result)
+  assert.equal(Object.hasOwn(store.jobs[0].result, 'outputs'), false)
+  fixture.emit({ taskId: 'export', type: 'task.cancelled', payload: { message: 'late cancellation' } })
+  assert.equal(store.jobs[0].status, 'completed')
+  assert.deepEqual(store.jobs[0].result, result)
+})
+
+test('editor-specific events cannot complete unrelated jobs and recoverable diagnostics cannot finish an export', async t => {
+  const { store } = setup(t, () => response([journal('media'), journal('export', { command: 'export_editor_mix', payload: { project: {} } })]))
+  await store.initialize()
+  fixture.emit({ taskId: 'media', type: 'editor_mix_exported', payload: { path: 'D:/out/unrelated.wav' } })
+  assert.equal(store.jobs[0].status, 'running')
+  assert.equal(store.jobs[0].result, null)
+  fixture.emit({ taskId: 'export', type: 'error', payload: { recoverable: true, message: 'optional peak scan skipped' } })
+  assert.equal(store.jobs[1].status, 'running')
+  assert.equal(store.jobs[1].finishedAt, null)
+  assert.equal(store.jobs[1].result, null)
+  fixture.emit({ taskId: 'export', type: 'editor_mix_exported', payload: { path: 'D:/out/final.wav' } })
+  assert.equal(store.jobs[1].status, 'completed')
+  assert.equal(store.jobs[1].result.path, 'D:/out/final.wav')
+})
+
+test('export cancellation keeps existing artifacts and only a literal boolean recoverable error stays active', async t => {
+  const { store } = setup(t, () => response([
+    journal('export', { command: 'export_editor_mix', payload: {}, result: { path: 'D:/out/published.wav' } }),
+    journal('strict', { command: 'export_editor_mix', payload: {} }),
+  ]))
+  await store.initialize()
+  fixture.emit({ taskId: 'export', type: 'task.cancelled', payload: { message: 'cancelled by worker' } })
+  assert.equal(store.jobs[0].status, 'cancelled')
+  assert.equal(store.jobs[0].result.path, 'D:/out/published.wav')
+  fixture.emit({ taskId: 'strict', type: 'error', payload: { recoverable: 'true', message: 'failed' } })
+  assert.equal(store.jobs[1].status, 'failed')
 })

@@ -306,12 +306,14 @@ export const useTaskStore = defineStore('task', () => {
   const activeWorkerTasks = computed(() => tasks.value.filter((task) => !isTerminalTaskStatus(task.status) && task.status !== 'queued'))
   // 任务页可见任务：排除已在任务页隐藏的记录（结果页隐藏不影响任务页）
   const taskBoardTasks = computed(() => tasks.value)
-  // 结果页可见结果：仅含有输出且未在结果页隐藏的任务（任务页隐藏不影响结果页）
-  const resultTasks = computed(() => completedTasks.value.filter((task) => task.outputs.length > 0))
+  // Terminal records remain visible even when a run produced no file.
+  const resultTasks = computed(() => tasks.value.filter(task => isTerminalTaskStatus(task.status)))
   const queuedTasks = computed(() => tasks.value.filter((task) => task.status === 'queued'))
   const failedTasks = computed(() => tasks.value.filter((task) => task.status === 'failed'))
   const allJobs = computed(() => buildJobs(tasks.value))
-  const resultJobs = computed(() => buildJobs(resultTasks.value))
+  // Keep every sibling so a partial batch cannot appear completed while another
+  // member is still active, or omit a failed member that produced no file.
+  const resultJobs = computed(() => allJobs.value.filter(job => job.tasks.some(task => isTerminalTaskStatus(task.status))))
   const sessionJobs = computed(() => buildJobs(tasks.value.filter(task => sessionTaskIds.value.has(task.id))))
 
   let separateStateSaveTimer: ReturnType<typeof setTimeout> | null = null
@@ -786,10 +788,10 @@ export const useTaskStore = defineStore('task', () => {
     focusedTaskId.value = id
   }
 
-  // 任务是否还会出现在结果页（done + 有输出 + 未被结果页隐藏）。
-  // 不会出现在结果页的任务，其“结果维度”视为已不存在。
+  // Histories with produced files must use the results removal flow. Empty
+  // terminal histories may still be explicitly removed from their run list.
   function hasResultPresence(task: SeparationTask) {
-    return task.status === 'done'
+    return isTerminalTaskStatus(task.status)
       && (task.outputs.length > 0 || task.files.length > 0)
   }
 
@@ -846,7 +848,8 @@ export const useTaskStore = defineStore('task', () => {
 
   // Empty selections must not turn into a request to remove all results.
   async function clearResults(ids?: string[]) {
-    return (await removeResults(ids ?? resultTasks.value.map(task => task.id))).removedJobIds.length
+    const terminalGroups = resultJobs.value.filter(job => job.tasks.every(task => isTerminalTaskStatus(task.status)))
+    return (await removeResults(ids ?? terminalGroups.flatMap(job => job.tasks.map(task => task.id)))).removedJobIds.length
   }
 
   async function cancelAllTasks() {

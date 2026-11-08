@@ -1,4 +1,4 @@
-/** File results from the persistent task journal; never synthetic audio-store tasks. */
+/** Terminal processing records from the journal; never synthetic audio-store tasks. */
 import { RESULT_JOB_COMMANDS } from '../../features/tasks/resultCommands.ts'
 export type JournalResultJob = {
   jobId: string
@@ -30,7 +30,7 @@ export type JournalResult = {
 }
 export type JournalResultSort = 'time_desc' | 'time_asc' | 'name_asc' | 'name_desc'
 
-const TERMINAL = new Set(['completed', 'done', 'failed', 'cancelled', 'interrupted'])
+const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'interrupted'])
 const AUDIO_RUNS = new Set(['infer', 'infer_workflow'])
 const TOOL_PATHS = new Set(['convert', 'slicer', 'asr', 'loudness'])
 const TOOL_PATH = new Set(['merge', 'midi'])
@@ -44,13 +44,15 @@ export const journalFileName = (path: string) => path.split(/[\\/]/).pop() || pa
 const timestamp = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value < 1e12 ? value * 1000 : value : 0
 
 function outputFiles(result: Record<string, unknown>, payload: Record<string, unknown>, command: string, operation: string): JournalOutput[] {
-  const raw = result.outputs
+  const raw = command === 'export_editor_mix' ? undefined : result.outputs
   const descriptors = Array.isArray(raw) ? raw : record(raw) ? Object.values(raw) : []
   // These are current audio-tool result contracts, not arbitrary nested paths.
   const paths = command !== 'audio_tools' ? [] : TOOL_PATHS.has(operation) && Array.isArray(result.outputPaths) ? result.outputPaths
     : TOOL_PATH.has(operation) ? [result.outputPath] : []
-  const values = [...descriptors, ...paths.filter((path): path is string => typeof path === 'string').map(path => ({ kind: 'file', path }))]
-  const directories = new Set([text(result.outputDir), text(result.outputDirectory), text(payload.outputDir)].filter(Boolean))
+  const editorPath = command === 'export_editor_mix' ? [result.path] : []
+  const values = [...descriptors, ...paths.filter((path): path is string => typeof path === 'string').map(path => ({ kind: 'file', path })),
+    ...editorPath.filter((path): path is string => typeof path === 'string').map(path => ({ kind: 'file', path }))]
+  const directories = new Set([text(result.outputDir), text(result.outputDirectory), text(payload.outputDir), text(payload.exportDir)].filter(Boolean))
   const seen = new Set<string>()
   return values.flatMap(value => {
     // Only explicit output descriptors count; a scalar/path-looking value or
@@ -86,15 +88,17 @@ export function buildJournalResults(jobs: readonly JournalResultJob[], audioTask
       if (identities.some(id => id && audioTaskIds.has(id))) continue
     }
     const outputs = outputFiles(result, payload, job.command, operation)
-    if (!outputs.length) continue
     const rawInputs = payload.inputs
-    const inputs = Array.isArray(rawInputs) ? rawInputs.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+    const project = job.command === 'export_editor_mix' && record(payload.project) ? payload.project : {}
+    const editorInputs = [...new Set([project.assets, project.sources].flatMap(items => Array.isArray(items)
+      ? items.flatMap(asset => record(asset) && text(asset.path).trim() ? [text(asset.path)] : []) : []))]
+    const inputs = job.command === 'export_editor_mix' ? editorInputs : Array.isArray(rawInputs) ? rawInputs.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
       : record(rawInputs) ? Object.values(rawInputs).flatMap(value => record(value) && typeof value.path === 'string' ? [value.path] : [])
         : [text(payload.input) || text(payload.inputPath)].filter(Boolean)
     const createdAt = timestamp(job.createdAt)
     const updatedAt = timestamp(job.finishedAt) || timestamp(job.updatedAt) || createdAt
     const row: JournalResult = {
-      id: job.jobId, title: journalFileName(inputs[0] || outputs[0].path), operation, source,
+      id: job.jobId, title: journalFileName(job.command === 'export_editor_mix' ? outputs[0]?.path || text(project.name) || job.jobId : inputs[0] || outputs[0]?.path || job.jobId), operation, source,
       status: job.status, createdAt, updatedAt, message: text(job.error) || text(job.message), inputs, outputs,
     }
     const previous = results.get(row.id)

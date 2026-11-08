@@ -915,14 +915,12 @@ export const useEditorStore = defineStore('editor', () => {
     return [...new Set(backendOpenProjectIds || [])]
   }
 
-  async function listOrphanedProjects(activeTaskIds: string[]) {
+  async function listOrphanedProjects() {
     if (!isTauriRuntime()) return [] as OrphanedEditorProject[]
-    return invoke<OrphanedEditorProject[]>('list_orphaned_editor_projects', {
-      activeTaskIds: [...new Set(activeTaskIds.map(id => id.trim()).filter(Boolean))],
-    })
+    return invoke<OrphanedEditorProject[]>('list_orphaned_editor_projects')
   }
 
-  async function deleteOrphanedProjects(activeTaskIds: string[]) {
+  async function deleteOrphanedProjects() {
     const emptyResult = (): EditorProjectCleanupResult => ({
       deletedProjectIds: [],
       missingProjectIds: [],
@@ -930,7 +928,7 @@ export const useEditorStore = defineStore('editor', () => {
       failedProjectIds: [],
     })
     if (!isTauriRuntime()) return emptyResult()
-    const orphanedProjects = await listOrphanedProjects(activeTaskIds)
+    const orphanedProjects = await listOrphanedProjects()
     const projectIds = orphanedProjects.map(project => project.projectId)
     if (!projectIds.length) return emptyResult()
     await drainPendingSaves()
@@ -939,9 +937,7 @@ export const useEditorStore = defineStore('editor', () => {
       pendingProjectSaves.delete(projectId)
     })
     try {
-      const result = await invoke<EditorProjectCleanupResult>('delete_orphaned_editor_projects', {
-        activeTaskIds: [...new Set(activeTaskIds.map(id => id.trim()).filter(Boolean))],
-      })
+      const result = await invoke<EditorProjectCleanupResult>('delete_orphaned_editor_projects', { projectIds })
       const removedProjectIds = new Set([
         ...(result.deletedProjectIds || []),
         ...(result.missingProjectIds || []),
@@ -1711,6 +1707,7 @@ export const useEditorStore = defineStore('editor', () => {
         }
 
         if (workerEvent.type === 'error') {
+          if (workerEvent.payload?.recoverable === true) return
           pendingExport = null
           const message = workerEvent.payload?.code === 'EDITOR_EXPORT_PEAK_EXCEEDED'
             ? String(i18n.global.t('editor.exportPeakExceeded'))

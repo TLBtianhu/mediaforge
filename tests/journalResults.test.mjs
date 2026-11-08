@@ -24,7 +24,9 @@ test('persistent media and Agent results project explicit output descriptors wit
 test('terminal failures, cancellations and interruptions retain produced files while active tasks stay in the queue', () => {
   const results = buildJournalResults(['failed', 'cancelled', 'interrupted', 'running', 'queued'].map(status => job(status, { status })))
   assert.deepEqual(results.map(row => row.status), ['failed', 'cancelled', 'interrupted'])
-  assert.deepEqual(buildJournalResults([job('empty', { status: 'failed', result: { outputs: [] } })]), [])
+  const [empty] = buildJournalResults([job('empty', { status: 'failed', result: { outputs: [] } })])
+  assert.equal(empty.status, 'failed')
+  assert.deepEqual(empty.outputs, [])
 })
 
 test('manual audio journal mirrors never resurrect deleted separation or workflow records', () => {
@@ -51,7 +53,7 @@ test('probe, runtime and model operations are not displayed as task output files
 test('directory paths, scalar paths and URLs never become produced-file records', () => {
   const outputs = ['/out/raw.png', { path: '/out' }, { path: '/out/' }, { path: '/out/a.wav', kind: 'directory' },
     { path: '/out/value.png', kind: 'scalar' }, { path: 'https://example.com/remote.png' }, { path: '/out/no-extension' }]
-  assert.deepEqual(buildJournalResults([job('not-files', { result: { outputs } })]), [])
+  assert.deepEqual(buildJournalResults([job('not-files', { result: { outputs } })])[0].outputs, [])
 })
 
 test('named plugin outputs preserve file descriptors while excluding scalar and array outputs', () => {
@@ -109,7 +111,40 @@ for (const operation of ['merge', 'midi']) {
 
 test('unknown tool operations and other commands do not promote outputPath or failure paths to files', () => {
   for (const [command, operation] of [['audio_tools', 'inspect'], ['audio_tools', 'unknown'], ['run_operation', 'convert'], ['export_editor_mix', 'merge']]) {
-    assert.deepEqual(buildJournalResults([job('not-files', { command, payload: { operation },
-      result: { outputPaths: ['/out/plural.wav'], outputPath: '/out/single.wav', failed: [{ path: '/input/source.wav' }] } })]), [])
+    const rows = buildJournalResults([job('not-files', { command, payload: { operation },
+      result: { outputPaths: ['/out/plural.wav'], outputPath: '/out/single.wav', failed: [{ path: '/input/source.wav' }] } })])
+    assert.ok(rows.every(row => row.outputs.length === 0))
   }
+})
+
+test('editor export uses only its canonical result.path and preserves exact file names', () => {
+  const [row] = buildJournalResults([job('editor-export', { command: 'export_editor_mix', payload: { outputDir: '/exports', project: { name: 'My mix', assets: [{ path: '/input/source.wav' }] } },
+    result: { path: '/exports/Mix.wav ', outputPath: '/exports/wrong.wav', outputs: [{ path: '/exports/unrelated.wav' }],
+      project: { path: '/project/session.json' } } })])
+  assert.deepEqual(row.outputs.map(output => output.path), ['/exports/Mix.wav '])
+  assert.equal(row.title, 'Mix.wav ')
+  assert.equal(row.operation, 'export_editor_mix')
+  assert.deepEqual(row.inputs, ['/input/source.wav'])
+})
+
+test('every terminal result-command record is visible without files while manual audio and nonprocessing jobs stay out', () => {
+  for (const status of ['completed', 'failed', 'cancelled', 'interrupted']) {
+    const [row] = buildJournalResults([job('empty-' + status, { command: 'export_editor_mix', payload: {}, result: null, status })])
+    assert.equal(row.status, status)
+    assert.equal(row.title, 'empty-' + status)
+    assert.deepEqual(row.outputs, [])
+  }
+  assert.deepEqual(buildJournalResults(['infer', 'infer_workflow', 'media_probe', 'model_download', 'runtime_install', 'env_info'].map(command =>
+    job(command, { command, result: null }))), [])
+  assert.equal(buildJournalResults([job('agent-empty', { source: 'agent', command: 'infer', result: null })]).length, 1)
+})
+
+test('editor export directories and unrelated output fields never become files, while current project inputs remain searchable', () => {
+  const [row] = buildJournalResults([job('editor-export', { command: 'export_editor_mix', payload: {
+    exportDir: '/exports/mix.wav', project: { name: 'Session Mix', sources: [{ path: '/input/voice.wav' }], assets: [{ path: '/input/voice.wav' }] },
+  }, result: { path: '/exports/mix.wav', outputs: [{ kind: 'file', path: '/exports/unrelated.wav' }], outputPath: '/exports/guessed.wav' } })])
+  assert.equal(row.title, 'Session Mix')
+  assert.deepEqual(row.outputs, [])
+  assert.deepEqual(row.inputs, ['/input/voice.wav'])
+  assert.deepEqual(filterJournalResults([row], 'voice.wav', 'time_desc'), [row])
 })

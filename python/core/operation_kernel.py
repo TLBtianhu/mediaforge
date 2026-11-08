@@ -161,6 +161,9 @@ class Job:
                 raise job_store.JobStoreError("job ownership or creation changed")
             if value["status"] not in TERMINAL_STATES:
                 raise job_store.JobStoreError("expected an authoritative terminal job")
+            # A worker's own cancellation is already local; only a newly
+            # observed disk cancellation should wake the termination watcher.
+            signal_cancel = value["status"] == "cancelled" and self.status != "cancelled"
             value = copy.deepcopy(value)
             self._stored = value
             self.command = value["command"]
@@ -177,7 +180,7 @@ class Job:
             self.runtime = value["runtime"]
             self.logs = value["logs"]
             self.persisted_status = value["status"]
-            if self.status == "cancelled":
+            if signal_cancel:
                 self.cancel_event.set()
 
     def update(self, **fields: Any) -> bool:
@@ -754,7 +757,7 @@ class OperationKernel:
                 fraction=min(1.0, max(0.0, float(fraction or 0))),
                 message=str(payload.get("current") or payload.get("message") or "running"),
             )
-        elif kind in {"task.result", "asset.done"}:
+        elif kind in {"task.result", "asset.done", "editor_mix_exported"}:
             failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
             if failed:
                 first = failed[0] if isinstance(failed[0], dict) else {"error": str(failed[0])}
@@ -766,6 +769,14 @@ class OperationKernel:
                 )
             else:
                 job.update(status="completed", result=result, message="completed", fraction=1.0)
+        elif kind == "task.cancelled":
+            previous = copy.deepcopy(job.result) if isinstance(job.result, dict) else {}
+            old_outputs = previous.get("outputs")
+            previous.update(result)
+            if old_outputs and not result.get("outputs"):
+                previous["outputs"] = old_outputs
+            job.update(status="cancelled", result=previous,
+                       message=str(payload.get("message") or "cancelled by worker"))
         elif kind == "error":
             if payload.get("recoverable") is True:
                 # Match the Rust supervisor: this is a durable diagnostic, not

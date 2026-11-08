@@ -71,11 +71,11 @@ test('active or queued siblings block removal before the backend transaction',as
   assert.equal(store.tasks.length,2)
  }
 })
-test('empty selection does not delete all records and clear-results preserves unrelated failures',async t=>{
+test('empty selection does not delete all records while clear-results removes complete terminal histories',async t=>{
  const {store}=await setup(t,[...group('one'),...group('failed',['failed'])])
  assert.equal(await store.clearResults([]),0)
- assert.equal(await store.clearResults(),1)
- assert.deepEqual(store.tasks.map(task=>task.id),['failed-0'])
+ assert.equal(await store.clearResults(),2)
+ assert.deepEqual(store.tasks.map(task=>task.id),[])
 })
 test('a rejected removal never hides records or overwrites concurrent journal progress',async t=>{
  const {store,journal}=await setup(t,[...group('result'),...group('live',['running'])])
@@ -158,4 +158,43 @@ test('missing selected jobs reject before IPC and an empty selection remains a n
  assert.deepEqual((await store.removeResults([])).removedJobIds,[])
  assert.equal(fixture.calls.length,before)
  assert.equal(store.tasks.length,1)
+})
+
+test('failed cancelled and interrupted audio records keep their partial files visible alongside empty terminal histories',async t=>{
+ const rows=group('partial',['failed','cancelled','interrupted','completed'])
+ rows.forEach((job,index)=>{job.result=index===1?null:{outputs:[{path:'D:/out/partial-'+index+'.wav'}]}})
+ const before=structuredClone(rows)
+ const {store}=await setup(t,rows)
+ assert.deepEqual(store.resultTasks.map(task=>task.id),rows.map(job=>job.jobId))
+ assert.equal(store.resultTasks.find(task=>task.id==='partial-0').outputs[0].path,'D:/out/partial-0.wav')
+ assert.equal(store.resultTasks.find(task=>task.id==='partial-1').outputs.length,0)
+ assert.equal(store.resultTasks.find(task=>task.id==='partial-2').status,'failed')
+ assert.equal(store.resultJobs[0].inputCount,4)
+ assert.equal(store.resultJobs[0].outputCount,3)
+ assert.deepEqual(fixture.rows(),before)
+ assert.equal(fixture.calls.some(call=>call.command==='save_app_store'),false)
+})
+
+test('result batches retain active and empty siblings and clear-results never deletes part of an active group',async t=>{
+ const mixed=group('mixed',['completed','running','failed'])
+ const {store}=await setup(t,[...mixed,...group('finished',['failed'])])
+ const batch=store.resultJobs.find(job=>job.id==='mixed')
+ assert.equal(batch.tasks.length,3);assert.equal(batch.inputCount,3);assert.equal(batch.outputCount,1)
+ assert.notEqual(batch.status,'done');assert.ok(batch.tasks.some(task=>task.id==='mixed-1'))
+ assert.equal(store.resultTasks.some(task=>task.id==='mixed-1'),false)
+ assert.equal(await store.clearResults(),1)
+ assert.deepEqual(store.tasks.map(task=>task.id),['mixed-0','mixed-1','mixed-2'])
+ assert.deepEqual(fixture.rows().map(job=>job.jobId),['mixed-0','mixed-1','mixed-2'])
+ await assert.rejects(store.removeResults(['mixed-0']))
+})
+
+test('terminal records with no files remain removable but partial workflow files require the results flow',async t=>{
+ const rows=group('workflow-run',['failed'],true)
+ rows[0].result={outputs:[{path:'D:/out/partial.wav'}]}
+ const {store}=await setup(t,[...rows,...group('empty',['completed']).map(job=>({...job,result:null}))])
+ assert.ok(store.resultTasks.some(task=>task.id==='empty-0'))
+ await assert.rejects(store.removeWorkflowRun('workflow','workflow-run'))
+ assert.equal(store.tasks.length,2)
+ assert.equal(await store.removeResult('empty-0'),1)
+ assert.deepEqual(store.resultTasks.map(task=>task.id),['workflow-run-0'])
 })

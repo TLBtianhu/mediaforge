@@ -18,7 +18,7 @@ import { useTaskStore, type SeparationJob, type SeparationTask } from '@/stores/
 import { useEditorStore, type OrphanedEditorProject } from '@/stores/editor'
 import { usePagedSelection } from '@/composables/usePagedSelection'
 import { resultType, RESULT_TYPE_KEYS, type ResultType } from '@/utils/resultType'
-import { makeResultListing, type ResultGroup } from './results/listing'
+import { makeResultListing, resultTaskOutcome, RESULT_OUTCOME_KEYS, type ResultGroup, type TaskResultOutcome } from './results/listing'
 import { NCheckbox, useDialog, useMessage, type DialogReactive } from 'naive-ui'
 import type { ResultRemovalResponse } from '@/features/tasks/journal'
 import { useMediaJobsStore } from '@/stores/mediaJobs'
@@ -54,9 +54,15 @@ const sortOptions = [
   { label: t('results.sortNameDesc'), value: 'name_desc' },
 ]
 
+const canonicalStatuses = computed(() => new Map(mediaJobs.jobs.map(job => [job.jobId, job.status])))
+function taskOutcome(item: SeparationTask) { return resultTaskOutcome(item, canonicalStatuses.value.get(item.id)) }
+function outcomeSummary(group: ResultGroup) {
+  return Object.entries(group.outcomeCounts).map(([status, count]) => `${t(RESULT_OUTCOME_KEYS[status as TaskResultOutcome])} ${count}`).join(' · ')
+}
 const { resultGroups, filteredResults, getFileName, getGroupTitle } = makeResultListing({
-  computed, t, task, search, typeFilter, sortBy, resultType,
+  computed, t, task, search, typeFilter, sortBy, resultType, taskOutcome,
 })
+const removableResultGroups = computed(() => resultGroups.value.filter(group => group.removable))
 const journalResults = computed(() => buildJournalResults(mediaJobs.jobs,
   new Set(task.tasks.flatMap(item => [item.id, item.jobId].filter((id): id is string => Boolean(id))))))
 const filteredJournalResults = computed(() => filterJournalResults(journalResults.value, search.value, sortBy.value))
@@ -74,14 +80,22 @@ const {
   page,
   pageSize,
   pageSizeOptions,
-  allSelected: allResultsSelected,
-  someSelected: someResultsSelected,
   toggleSelecting,
-  toggleSelection: toggleResultSelection,
-  toggleSelectPage: toggleSelectAllResults,
+  toggleSelection: toggleResultSelectionRaw,
   ensureItemPage,
 } = pagedSelection
 const pagedResults = computed(() => pagedSelection.pagedItems.value)
+const selectablePageIds = computed(() => pagedResults.value.filter(group => group.removable).map(group => group.id))
+const allResultsSelected = computed(() => selectablePageIds.value.length > 0 && selectablePageIds.value.every(id => selectedResultSet.value.has(id)))
+const someResultsSelected = computed(() => !allResultsSelected.value && selectablePageIds.value.some(id => selectedResultSet.value.has(id)))
+function toggleResultSelection(id: string) {
+  if (resultGroups.value.some(group => group.id === id && group.removable)) toggleResultSelectionRaw(id)
+}
+function toggleSelectAllResults(checked: boolean) {
+  const ids = new Set(selectablePageIds.value)
+  selectedResultIds.value = checked ? [...new Set([...selectedResultIds.value, ...ids])]
+    : selectedResultIds.value.filter(id => !ids.has(id))
+}
 
 const RESULT_DRAG_HOLD_MS = 260
 type ResultDragSelection = {
@@ -110,7 +124,8 @@ function resultCardId(item: Pick<ResultGroup, 'id'>) {
 }
 
 function openResultDir(group: ResultGroup) {
-  task.revealPath(group.primary.outputs[0]?.path || group.output)
+  const path = group.items.flatMap(item => item.outputs)[0]?.path
+  if (path) task.revealPath(path)
 }
 
 async function openInEditor(item: SeparationTask) {
@@ -161,7 +176,7 @@ async function refreshOrphanedEditorProjects(force = false) {
   }
   orphanedProjectsLoading.value = true
   try {
-    orphanedEditorProjects.value = await editor.listOrphanedProjects(task.resultTasks.map(item => item.id))
+    orphanedEditorProjects.value = await editor.listOrphanedProjects()
   } catch {
     orphanedEditorProjects.value = []
   } finally {
@@ -192,7 +207,7 @@ function handleCleanupOrphanedEditorProjects() {
     onPositiveClick: async () => {
       orphanedProjectsCleaning.value = true
       try {
-        const result = await editor.deleteOrphanedProjects(task.resultTasks.map(item => item.id))
+        const result = await editor.deleteOrphanedProjects()
         if (result.blockedProjectIds.length) {
           message.warning(t('results.removeEditorProjectsOpen', { count: result.blockedProjectIds.length }))
           return false
@@ -369,7 +384,7 @@ function handleRemoveSelected() {
 }
 
 function handleClearResults() {
-  confirmResultRemoval([...resultGroups.value], 'all')
+  confirmResultRemoval([...removableResultGroups.value], 'all')
 }
 
 function setResultSelected(id: string, selected: boolean) {
@@ -566,6 +581,7 @@ function formatDurationMs(value: number | undefined) {
           <n-checkbox
             :checked="allResultsSelected"
             :indeterminate="someResultsSelected"
+            :disabled="!selectablePageIds.length"
             @update:checked="toggleSelectAllResults"
           >
             {{ t('results.selectPage') }}
@@ -608,7 +624,7 @@ function formatDurationMs(value: number | undefined) {
             v-if="task.resultTasks.length"
             secondary
             type="error"
-            :disabled="resultRemovalBlocked"
+            :disabled="resultRemovalBlocked || !removableResultGroups.length"
             @click="handleClearResults"
           >
             <template #icon><n-icon :component="TrashOutline" /></template>
@@ -673,6 +689,7 @@ function formatDurationMs(value: number | undefined) {
           class="result-row__main"
           :class="{ 'result-row__main--selecting': selecting }"
           :aria-pressed="selecting ? selectedResultSet.has(item.id) : undefined"
+          :aria-disabled="selecting && !item.removable ? true : undefined"
           type="button"
           @click="handleResultRowClick(item.id)"
         >
@@ -696,6 +713,7 @@ function formatDurationMs(value: number | undefined) {
             <strong data-result-text>{{ getGroupTitle(item) }}</strong>
             <span class="result-row__meta">
               <span data-result-text class="result-row__type">{{ t(RESULT_TYPE_KEYS[item.resultType]) }}</span>
+              <span data-result-text>{{ t(RESULT_OUTCOME_KEYS[item.outcome]) }}</span>
               <span data-result-text class="result-row__model" :title="groupTaskIdTitle(item)">{{ item.model }}</span>
               <span data-result-text>{{ item.inputCount }} {{ t('results.inputUnit') }}</span>
               <span data-result-text>{{ item.outputCount }} {{ t('results.stemUnit') }}</span>
@@ -703,6 +721,8 @@ function formatDurationMs(value: number | undefined) {
               <span data-result-text class="result-row__time"><n-icon :component="TimeOutline" /> {{ formatTime(item.updatedAt) }}</span>
             </span>
             <span data-result-text class="result-row__path">{{ shortenPath(item.output) }}</span>
+            <span v-if="item.items.length > 1" data-result-text class="result-row__path">{{ outcomeSummary(item) }}</span>
+            <span v-if="!item.outputCount" data-result-text class="result-row__path">{{ t('results.noFiles') }}</span>
           </span>
 
           <span
@@ -715,15 +735,15 @@ function formatDurationMs(value: number | undefined) {
         </button>
 
         <div v-if="!selecting" class="result-row__actions" data-guide="result-actions">
-          <n-button v-if="item.inputCount === 1" size="small" type="primary" :disabled="removingResults" @click.stop="openInEditor(item.primary)">
+          <n-button v-if="item.inputCount === 1 && item.primary.outputs.length" size="small" type="primary" :disabled="removingResults" @click.stop="openInEditor(item.primary)">
             <template #icon><n-icon :component="ColorWandOutline" /></template>
             {{ t('results.openInEditor') }}
           </n-button>
-          <n-button size="small" type="primary" secondary @click.stop="openResultDir(item)">
+          <n-button v-if="item.outputCount" size="small" type="primary" secondary @click.stop="openResultDir(item)">
             <template #icon><n-icon :component="FolderOpenOutline" /></template>
             {{ t('results.openDirectory') }}
           </n-button>
-          <n-button size="small" quaternary type="error" :disabled="resultRemovalBlocked" @click.stop="handleRemoveResult(item)">
+          <n-button size="small" quaternary type="error" :disabled="resultRemovalBlocked || !item.removable" :title="!item.removable ? t('results.removeRunningBatch') : undefined" @click.stop="handleRemoveResult(item)">
             <template #icon><n-icon :component="TrashOutline" /></template>
             {{ t('results.removeAction') }}
           </n-button>
@@ -736,12 +756,12 @@ function formatDurationMs(value: number | undefined) {
               :key="result.id"
               :class="['result-detail-card', { 'result-detail-card--compact': item.items.length === 1 }]"
             >
-              <div v-if="item.items.length > 1" class="result-detail-card__head">
+              <div class="result-detail-card__head">
                 <div>
-                  <strong>{{ getFileName(result.input) }}</strong>
-                  <span>{{ result.outputs.length }} {{ t('results.stemUnit') }} · {{ formatDurationMs(taskDurationMs(result)) }}</span>
+                  <strong v-if="item.items.length > 1">{{ getFileName(result.input) }}</strong>
+                  <span>{{ t(RESULT_OUTCOME_KEYS[taskOutcome(result)]) }} · {{ result.outputs.length ? `${result.outputs.length} ${t('results.stemUnit')}` : t('results.noFiles') }} · {{ formatDurationMs(taskDurationMs(result)) }}</span>
                 </div>
-                <div class="result-detail-card__actions">
+                <div v-if="item.items.length > 1 && result.outputs.length" class="result-detail-card__actions">
                   <n-button size="tiny" secondary :disabled="removingResults" @click.stop="openInEditor(result)">
                     <template #icon><n-icon :component="ColorWandOutline" /></template>
                     {{ t('results.openInEditor') }}
@@ -752,6 +772,7 @@ function formatDurationMs(value: number | undefined) {
                   </n-button>
                 </div>
               </div>
+              <p v-if="result.error || result.message" class="result-row__path">{{ result.error || result.message }}</p>
               <div class="result-detail-card__stems">
                 <div v-for="output in result.outputs" :key="output.path" class="stem-line" :title="output.path">
                   <span class="stem-line__stem">{{ output.stem }}</span>

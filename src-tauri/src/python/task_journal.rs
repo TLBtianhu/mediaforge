@@ -793,6 +793,14 @@ fn recover(root: &Path, id: &str, value: Value) -> AppResult<Value> {
     Ok(latest)
 }
 
+/// Keep catalog membership stable while a caller applies a domain operation to
+/// the validated snapshot. Callers must acquire any JSON guard inside this scope.
+pub(crate) fn with_catalog_records<T>(root: &Path, action: impl FnOnce(&[Value]) -> AppResult<T>) -> AppResult<T> {
+    let _catalog = catalog_lock(root)?;
+    let rows = read_all_unlocked(root)?;
+    action(&rows)
+}
+
 pub(crate) fn list(root: &Path) -> AppResult<Vec<Value>> {
     let _catalog = catalog_lock(root)?;
     let rows = read_all_unlocked(root)?;

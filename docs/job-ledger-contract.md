@@ -77,6 +77,10 @@ Kernel清理子进程失败时继续持有owner lease与临时请求文件，终
 catalog及所选owner/write锁覆盖引用检查、文件动作和记录删除；已存编辑工程读取至文件动作复用JSON写锁，
 防本进程保存穿过检查。输入、其它任务的输入/已知产物、活动任务声明输出范围、编辑工程引用、模型与运行时、
 程序及非outputs应用数据受保护；链接/reparse祖先、非普通文件和无法可靠检查的路径保留。
+编辑器导出仅从export_editor_mix的result.path推导产物，不复制为outputs；工程snapshot与source路径不是输出。
+仅当前v4请求、合法project.id、exportDir精确等于本数据根editor-projects/<id>/exports，且已存v4工程id确认归属时，
+该目录下wav/flac普通文件可经过应用数据保护的窄例外；模型/输入/其它任务/编辑器/媒体库/程序/reparse等其余检查不豁免。
+缺工程、错误id/目录、相邻文件或旧schema不获得例外。相对sources/assets输入或活导出目录无法确定时保留候选文件。
 音频request.output/workbenchOutputs及已知SaveAudio节点路径是写目标，不当作选中任务自身输入；
 其它终态任务保护明确产物，活任务保护未来输出目录，cancelled primary仍按有活child的完整组保护共享图。
 图内load文件/批量文件夹及真实命名输入须保护；没有被有效绝对picker/绑定覆盖的相对输入无法确定CWD时保留候选文件，
@@ -95,10 +99,27 @@ checkedJobIds/removedJobIds/trashed/failed[{path,error}]/retained[{path,reason}]
 受保护文件的retained不是回收失败，UI必须告知保留数量，不能报告全部文件已回收。预检无文件/记录删除动作，
 最终提交重新检查；前端仅按后端removedJobIds安装内存删除标记，不另存删除清单或回写job生命周期。
 Windows使用专用STA线程与recycle-only/no-UI操作；自动化以临时文件和注入回收器验证失败/引用边界，
-不触发系统回收站或GUI。export_editor_mix及未知输出形状尚未纳入结果页，不承诺任意插件文件的回收归属。
+不触发系统回收站或GUI。未知输出形状不猜文件归属，可显示终态处理记录但不能据任意嵌套路径回收。
 音频单条、多选与清空统一使用ID-only预检及最终事务；前端不再规划回收路径、共享引用或空目录链。
 浏览器预览只支持严格当前格式的整组记录删除，文件回收明确要求桌面端；教程使用同一响应形状并保留虚拟资产。
 组件在预检等待中卸载后不得再发最终删除；已提交的原生事务按实际回执更新store，不能因路由离开伪造取消。
+
+结果页包含有文件和无文件的终态处理记录；音频组由allJobs保全全部成员，再筛选至少有一条终态的组，
+不只以成功leaf构建一份不完整组。混合组显示各成员真实终态与计数；仍有queued/running成员时可查看已有结果，
+整组不可删除/选择。清空仅选择完整终态组，不删除正在执行批次的成功子集。interrupted状态从唯一journal派生，
+不改写audio执行层的failed映射，也不新增持久状态副本。无文件显示“未生成文件”，文件/编辑器按钮不对空产物开放。
+查询、下载和运行时管理不进入处理结果列表；手动音频不在generic区重复展示。
+
+Rust、Python Kernel与常驻前端识别editor_mix_exported完整结果及task.cancelled，保留单一result.path和已知部分产物；
+worker主动取消即便exit0仍是cancelled。recoverable=true仅更新诊断不提前终态；迟到事件不能倒退终态。
+worker主动取消不重新触发外部取消watcher去终止自身收尾，外部新观察的cancelled仍发取消信号；owner/配额仍须实际reap后释放。
+
+编辑工程仅在用户单独确认时清理，确认说明会删除其目录中的录音、缓存和默认导出。
+list_orphaned_editor_projects由后端strict完整catalog推导，不接收前端activeTaskIds；delete仅接显式projectIds，
+在catalog→JSON锁内重新读取当前工程v4与任务。sourceTaskId仍存在、export job引用project.id或任一现存job明确绝对路径位于工程内，
+均保留；损坏catalog或重复JSON键先报错，不把它们当空集合。只有命名和id/sourceTaskId双重证明归属的closed任务型项目才清，
+独立/另存工程保留。选择后有新任务引用须block，不把后来出现的其它孤立项目加入删除集。
+这不是所有相对路径、外部进程、SQLite或任意工程之间的通用资产删除事务；其引用协议仍需后续统一。
 
 目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
 执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。

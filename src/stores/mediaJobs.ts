@@ -73,16 +73,21 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
       return
     }
     const payload = event.payload || {}
-    if (isTaskProgress(event.type) || event.type === 'task.started' || event.type === 'task.stage') {
+    const editorExport = job.command === 'export_editor_mix'
+    if (isTaskProgress(event.type) || event.type === 'task.started' || event.type === 'task.stage'
+      || editorExport && event.type === 'editor_export_progress') {
       const fraction = Number(payload.fraction ?? payload.overallFraction ?? (Number(payload.total) > 0 ? Number(payload.completed ?? payload.done ?? 0) / Number(payload.total) : job.fraction))
       put({ ...job, status: 'running', fraction: Number.isFinite(fraction) ? Math.max(0, Math.min(0.99, fraction)) : job.fraction,
         message: String(payload.current || payload.message || job.message),
         result: payload.outputs ? snapshot({ ...job.result, ...payload }) : job.result })
-    } else if (isTaskResult(event.type)) {
+    } else if (isTaskResult(event.type) || editorExport && event.type === 'editor_mix_exported') {
       const failed = Array.isArray(payload.failed) && payload.failed.length > 0
         || journalOperation(job).startsWith('media_') && Array.isArray(payload.outputs) && payload.outputs.length === 0
       put({ ...job, status: failed ? 'failed' : 'completed', fraction: 1, result: snapshot(payload),
         message: String(payload.message || ''), error: failed ? String(payload.message || 'Some inputs failed') : null, finishedAt: now() })
+    } else if (event.type === 'error' && payload.recoverable === true) {
+      // Match the durable backend: a diagnostic can be followed by a valid result.
+      put({ ...job, message: String(payload.message || job.message) })
     } else if (event.type === 'error' || event.type === 'task.cancelled') {
       const cancelled = event.type === 'task.cancelled'
       const result = snapshot({ ...job.result, ...payload })
