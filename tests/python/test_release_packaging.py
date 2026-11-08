@@ -82,8 +82,9 @@ class ReleaseStagingFixtureTests(unittest.TestCase):
         # credential reading, asset compression and installer commands never run.
         self.runner = self.root / "run-functions.ps1"
         self.runner.write_text("""
-param([string]$PackagingScript, [string]$FixtureScript, [string]$FixtureRoot)
+param([string]$PackagingScript, [string]$FixtureScript, [string]$FixtureRoot, [string]$ReleaseProcessScript)
 $ErrorActionPreference = 'Stop'
+. $ReleaseProcessScript
 $tokens = $null
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($PackagingScript, [ref]$tokens, [ref]$errors)
@@ -102,6 +103,7 @@ foreach ($statement in $ast.EndBlock.Statements) {
         result = subprocess.run(
             [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(self.runner),
              "-PackagingScript", str(ROOT / "scripts/package-release.ps1"),
+             "-ReleaseProcessScript", str(ROOT / "scripts/release-signing.ps1"),
              "-FixtureScript", str(fixture), "-FixtureRoot", str(self.root)],
             capture_output=True, text=True, timeout=30,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -150,7 +152,8 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
         files = {
             "scripts/package-release.ps1": (ROOT / "scripts/package-release.ps1").read_bytes(),
             "scripts/release-signing.ps1": (ROOT / "scripts/release-signing.ps1").read_bytes() +
-                b"\nfunction Get-ReleaseExecutableInfo { param($Path) [PSCustomObject]@{ProductName='MediaForge'; ProductVersion='0.0.32'} }\nfunction Get-ReleasePythonVersion { param($PythonPath) '3.12' }\n",
+                b"\nfunction Get-ReleaseExecutableInfo { param($Path) [PSCustomObject]@{ProductName='MediaForge'; ProductVersion='0.0.32'} }\nfunction Get-ReleasePythonVersion { param($PythonPath) '3.12' }\n" +
+                b"$script:FixtureReleaseProcess = ${function:Invoke-ReleaseProcess}\nfunction Invoke-ReleaseProcess { param($FilePath, $Arguments, $WorkingDirectory, $Environment = @{}, $TimeoutMilliseconds = 120000)\nif ($FilePath -like '*fake-iscc.cmd') { [IO.File]::WriteAllText((Join-Path $env:MEDIAFORGE_INSTALLER_OUTPUT ('MediaForge-' + $env:MEDIAFORGE_VERSION + '-' + $env:MEDIAFORGE_PACKAGE_SUFFIX + '-setup.exe')), 'fixture'); return [PSCustomObject]@{ExitCode=0;Stdout='';Stderr=''} }; & $script:FixtureReleaseProcess @PSBoundParameters }\n",
             "scripts/stage-plugin-sdk.ps1": (ROOT / "scripts/stage-plugin-sdk.ps1").read_bytes(),
             "installer/mediaforge.iss": (ROOT / "installer/mediaforge.iss").read_bytes(),
             "package.json": json.dumps({"version": version}).encode(),
@@ -177,8 +180,9 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             "release/candidates/0.0.32/MediaForge-0.0.32-windows-x64-update.zip.sig": b"stale signature",
         }
         project = self.write_files("project", files)
-        # Only the version reader is replaced for the fake PE bytes. ISCC is
-        # the only fake external process. The real entry point stages
+        # PE/Python identity probes and the compiler boundary are mocked. The
+        # actual hidden subprocess helper is covered separately with real tiny
+        # children. The real entry point stages
         # and compresses tiny source fixtures; it never executes application,
         # bootstrap, worker, media tools or an installer.
         compiler = self.root / "fake-iscc.cmd"

@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "pymss-studio"
-version = "0.0.33"
+version = "0.0.34"
 dependencies = [
  "base64 0.22.1",
  "chrono",

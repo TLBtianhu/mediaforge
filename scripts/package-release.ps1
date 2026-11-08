@@ -103,12 +103,9 @@ function Compress-Folder([string]$Source, [string]$Destination, [string]$Label) 
     # 7-Zip 比 Compress-Archive 快一个量级（5 GB 目录：约 3 分钟 vs 10 分钟）。
     $z7 = 'C:\Program Files\7-Zip\7z.exe'
     if (Test-Path $z7) {
-        Push-Location $Source
-        try {
-            $ErrorActionPreference = 'Continue'
-            & $z7 a -tzip -mx=3 -bso0 -bsp0 $Destination * | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "7z 压缩失败：$LASTEXITCODE" }
-        } finally { Pop-Location }
+        $result = Invoke-ReleaseProcess -FilePath $z7 -Arguments @('a', '-tzip', '-mx=3', '-bso0', '-bsp0', $Destination, '*') -WorkingDirectory $Source -TimeoutMilliseconds 600000
+        Write-ReleaseProcessOutput $result
+        if ($result.ExitCode -ne 0) { throw "7z compression failed (exit $($result.ExitCode))" }
     } else {
         Compress-Archive -Path "$Source\*" -DestinationPath $Destination -CompressionLevel Optimal
     }
@@ -123,16 +120,6 @@ function Assert-VersionConsistent([string]$Expected) {
         throw "版本不一致：package.json=$pkg tauri.conf.json=$conf Cargo.toml=$cargo（期望 $Expected）"
     }
     Write-Host "  版本一致：$Expected"
-}
-
-function Invoke-Native([string]$Label, [scriptblock]$Block) {
-    # PowerShell 5.1 会把原生命令写到 stderr 的进度信息当成终止错误，
-    # 所以这里只认退出码。
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try { & $Block 2>&1 | Select-Object -Last 6 | ForEach-Object { Write-Host ("  " + $_) } }
-    finally { $ErrorActionPreference = $previous }
-    if ($LASTEXITCODE -ne 0) { throw "$Label failed with exit code $LASTEXITCODE" }
 }
 
 function Copy-ReleaseTree {
@@ -234,10 +221,7 @@ if (Test-Path -LiteralPath "$stage\python-runtime\python.exe" -PathType Leaf) {
 
 if (-not $SkipBuild) {
     Write-Host "[1/6] 生产构建"
-    $env:NO_PROXY = 'rsproxy.cn,static.crates.io,index.crates.io'
-    Push-Location $root
-    try { Invoke-Native 'tauri build' { pnpm tauri build --no-bundle } }
-    finally { Pop-Location }
+    Invoke-ReleaseNativeBuild -Root $root -PythonPath (Join-Path $bootstrapSource 'python.exe')
 } else {
     Write-Host "[1/5] 跳过构建（-SkipBuild）"
 }
@@ -344,7 +328,9 @@ $env:MEDIAFORGE_INSTALLER_ICON = Join-Path $root 'src-tauri\icons\icon.ico'
 $env:MEDIAFORGE_PACKAGE_SUFFIX = $PackageSuffix
 $setup = "$out\MediaForge-$Version-$PackageSuffix-setup.exe"
 Assert-ReleaseOwnedPath -Path $setup -OutputRoot $out -ExpectedName "MediaForge-$Version-$PackageSuffix-setup.exe"
-Invoke-Native 'ISCC' { & $iscc $localIss }
+$compilerResult = Invoke-ReleaseProcess -FilePath $iscc -Arguments @($localIss) -WorkingDirectory $root -TimeoutMilliseconds 600000
+Write-ReleaseProcessOutput $compilerResult
+if ($compilerResult.ExitCode -ne 0) { throw "ISCC failed with exit code $($compilerResult.ExitCode)" }
 
 Write-Host "[6/6] 安装包输出"
 if (-not (Test-Path $setup)) { throw "没有找到安装包: $setup" }

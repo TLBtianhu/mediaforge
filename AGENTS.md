@@ -19,7 +19,7 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 
 ## 强制规则：1.0前当前格式与Python版本
 
-- 1.0之前不做向下兼容：结构变了直接换格式，不写历史数据迁移、旧入口回退或双写副本。
+- 1.0之前不做向下兼容：结构变了直接换格式，不写历史数据迁移、旧入口回退或双写副本；不为旧格式另做专用备份、重建或兼容引导流程。
 - 只接受当前schema；旧、缺失或未来schema明确报错并保留原文件，不能把加载失败当空数据写回。
 - 同类持久数据只有一个真源。任务以单job文件为准，列表在读取时聚合；UI内存投影不另存副本。
 - 任务当前格式为schemaVersion=2，音频排队/媒体/Agent共用`agent-jobs/<jobId>.json`，禁止恢复`task-history`读写。

@@ -377,8 +377,8 @@ they do not claim cross-tab transactional storage.
   `start_audio_tool` and the Rust background supervisor, which writes a durable
   shared journal entry before execution. The resident media store recovers job
   snapshots across page changes; queue/results consume the shared journal.
-  Audio history remains physically separate and cross-process scheduling is
-  not yet unified.
+  Audio/media/Agent use the same current job files and cross-process worker
+  admission. Each executor still schedules its own source with local FIFO.
 - MCP callers use `workflow_start`; single-task callers keep using
   `pipeline_start`.
 
@@ -388,21 +388,24 @@ they do not claim cross-tab transactional storage.
 
 ```powershell
 $env:CARGO_BUILD_JOBS = '4'
-pnpm tauri build --no-bundle --ci
-.\scripts\package-release.ps1 -Version 0.0.33 -SkipBuild -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.33
+.\scripts\package-release.ps1 -Version 0.0.34 -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.34
 ```
 
 `-SkipBuild`仍校验源EXE的ProductName/ProductVersion；三个源码版本与Cargo.lock须由
 `scripts/sync-build-version.ps1`一起同步。程序打包不再兼做推理资产构建。
+默认打包从当前源码运行官方Tauri构建，再检查EXE版本；各外部调用隐藏控制台并保留双流诊断与退出码。
+本地候选的verification.json还须绑定干净源码提交、构建前后源码SHA与EXE/stage/归档全量哈希；
+版本号一致本身不能证明-SkipBuild使用了最新源码。
 `BootstrapDir`明确选择工作区内已准备好的3.12最小解释器，源或旧stage的实际版本不符就拒绝。
 bootstrap准备仅接受全新目录，不自动删除旧内容。工作区当前`python-runtime`已是实际3.12.13；
 若在`release/bootstrap-*`准备另一份新源，使用显式`BootstrapDir`选择，不能默默回退旧源。
 签名仅使用显式路径/进程环境，`-SkipSign`不读取签名凭据；不要在有签名环境变量时
 运行signer的help，某些CLI版本可能把环境默认值打印到终端。禁止记录私钥或密码。
 
-`scripts/smoke-release-candidate.py`以独立AppId和临时安装目录验证安装、升级与静默
-卸载，保留配置/模型/运行时样本并校验哈希。它不会启动应用，拒绝清理仍有进程占用的
-测试目录。不要拿正式AppId、用户profile或当前运行的测试窗口代替该流程。
+当前单stage候选用`scripts/smoke-installer.ps1`显式stage/版本/Python3.12/compiler重编独立AppId，
+核对安装布局、全文件与bootstrap health后静默卸载，校验配置/模型/运行时样本保留。
+正式setup只记录哈希，不执行；不启动应用GUI，拒绝清理仍有进程占用的测试目录。
+不为旧格式开发迁移、备份/重建或兼容引导。不要拿正式AppId、用户profile或旧测试窗口代替该流程。
 
 运行时CLI冒烟使用`make-fixture-runtime.ps1`的小型假解释器资产及本地HTTP，证明下载、
 校验、解包、指针激活与回滚，不证明真实PyTorch或模型兼容。当前Tauri 2.11.2的三个
