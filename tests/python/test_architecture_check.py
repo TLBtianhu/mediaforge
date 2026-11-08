@@ -187,6 +187,13 @@ class ExecutionManifestTests(unittest.TestCase):
         self.assertTrue(any("ghost_event" in problem for problem in problems))
         self.assertTrue(any("task.ghost" in problem for problem in problems))
 
+    def test_custom_terminal_events_require_a_declared_result_event(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["domains"]["runtime"]["commands"]["info"]["command"] = "runtime_info"
+        manifest["execution"]["terminalEvents"] = {"runtime_info": ["error", "custom_done"]}
+        problems = architecture.check_execution_manifest(manifest)
+        self.assertTrue(any("custom_done" in problem and "resultEvent" in problem for problem in problems))
+
     def test_result_event_must_appear_in_its_terminal_list(self) -> None:
         manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
         manifest["domains"]["runtime"]["commands"]["info"]["resultEvent"] = "runtime_install_finished"

@@ -118,7 +118,8 @@
           "command": "export_editor_mix",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "resultEvent": "editor_mix_exported"
         }
       }
     },
@@ -151,7 +152,8 @@
           "command": "delete_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "resultEvent": "model_delete_done"
         },
         "delete_tool": {
           "handler": "core.worker_models:cmd_delete_tool_model",
@@ -186,7 +188,8 @@
           "command": "cleanup_model_residual_files",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "resultEvent": "model_residual_cleanup_done"
         },
         "custom.import": {
           "handler": "core.worker_custom_models:cmd_import_custom_model",
@@ -346,7 +349,8 @@
           "command": "list_nodes",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "resultEvent": "nodes_list"
         },
         "operations": {
           "handler": "core.worker_operations:cmd_list_operations",

@@ -451,6 +451,9 @@ class WorkerTerminalContractTests(unittest.TestCase):
             "manage_optional_package": "optional_package_status",
             "manage_plugin": "plugin_manage_result",
             "run_operation": "task.result",
+            "delete_model": "model_delete_done",
+            "cleanup_model_residual_files": "model_residual_cleanup_done",
+            "list_nodes": "nodes_list",
         }
         for command, event in expected.items():
             self.assertEqual(_result_events().get(command), event)
@@ -465,6 +468,14 @@ class WorkerTerminalContractTests(unittest.TestCase):
             snapshot = kernel.get(job.job_id).snapshot()
             self.assertEqual(snapshot["status"], "completed")
             self.assertEqual(snapshot["result"], result)
+
+    def test_custom_model_delete_terminal_event_completes_the_job(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            kernel = OperationKernel(Path(raw))
+            job = owned_job("delete_result", "delete_model", {}, Path(raw))
+            job.update(status="running")
+            kernel._consume(job, {"type": "model_delete_done", "payload": {"model": "fixture"}})
+            self.assertEqual(kernel.get(job.job_id).snapshot()["status"], "completed")
 
     def _run_fake_worker(self, source: str) -> dict:
         with tempfile.TemporaryDirectory() as raw:

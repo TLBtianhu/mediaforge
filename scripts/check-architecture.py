@@ -252,11 +252,13 @@ def python_source_text() -> str:
 def check_execution_manifest(manifest: dict) -> list[str]:
     """执行清单也只有一个真源：bootstrap 选择不能靠 Rust 再写一份命令名单。"""
     commands = set()
+    entries: dict[str, dict] = {}
     for domain in (manifest.get("domains") or {}).values():
         for entry in (domain.get("commands") or {}).values():
             name = entry.get("command")
             if isinstance(name, str) and name:
                 commands.add(name)
+                entries[name] = entry
     execution = manifest.get("execution") or {}
     bootstrap = execution.get("bootstrap") or {}
     worker = list(bootstrap.get("worker") or [])
@@ -314,6 +316,13 @@ def check_execution_manifest(manifest: dict) -> list[str]:
             problems.append(f"protocol: execution.terminalEvents 的 {command} 不是任何命令的 command")
         if len(set(kinds)) != len(kinds):
             problems.append(f"protocol: execution.terminalEvents.{command} 有重复项")
+        custom = [kind for kind in kinds if "." not in kind and kind != "error"]
+        if custom and command not in native:
+            declared = (entries.get(command) or {}).get("resultEvent")
+            if not isinstance(declared, str) or not declared:
+                problems.append(
+                    f"protocol: {command} 有自定义终态 {custom} 但没声明 resultEvent"
+                )
         for kind in kinds:
             if "." in kind:
                 if kind not in canonical:
