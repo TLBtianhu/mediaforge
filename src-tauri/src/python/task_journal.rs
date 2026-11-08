@@ -1088,6 +1088,43 @@ mod tests {
 
 
     #[test]
+    fn thousand_job_histories_are_read_once_and_delta_polls_stay_cheap() {
+        let root = tempfile::tempdir().unwrap();
+        enqueue_manual(root.path(), "run_operation", "bulk-template", &json!({"operation": "fixture"})).unwrap();
+        let template_path = job_path(root.path(), "bulk-template").unwrap();
+        let template = read_job(&template_path).unwrap().unwrap();
+        fs::remove_file(&template_path).unwrap();
+        for index in 0..1000 {
+            let id = format!("bulk-{index}");
+            let mut row = template.clone();
+            row["jobId"] = json!(id);
+            row["createdAt"] = json!((index + 1) as f64);
+            row["updatedAt"] = json!((index + 1) as f64);
+            // The test writes the file directly: this case measures read cost,
+            // not the enqueue path (which has its own tests).
+            fs::write(job_path(root.path(), &id).unwrap(), serde_json::to_vec(&row).unwrap()).unwrap();
+        }
+        let full = read_delta(root.path(), None).unwrap();
+        assert!(full.full);
+        assert_eq!(full.jobs.len(), 1000, "a full read must return every record");
+        let known: HashMap<String, f64> = full
+            .jobs
+            .iter()
+            .map(|row| (row["jobId"].as_str().unwrap().to_string(), row["updatedAt"].as_f64().unwrap()))
+            .collect();
+        let parsed = journal_parse_count(root.path());
+        let delta = read_delta(root.path(), Some(&known)).unwrap();
+        assert!(!delta.full);
+        assert!(delta.removed.is_empty());
+        assert_eq!(delta.jobs.len(), 0, "an unchanged history must not be resent");
+        assert_eq!(
+            journal_parse_count(root.path()),
+            parsed,
+            "1000 unchanged job files must not be re-parsed by a delta poll"
+        );
+    }
+
+    #[test]
     fn journal_delta_reports_only_changed_records_and_removed_ids() {
         let root = tempfile::tempdir().unwrap();
         for id in ["delta_a", "delta_b"] {

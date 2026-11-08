@@ -25,6 +25,19 @@ class JobStoreTests(unittest.TestCase):
         self.jobs = self.root / "agent-jobs"
         self.jobs.mkdir()
 
+    def test_large_histories_are_read_completely_and_returned_as_copies(self):
+        for index in range(1000):
+            write_record(self.jobs, job_record(f"bulk_{index}"))
+        first = job_store.read_jobs_copy(self.jobs)
+        self.assertEqual(len(first), 1000)
+        second = job_store.read_jobs_copy(self.jobs)
+        self.assertEqual(set(first), set(second))
+        # Mutating a returned record must not corrupt the cached revision.
+        key = next(iter(second))
+        second[key]["status"] = "mutated"
+        third = job_store.read_jobs_copy(self.jobs)
+        self.assertNotEqual(third[key]["status"], "mutated")
+
     def snapshot(self):
         return {path.name: path.read_bytes() for path in self.jobs.glob("*.json")}
 
