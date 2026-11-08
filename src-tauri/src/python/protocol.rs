@@ -13,35 +13,51 @@ struct ManifestEvents {
     terminal: Vec<String>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+struct ManifestBootstrap {
+    #[serde(default)]
+    worker: Vec<String>,
+    #[serde(default)]
+    native: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ManifestExecution {
+    #[serde(default)]
+    bootstrap: ManifestBootstrap,
+}
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
     events: ManifestEvents,
+    #[serde(default)]
+    execution: ManifestExecution,
 }
 
-#[derive(Debug)]
-pub struct EventVocabulary {
-    pub canonical: Vec<String>,
-    pub terminal: Vec<String>,
-}
-
-fn vocabulary() -> &'static EventVocabulary {
-    static VOCABULARY: OnceLock<EventVocabulary> = OnceLock::new();
-    VOCABULARY.get_or_init(|| {
-        let manifest: Manifest = serde_json::from_str(MANIFEST_JSON)
-            .expect("manifest/protocol.json must stay valid JSON");
-        EventVocabulary {
-            canonical: manifest.events.canonical,
-            terminal: manifest.events.terminal,
-        }
+fn manifest() -> &'static Manifest {
+    static MANIFEST: OnceLock<Manifest> = OnceLock::new();
+    MANIFEST.get_or_init(|| {
+        serde_json::from_str(MANIFEST_JSON).expect("manifest/protocol.json must stay valid JSON")
     })
 }
 
 pub fn is_canonical_event(kind: &str) -> bool {
-    vocabulary().canonical.iter().any(|name| name == kind)
+    manifest().events.canonical.iter().any(|name| name == kind)
 }
 
 pub fn is_terminal_event(kind: &str) -> bool {
-    vocabulary().terminal.iter().any(|name| name == kind)
+    manifest().events.terminal.iter().any(|name| name == kind)
+}
+
+/// Commands that must run on the bootstrap interpreter: the worker commands the
+/// manifest declares plus native Rust entries that drive pip directly.
+pub fn is_bootstrap_command(command: &str) -> bool {
+    let bootstrap = &manifest().execution.bootstrap;
+    bootstrap
+        .worker
+        .iter()
+        .chain(bootstrap.native.iter())
+        .any(|name| name == command)
 }
 
 /// Envelope kinds the task journal consumes although they are not engine stream
@@ -76,32 +92,44 @@ mod tests {
 
     #[test]
     fn manifest_events_are_well_formed() {
-        let vocabulary = vocabulary();
-        assert!(!vocabulary.canonical.is_empty(), "canonical events must not be empty");
-        for name in &vocabulary.canonical {
+        let events = &manifest().events;
+        assert!(!events.canonical.is_empty(), "canonical events must not be empty");
+        for name in &events.canonical {
             assert!(
                 name.starts_with("task.") || name.starts_with("asset."),
                 "event {name} must be namespaced"
             );
         }
-        for terminal in &vocabulary.terminal {
+        for terminal in &events.terminal {
             assert!(
-                vocabulary.canonical.contains(terminal),
+                events.canonical.contains(terminal),
                 "terminal event {terminal} must be canonical"
             );
         }
-        assert!(vocabulary.terminal.iter().any(|name| name == "task.result"));
+        assert!(events.terminal.iter().any(|name| name == "task.result"));
     }
 
     #[test]
     fn journal_accepts_every_canonical_task_event_but_no_asset_event() {
-        for name in &vocabulary().canonical {
+        for name in &manifest().events.canonical {
             if name.starts_with("task.") {
                 assert!(is_journal_event(name), "journal must observe {name}");
             } else {
                 assert!(!is_journal_event(name), "journal must not observe {name}");
             }
         }
+    }
+
+    #[test]
+    fn bootstrap_commands_come_from_the_manifest() {
+        let bootstrap = &manifest().execution.bootstrap;
+        assert!(!bootstrap.worker.is_empty(), "bootstrap worker commands must be declared");
+        for command in bootstrap.worker.iter().chain(bootstrap.native.iter()) {
+            assert!(is_bootstrap_command(command), "{command} must be recognised");
+        }
+        assert!(is_bootstrap_command("update_runtime_core"));
+        assert!(!is_bootstrap_command("infer"));
+        assert!(!bootstrap.native.iter().any(|name| bootstrap.worker.contains(name)));
     }
 
     #[test]

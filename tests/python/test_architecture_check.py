@@ -89,5 +89,34 @@ class RustEventLiteralTests(unittest.TestCase):
             self.assertTrue(any("task.ghost" in problem for problem in problems))
 
 
+class ExecutionManifestTests(unittest.TestCase):
+    def manifest(self, worker: list[str], native: list[str]) -> dict:
+        return {
+            "domains": {"runtime": {"commands": {"info": {"command": "runtime_info"}}}},
+            "execution": {"bootstrap": {"worker": worker, "native": native}},
+        }
+
+    def test_worker_entries_must_exist(self) -> None:
+        problems = architecture.check_execution_manifest(
+            self.manifest(["runtime_info", "runtime_ghost"], ["update_runtime_core"])
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("runtime_ghost", problems[0])
+
+    def test_valid_execution_manifest_passes(self) -> None:
+        self.assertEqual(
+            architecture.check_execution_manifest(
+                self.manifest(["runtime_info"], ["update_runtime_core"])
+            ),
+            [],
+        )
+
+    def test_worker_and_native_must_not_overlap(self) -> None:
+        problems = architecture.check_execution_manifest(
+            self.manifest(["runtime_info"], ["runtime_info"])
+        )
+        self.assertTrue(any("重叠" in problem for problem in problems))
+
+
 if __name__ == "__main__":
     unittest.main()

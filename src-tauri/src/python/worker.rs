@@ -139,17 +139,7 @@ impl Drop for RuntimeAccessGuard<'_> {
 }
 
 fn requires_bootstrap_python(command: &str) -> bool {
-    matches!(
-        command,
-        "health"
-            | "runtime_info"
-            | "runtime_env_sizes"
-            | "runtime_core_versions"
-            | "install_runtime"
-            | "activate_runtime"
-            | "delete_runtime"
-            | "update_runtime_core"
-    )
+    super::protocol::is_bootstrap_command(command)
 }
 
 fn allows_bootstrap_without_runtime(command: &str) -> bool {

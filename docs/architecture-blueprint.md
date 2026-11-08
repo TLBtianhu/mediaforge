@@ -140,6 +140,8 @@ pymss 以外部包形式存在，通过 `core` 里的 audio 适配器接入同�
 10. Rust 里硬编码的 `task.*` / `asset.*` 事件名必须在 `protocol.json.events.canonical` 里；
     `events.terminal` 必须是 canonical 的子集（`scripts/check-architecture.py`）。
     诊断日志（`session_log::append` 的类别）不属于引擎事件词表，不得占用 `task.*` 前缀
+11. `protocol.json.execution` 的 bootstrap 清单是解释器选择的唯一真源：worker 项必须在
+    `domains` 里存在，native 项不得与 worker 项重叠
 
 ## 4. 明确不做
 

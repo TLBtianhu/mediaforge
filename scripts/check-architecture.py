@@ -11,7 +11,8 @@
   8. capabilities 引用的每个模型都在 catalog 里，且有 size / url / licenseSpdx；
   9. model_registry.json 的音频接口投影必须能由 audio_catalog.json 无损重建；
   10. 每个可下载媒体模型都必须声明有效 SHA-256；
-  11. Rust 里硬编码的 task.* / asset.* 事件名必须在 protocol.json 里声明，且 events.terminal 是 canonical 的子集。
+  11. Rust 里硬编码的 task.* / asset.* 事件名必须在 protocol.json 里声明，且 events.terminal 是 canonical 的子集；
+  12. protocol.json.execution 的 bootstrap 清单必须对应真实命令（worker 项在 domains 里，native 项不与 worker 重叠）。
 
 退出码非 0 即视为不变量被破坏。放进 CI 与 check-command-surface.py 并列。
 """
@@ -199,6 +200,32 @@ def check_rust_event_literals(manifest: dict) -> list[str]:
     return problems
 
 
+def check_execution_manifest(manifest: dict) -> list[str]:
+    """执行清单也只有一个真源：bootstrap 选择不能靠 Rust 再写一份命令名单。"""
+    commands = set()
+    for domain in (manifest.get("domains") or {}).values():
+        for entry in (domain.get("commands") or {}).values():
+            name = entry.get("command")
+            if isinstance(name, str) and name:
+                commands.add(name)
+    bootstrap = (manifest.get("execution") or {}).get("bootstrap") or {}
+    worker = list(bootstrap.get("worker") or [])
+    native = list(bootstrap.get("native") or [])
+    problems: list[str] = []
+    for name in worker:
+        if name not in commands:
+            problems.append(f"protocol: execution.bootstrap.worker 的 {name} 不是任何命令的 command")
+    for label, items in (("worker", worker), ("native", native)):
+        if len(set(items)) != len(items):
+            problems.append(f"protocol: execution.bootstrap.{label} 有重复项")
+    overlap = set(worker) & set(native)
+    if overlap:
+        problems.append(f"protocol: execution.bootstrap 的 worker/native 重叠：{sorted(overlap)}")
+    if not worker:
+        problems.append("protocol: execution.bootstrap.worker 为空，bootstrap 选择会退回猜测")
+    return problems
+
+
 def check_handlers_exist(manifest: dict) -> list[str]:
     """handler 是 module:function：静态确认模块文件与函数定义都存在（不 import，避免副作用）。"""
     problems: list[str] = []
@@ -289,6 +316,7 @@ def main() -> int:
         "事件覆盖": check_event_coverage(manifest),
         "事件命名": check_event_names(),
         "Rust 事件名": check_rust_event_literals(manifest),
+        "执行清单": check_execution_manifest(manifest),
         "handler 存在性": check_handlers_exist(manifest),
         "catalog 关联": check_catalog_links(),
         "接口投影": check_registry_projection(),
