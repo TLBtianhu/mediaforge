@@ -129,6 +129,23 @@ print('hidden-grandchild-ok')
         for name in ("node.json","grandchild.json"):
             self.assert_reaped(json.loads((root / name).read_text())["pid"])
 
+    def test_default_node_resolution_selects_one_application_and_keeps_descendants_hidden(self):
+        probe = """import ctypes
+kernel=ctypes.WinDLL('kernel32');kernel.GetConsoleWindow.restype=ctypes.c_void_p
+user=ctypes.WinDLL('user32');user.IsWindowVisible.argtypes=(ctypes.c_void_p,);user.IsWindowVisible.restype=ctypes.c_int
+window=kernel.GetConsoleWindow()
+assert window and not user.IsWindowVisible(window), 'default build child console was not hidden'
+print('default-node-ok')
+"""
+        root = self.project("import {spawnSync} from 'node:child_process';\n"
+                            f"const child=spawnSync({json.dumps(sys.executable)},['-I','-B','-c',{json.dumps(probe)}],{{stdio:'inherit'}});process.exit(child.status??1);\n")
+        body = "function Get-Command { param($Name,$CommandType,$ErrorAction)\n"
+        body += "if ($Name -ne 'node') { throw 'Unexpected executable lookup' };\n"
+        body += "[PSCustomObject]@{Source=" + ps(NODE) + "};[PSCustomObject]@{Source=" + ps(self.root / "must-not-select-node.exe") + "}\n}\n"
+        body += "Invoke-ReleaseNativeBuild -Root " + ps(root) + " -PythonPath " + ps(sys.executable) + " -TimeoutMilliseconds 15000"
+        result = self.invoke(body)
+        self.assertIn("default-node-ok",result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

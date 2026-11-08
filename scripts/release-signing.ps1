@@ -114,7 +114,7 @@ function Write-ReleaseProcessOutput($Result) {
 
 function Invoke-ReleaseNativeBuild {
     param([string]$Root, [string]$PythonPath, [string]$Node = '', [int]$TimeoutMilliseconds = 1800000)
-    if (-not $Node) { $Node = (Get-Command node -CommandType Application -ErrorAction Stop).Source }
+    if (-not $Node) { $Node = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source }
     $entry = Join-Path $Root 'scripts/tauri.mjs'
     if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw 'Tauri build entry point is missing' }
     # The bootstrap is already required by the packager. Its existing helper
@@ -190,7 +190,7 @@ function Invoke-ReleaseArchiveSigning {
     if (-not $KeyPath -or -not (Test-Path -LiteralPath $KeyPath -PathType Leaf)) {
         throw 'An explicit signing key path is required'
     }
-    if (-not $Node) { $Node = (Get-Command node -CommandType Application -ErrorAction Stop).Source }
+    if (-not $Node) { $Node = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source }
     if (-not $Cli) { $Cli = Join-Path $Root 'node_modules\@tauri-apps\cli\tauri.js' }
     if (-not (Test-Path -LiteralPath $Cli -PathType Leaf)) { throw 'Release signer CLI is missing' }
     $start = New-ReleaseSignerStartInfo -Node $Node -Cli $Cli -Archive ([IO.Path]::GetFullPath($Archive)) -KeyPath $KeyPath -Password $Password
