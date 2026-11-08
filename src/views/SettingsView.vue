@@ -15,6 +15,7 @@ import { open } from '@tauri-apps/plugin-shell'
 import packageMeta from '../../package.json'
 import { SYSTEM_LOCALE, setLocale, type LocaleSetting } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
+import { isTauriRuntime } from '@/utils/appStore'
 import { useAppStore, type RuntimeBackend } from '@/stores/app'
 import { runtimeAcceleratorReady } from '@/utils/runtime'
 import { makeRuntimeState } from './settings/runtimeState'
@@ -397,6 +398,37 @@ async function openExternalUrl(url: string) {
 }
 
 
+const recoveringSettings = computed(() => settings.recoveryState.status === 'running')
+const settingsRecoveryBackup = computed(() => settings.recoveryState.backupPath || '')
+// Browser previews have no file to back up; only the desktop app can recover.
+const settingsRecoverySupported = isTauriRuntime()
+
+// The stored file is unsupported. Nothing is migrated or overwritten here: the
+// user explicitly chooses to back up the original bytes and reset to defaults.
+function requestSettingsRecovery() {
+  if (recoveringSettings.value) return
+  dialog.warning({
+    title: t('settings.schemaRecoverTitle'),
+    content: t('settings.schemaRecoverConfirm'),
+    positiveText: t('settings.schemaRecover'),
+    negativeText: t('common.cancel'),
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: async () => {
+      if (recoveringSettings.value) return false
+      try {
+        const response = await settings.recoverSettings()
+        if (response.recovered) message.success(t('settings.schemaRecovered', { path: settingsRecoveryBackup.value }))
+        else message.info(t('settings.schemaRecoverNotNeeded'))
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : String(error))
+        return false
+      }
+      return true
+    },
+  })
+}
+
+
 
 onMounted(async () => {
   await loadBuildInfo()
@@ -407,6 +439,26 @@ onMounted(async () => {
 <template>
   <div class="page mf-page page--settings" data-tone="blue">
     <MediaPageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" :icon="SettingsOutline" eyebrow="SETTINGS" tone="blue" />
+
+    <n-alert v-if="settings.loadError" type="error" class="settings-schema-alert" :title="t('settings.schemaRejectedTitle')">
+      <p class="settings-schema-alert__detail">{{ settings.loadError }}</p>
+      <p class="settings-schema-alert__hint">{{ t('settings.schemaRejectedHint') }}</p>
+      <div class="settings-schema-alert__actions">
+        <n-button
+          v-if="settingsRecoverySupported"
+          type="error"
+          size="small"
+          :loading="recoveringSettings"
+          @click="requestSettingsRecovery"
+        >
+          {{ t('settings.schemaRecover') }}
+        </n-button>
+        <span v-else class="settings-schema-alert__hint">{{ t('settings.schemaRecoverDesktopOnly') }}</span>
+        <span v-if="settingsRecoveryBackup" class="settings-schema-alert__backup">
+          {{ t('settings.schemaBackupPath', { path: settingsRecoveryBackup }) }}
+        </span>
+      </div>
+    </n-alert>
 
     <div class="settings-shell">
       <aside class="settings-sidebar" :aria-label="t('settings.settingsNavigation')">

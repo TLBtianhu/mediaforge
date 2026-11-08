@@ -25,7 +25,7 @@ const { listenForEditorExportPreferences, requestEditorExportPreference } = awai
 const clone = value => JSON.parse(JSON.stringify(value))
 
 async function environment(t) {
-  const state = { themeMode: 'light', locale: 'en', startupOnboardingSeen: true,
+  const state = { version: 1, themeMode: 'light', locale: 'en', startupOnboardingSeen: true,
     outputDir: 'D:/outputs', proxyUrl: 'http://127.0.0.1:7001', wavBitDepth: 'PCM_16', flacBitDepth: 'PCM_16' }
   const callbacks = new Map()
   const listeners = new Map()

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from core.worker_audio import _publish_export_path
+from shared.output_publish import publish_output_path
 from shared.worker_subprocess import hidden_subprocess_kwargs
 
 SUPPORTED_AUDIO_SUFFIXES = {
@@ -106,7 +106,7 @@ def _render_output(path: Path, render: Callable[[Path], None]) -> Path:
         render(temporary)
         if not temporary.stat().st_size:
             raise RuntimeError("No audio data was written")
-        return _publish_export_path(temporary, path)
+        return publish_output_path(temporary, path)
     finally:
         try:
             temporary.unlink(missing_ok=True)

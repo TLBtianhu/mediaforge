@@ -20,7 +20,7 @@ with sync_playwright() as playwright:
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.add_init_script("""localStorage.setItem('pymss-studio:app-settings', JSON.stringify({
-      startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light'
+      version:1,startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light'
     }))""")
     page.goto(args.url.rstrip("/") + "/#/editor", wait_until="domcontentloaded", timeout=60000)
     page.wait_for_load_state("networkidle", timeout=60000)

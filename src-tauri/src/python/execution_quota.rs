@@ -40,6 +40,11 @@ pub(super) fn applies(command: &str) -> AppResult<bool> {
     Ok(contract()?.commands.iter().any(|item| item == command))
 }
 
+/// The manifest is the one source for the allowed concurrent-worker range.
+pub(crate) fn max_slots() -> AppResult<usize> {
+    Ok(contract()?.max_slots)
+}
+
 pub(super) fn read_limit(root: &Path) -> AppResult<usize> {
     let contract = contract()?;
     let path = root.join("settings/app.json");

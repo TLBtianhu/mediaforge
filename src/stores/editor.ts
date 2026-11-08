@@ -168,13 +168,6 @@ const WAVEFORM_FULL_RESOLUTION = 2200
 
 
 
-function safeProjectToken(value: string) {
-}
-
-function projectIdForTaskId(taskId: string) {
-  return `edit_${safeProjectToken(taskId)}`
-}
-
 function blankProjectName() {
   const locale = getCurrentLocale()
   return String(i18n.global.t('projects.blankProjectDefaultName', {}, { locale }))
@@ -787,23 +780,11 @@ export const useEditorStore = defineStore('editor', () => {
     return invoke('open_editor_window', { payload: { projectId } })
   }
 
-  async function projectExists(projectId: string) {
-    return invoke<boolean>('editor_project_exists', { projectId })
-  }
-
   async function ensureProjectForTask(task: SeparationTask, options?: { loadIntoSession?: boolean }) {
-    const loadIntoSession = options?.loadIntoSession ?? true
-    const projectId = projectIdForTaskId(task.id)
-    const exists = await projectExists(projectId)
-    if (exists) {
-      return { id: projectId }
-    }
-    if (!loadIntoSession) {
-      const result = await requestProjectFromTask(task)
-      const normalized = normalizeSession(result, localizedAutoTrackName)
-      return { id: normalized.id }
-    }
-    return createFromTask(task)
+    if (options?.loadIntoSession !== false) return createFromTask(task)
+    const result = await requestProjectFromTask(task)
+    const normalized = normalizeSession(result, localizedAutoTrackName)
+    return { id: normalized.id }
   }
 
   async function listProjects() {
@@ -868,17 +849,14 @@ export const useEditorStore = defineStore('editor', () => {
 
   async function deleteProjectsForTasks(taskIds: string[]) {
     const uniqueTaskIds = [...new Set(taskIds.map(id => id.trim()).filter(Boolean))]
-    const projectIds = uniqueTaskIds.map(projectIdForTaskId)
     const emptyResult = (): EditorProjectCleanupResult => ({
       deletedProjectIds: [],
       missingProjectIds: [],
       blockedProjectIds: [],
       failedProjectIds: [],
     })
-    if (!projectIds.length) return emptyResult()
-    if (!isTauriRuntime()) {
-      return { ...emptyResult(), missingProjectIds: projectIds }
-    }
+    if (!uniqueTaskIds.length || !isTauriRuntime()) return emptyResult()
+    const projectIds = await invoke<string[]>('editor_project_ids_for_tasks', { taskIds: uniqueTaskIds })
 
     await drainPendingSaves()
     projectIds.forEach((projectId) => {
@@ -1981,7 +1959,6 @@ export const useEditorStore = defineStore('editor', () => {
     deleteOrphanedProjects,
     clearSession,
     openProjectWindow,
-    projectExists,
     loadProject,
     saveProject,
     getMetadata,

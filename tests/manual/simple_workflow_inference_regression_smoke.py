@@ -46,7 +46,7 @@ def open_editor(browser, *, normalize, model_normalize=False, vr=False):
     models = {"models": [] if vr else [model], "modelInferenceOverrides": {MODEL_NAME: overrides}}
     page = browser.new_page(viewport={"width": 1366, "height": 900})
     page.add_init_script(f"""(() => {{
-      localStorage.setItem('pymss-studio:app-settings', JSON.stringify({{startupOnboardingSeen:true,locale:'en'}}));
+      localStorage.setItem('pymss-studio:app-settings', JSON.stringify({{version:1,startupOnboardingSeen:true,locale:'en'}}));
       localStorage.setItem('pymss-studio:workflow-state', JSON.stringify({json.dumps(state)}));
       localStorage.setItem('pymss-studio:model-state', JSON.stringify({json.dumps(models)}));
     }})()""")

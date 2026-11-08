@@ -111,7 +111,7 @@ fn main() {
             if let Err(error) = python::worker::restore_pending_manual_workers(app.handle()) {
                 // Keep the app available for diagnostics. Strict loading also
                 // exposes this error in the task UI; no old files are rewritten.
-                session_log::append(app.handle(), "ERROR", "task.restore_pending_failed", vec![("message", error.to_string())]);
+                session_log::append(app.handle(), "ERROR", "worker.restore_pending_failed", vec![("message", error.to_string())]);
             }
             python::worker::recover_audio_output_temps(app.handle());
             Ok(())
@@ -150,7 +150,7 @@ fn main() {
             commands::app::editor::list_open_editor_projects_for_tasks,
             commands::app::editor::list_orphaned_editor_projects,
             commands::app::editor::delete_orphaned_editor_projects,
-            commands::app::editor::editor_project_exists,
+            commands::app::editor::editor_project_ids_for_tasks,
             commands::app::editor::export::start_editor_mix_export,
             commands::app::editor::export::cancel_editor_mix_export,
             commands::app::tasks::media_library,
@@ -208,6 +208,7 @@ fn main() {
             commands::app::dialogs::pick_model_weights_file,
             commands::app::dialogs::pick_model_config_file,
             commands::app::session::load_app_store,
+            commands::app::session::recover_app_settings,
             commands::app::tasks::get_workflow_editors,
             commands::app::session::mutate_workflow_store,
             commands::app::session::mutate_media_workflows,

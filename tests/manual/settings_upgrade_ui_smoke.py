@@ -19,9 +19,9 @@ with sync_playwright() as playwright:
             progress = {'status': status, 'step': 0, 'stepId': step_id}
             if parameter:
                 progress['parameter'] = parameter
-            state = {'startupOnboardingSeen': True, 'beginnerGuideInvitationSeen': True,
+            state = {'version': 1, 'startupOnboardingSeen': True, 'beginnerGuideInvitationSeen': True,
                      'locale': language, 'themeMode': 'light' if language == 'zh-CN' else 'dark',
-                     'animationsEnabled': False, 'mp3BitRate': '512k', 'm4aBitRate': '512k',
+                     'animationsEnabled': False, 'mp3BitRate': '320k', 'm4aBitRate': '512k',
                      'beginnerGuideProgress': progress}
             context.add_init_script("""if (window.parent === window && !sessionStorage.getItem('settings-upgrade-seeded')) {
               localStorage.setItem('pymss-studio:app-settings', %s);

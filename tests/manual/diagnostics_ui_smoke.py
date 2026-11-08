@@ -54,7 +54,7 @@ with sync_playwright() as playwright:
         return dialog
 
     page.add_init_script("""localStorage.setItem('pymss-studio:app-settings', JSON.stringify({
-      startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light',developerMode:false
+      version:1,startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light',developerMode:false
     }))""")
     page.goto(args.url.rstrip('/') + '/#/debug')
     page.wait_for_load_state('networkidle')

@@ -485,6 +485,28 @@ class Bridge:
         ]
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        try:
+            tool = agent_contract.find_tool(name)
+        except agent_contract.ContractMismatchError as error:
+            return {"ok": False, "tool": name, "code": error.code, "error": str(error)}
+        except KeyError:
+            raise ValueError(f"unknown tool: {name}") from None
+        arguments = dict(arguments or {})
+        confirmed = arguments.pop("confirmExplicit", False) is True
+        problems = agent_contract.validate_arguments(tool["name"], arguments)
+        if problems:
+            return {"ok": False, "tool": name, "error": "; ".join(problems), "problems": problems}
+        if tool["approval"] == "explicit" and not confirmed:
+            return {
+                "ok": False,
+                "tool": name,
+                "approval": "explicit",
+                "requiresConfirmation": True,
+                "error": f"{name} downloads, installs or deletes data; call it again with confirmExplicit=true after the user agrees",
+            }
+        return self._call_validated(name, arguments)
+
+    def _call_validated(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name == "mediaforge_status":
             return self.status()
         if name == "models_list":
@@ -590,42 +612,28 @@ class Bridge:
     # ---- 契约兜底：没被上面显式处理的名字，只要契约里有就能执行 ----------------
 
     def _dispatch_contract(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """按契约执行一个工具：长任务进作业台账，其余在进程内跑。
-
-        这样新增功能只要登记进 `agent_contract`，MCP 侧**不用改一行**就能被 agent 调用。
-        """
+        """按契约选择共享 Kernel 或当前进程内的查询执行器。"""
         try:
             tool = agent_contract.find_tool(name)
         except agent_contract.ContractMismatchError as error:
             return {"ok": False, "tool": name, "code": error.code, "error": str(error)}
         except KeyError:
             raise ValueError(f"unknown tool: {name}") from None
-        # 确认标记不是工具参数：先摘掉，再按契约校验，最后才判断审批
-        arguments = dict(arguments or {})
-        confirmed = bool(arguments.pop("confirmExplicit", False))
-        problems = agent_contract.validate_arguments(name, arguments)
-        if problems:
-            return {"ok": False, "tool": name, "error": "; ".join(problems), "problems": problems}
-        # 审批等级不能只是文档：`explicit`（下载/安装/删除）必须显式确认才执行
-        if str(tool.get("approval")) == "explicit" and not confirmed:
-            return {
-                "ok": False,
-                "tool": name,
-                "approval": "explicit",
-                "requiresConfirmation": True,
-                "error": f"{name} downloads, installs or deletes data; call it again with confirmExplicit=true after the user agrees",
-            }
+        if not tool["available"]:
+            return {"ok": False, "tool": name, "code": "TOOL_UNAVAILABLE", "error": "This tool is not available in the current runtime"}
         payload = dict(arguments)
         if tool["operation"]:
             payload.setdefault("operation", tool["operation"])
-        if tool["longRunning"]:
+        if tool["command"] == "media_tool" and tool["operation"] != "media_probe":
+            payload.setdefault("modelDir", str(self.model_root))
+        if tool["admission"] == "kernel":
             job = self.jobs.start(tool["command"], payload)
             return {
                 "ok": True,
                 "tool": name,
                 "jobId": job.job_id,
                 "status": job.snapshot(),
-                "note": "long-running: poll job_status",
+                "note": "queued in the shared job ledger: poll job_status",
             }
         if tool["command"] == "failure_stats":
             # The bridge's --data-root is request scope, not a process-wide env override.

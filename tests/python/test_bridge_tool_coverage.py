@@ -73,10 +73,10 @@ def declared_tools() -> set[str]:
 def dispatched_tools() -> set[str]:
     tree = ast.parse(SOURCE)
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "call":
+        if isinstance(node, ast.FunctionDef) and node.name == "_call_validated":
             source = ast.unparse(node)
             return set(re.findall(r"name == '([a-z_]+)'", source))
-    raise AssertionError("Bridge.call() not found")
+    raise AssertionError("Bridge._call_validated() not found")
 
 
 class BridgeToolCoverageTests(unittest.TestCase):
@@ -211,6 +211,37 @@ class BridgeContractSurfaceTests(unittest.TestCase):
         command, payload = start.call_args[0]
         self.assertEqual(command, "infer")
         self.assertEqual(payload["model"], "bs_roformer")
+
+    def test_compute_tools_share_the_kernel_and_media_model_scope(self) -> None:
+        fake_job = mock.Mock()
+        fake_job.job_id = "job_media"
+        fake_job.snapshot.return_value = {"jobId": "job_media", "status": "queued"}
+        requests = [
+            ("media.image.upscale", {
+                "modality": "image", "inputs": ["a.png"], "outputDir": "out",
+                "steps": [{"capability": "upscale", "bindings": {"upscaler": "media:real-esrgan-x2"}, "params": {}}],
+            }, "media_image"),
+            ("audio.convert", {"inputs": ["a.wav"], "outputDir": "out"}, "convert"),
+            ("editor.export_mix", {"project": {"version": 4, "sources": [], "tracks": []}}, None),
+        ]
+        for name, arguments, operation in requests:
+            with self.subTest(tool=name), mock.patch.object(self.bridge.jobs, "start", return_value=fake_job) as start:
+                result = self.bridge.call(name, arguments)
+                self.assertTrue(result["ok"], result)
+                command, payload = start.call_args.args
+                self.assertEqual(payload.get("operation"), operation)
+                if command == "media_tool":
+                    self.assertEqual(payload["modelDir"], str(self.bridge.model_root))
+
+    def test_unavailable_video_workflow_is_rejected_before_admission(self) -> None:
+        with mock.patch.object(self.bridge.jobs, "start") as start:
+            result = self.bridge.call("media.video.frame_interpolation", {
+                "modality": "video", "inputs": ["a.mp4"], "outputDir": "out",
+                "steps": [{"capability": "frame_interpolation", "bindings": {"interpolator": "media:rife-v46"}, "params": {}}],
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "TOOL_UNAVAILABLE")
+        start.assert_not_called()
 
     def test_legacy_surface_switch_hides_contract_tools(self) -> None:
         from unittest import mock

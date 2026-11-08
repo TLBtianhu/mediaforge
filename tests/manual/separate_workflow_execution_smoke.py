@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix="pymss-separate-workflow-") as temporary
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.add_init_script(
         "localStorage.setItem('pymss-studio:app-settings', JSON.stringify(" + json.dumps({
-            "startupOnboardingSeen": True, "locale": "en", "themeMode": "light",
+            "version": 1, "startupOnboardingSeen": True, "locale": "en", "themeMode": "light",
             "outputDir": str(directory / "outputs"), "clearInputAfterSubmit": False,
         }) + ")); localStorage.setItem('pymss-studio:workflow-state', JSON.stringify(" + json.dumps(state) + "));"
     )

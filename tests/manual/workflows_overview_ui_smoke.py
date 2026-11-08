@@ -93,7 +93,7 @@ with sync_playwright() as playwright:
         f"""(() => {{
           localStorage.setItem(
             'pymss-studio:app-settings',
-            JSON.stringify({{ startupOnboardingSeen: true, locale: 'en', themeAccent: 'teal' }}),
+            JSON.stringify({{ version: 1, startupOnboardingSeen: true, locale: 'en', themeAccent: 'teal' }}),
           )
           localStorage.setItem('pymss-studio:workflow-state', JSON.stringify({json.dumps(workflow_state)}))
         }})()"""

@@ -1,4 +1,4 @@
-import { createDemoAudio, createDemoModels, createDemoWorkflow } from './demoData.ts'
+﻿import { createDemoAudio, createDemoModels, createDemoWorkflow } from './demoData.ts'
 import type { TutorialAdapter } from './demoContext'
 import { audioJobEvent } from '../tasks/audioJobs.ts'
 import type { JournalJob } from '../tasks/journal.ts'
@@ -32,7 +32,7 @@ export function createDemoRuntime(config: DemoConfig) {
     sources: waveform.sources.map((source, index) => ({ ...source, path: outputs[index]!.path })),
     tracks: waveform.tracks, createdAt: now, updatedAt: now }
   const stores = new Map<string, any>([
-    ['app-settings', { startupOnboardingSeen: true, locale: config.locale, themeMode: config.themeMode, themeAccent: config.themeAccent,
+    ['app-settings', { version: 1, startupOnboardingSeen: true, locale: config.locale, themeMode: config.themeMode, themeAccent: config.themeAccent,
       animationsEnabled: false, outputDir: output, modelDir: prefix + '/Models', defaultFormat: outputFormat,
       beginnerGuideProgress: { ...config.progress, status: 'active' } }],
     ['model-state', { models, categories: ['MSS'], categoriesCn: ['MSS'], modelDir: prefix + '/Models' }],
@@ -48,7 +48,7 @@ export function createDemoRuntime(config: DemoConfig) {
       inferenceParamsVersion: 3, inferenceParams: {}, audioParams: {}, useTta: false, debug: false },
     audio: { groupId: 'sample-job', primaryJobId: task.id, index: 0, memberJobIds: [task.id], request: { input, output, inputIndex: 1 } },
   }]])
-  const journalResponse = (entries = [...jobs.values()]) => ({ schemaVersion: 2, jobs: copy(entries), dataRoot: prefix, jobsDir: prefix + '/agent-jobs' })
+  const journalResponse = (entries = [...jobs.values()]) => ({ schemaVersion: 3, full: true, removed: [], jobs: copy(entries), dataRoot: prefix, jobsDir: prefix + '/agent-jobs' })
   const projects = new Map<string, any>([[initialProject.id, initialProject]])
   const callbacks = new Map<number, { handler?: (value: any) => void; once: boolean }>()
   const listeners = new Map<number, { event: string; handler: number }>()
@@ -201,7 +201,6 @@ export function createDemoRuntime(config: DemoConfig) {
       return { editorSnapshot: { revision: 0, editors: [] } }
     }
     if (command === 'open_editor_window') { openPopup('/editor?projectId=' + encodeURIComponent(payload.projectId)); return }
-    if (command === 'editor_project_exists') return true
     if (command === 'load_editor_project') return copy(projectFor(args.projectId))
     if (command === 'create_editor_project_from_task') return copy(projectFor('edit_' + (payload.taskId || task.id)))
     if (command === 'save_editor_project') { projects.set(args.project.id, copy(args.project)); return copy(args.project) }

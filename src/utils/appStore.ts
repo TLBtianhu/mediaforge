@@ -11,7 +11,7 @@ function localStoreKey(name: AppStoreName) {
   return `pymss-studio:${name}`
 }
 
-const strictStores = new Set<AppStoreName>(['separate-state', 'workflow-state', 'media-workflows'])
+const strictStores = new Set<AppStoreName>(['app-settings', 'separate-state', 'workflow-state', 'media-workflows'])
 
 function readLocalStore<T>(name: AppStoreName): T | null {
   const raw = localStorage.getItem(localStoreKey(name))

@@ -23,7 +23,7 @@ with sync_playwright() as playwright:
     page.set_default_timeout(8000)
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
-    data = {'app-settings': {'startupOnboardingSeen': True, 'locale': 'zh-CN', 'defaultDevice': 'cpu', 'outputDir': 'D:/outputs'},
+    data = {'app-settings': {'version': 1, 'startupOnboardingSeen': True, 'locale': 'zh-CN', 'defaultDevice': 'cpu', 'outputDir': 'D:/outputs'},
             'workflow-state': {'selectedWorkflowId': entry['id'], 'workflows': [entry]}}
     page.add_init_script('for (const [name,value] of Object.entries(' + json.dumps(data) + ')) localStorage.setItem("pymss-studio:"+name,JSON.stringify(value));')
     page.goto(args.url + '/#/workflow-simple-editor?workflowId=batch-workflow')

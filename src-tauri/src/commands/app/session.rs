@@ -142,6 +142,39 @@ pub async fn mutate_media_workflows(app: AppHandle, payload: Value) -> AppResult
     storage::mutate_media_workflows(&app, &payload)
 }
 
+/// Explicit "back up then reset" for a settings file the current schema rejects.
+///
+/// The caller must pass a literal `confirm: true`; nothing is migrated, and the
+/// original bytes are copied to a sibling backup before the file is removed.
+#[tauri::command]
+pub async fn recover_app_settings(app: AppHandle, confirm: bool) -> AppResult<Value> {
+    if !confirm {
+        return Err(AppError::Worker(
+            "recover_app_settings requires explicit confirmation".into(),
+        ));
+    }
+    let path = storage::app_store_path(&app, "app-settings")?;
+    let backup = storage::recover_app_settings_file(&path)?;
+    let backup_path = backup
+        .as_ref()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default();
+    session_log::append(
+        &app,
+        if backup.is_some() { "WARN" } else { "INFO" },
+        "settings.recover",
+        vec![
+            ("recovered", backup.is_some().to_string()),
+            ("backup", backup_path.clone()),
+        ],
+    );
+    Ok(serde_json::json!({
+        "ok": true,
+        "recovered": backup.is_some(),
+        "backupPath": backup_path,
+    }))
+}
+
 #[tauri::command]
 pub async fn mutate_workflow_store(
     app: AppHandle,

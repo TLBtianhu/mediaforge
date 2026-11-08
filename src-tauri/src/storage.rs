@@ -396,6 +396,170 @@ pub fn app_store_path(app: &AppHandle, name: &str) -> AppResult<PathBuf> {
     Ok(settings_dir(app)?.join(store_file_name(name)?))
 }
 
+fn validate_app_settings(data: &Value) -> AppResult<()> {
+    let invalid = || AppError::Worker("unsupported app settings schema; original file preserved".into());
+    let object = data.as_object().ok_or_else(invalid)?;
+    // Every field is optional except the schema version; unknown fields are not.
+    fn kind(value: &Value, expected: &str) -> bool {
+        match expected {
+            "string" => value.is_string(),
+            "boolean" => value.is_boolean(),
+            "number" => value.as_f64().is_some_and(f64::is_finite),
+            "object" => value.is_object(),
+            _ => false,
+        }
+    }
+    fn one_of(value: &Value, choices: &[&str]) -> bool {
+        value.as_str().is_some_and(|text| choices.contains(&text))
+    }
+    const THEME_MODES: &[&str] = &["system", "dark", "light"];
+    const THEME_ACCENTS: &[&str] = &["blue", "pink", "sky", "teal"];
+    const LOCALES: &[&str] = &["system", "zh-CN", "en"];
+    const DOWNLOAD_METHODS: &[&str] = &["aria2c", "urllib"];
+    const WAV_BITS: &[&str] = &["PCM_16", "PCM_24", "FLOAT"];
+    const FLAC_BITS: &[&str] = &["PCM_16", "PCM_24"];
+    const MP3_RATES: &[&str] = &["128k", "192k", "256k", "320k"];
+    const M4A_CODECS: &[&str] = &["aac", "alac"];
+    const PROXY_MODES: &[&str] = &["system", "none", "custom"];
+    const UPDATE_CHANNELS: &[&str] = &["stable", "prerelease"];
+    const UPDATE_SOURCES: &[&str] = &["auto", "github", "modelscope"];
+    if object.get("version").and_then(Value::as_u64) != Some(1) {
+        return Err(invalid());
+    }
+    const FIELDS: &[(&str, &str)] = &[
+        ("themeMode", "string"), ("themeAccent", "string"), ("scaleFactor", "number"),
+        ("locale", "string"), ("animationsEnabled", "boolean"), ("developerMode", "boolean"),
+        ("modelDir", "string"), ("outputDir", "string"), ("defaultDevice", "string"),
+        ("defaultFormat", "string"), ("downloadSource", "string"), ("downloadMethod", "string"),
+        ("maxConcurrentSeparations", "number"), ("clearInputAfterSubmit", "boolean"),
+        ("wavBitDepth", "string"), ("flacBitDepth", "string"), ("mp3BitRate", "string"),
+        ("m4aBitRate", "string"), ("m4aCodec", "string"), ("startupOnboardingSeen", "boolean"),
+        ("beginnerGuideInvitationSeen", "boolean"), ("beginnerGuideProgress", "object"),
+        ("proxyMode", "string"), ("proxyUrl", "string"), ("proxyBypass", "string"),
+        ("updateChannel", "string"), ("updateSource", "string"), ("updateEndpointOverride", "string"),
+    ];
+    let known: Vec<&str> = std::iter::once("version").chain(FIELDS.iter().map(|(name, _)| *name)).collect();
+    if object.keys().any(|key| !known.contains(&key.as_str())) {
+        return Err(invalid());
+    }
+    for (name, expected) in FIELDS {
+        let Some(value) = object.get(*name) else { continue };
+        if !kind(value, expected) {
+            return Err(invalid());
+        }
+    }
+    for (name, choices) in [
+        ("themeMode", THEME_MODES), ("themeAccent", THEME_ACCENTS), ("locale", LOCALES),
+        ("downloadMethod", DOWNLOAD_METHODS), ("wavBitDepth", WAV_BITS), ("flacBitDepth", FLAC_BITS),
+        ("mp3BitRate", MP3_RATES), ("m4aCodec", M4A_CODECS), ("proxyMode", PROXY_MODES),
+        ("updateChannel", UPDATE_CHANNELS), ("updateSource", UPDATE_SOURCES),
+    ] {
+        if let Some(value) = object.get(name) {
+            if !one_of(value, choices) { return Err(invalid()); }
+        }
+    }
+    if let Some(value) = object.get("maxConcurrentSeparations") {
+        let limit = value.as_u64().ok_or_else(invalid)?;
+        let maximum = crate::python::compute_worker_slots()? as u64;
+        if !(1..=maximum).contains(&limit) {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
+/// Reject a settings file we cannot interpret, without touching its bytes.
+///
+/// The reason is surfaced to the UI so the user can choose an explicit
+/// recovery; no caller may silently replace the preserved file with defaults.
+fn settings_bytes_rejection(bytes: &[u8]) -> Option<String> {
+    let text = match std::str::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => return Some("settings file is not valid UTF-8".into()),
+    };
+    let value = match serde_json::from_str::<Value>(text) {
+        Ok(value) => value,
+        Err(error) => return Some(format!("settings file is not valid JSON: {error}")),
+    };
+    validate_app_settings(&value).err().map(|error| error.to_string())
+}
+
+/// `Some(reason)` means this path holds a file the current app cannot load.
+pub(crate) fn app_settings_rejection(path: &Path) -> AppResult<Option<String>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(settings_bytes_rejection(&bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Explicit recovery: keep the exact original bytes in a new backup file, then
+/// remove the rejected file so the next load starts from documented defaults.
+///
+/// Returns `None` when there is nothing to recover (missing or already valid).
+pub(crate) fn recover_app_settings_file(path: &Path) -> AppResult<Option<PathBuf>> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if settings_bytes_rejection(&bytes).is_none() {
+        return Ok(None);
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| AppError::Worker("settings file has no parent directory".into()))?;
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("app");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_millis())
+        .unwrap_or(0);
+    for attempt in 0..1000u32 {
+        let name = if attempt == 0 {
+            format!("{stem}.rejected-{stamp}.json")
+        } else {
+            format!("{stem}.rejected-{stamp}-{attempt}.json")
+        };
+        let backup = parent.join(name);
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let written = (|| -> AppResult<()> {
+            use std::io::Write;
+            file.write_all(&bytes)?;
+            file.sync_all()?;
+            Ok(())
+        })();
+        drop(file);
+        if let Err(error) = written {
+            let _ = std::fs::remove_file(&backup);
+            return Err(error);
+        }
+        // The user's bytes are the point of the backup; never drop the original
+        // unless the copy is byte-identical.
+        if std::fs::read(&backup)? != bytes {
+            let _ = std::fs::remove_file(&backup);
+            return Err(AppError::Worker(
+                "settings backup does not match the original bytes; original preserved".into(),
+            ));
+        }
+        std::fs::remove_file(path)?;
+        return Ok(Some(backup));
+    }
+    Err(AppError::Worker(
+        "could not allocate a settings backup file name; original preserved".into(),
+    ))
+}
+
 pub fn read_app_store(app: &AppHandle, name: &str) -> AppResult<Value> {
     ensure_app_directories(app)?;
     let path = app_store_path(app, name)?;
@@ -409,13 +573,32 @@ pub fn read_app_store(app: &AppHandle, name: &str) -> AppResult<Value> {
         return crate::media_workflows::normalize_state(value);
     }
     if name == "workflow-state" { validate_workflow_state(&value)?; }
+    if name == "app-settings" { validate_app_settings(&value)?; }
     Ok(value)
+}
+
+/// A file the current schema cannot load must not be replaced by defaults.
+fn ensure_app_settings_replaceable(path: &Path) -> AppResult<()> {
+    match app_settings_rejection(path)? {
+        None => Ok(()),
+        Some(reason) => Err(AppError::Worker(format!(
+            "app settings on disk cannot be replaced implicitly ({reason}); \
+             keep the original file and use the explicit settings recovery"
+        ))),
+    }
 }
 
 pub fn write_app_store(app: &AppHandle, name: &str, data: &Value) -> AppResult<()> {
     if name == "workflow-state" { validate_workflow_state(data)?; }
+    if name == "app-settings" { validate_app_settings(data)?; }
     ensure_app_directories(app)?;
     let path = app_store_path(app, name)?;
+    if name == "app-settings" {
+        // A file the current schema cannot load is evidence of an older/newer
+        // install or damage. Replacing it with defaults would destroy the only
+        // copy of the user's settings, so only explicit recovery may proceed.
+        ensure_app_settings_replaceable(&path)?;
+    }
     write_json_file(&path, data)
 }
 
@@ -819,8 +1002,9 @@ fn replace_file(temporary: &Path, destination: &Path) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_workflow_mutation, resolve_data_root, store_file_name, write_json_file,
-        JSON_WRITE_SEQUENCE,
+        app_settings_rejection, apply_workflow_mutation, ensure_app_settings_replaceable,
+        recover_app_settings_file, resolve_data_root, settings_bytes_rejection, store_file_name,
+        validate_app_settings, write_json_file, JSON_WRITE_SEQUENCE,
     };
     use serde_json::{json, Value};
     use std::path::PathBuf;
@@ -841,6 +1025,66 @@ mod tests {
         let mut mutation=mutation.clone();
         if mutation.get("entry").is_some() { mutation["entry"]["formatVersion"]=json!(1); }
         apply_workflow_mutation(state,&mutation)
+    }
+
+    #[test]
+    fn app_settings_require_the_current_version_and_reject_unknown_fields() {
+        validate_app_settings(&json!({"version": 1, "themeMode": "dark"})).unwrap();
+        for value in [
+            json!(null), json!([]), json!({}), json!({"version": 0}), json!({"version": 2}),
+            json!({"version": 1, "futureSetting": true}),
+        ] {
+            assert!(validate_app_settings(&value).is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn rejected_settings_are_preserved_and_only_explicit_recovery_moves_them() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("app.json");
+        // Every rejection reason the current schema defines.
+        for (name, content) in [
+            ("missing version", br#"{"themeMode":"dark"}"#.as_slice()),
+            ("zero version", br#"{"version":0}"#.as_slice()),
+            ("future version", br#"{"version":2}"#.as_slice()),
+            ("unknown field", br#"{"version":1,"futureSetting":true}"#.as_slice()),
+            ("bad enum", br#"{"version":1,"themeMode":"neon"}"#.as_slice()),
+            ("broken json", br#"{"version":1,"#.as_slice()),
+        ] {
+            assert!(
+                settings_bytes_rejection(content).is_some(),
+                "{name} should be rejected"
+            );
+        }
+        assert!(settings_bytes_rejection(br#"{"version":1,"themeMode":"dark"}"#).is_none());
+
+        let invalid = br#"{"version":0,"themeMode":"light"}"#.to_vec();
+        std::fs::write(&file, &invalid).unwrap();
+        assert!(app_settings_rejection(&file).unwrap().is_some());
+        // Reading a rejected file never rewrites it.
+        assert_eq!(std::fs::read(&file).unwrap(), invalid);
+        // A normal save must refuse before touching the preserved file.
+        let guard = ensure_app_settings_replaceable(&file);
+        assert!(guard.is_err(), "a rejected file must block implicit replacement");
+        assert_eq!(std::fs::read(&file).unwrap(), invalid);
+
+        let backup = recover_app_settings_file(&file).unwrap().expect("a backup is created");
+        assert_eq!(std::fs::read(&backup).unwrap(), invalid, "the backup keeps the original bytes");
+        assert!(!file.exists(), "the rejected file is removed only after the backup is verified");
+        assert_eq!(backup.parent(), Some(root.path()));
+        assert!(backup.file_name().unwrap().to_string_lossy().starts_with("app.rejected-"));
+
+        // Nothing is left to recover, and a valid file is never moved.
+        assert!(recover_app_settings_file(&file).unwrap().is_none());
+        std::fs::write(&file, br#"{"version":1}"#).unwrap();
+        assert!(recover_app_settings_file(&file).unwrap().is_none());
+        assert!(file.exists());
+
+        // Repeated recoveries never overwrite an earlier backup.
+        std::fs::write(&file, &invalid).unwrap();
+        let second = recover_app_settings_file(&file).unwrap().unwrap();
+        assert_ne!(second, backup);
+        assert_eq!(std::fs::read(&second).unwrap(), invalid);
     }
 
     #[test]

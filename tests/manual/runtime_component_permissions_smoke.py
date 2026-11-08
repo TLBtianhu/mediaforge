@@ -17,7 +17,7 @@ with sync_playwright() as playwright:
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.add_init_script("""localStorage.setItem('pymss-studio:app-settings', JSON.stringify({
-      startupOnboardingSeen:true,beginnerGuideInvitationSeen:true,locale:'zh-CN',themeMode:'light',animationsEnabled:false
+      version:1,startupOnboardingSeen:true,beginnerGuideInvitationSeen:true,locale:'zh-CN',themeMode:'light',animationsEnabled:false
     }))""")
     try:
         page.goto(args.url.rstrip("/") + "/#/tools", wait_until="domcontentloaded", timeout=60000)

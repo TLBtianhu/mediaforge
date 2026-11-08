@@ -63,8 +63,28 @@ fn editor_project_dir(app: &AppHandle, project_id: &str) -> AppResult<PathBuf> {
     Ok(editor_projects_root(app)?.join(validate_editor_project_id(project_id)?))
 }
 
+static TASK_PROJECT_CREATION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub(crate) fn editor_project_id_for_task_id(task_id: &str) -> String {
     format!("edit_{}", safe_file_name(task_id))
+}
+
+fn existing_task_project(path: &Path, task_id: &str, project_id: &str) -> AppResult<Option<Value>> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let project = crate::python::result_jobs::parse_reference_json(&content)?;
+    storage::validate_editor_project(&project)?;
+    if project.get("id").and_then(Value::as_str) != Some(project_id)
+        || project.get("sourceTaskId").and_then(Value::as_str) != Some(task_id)
+    {
+        return Err(AppError::Worker(
+            "editor project identity collides with another task; original file preserved".into(),
+        ));
+    }
+    Ok(Some(project))
 }
 
 pub(crate) fn editor_project_ids_for_task_ids(task_ids: &[String]) -> Vec<String> {
@@ -510,6 +530,16 @@ pub async fn create_editor_project_from_task(app: AppHandle, payload: Value) -> 
     });
 
     let project_id = editor_project_id_for_task_id(task_id);
+    let _creation = TASK_PROJECT_CREATION_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(project) = existing_task_project(
+        &editor_project_path(&app, &project_id)?,
+        task_id,
+        &project_id,
+    )? {
+        return Ok(project);
+    }
     let timestamp = now_millis();
     let output_root = if output_dir.trim().is_empty() {
         None
@@ -952,9 +982,8 @@ pub async fn relink_editor_sources(
 }
 
 #[tauri::command]
-pub async fn editor_project_exists(app: AppHandle, project_id: String) -> AppResult<bool> {
-    let path = editor_project_path(&app, &project_id)?;
-    Ok(path.exists())
+pub fn editor_project_ids_for_tasks(task_ids: Vec<String>) -> Vec<String> {
+    editor_project_ids_for_task_ids(&task_ids)
 }
 
 pub(crate) fn normalize_path_key(value: &str) -> String {
@@ -1423,6 +1452,23 @@ mod tests {
             assert!(project.join("project.json").is_file());
             assert_eq!(fs::read(root.path().join("library.db")).unwrap(),before);
         }
+    }
+
+    #[test]
+    fn existing_task_project_is_reused_without_overwrite_and_collisions_are_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("edit_task/project.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let project = serde_json::json!({
+            "id": "edit_task", "sourceTaskId": "task", "version": 4,
+            "sources": [], "tracks": [], "name": "Edited project"
+        });
+        fs::write(&path, serde_json::to_vec_pretty(&project).unwrap()).unwrap();
+        let before = fs::read(&path).unwrap();
+        assert_eq!(existing_task_project(&path, "task", "edit_task").unwrap(), Some(project));
+        assert!(existing_task_project(&path, "other", "edit_task").is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(existing_task_project(&root.path().join("missing.json"), "task", "edit_task").unwrap().is_none());
     }
 
     #[test]

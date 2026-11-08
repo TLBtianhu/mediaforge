@@ -18,7 +18,7 @@ with sync_playwright() as playwright:
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.add_init_script('''localStorage.setItem('pymss-studio:app-settings', JSON.stringify({
-      startupOnboardingSeen:true,locale:'zh-CN',outputDir:'D:/outputs'
+      version:1,startupOnboardingSeen:true,locale:'zh-CN',outputDir:'D:/outputs'
     }))''')
     page.goto(args.url + '/#/workflow-node-editor?new=1')
     page.wait_for_load_state('networkidle')

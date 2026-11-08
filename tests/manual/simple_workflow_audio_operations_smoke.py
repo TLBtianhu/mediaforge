@@ -107,7 +107,7 @@ def main():
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.add_init_script(f"""(() => {{
               if (localStorage.getItem('pymss-studio:workflow-state')) return;
-              localStorage.setItem('pymss-studio:app-settings', JSON.stringify({{startupOnboardingSeen: true, locale: 'en'}}));
+              localStorage.setItem('pymss-studio:app-settings', JSON.stringify({{version: 1, startupOnboardingSeen: true, locale: 'en'}}));
               localStorage.setItem('pymss-studio:workflow-state', JSON.stringify({json.dumps(workflow_state)}));
               localStorage.setItem('pymss-studio:model-state', JSON.stringify({json.dumps(model_state)}));
             }})()""")

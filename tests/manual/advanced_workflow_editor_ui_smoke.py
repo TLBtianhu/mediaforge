@@ -22,7 +22,7 @@ with sync_playwright() as playwright:
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.add_init_script('''
       if (!localStorage.getItem('pymss-studio:app-settings')) localStorage.setItem('pymss-studio:app-settings',
-        JSON.stringify({startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light',outputDir:'D:/outputs'}));
+        JSON.stringify({version:1,startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light',outputDir:'D:/outputs'}));
     ''')
     page.goto(args.url + '/#/workflow-node-editor?new=1')
     page.wait_for_load_state('networkidle')
@@ -257,7 +257,7 @@ with sync_playwright() as playwright:
                  'definition':{'nodes':nodes,'links':[],'extra':{'source':'original'}}}
         case_context = browser.new_context(viewport={'width': 1100, 'height': 800})
         fixtures = {'workflow-state': {'workflows': [entry], 'selectedWorkflowId': entry['id']},
-                    'app-settings': {'startupOnboardingSeen': True, 'locale': 'zh-CN'}}
+                    'app-settings': {'version': 1, 'startupOnboardingSeen': True, 'locale': 'zh-CN'}}
         case_context.add_init_script('for(const [key,value] of Object.entries('+json.dumps(fixtures)+')) localStorage.setItem("pymss-studio:"+key,JSON.stringify(value));')
         page = case_context.new_page()
         canvas = page.locator('canvas.lg-canvas')
@@ -274,7 +274,7 @@ with sync_playwright() as playwright:
         case_context.close()
     # A restoration exception must surface in the UI without replacing the input graph.
     failure_context = browser.new_context(viewport={'width': 1100, 'height': 800})
-    failure_context.add_init_script('localStorage.setItem("pymss-studio:app-settings",JSON.stringify({startupOnboardingSeen:true,locale:"zh-CN"}))')
+    failure_context.add_init_script('localStorage.setItem("pymss-studio:app-settings",JSON.stringify({version:1,startupOnboardingSeen:true,locale:"zh-CN"}))')
     page = failure_context.new_page()
     page.goto(args.url + '/#/workflow-node-editor?new=1')
     page.wait_for_load_state('networkidle')

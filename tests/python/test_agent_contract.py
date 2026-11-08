@@ -262,14 +262,21 @@ class MediaToolTests(unittest.TestCase):
         self.assertEqual(set(self._capability_tools()), expected)
 
     def test_unimplemented_capabilities_are_flagged_not_hidden(self) -> None:
-        from media_ops import capabilities
+        from media_ops import capabilities, workflow_contract
 
         implemented = capabilities.adapter_capability_ids()
         for name, tool in self._capability_tools().items():
             capability_id = name.rsplit(".", 1)[1]
+            modality = name.split(".")[1]
+            workflow_supported = modality == "image" or workflow_contract.workflow_support(capability_id)[modality]["supported"]
             self.assertEqual(
-                tool["available"], capability_id in implemented, f"{name} 的 available 标记不准确"
+                tool["available"], capability_id in implemented and workflow_supported, f"{name} 的 available 标记不准确"
             )
+            self.assertEqual(tool["admission"], "kernel")
+
+    def test_video_capabilities_without_a_workflow_adapter_are_not_advertised_as_runnable(self) -> None:
+        self.assertFalse(self.tools["media.video.frame_interpolation"]["available"])
+        self.assertEqual(self.tools["media.image.frame_interpolation"]["operation"], "media_image")
 
     def test_media_tools_declare_an_evaluation_hook(self) -> None:
         self.assertEqual(self.tools["media.image.upscale"]["evaluate"], "media.evaluate")

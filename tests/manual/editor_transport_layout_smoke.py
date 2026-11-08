@@ -44,7 +44,7 @@ with sync_playwright() as playwright:
         page = browser.new_page(viewport={"width": 1041, "height": 900})
         page.add_init_script(
             "localStorage.setItem('pymss-studio:app-settings', JSON.stringify("
-            + json.dumps({"startupOnboardingSeen": True, "locale": locale}) + "));"
+            + json.dumps({"version": 1, "startupOnboardingSeen": True, "locale": locale}) + "));"
         )
         page.goto(f"{base_url}/#/editor", wait_until="domcontentloaded", timeout=60_000)
         try:

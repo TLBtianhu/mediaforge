@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { createDemoRuntime } from '../src/features/onboarding/demoRuntime.ts'
 import { visibleParameterGuides } from '../src/features/onboarding/parameters.ts'
+import { validateStoredSettings } from '../src/stores/settingsSchema.ts'
 
 const config = { locale: 'en', themeMode: 'dark', themeAccent: 'blue', platform: 'win32', progress: { step: 0, stepId: 'workspace' } }
 
@@ -28,6 +29,16 @@ test('new tutorials and non-encoding progress retain the WAV default', async t =
     const settings = await runtime.invoke('load_app_store', { name: 'app-settings' })
     assert.equal(settings.defaultFormat, 'wav')
   }
+})
+
+test('tutorial settings use the current schema the settings store validates', async t => {
+  const runtime = createDemoRuntime(config)
+  t.after(() => runtime.dispose())
+  const settings = await runtime.invoke('load_app_store', { name: 'app-settings' })
+  // The tutorial bootstraps the real settings store, so its fixture must pass
+  // the same strict schema as a user profile.
+  assert.doesNotThrow(() => validateStoredSettings(settings))
+  assert.equal(settings.version, 1)
 })
 
 test('tutorial data is private to each session and unknown operations never reach native services', async t => {

@@ -43,7 +43,7 @@ with sync_playwright() as playwright:
     page = browser.new_page(viewport={'width': 1440, 'height': 1000})
     errors = []
     page.on('pageerror', lambda error: errors.append(error.stack))
-    page.add_init_script('localStorage.setItem("pymss-studio:app-settings", JSON.stringify(' + json.dumps({'startupOnboardingSeen': True, 'locale': 'zh-CN', 'themeMode': 'light', 'outputDir': str(artifacts / 'output')}, ensure_ascii=False) + ')); localStorage.setItem("pymss-studio:workflow-state", JSON.stringify(' + json.dumps(state, ensure_ascii=False) + '));')
+    page.add_init_script('localStorage.setItem("pymss-studio:app-settings", JSON.stringify(' + json.dumps({'version': 1, 'startupOnboardingSeen': True, 'locale': 'zh-CN', 'themeMode': 'light', 'outputDir': str(artifacts / 'output')}, ensure_ascii=False) + ')); localStorage.setItem("pymss-studio:workflow-state", JSON.stringify(' + json.dumps(state, ensure_ascii=False) + '));')
     page.goto(args.url.rstrip('/') + '/#/workflow-simple-editor?workflowId=phase')
     page.wait_for_load_state('networkidle')
     # The browser fixture owns tasks like the main window; hide its chrome

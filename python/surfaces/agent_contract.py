@@ -9,11 +9,12 @@
 
 * `name`        稳定 id（agent 用它调用；改名等于破坏契约，要升 version）
 * `command` + `operation`  worker 工具真正落到哪个命令；桥接专属工具则为 `command=None`
-* `executor`     `worker` 走统一 dispatch，`bridge` 由 MCP 桥直接执行
+* `executor`     `worker` 使用 worker 命令，`bridge` 由 MCP 桥直接执行
 * `inputSchema` 输入（JSON Schema 的子集，够 MCP 用）
 * `approval`    需要什么级别的确认：`none` 只读 / `confirm` 会写文件或耗时 / `explicit` 下载·安装·删除
 * `cost`        预期耗时档位，供 agent 决定"直接等"还是"提交作业再轮询"
-* `longRunning` 是否走作业台账（有 jobId / 可取消）
+* `longRunning` 是否属于长耗时操作
+* `admission`   `kernel` 进入共享作业账本，`inline` 仅在当前进程内执行
 * `produces`    产物形状（file / report / json），供调用方知道去哪儿取结果
 * `evaluate`    自评价钩子（跑完之后怎么判断"做好了没有"）
 
@@ -113,6 +114,7 @@ def _tool(
     approval: str = "none",
     cost: str = "instant",
     long_running: bool = False,
+    admission: str | None = None,
     input_schema: dict[str, Any] | None = None,
     produces: str | None = None,
     evaluate: str | None = None,
@@ -126,6 +128,9 @@ def _tool(
         raise ValueError(f"unknown cost level {cost!r} for {name}")
     if bridge_only != (command is None):
         raise ValueError(f"bridge_only must match command=None for {name}")
+    admission = admission or ("kernel" if long_running else "inline")
+    if admission not in {"inline", "kernel"}:
+        raise ValueError(f"unknown admission mode {admission!r} for {name}")
     return {
         "name": name,
         "title": title,
@@ -137,6 +142,7 @@ def _tool(
         "approval": approval,
         "cost": cost,
         "longRunning": bool(long_running),
+        "admission": admission,
         "inputSchema": input_schema or _schema(),
         "produces": produces,
         "evaluate": evaluate,
@@ -234,7 +240,7 @@ _MEDIA_STEPS_SCHEMA = _schema(
 
 
 def _media_tools() -> list[dict[str, Any]]:
-    from media_ops import capabilities, runtime_guard
+    from media_ops import capabilities, runtime_guard, workflow_contract
 
     tools: list[dict[str, Any]] = []
     # 契约本身不能因为"某个可选依赖没装"就生成不出来：
@@ -250,15 +256,18 @@ def _media_tools() -> list[dict[str, Any]]:
             bindings = capabilities.default_bindings(capability["id"])
         except Exception:  # noqa: BLE001
             bindings = {}
-        is_available = capability["id"] in implemented and capability["id"] in runtime_supported
+        base_available = capability["id"] in implemented and capability["id"] in runtime_supported
         # 模型清单来自能力声明（catalog 的 id）；新增模型只要登记进能力就会出现在工具里
         models = [str(item) for item in capability.get("modelIds") or []]
         for modality in capability["modalities"]:
             name = f"media.{modality}.{capability['id']}"
+            workflow_supported = modality == "image" or workflow_contract.workflow_support(capability["id"])[modality]["supported"]
             description = (
                 f"{capability['label']}（{capability['labelEn']}）。"
                 f"默认模型：{', '.join(f'{role}={model}' for role, model in bindings.items()) or '未声明'}。"
             )
+            if not workflow_supported:
+                description += "当前 MCP 入口需要串行工作流适配器；请使用应用内的单任务页面。"
             tools.append(
                 _tool(
                     name,
@@ -270,10 +279,11 @@ def _media_tools() -> list[dict[str, Any]]:
                     approval="confirm",
                     cost="seconds" if modality == "image" else "minutes",
                     long_running=modality == "video",
+                    admission="kernel",
                     input_schema=_MEDIA_STEPS_SCHEMA,
                     produces="file",
                     evaluate="media.evaluate",
-                    available=is_available,
+                    available=base_available and workflow_supported,
                     params_schema=_capability_params(capability["id"]),
                     models=models,
                 )
@@ -313,6 +323,7 @@ def _audio_tool_tools() -> list[dict[str, Any]]:
                 approval="confirm",
                 cost="seconds",
                 long_running=operation in {"asr", "merge", "slicer"},
+                admission="kernel",
                 input_schema=_schema(
                     {
                         "operation": {"type": "string", "const": operation},
@@ -416,7 +427,7 @@ def _native_tools() -> list[dict[str, Any]]:
               produces="file"),
         # 编辑器
         _tool("editor.export_mix", "导出混音", "把编辑器工程导出为音频文件。", "editor", "export_editor_mix",
-              approval="confirm", cost="seconds", input_schema=_schema({"project": {"type": "object"}}, ["project"]),
+              approval="confirm", cost="seconds", admission="kernel", input_schema=_schema({"project": {"type": "object"}}, ["project"]),
               produces="file"),
         _tool("editor.peaks", "波形峰值", "计算波形显示用峰值。", "editor", "waveform_peaks",
               input_schema=_schema({"path":{"type":"string"}, "resolution":{"type":"integer"}, "cacheDir":{"type":"string"}}, ["path"])),
@@ -426,7 +437,7 @@ def _native_tools() -> list[dict[str, Any]]:
         # 自评价
         # 多步编排：worker 侧 media_image/media_video 只接受单步，多步必须走 media_workflow
         _tool("media.image.workflow", "图像多步工作流", "按顺序执行多个能力（如先去水印再放大），一次调用完成编排。",
-              "media", "media_tool", operation="media_workflow", approval="confirm", cost="seconds",
+              "media", "media_tool", operation="media_workflow", approval="confirm", cost="seconds", admission="kernel",
               input_schema=_MEDIA_STEPS_SCHEMA, produces="file", evaluate="media.evaluate"),
         _tool("media.video.workflow", "视频多步工作流", "按顺序执行多个能力；视频耗时按分钟计，走作业台账。",
               "media", "media_tool", operation="media_workflow", approval="confirm", cost="minutes",
@@ -686,8 +697,9 @@ def cmd_agent_contract(payload: dict[str, Any]) -> int:
 
 def find_tool(tool_name: str) -> dict[str, Any]:
     _ensure_mcp_compatible()
+    canonical = next((name for name, alias in BRIDGE_ALIASES.items() if alias == tool_name), tool_name)
     for tool in _native_tools() + _media_tools() + _audio_tool_tools() + _bridge_only_tools():
-        if tool["name"] == tool_name:
+        if tool["name"] == canonical:
             return tool
     raise KeyError(f"unknown tool: {tool_name}")
 

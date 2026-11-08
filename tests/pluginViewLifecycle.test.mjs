@@ -4,6 +4,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { parse } from 'vue/compiler-sfc'
+import { isTaskProgress, isTaskResult } from '../src/utils/taskEvents.ts'
 
 const descriptor = parse(readFileSync(new URL('../src/features/plugin-marketplace/PluginViewHost.vue', import.meta.url), 'utf8')).descriptor
 const source = ts.createSourceFile('host.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true)
@@ -30,7 +31,7 @@ function host(overrides = {}) {
     src: { value: '' }, status: { value: 'loading' }, errorText: { value: '' },
     window: { addEventListener() {}, removeEventListener() {} }, document: { documentElement: {} },
     MutationObserver: class { observe() {} disconnect() {} },
-    onWindowMessage() {}, pushTheme() {},
+    onWindowMessage() {}, pushTheme() {}, isTaskProgress, isTaskResult,
     pluginViewUrl: () => 'http://pymss-plugin.localhost/view/gain/editor/index.html', convertFileSrc() {},
     listen: async () => () => {}, invoke: async () => {}, ...overrides,
   }
@@ -126,16 +127,16 @@ test('the actual SDK correlates concurrent progress and waits for terminal respo
   await new Promise(setImmediate)
   assert.equal(starts.length, 2)
   const emit = (index, type, payload) => workerListener({ payload: { type, requestId: starts[index].requestId, payload } })
-  emit(1, 'operation_progress', { fraction: 0.75 })
-  emit(0, 'operation_progress', { fraction: 0.25 })
+  emit(1, 'task.progress', { fraction: 0.75 })
+  emit(0, 'task.progress', { fraction: 0.25 })
   await new Promise(setImmediate)
   assert.deepEqual(progress, [[0.25], [0.75]])
   assert.equal(finished, false)
-  emit(0, 'operation_result', { outputs: { value: 1 } })
-  emit(1, 'operation_result', { outputs: { value: 2 } })
+  emit(0, 'task.result', { outputs: { value: 1 } })
+  emit(1, 'task.result', { outputs: { value: 2 } })
   assert.equal((await first).outputs.value, 1)
   assert.equal((await second).outputs.value, 2)
-  emit(0, 'operation_progress', { fraction: 1 })
+  emit(0, 'task.progress', { fraction: 1 })
   await new Promise(setImmediate)
   assert.deepEqual(progress, [[0.25], [0.75]])
   assert.equal(state.runRequests.size, 0)

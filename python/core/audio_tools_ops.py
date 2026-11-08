@@ -320,21 +320,6 @@ def _run_plugin_tool(tool: str, payload: dict[str, Any]) -> dict[str, Any]:
     from core.audio_tools_op_bridge import run_plugin_operation_as_tool
 
     return run_plugin_operation_as_tool(runtime, tool, operation, payload)
-    if _operation_available(runtime, operation):
-        from core.audio_tools_op_bridge import run_plugin_operation_as_tool
-
-        return run_plugin_operation_as_tool(runtime, tool, operation, payload)
-    # Legacy dedicated implementation keeps the tool working out of the box.
-    # Route through worker_tools' module attribute so tests (and any future
-    # overrides) that patch it there are honored on this path too.
-    from core.worker_tools import get_audio_tool_handler
-
-    handler = get_audio_tool_handler(tool)
-    if handler is None:
-        from audio_tools.registry import get_audio_tool_handler as registry_handler
-
-        handler = registry_handler(tool)
-    return handler(payload)  # type: ignore[return-value]
 
 
 _ADAPTERS = {

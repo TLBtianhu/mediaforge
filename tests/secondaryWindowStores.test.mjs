@@ -31,14 +31,16 @@ afterEach(async () => {
 })
 
 function environment(initial = {}) {
+  const overrides = clone(initial)
+  if (overrides['app-settings']) overrides['app-settings'] = { version: 1, ...overrides['app-settings'] }
   const state = {
     'app-settings': {
-      themeMode: 'light', locale: 'en', startupOnboardingSeen: true,
+      version: 1, themeMode: 'light', locale: 'en', startupOnboardingSeen: true,
       modelDir: 'D:/old-models', outputDir: 'D:/outputs', defaultDevice: 'cuda:0',
       proxyMode: 'custom', proxyUrl: 'http://127.0.0.1:7001',
     },
     'model-state': {},
-    ...clone(initial),
+    ...overrides,
   }
   const calls = []
   const writes = []
@@ -55,7 +57,15 @@ function environment(initial = {}) {
         transformCallback() { return ++callbackId },
         async invoke(command, args) {
           calls.push({ label, command, args: args ? clone(args) : undefined })
-          if (command === 'load_app_store') return clone(state[args.name] || {})
+          if (command === 'load_app_store') return state[args.name] === null ? null : clone(state[args.name] || {})
+          if (command === 'recover_app_settings') {
+            if (args.confirm !== true) throw new Error('recover_app_settings requires explicit confirmation')
+            // The backend copies the rejected bytes to a backup, then removes the
+            // file; the next load therefore starts from documented defaults.
+            const backupPath = 'D:/data/settings/app.rejected-1.json'
+            state['app-settings'] = null
+            return { ok: true, recovered: true, backupPath }
+          }
           if (command === 'save_app_store') {
             if (failWrites) throw new Error('store write failed')
             state[args.name] = clone(args.data)
@@ -103,9 +113,9 @@ const activeDownload = {
   message: 'Downloading', completedFiles: 0, totalFiles: 1, updatedAt: 1, logs: [], seen: true,
 }
 
-test('legacy installations persist the tutorial invitation separately from their saved progress', async () => {
+test('current installations persist the tutorial invitation separately from their saved progress', async () => {
   for (const status of ['unseen', 'pending', 'active', 'skipped', 'completed']) {
-    const env = environment({ 'app-settings': { startupOnboardingSeenVersion: '0.0.21', defaultDevice: 'cuda:0',
+    const env = environment({ 'app-settings': { startupOnboardingSeen: true, defaultDevice: 'cuda:0',
       beginnerGuideProgress: { status, step: 0, stepId: 'toolsOverview' } } })
     const main = env.instance('main')
     await main.settings.initialize()
@@ -162,26 +172,17 @@ test('new users receive one tutorial invitation after setup and secondary window
   assert.equal(nextGuide.phase, 'closed')
 })
 
-test('legacy MP3 bitrate is migrated without changing AAC preferences or unfinished guide progress', async () => {
+test('an unsupported persisted MP3 bitrate is rejected without rewriting any preference', async () => {
   const env = environment()
   Object.assign(env.state['app-settings'], { mp3BitRate: '512k', m4aBitRate: '512k', beginnerGuideInvitationSeen: true,
     beginnerGuideProgress: { status: 'active', step: 0, stepId: 'toolsOverview' } })
+  const before = clone(env.state['app-settings'])
   const main = env.instance('main')
-  await main.settings.initialize()
-  const progress = clone(main.settings.beginnerGuideProgress)
-  assert.equal(main.settings.mp3BitRate, '320k')
-  assert.equal(main.settings.getAudioParams().mp3_bit_rate, '320k')
-  assert.equal(main.settings.m4aBitRate, '512k')
+  await assert.rejects(main.settings.initialize(), /Unsupported app settings schema/)
   await waitForSave()
-  assert.equal(env.state['app-settings'].mp3BitRate, '320k')
-  assert.equal(env.state['app-settings'].m4aBitRate, '512k')
-  assert.equal(env.state['app-settings'].proxyUrl, 'http://127.0.0.1:7001')
-  assert.deepEqual(env.state['app-settings'].beginnerGuideProgress, progress)
-  const reopened = env.instance('main')
-  await reopened.settings.initialize()
-  assert.equal(reopened.settings.mp3BitRate, '320k')
-  assert.equal(reopened.settings.m4aBitRate, '512k')
-  assert.deepEqual(clone(reopened.settings.beginnerGuideProgress), progress)
+  assert.deepEqual(env.state['app-settings'], before)
+  assert.equal(env.writes.length, 0)
+  assert.equal(main.settings.initialized, false)
 })
 
 test('supported MP3 rates are preserved and invalid runtime values cannot be submitted or persisted', async () => {
@@ -202,15 +203,39 @@ test('supported MP3 rates are preserved and invalid runtime values cannot be sub
   assert.equal(env.state['app-settings'].mp3BitRate, '320k')
 })
 
-test('secondary windows normalize legacy MP3 preferences without rewriting shared settings', async () => {
+test('a rejected settings file is preserved until an explicit backup-and-reset', async () => {
   const env = environment()
   env.state['app-settings'].mp3BitRate = '512k'
-  const child = env.instance('editor-a')
-  await child.settings.initialize()
-  assert.equal(child.settings.mp3BitRate, '320k')
-  assert.equal(child.settings.getAudioParams().mp3_bit_rate, '320k')
+  const before = clone(env.state['app-settings'])
+  const main = env.instance('main')
+  await assert.rejects(main.settings.initialize(), /Unsupported app settings schema/)
+  assert.match(main.settings.loadError, /Unsupported app settings schema/)
+  assert.equal(main.settings.initialized, false)
+  // Nothing is rewritten, migrated or replaced before the user decides.
   await waitForSave()
-  assert.equal(env.state['app-settings'].mp3BitRate, '512k')
+  assert.deepEqual(env.state['app-settings'], before)
+  assert.equal(env.writes.length, 0)
+  assert.equal(env.calls.some(call => call.command === 'recover_app_settings'), false)
+
+  const response = await main.settings.recoverSettings()
+  assert.equal(response.recovered, true)
+  const recovery = env.calls.find(call => call.command === 'recover_app_settings')
+  assert.deepEqual(recovery.args, { confirm: true })
+  assert.equal(env.writes.length, 0)
+  assert.equal(main.settings.loadError, '')
+  assert.equal(main.settings.initialized, true)
+  assert.equal(main.settings.recoveryState.status, 'recovered')
+  assert.match(main.settings.recoveryState.backupPath, /app\.rejected-/)
+})
+
+test('secondary windows also reject unsupported settings without rewriting shared state', async () => {
+  const env = environment()
+  env.state['app-settings'].mp3BitRate = '512k'
+  const before = clone(env.state['app-settings'])
+  const child = env.instance('editor-a')
+  await assert.rejects(child.settings.initialize(), /Unsupported app settings schema/)
+  await waitForSave()
+  assert.deepEqual(env.state['app-settings'], before)
   assert.equal(env.writes.length, 0)
 })
 
