@@ -22,9 +22,20 @@ struct ManifestBootstrap {
 }
 
 #[derive(Debug, Default, Deserialize)]
+struct ManifestResultJobs {
+    #[serde(default)]
+    commands: Vec<String>,
+    #[serde(default)]
+    operations: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ManifestExecution {
     #[serde(default)]
     bootstrap: ManifestBootstrap,
+    #[serde(default)]
+    result_jobs: ManifestResultJobs,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +62,15 @@ pub fn is_terminal_event(kind: &str) -> bool {
 
 /// Commands that must run on the bootstrap interpreter: the worker commands the
 /// manifest declares plus native Rust entries that drive pip directly.
+/// Result-bearing job commands: worker commands plus media operation aliases.
+pub fn is_result_job_command(command: &str) -> bool {
+    let jobs = &manifest().execution.result_jobs;
+    jobs.commands
+        .iter()
+        .chain(jobs.operations.iter())
+        .any(|name| name == command)
+}
+
 pub fn is_bootstrap_command(command: &str) -> bool {
     let bootstrap = &manifest().execution.bootstrap;
     bootstrap
@@ -130,6 +150,26 @@ mod tests {
         assert!(is_bootstrap_command("update_runtime_core"));
         assert!(!is_bootstrap_command("infer"));
         assert!(!bootstrap.native.iter().any(|name| bootstrap.worker.contains(name)));
+    }
+
+    #[test]
+    fn result_job_commands_cover_the_legacy_list() {
+        for name in [
+            "infer",
+            "infer_workflow",
+            "audio_tools",
+            "media_tool",
+            "media_image",
+            "media_video",
+            "media_workflow",
+            "media_convert",
+            "run_operation",
+            "export_editor_mix",
+        ] {
+            assert!(is_result_job_command(name), "{name} must stay a result job command");
+        }
+        assert!(!is_result_job_command("media_probe"));
+        assert!(!is_result_job_command("runtime_info"));
     }
 
     #[test]

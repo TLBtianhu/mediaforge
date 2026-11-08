@@ -90,10 +90,13 @@ class RustEventLiteralTests(unittest.TestCase):
 
 
 class ExecutionManifestTests(unittest.TestCase):
-    def manifest(self, worker: list[str], native: list[str]) -> dict:
+    def manifest(self, worker: list[str], native: list[str], **result_jobs: list[str]) -> dict:
+        execution: dict = {"bootstrap": {"worker": worker, "native": native}}
+        if result_jobs:
+            execution["resultJobs"] = result_jobs
         return {
             "domains": {"runtime": {"commands": {"info": {"command": "runtime_info"}}}},
-            "execution": {"bootstrap": {"worker": worker, "native": native}},
+            "execution": execution,
         }
 
     def test_worker_entries_must_exist(self) -> None:
@@ -107,6 +110,33 @@ class ExecutionManifestTests(unittest.TestCase):
         self.assertEqual(
             architecture.check_execution_manifest(
                 self.manifest(["runtime_info"], ["update_runtime_core"])
+            ),
+            [],
+        )
+
+    def test_result_commands_must_exist(self) -> None:
+        problems = architecture.check_execution_manifest(
+            self.manifest(["runtime_info"], ["update_runtime_core"], commands=["runtime_ghost"])
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("runtime_ghost", problems[0])
+
+    def test_result_operations_must_be_routed(self) -> None:
+        problems = architecture.check_execution_manifest(
+            self.manifest(
+                ["runtime_info"], ["update_runtime_core"],
+                commands=["runtime_info"], operations=["media_ghost"],
+            )
+        )
+        self.assertTrue(any("media_ghost" in problem for problem in problems))
+
+    def test_valid_result_jobs_pass(self) -> None:
+        self.assertEqual(
+            architecture.check_execution_manifest(
+                self.manifest(
+                    ["runtime_info"], ["update_runtime_core"],
+                    commands=["runtime_info"], operations=["media_image"],
+                )
             ),
             [],
         )

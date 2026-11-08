@@ -7,9 +7,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-const COMMANDS: &[&str] = &["infer", "infer_workflow", "audio_tools", "media_tool", "media_image",
-    "media_video", "media_workflow", "media_convert", "run_operation", "export_editor_mix"];
-
 #[derive(Debug, Serialize, PartialEq)]
 pub(crate) struct PathFailure { pub path: String, pub error: String }
 #[derive(Debug, Serialize, PartialEq)]
@@ -253,7 +250,7 @@ fn unresolved_generic_input(command: &str, payload: &Value) -> bool {
     if command == "waveform_peaks" {
         return ["path", "cacheDir"].iter().any(|name| relative_file(&payload[*name]));
     }
-    if !COMMANDS.contains(&command) { return false; }
+    if !super::protocol::is_result_job_command(command) { return false; }
     if command == "export_editor_mix" { return super::editor_references::export_project_references(&payload["project"]).is_err(); }
     if command == "run_operation" {
         // Plain strings and scalar.value are operation values, not file paths.
@@ -347,7 +344,7 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
                 groups.insert(row.pointer("/audio/primaryJobId").and_then(Value::as_str)
                     .ok_or_else(|| invalid("audio deletion requires audio group jobs"))?.to_string());
             }
-            RemovalKind::Generic if row.get("audio").is_some() || !COMMANDS.contains(&row["command"].as_str().unwrap()) => {
+            RemovalKind::Generic if row.get("audio").is_some() || !super::protocol::is_result_job_command(row["command"].as_str().unwrap()) => {
                 return Err(invalid("only generic result jobs can be removed here"));
             }
             _ => (),

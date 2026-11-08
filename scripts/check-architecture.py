@@ -208,7 +208,8 @@ def check_execution_manifest(manifest: dict) -> list[str]:
             name = entry.get("command")
             if isinstance(name, str) and name:
                 commands.add(name)
-    bootstrap = (manifest.get("execution") or {}).get("bootstrap") or {}
+    execution = manifest.get("execution") or {}
+    bootstrap = execution.get("bootstrap") or {}
     worker = list(bootstrap.get("worker") or [])
     native = list(bootstrap.get("native") or [])
     problems: list[str] = []
@@ -223,6 +224,25 @@ def check_execution_manifest(manifest: dict) -> list[str]:
         problems.append(f"protocol: execution.bootstrap 的 worker/native 重叠：{sorted(overlap)}")
     if not worker:
         problems.append("protocol: execution.bootstrap.worker 为空，bootstrap 选择会退回猜测")
+    result_jobs = execution.get("resultJobs") or {}
+    result_commands = list(result_jobs.get("commands") or [])
+    result_operations = list(result_jobs.get("operations") or [])
+    for name in result_commands:
+        if name not in commands:
+            problems.append(f"protocol: execution.resultJobs.commands 的 {name} 不是任何命令的 command")
+        elif name in result_operations:
+            problems.append(f"protocol: execution.resultJobs 的 {name} 同时被声明为命令和操作")
+    for label, items in (("commands", result_commands), ("operations", result_operations)):
+        if len(set(items)) != len(items):
+            problems.append(f"protocol: execution.resultJobs.{label} 有重复项")
+    if result_operations:
+        routing_path = ROOT / "python" / "core" / "worker_tools.py"
+        routing = routing_path.read_text(encoding="utf-8") if routing_path.is_file() else ""
+        for name in result_operations:
+            if name in commands:
+                problems.append(f"protocol: execution.resultJobs.operations 的 {name} 与 worker 命令同名")
+            elif f'"{name}"' not in routing:
+                problems.append(f"protocol: execution.resultJobs.operations 的 {name} 没有 media 路由")
     return problems
 
 
