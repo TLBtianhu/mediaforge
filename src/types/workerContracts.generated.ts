@@ -653,6 +653,53 @@ export interface WorkerCommandContracts {
     }
     result: {
       ok: boolean
+      modelDir: string
+      models: Array<{
+              id: string
+              provider?: string
+              modality: string
+              modalities: Array<string>
+              name: string
+              label: string
+              task?: string
+              capabilities?: Array<string>
+              roles?: Array<string>
+              category?: string
+              categoryCn?: string
+              architecture?: string
+              size: number
+              license?: string
+              description?: string
+              files?: Array<Record<string, unknown>>
+              downloaded: boolean
+              partial?: boolean
+              missingPaths?: Array<string>
+              runtime: string
+              implemented: boolean
+              downloadable: boolean
+              supported?: boolean
+              sizeBytes?: number
+              modelPath?: string
+              configPath?: string | null
+              source?: string
+              modelType?: string
+              targetStem?: string
+              status?: string
+              blockedReason?: string
+              [key: string]: unknown
+            }>
+      environment: Record<string, boolean>
+      count: number
+      downloadedCount: number
+      [key: string]: unknown
+    } | {
+      ok: boolean
+      model: Record<string, unknown>
+      modelDir: string
+      verified: boolean
+      files: Array<Record<string, unknown>>
+      failures: Array<string>
+      unverified: Array<string>
       [key: string]: unknown
     }
   }

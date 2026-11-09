@@ -1946,15 +1946,222 @@
             }
           },
           "result": {
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-              "ok": {
-                "type": "boolean"
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "modelDir": {
+                    "type": "string"
+                  },
+                  "models": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "modality": {
+                          "type": "string"
+                        },
+                        "modalities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "task": {
+                          "type": "string"
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "roles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "categoryCn": {
+                          "type": "string"
+                        },
+                        "architecture": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "license": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {}
+                          }
+                        },
+                        "downloaded": {
+                          "type": "boolean"
+                        },
+                        "partial": {
+                          "type": "boolean"
+                        },
+                        "missingPaths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "runtime": {
+                          "type": "string"
+                        },
+                        "implemented": {
+                          "type": "boolean"
+                        },
+                        "downloadable": {
+                          "type": "boolean"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "sizeBytes": {
+                          "type": "integer"
+                        },
+                        "modelPath": {
+                          "type": "string"
+                        },
+                        "configPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "modelType": {
+                          "type": "string"
+                        },
+                        "targetStem": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "blockedReason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "label",
+                        "modality",
+                        "modalities",
+                        "downloaded",
+                        "runtime",
+                        "implemented",
+                        "downloadable",
+                        "size"
+                      ]
+                    }
+                  },
+                  "environment": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "boolean"
+                    }
+                  },
+                  "count": {
+                    "type": "integer"
+                  },
+                  "downloadedCount": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "ok",
+                  "modelDir",
+                  "models",
+                  "environment",
+                  "count",
+                  "downloadedCount"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "model": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {}
+                  },
+                  "modelDir": {
+                    "type": "string"
+                  },
+                  "verified": {
+                    "type": "boolean"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failures": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "unverified": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "ok",
+                  "model",
+                  "modelDir",
+                  "verified",
+                  "files",
+                  "failures",
+                  "unverified"
+                ]
               }
-            },
-            "required": [
-              "ok"
             ]
           },
           "resultSchemaEvent": "model_hub_result"
