@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -59,6 +59,7 @@ const query = ref('')
 const kind = ref<'all' | 'audio' | 'image' | 'video'>('all')
 const busy = ref(false)
 const importing = ref(false)
+const libraryError = ref('')
 let unlistenDrop: (() => void) | undefined
 
 const kindOptions = computed(() => [
@@ -69,6 +70,9 @@ const kindOptions = computed(() => [
 ])
 
 const totalCount = computed(() => stats.value.total?.count ?? assets.value.length)
+const libraryErrorIsSchema = computed(() => /Unsupported library identity\/version\/journal mode/i.test(libraryError.value))
+const libraryErrorTitle = computed(() => libraryErrorIsSchema.value ? t('assets.librarySchemaTitle') : t('assets.libraryTitle'))
+const libraryErrorHint = computed(() => libraryErrorIsSchema.value ? t('assets.librarySchemaHint') : t('assets.libraryErrorHint'))
 
 function kindLabel(value: Asset['kind']) {
   return t(`assets.${value}`)
@@ -120,8 +124,9 @@ async function refresh() {
       payload: { operation: 'stats' },
     })
     stats.value = statsResult.stats || {}
+    libraryError.value = ''
   } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
+    libraryError.value = error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -246,6 +251,15 @@ onBeforeUnmount(() => {
       </n-button>
     </MediaPageHeader>
 
+    <n-alert v-if="libraryError" type="error" class="assets-library-alert" :title="libraryErrorTitle">
+      <p class="assets-library-alert__hint">{{ libraryErrorHint }}</p>
+      <details class="assets-library-alert__details">
+        <summary>{{ t('common.technicalDetails') }}</summary>
+        <pre>{{ libraryError }}</pre>
+      </details>
+      <n-button size="small" secondary :loading="busy" @click="refresh">{{ t('common.retry') }}</n-button>
+    </n-alert>
+
     <div class="mf-toolbar">
       <n-input v-model:value="query" clearable :placeholder="t('assets.search')" />
       <n-select v-model:value="kind" :options="kindOptions" />
@@ -343,6 +357,21 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.assets-library-alert { margin-bottom: 14px; }
+.assets-library-alert__hint { margin: 0 0 10px; line-height: 1.5; }
+.assets-library-alert__details { margin: 0 0 10px; }
+.assets-library-alert__details summary { cursor: pointer; font-size: 12px; opacity: 0.8; }
+.assets-library-alert__details pre {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .assets-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: auto; color: var(--on-surface-muted); font-size: 11px; }
 .asset-kind { position: absolute; top: 8px; left: 8px; }
 .assets-db { overflow: hidden; max-width: 52%; text-overflow: ellipsis; white-space: nowrap; }

@@ -441,8 +441,11 @@ onMounted(async () => {
     <MediaPageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" :icon="SettingsOutline" eyebrow="SETTINGS" tone="blue" />
 
     <n-alert v-if="settings.loadError" type="error" class="settings-schema-alert" :title="t('settings.schemaRejectedTitle')">
-      <p class="settings-schema-alert__detail">{{ settings.loadError }}</p>
       <p class="settings-schema-alert__hint">{{ t('settings.schemaRejectedHint') }}</p>
+      <details class="settings-schema-alert__details">
+        <summary>{{ t('common.technicalDetails') }}</summary>
+        <pre>{{ settings.loadError }}</pre>
+      </details>
       <div class="settings-schema-alert__actions">
         <n-button
           v-if="settingsRecoverySupported"

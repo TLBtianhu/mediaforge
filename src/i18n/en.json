@@ -228,13 +228,18 @@
     "removeConfirm": "Remove this item from the shelf? The original file will not be deleted.",
     "total": "{count} items",
     "imported": "Imported {count}",
-    "database": "Index location"
+    "database": "Index location",
+    "libraryTitle": "Media library could not be read",
+    "librarySchemaTitle": "Media library format is incompatible",
+    "librarySchemaHint": "The original database was preserved. Back it up and delete data/library.db; the app will create an empty library.",
+    "libraryErrorHint": "Reading the media library failed; the original file was not modified. Retry or open the technical details."
   },
   "common": {
     "cancel": "Cancel",
     "pause": "Pause",
     "resume": "Resume",
     "retry": "Retry",
+    "technicalDetails": "Technical details",
     "open": "Open",
     "save": "Save",
     "download": "Download",

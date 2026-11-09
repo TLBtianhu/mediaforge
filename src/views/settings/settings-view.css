@@ -13,16 +13,31 @@
   margin-bottom: 16px;
 }
 
-.settings-schema-alert__detail {
-  margin: 0 0 6px;
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
 .settings-schema-alert__hint {
   margin: 0 0 10px;
   line-height: 1.5;
+}
+
+.settings-schema-alert__details {
+  margin: 0 0 10px;
+}
+
+.settings-schema-alert__details summary {
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.settings-schema-alert__details pre {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .settings-schema-alert__actions {

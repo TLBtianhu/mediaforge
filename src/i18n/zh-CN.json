@@ -228,13 +228,18 @@
     "removeConfirm": "从素材台移除这个文件？不会删除原文件。",
     "total": "共 {count} 个素材",
     "imported": "已导入 {count} 个",
-    "database": "索引位置"
+    "database": "索引位置",
+    "libraryTitle": "素材库无法读取",
+    "librarySchemaTitle": "素材库格式与当前版本不兼容",
+    "librarySchemaHint": "原数据库已保留。备份后可删除 data/library.db，应用会重建一个空素材库。",
+    "libraryErrorHint": "读取素材库时出错，原文件未被修改。可重试或查看技术详情。"
   },
   "common": {
     "cancel": "取消",
     "pause": "暂停",
     "resume": "继续",
     "retry": "重试",
+    "technicalDetails": "技术详情",
     "open": "打开",
     "save": "保存",
     "download": "下载",
