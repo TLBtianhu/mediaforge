@@ -14,6 +14,8 @@ import { inferenceChunkSizeIssue, normalizeInferenceParamMeta, type InferencePar
 import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus } from '@/features/downloads/lifecycle'
 import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
 import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
+import { KnownObject } from '@/types/contracts'
+import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
 /** How the model library lays its entries out. */
 export type ModelViewMode = 'card' | 'list'
@@ -21,57 +23,12 @@ import { useSettingsStore } from '@/stores/settings'
 
 const studioLog = createLogger('ui.stores.model')
 
-export type ModelEntry = {
-  name: string
-  aliases: string[]
-  capabilities?: string[]
-  roles?: string[]
-  modelType: string | null
-  architecture: string
-  supported: boolean
-  unsupportedReason: string
-  category: string
-  categoryCn: string
-  primaryCategory: string
-  primaryCategoryCn: string
-  secondaryCategory: string
-  secondaryCategoryCn: string
-  targetStem: string
-  configInstruments: string
-  configTargetInstrument: string
-  classificationConfidence: string
-  classificationBasis: string
-  sizeBytes: number
-  sha256: string
-  downloaded: boolean
-  missingPaths: string[]
-  modelPath: string
-  configPath: string | null
-  auxiliaryPaths: string[]
-  /**
-   * Where the model came from. 'user' models were imported from local files and are local-only:
-   * pymss refuses to download them, and their weights may live anywhere on disk, so they offer
-   * relink/remove where a catalog model offers download/delete.
-   * Absent on entries restored from an older persisted cache — treat a missing value as 'catalog'.
-   */
-  source?: 'catalog' | 'debug' | 'user'
-  baseConfigPath?: string | null
-  /**
-   * How an imported model got here — 'copy' means the app owns its files and removing it deletes
-   * them. Null for catalog models. Models registered outside the app read as 'reference', the
-   * mode under which nothing is deleted.
-   */
-  importMode?: 'copy' | 'reference' | null
-  defaultInferenceParams?: ModelDefaultInferenceParams
-  defaultInferenceParamsResolved?: boolean
-  defaultInferenceParamsSource?: 'config' | 'runtime_fallback'
-  inferenceParamMeta?: InferenceParamMeta
-  /**
-   * 槽位接口（后端按任务族生成）：只声明"支持哪些槽位、绑定到哪个原生键"。
-   * 界面的分组与顺序来自前端布局档，不在这里——见 src/litegraph/renderPlan.ts。
-   */
+type ModelEntryContract = KnownObject<NonNullable<WorkerCommandResult<'list_models'>['models']>[number]>
+
+export type ModelEntry = Omit<ModelEntryContract, 'slots' | 'defaultInferenceParams' | 'inferenceParamMeta'> & {
   slots?: Record<string, { bind: string; min?: number; max?: number; step?: number; default?: unknown; choices?: Array<string | number>; derive?: string }>
-  slotTask?: string
+  defaultInferenceParams?: ModelDefaultInferenceParams
+  inferenceParamMeta?: InferenceParamMeta
 }
 
 /** One architecture the worker thinks a weights file might be, with why it thinks so. */

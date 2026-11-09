@@ -18,6 +18,20 @@ from surfaces import agent_contract
 import worker
 
 
+def model_row(name, **overrides):
+    row = {
+        "name": name, "aliases": [], "modelType": "demucs", "architecture": "demucs",
+        "supported": True, "unsupportedReason": "", "category": "user",
+        "categoryCn": "user", "primaryCategory": "user", "primaryCategoryCn": "user",
+        "secondaryCategory": "", "secondaryCategoryCn": "", "targetStem": "",
+        "configInstruments": "", "configTargetInstrument": "", "classificationConfidence": "",
+        "classificationBasis": "", "sizeBytes": 0, "sha256": "", "downloaded": False,
+        "missingPaths": [], "modelPath": "", "configPath": None, "auxiliaryPaths": [],
+    }
+    row.update(overrides)
+    return row
+
+
 class ModelRegistryBridgeScopeTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="mediaforge-model-bridge-")
@@ -84,7 +98,7 @@ class ModelRegistryBridgeScopeTests(unittest.TestCase):
         with mock.patch.dict(os.environ,{"PYMSS_USER_MODELS":str(ambient),"MEDIAFORGE_DATA_ROOT":str(self.root / "ambient")}), \
                 mock.patch.object(worker_models,"load_model_catalog",return_value={}), \
                 mock.patch.object(worker_models,"list_catalog_models",return_value=[]), \
-                mock.patch.object(worker_models,"model_to_dict",side_effect=lambda entry,*args:{"name":entry.name,"category":"user","categoryCn":"user"}), \
+                mock.patch.object(worker_models,"model_to_dict",side_effect=lambda entry,*args:model_row(entry.name, category="user", categoryCn="user")), \
                 mock.patch.object(worker_models,"_load_registered_user_models",side_effect=synchronized_read):
             with ThreadPoolExecutor(max_workers=2) as executor:
                 outcomes = list(executor.map(lambda bridge:bridge.call("model.list",{}),bridges))
@@ -151,7 +165,7 @@ class ModelRegistryBridgeScopeTests(unittest.TestCase):
             self.assertTrue(bridge.call("model.import_custom",{**payload,"confirmExplicit":True})["ok"])
         with mock.patch.object(worker_models,"load_model_catalog",return_value={}), \
                 mock.patch.object(worker_models,"list_catalog_models",return_value=[]), \
-                mock.patch.object(worker_models,"model_to_dict",side_effect=lambda entry,*args:{"name":entry.name,"category":"user","categoryCn":"user"}):
+                mock.patch.object(worker_models,"model_to_dict",side_effect=lambda entry,*args:model_row(entry.name, category="user", categoryCn="user")):
             listed = bridge.call("model.list",{})
         self.assertEqual([entry["name"] for entry in listed["models"]],["new_model"])
         with mock.patch("agent_bridge.model_hub.list_models",return_value={"models":[],"modelDir":"configured","environment":{}}):

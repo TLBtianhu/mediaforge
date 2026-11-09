@@ -164,6 +164,20 @@ class CommandContractTests(unittest.TestCase):
             "stats": {"kinds": {"audio": {"count": 1}}, "total": {"count": 1, "bytes": 2}, "database": "x"},
         }))
 
+    def test_list_models_item_is_typed(self) -> None:
+        item = {
+            "name": "m", "aliases": [], "modelType": "mdx", "architecture": "mdx",
+            "supported": True, "unsupportedReason": "", "category": "vocals",
+            "categoryCn": "人声", "primaryCategory": "vocals", "primaryCategoryCn": "人声",
+            "secondaryCategory": "", "secondaryCategoryCn": "", "targetStem": "vocals",
+            "configInstruments": "", "configTargetInstrument": "", "classificationConfidence": "",
+            "classificationBasis": "", "sizeBytes": 1, "sha256": "", "downloaded": True,
+            "missingPaths": [], "modelPath": "m.ckpt", "configPath": None, "auxiliaryPaths": [],
+        }
+        self.assertEqual(validate_result("list_models", {"models": [item], "count": 1}), [])
+        broken = dict(item); broken.pop("name")
+        self.assertTrue(validate_result("list_models", {"models": [broken], "count": 1}))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):
