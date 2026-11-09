@@ -38,6 +38,100 @@ export interface WorkerCommandContracts {
     }
     result: Record<string, unknown>
   }
+  "cleanup_model_residual_files": {
+    payload: {
+      modelDir?: string | null
+      taskId?: string | null
+      [key: string]: unknown
+    }
+    result: {
+      deleted?: number
+      errors?: Array<string>
+      completedFiles?: number
+      totalFiles?: number
+      progress?: number
+      message?: string
+      [key: string]: unknown
+    }
+  }
+  "debug_catalog_info": {
+    payload: Record<string, unknown>
+    result: {
+      baseCatalogPath?: string
+      debugCatalogPath?: string
+      debugDir?: string
+      baseCatalog?: Record<string, unknown>
+      debugCatalog?: Record<string, unknown>
+      effectiveCatalog?: Record<string, unknown>
+      status?: string
+      [key: string]: unknown
+    }
+  }
+  "debug_catalog_reset": {
+    payload: Record<string, unknown>
+    result: Record<string, unknown>
+  }
+  "debug_catalog_save": {
+    payload: {
+      catalog?: Record<string, unknown>
+      [key: string]: unknown
+    }
+    result: Record<string, unknown>
+  }
+  "debug_model_config": {
+    payload: {
+      action?: string
+      content?: string
+      model?: string
+      modelDir?: string | null
+      [key: string]: unknown
+    }
+    result: {
+      model?: string
+      source?: string
+      readOnly?: boolean
+      baseConfigPath?: string
+      effectiveConfigPath?: string
+      baseContent?: string
+      effectiveContent?: string
+      downloadedConfigExists?: boolean
+      status?: string
+      [key: string]: unknown
+    }
+  }
+  "delete_model": {
+    payload: {
+      model?: string
+      modelDir?: string | null
+      taskId?: string | null
+      [key: string]: unknown
+    }
+    result: {
+      model?: string
+      deleted?: boolean
+      errors?: Array<string>
+      completedFiles?: number
+      totalFiles?: number
+      progress?: number
+      message?: string
+      [key: string]: unknown
+    }
+  }
+  "delete_tool_model": {
+    payload: {
+      id?: string
+      missingOk?: boolean
+      modelDir?: string | null
+      tool?: string
+      [key: string]: unknown
+    }
+    result: {
+      id?: string
+      tool?: string
+      modelStorageSummary?: Record<string, unknown>
+      [key: string]: unknown
+    }
+  }
   "describe_operation": {
     payload: {
       operation: string
@@ -127,6 +221,72 @@ export interface WorkerCommandContracts {
       workerVersion: string
     }
   }
+  "import_custom_model": {
+    payload: {
+      aliases?: Array<string>
+      configPath?: string
+      force?: boolean
+      importMode?: string
+      modelDir?: string | null
+      modelPath?: string
+      modelType?: string
+      name?: string
+      taskId?: string | null
+      verify?: boolean
+      [key: string]: unknown
+    }
+    result: {
+      name?: string
+      modelType?: string
+      modelPath?: string
+      configPath?: string
+      importMode?: string
+      verified?: boolean
+      [key: string]: unknown
+    }
+  }
+  "inspect_custom_model": {
+    payload: {
+      configPath?: string
+      modelPath?: string
+      [key: string]: unknown
+    }
+    result: {
+      modelPath?: string
+      configPath?: string
+      sizeBytes?: number
+      suggestions?: Array<string>
+      suggestedModelType?: string
+      suggestedName?: string
+      instruments?: Array<string>
+      targetInstrument?: string
+      knownModelTypes?: Array<string>
+      configOptionalModelTypes?: Array<string>
+      configRequired?: boolean
+      stateDictReadable?: boolean
+      stateDictError?: string
+      [key: string]: unknown
+    }
+  }
+  "list_models": {
+    payload: {
+      category?: string
+      includeCustom?: boolean
+      includeInterfaces?: boolean
+      includeLocalState?: boolean
+      modelDir?: string | null
+      supportedOnly?: boolean
+      [key: string]: unknown
+    }
+    result: {
+      models: Array<Record<string, unknown>>
+      categories?: Array<string>
+      categoriesCn?: Array<string>
+      count: number
+      modelDir?: string
+      debugStatus?: Record<string, unknown>
+    }
+  }
   "list_nodes": {
     payload: Record<string, never>
     result: {
@@ -202,6 +362,87 @@ export interface WorkerCommandContracts {
     }
     result: Record<string, unknown>
   }
+  "model_download": {
+    payload: {
+      modelDir?: string | null
+      modelId?: string
+      source?: string
+      [key: string]: unknown
+    }
+    result: Record<string, unknown>
+  }
+  "model_hub": {
+    payload: {
+      modality?: string
+      modelDir?: string | null
+      modelId?: string
+      operation?: string
+      query?: string
+      source?: string
+      [key: string]: unknown
+    }
+    result: {
+      ok: boolean
+      [key: string]: unknown
+    }
+  }
+  "model_info": {
+    payload: {
+      model?: string
+      modelDir?: string | null
+      [key: string]: unknown
+    }
+    result: Record<string, unknown>
+  }
+  "model_interface": {
+    payload: {
+      model?: string
+      modelId?: string
+      [key: string]: unknown
+    }
+    result: {
+      interface: Record<string, unknown>
+      problems?: Array<string>
+    }
+  }
+  "model_storage_summary": {
+    payload: {
+      modelDir?: string | null
+      [key: string]: unknown
+    }
+    result: Record<string, unknown>
+  }
+  "relink_custom_model": {
+    payload: {
+      configPath?: string
+      modelPath?: string
+      modelType?: string
+      name?: string
+      [key: string]: unknown
+    }
+    result: {
+      name?: string
+      modelType?: string
+      modelPath?: string
+      configPath?: string
+      [key: string]: unknown
+    }
+  }
+  "remap_custom_model_paths": {
+    payload: {
+      fromRoot?: string
+      toRoot?: string
+      [key: string]: unknown
+    }
+    result: {
+      remapped?: number
+      count?: number
+      errors?: Array<string>
+      unchanged?: number
+      unavailable?: number
+      [key: string]: unknown
+    }
+  }
   "run_operation": {
     payload: {
       operation: string
@@ -237,6 +478,23 @@ export interface WorkerCommandContracts {
       elapsedMs: number
       mode: string
       proxy: string
+    }
+  }
+  "unregister_custom_model": {
+    payload: {
+      deleteFiles?: boolean
+      model?: string
+      modelDir?: string | null
+      name?: string
+      [key: string]: unknown
+    }
+    result: {
+      name?: string
+      filesDeleted?: boolean
+      deletedFiles?: number
+      fileDeletionSupported?: boolean
+      errors?: Array<string>
+      [key: string]: unknown
     }
   }
   "waveform_peaks": {

@@ -23,6 +23,7 @@ class CommandContractTests(unittest.TestCase):
         cls.graph = cls.protocol["domains"]["graph"]["commands"]
         cls.audio = cls.protocol["domains"]["audio"]["commands"]
         cls.media = cls.protocol["domains"]["media"]["commands"]
+        cls.model = cls.protocol["domains"]["model"]["commands"]
 
     def test_every_system_command_declares_payload_and_result(self) -> None:
         for name, entry in self.system.items():
@@ -66,6 +67,18 @@ class CommandContractTests(unittest.TestCase):
         self.assertTrue(validate_payload("media_precheck", {"inputs": "a.wav"}))
         self.assertTrue(validate_payload("media_library", {"limit": "ten"}))
         self.assertTrue(validate_payload("media_tool", {"operation": 1}))
+
+    def test_every_model_command_declares_payload_and_result(self) -> None:
+        for name, entry in self.model.items():
+            with self.subTest(name=name):
+                self.assertIsInstance(entry.get("payload"), dict)
+                self.assertIsInstance(entry.get("result"), dict)
+
+    def test_model_payload_types(self) -> None:
+        self.assertEqual(validate_payload("list_models", {"modelDir": None}), [])
+        self.assertTrue(validate_payload("list_models", {"category": 1}))
+        self.assertTrue(validate_payload("model_download", {"modelId": 1}))
+        self.assertTrue(validate_payload("debug_catalog_save", {"catalog": "bad"}))
 
     def test_health_rejects_unknown_payload_fields(self) -> None:
         self.assertEqual(validate_payload("health", {}), [])

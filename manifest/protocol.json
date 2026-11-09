@@ -923,21 +923,141 @@
           "command": "list_models",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "includeCustom": {
+                "type": "boolean"
+              },
+              "includeInterfaces": {
+                "type": "boolean"
+              },
+              "includeLocalState": {
+                "type": "boolean"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "supportedOnly": {
+                "type": "boolean"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "categoriesCn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "count": {
+                "type": "integer"
+              },
+              "modelDir": {
+                "type": "string"
+              },
+              "debugStatus": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "models",
+              "count"
+            ]
+          }
         },
         "info": {
           "handler": "core.worker_models:cmd_model_info",
           "command": "model_info",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "interface": {
           "handler": "core.worker_models:cmd_model_interface",
           "command": "model_interface",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelId": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "interface": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "problems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "interface"
+            ]
+          }
         },
         "delete": {
           "handler": "core.worker_models:cmd_delete_model",
@@ -945,35 +1065,203 @@
           "proxy": "configured",
           "kind": "task",
           "summary": "",
-          "resultEvent": "model_delete_done"
+          "resultEvent": "model_delete_done",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "boolean"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "completedFiles": {
+                "type": "integer"
+              },
+              "totalFiles": {
+                "type": "integer"
+              },
+              "progress": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
         },
         "delete_tool": {
           "handler": "core.worker_models:cmd_delete_tool_model",
           "command": "delete_tool_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "missingOk": {
+                "type": "boolean"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tool": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
+              "modelStorageSummary": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            }
+          }
         },
         "hub": {
           "handler": "core.model_hub_worker:cmd_model_hub",
           "command": "model_hub",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modality": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          }
         },
         "download": {
           "handler": "core.model_hub_worker:cmd_model_download",
           "command": "model_download",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "storage": {
           "handler": "core.worker_models:cmd_model_storage_summary",
           "command": "model_storage_summary",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "cleanup": {
           "handler": "core.worker_models:cmd_cleanup_model_residual_files",
@@ -981,7 +1269,52 @@
           "proxy": "configured",
           "kind": "task",
           "summary": "",
-          "resultEvent": "model_residual_cleanup_done"
+          "resultEvent": "model_residual_cleanup_done",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "deleted": {
+                "type": "integer"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "completedFiles": {
+                "type": "integer"
+              },
+              "totalFiles": {
+                "type": "integer"
+              },
+              "progress": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
         },
         "custom.import": {
           "handler": "core.worker_custom_models:cmd_import_custom_model",
@@ -989,63 +1322,436 @@
           "resultEvent": "custom_model_import_finished",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "configPath": {
+                "type": "string"
+              },
+              "force": {
+                "type": "boolean"
+              },
+              "importMode": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "verify": {
+                "type": "boolean"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": "string"
+              },
+              "importMode": {
+                "type": "string"
+              },
+              "verified": {
+                "type": "boolean"
+              }
+            }
+          }
         },
         "custom.inspect": {
           "handler": "core.worker_custom_models:cmd_inspect_custom_model",
           "command": "inspect_custom_model",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "configPath": {
+                "type": "string"
+              },
+              "modelPath": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "type": "integer"
+              },
+              "suggestions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggestedModelType": {
+                "type": "string"
+              },
+              "suggestedName": {
+                "type": "string"
+              },
+              "instruments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "targetInstrument": {
+                "type": "string"
+              },
+              "knownModelTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "configOptionalModelTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "configRequired": {
+                "type": "boolean"
+              },
+              "stateDictReadable": {
+                "type": "boolean"
+              },
+              "stateDictError": {
+                "type": "string"
+              }
+            }
+          }
         },
         "custom.unregister": {
           "handler": "core.worker_custom_models:cmd_unregister_custom_model",
           "command": "unregister_custom_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "deleteFiles": {
+                "type": "boolean"
+              },
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "filesDeleted": {
+                "type": "boolean"
+              },
+              "deletedFiles": {
+                "type": "integer"
+              },
+              "fileDeletionSupported": {
+                "type": "boolean"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         },
         "custom.relink": {
           "handler": "core.worker_custom_models:cmd_relink_custom_model",
           "command": "relink_custom_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "configPath": {
+                "type": "string"
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": "string"
+              }
+            }
+          }
         },
         "custom.remap": {
           "handler": "core.worker_custom_models:cmd_remap_custom_model_paths",
           "command": "remap_custom_model_paths",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "fromRoot": {
+                "type": "string"
+              },
+              "toRoot": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "remapped": {
+                "type": "integer"
+              },
+              "count": {
+                "type": "integer"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unchanged": {
+                "type": "integer"
+              },
+              "unavailable": {
+                "type": "integer"
+              }
+            }
+          }
         },
         "debug.catalog_info": {
           "handler": "core.worker_models:cmd_debug_catalog_info",
           "command": "debug_catalog_info",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "baseCatalogPath": {
+                "type": "string"
+              },
+              "debugCatalogPath": {
+                "type": "string"
+              },
+              "debugDir": {
+                "type": "string"
+              },
+              "baseCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "debugCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "effectiveCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          }
         },
         "debug.catalog_save": {
           "handler": "core.worker_models:cmd_debug_catalog_save",
           "command": "debug_catalog_save",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "catalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "debug.catalog_reset": {
           "handler": "core.worker_models:cmd_debug_catalog_reset",
           "command": "debug_catalog_reset",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "debug.model_config": {
           "handler": "core.worker_models:cmd_debug_model_config",
           "command": "debug_model_config",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "readOnly": {
+                "type": "boolean"
+              },
+              "baseConfigPath": {
+                "type": "string"
+              },
+              "effectiveConfigPath": {
+                "type": "string"
+              },
+              "baseContent": {
+                "type": "string"
+              },
+              "effectiveContent": {
+                "type": "string"
+              },
+              "downloadedConfigExists": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },
