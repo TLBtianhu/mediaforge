@@ -45,23 +45,42 @@ export interface WorkerCommandContracts {
       [key: string]: unknown
     }
     result: {
-      operation?: string
+      operation: "convert"
       outputDir?: string
       outputPaths?: Array<string>
-      outputs?: Array<Record<string, unknown>>
-      files?: Array<string>
       succeeded?: number
-      total?: number
-      completed?: number
-      warnings?: Array<string>
-      text?: string
-      sentences?: Array<Record<string, unknown>>
-      segments?: Array<Record<string, unknown>>
+      failed?: Array<Record<string, unknown>>
+      [key: string]: unknown
+    } | {
+      operation: "inspect"
       inputPath?: string
       fileName?: string
       fileSize?: number
+      format?: Record<string, unknown>
+      audioStreams?: Array<Record<string, unknown>>
+      [key: string]: unknown
+    } | {
+      operation: "sdr"
+      referencePath?: string
+      estimatedPath?: string
+      sampleRate?: number
+      sdr?: Array<number>
       averageSdr?: number
+      siSdr?: Array<number>
       averageSiSdr?: number
+      [key: string]: unknown
+    } | {
+      operation: "slicer"
+      outputDir?: string
+      outputPaths?: Array<string>
+      sourceCount?: number
+      segments?: Array<Record<string, unknown>>
+      keptDuration?: number
+      succeeded?: number
+      failed?: Array<Record<string, unknown>>
+      [key: string]: unknown
+    } | {
+      operation: "merge" | "loudness" | "midi" | "asr" | "media_image" | "media_video" | "media_workflow" | "media_probe" | "media_convert"
       [key: string]: unknown
     }
   }

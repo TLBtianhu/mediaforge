@@ -1037,85 +1037,189 @@
             }
           },
           "result": {
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-              "operation": {
-                "type": "string"
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "convert"
+                    ]
+                  },
+                  "outputDir": {
+                    "type": "string"
+                  },
+                  "outputPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "succeeded": {
+                    "type": "integer"
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
               },
-              "outputDir": {
-                "type": "string"
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "inspect"
+                    ]
+                  },
+                  "inputPath": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "fileSize": {
+                    "type": "integer"
+                  },
+                  "format": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {}
+                  },
+                  "audioStreams": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
               },
-              "outputPaths": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "sdr"
+                    ]
+                  },
+                  "referencePath": {
+                    "type": "string"
+                  },
+                  "estimatedPath": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "type": "integer"
+                  },
+                  "sdr": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  },
+                  "averageSdr": {
+                    "type": "number"
+                  },
+                  "siSdr": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  },
+                  "averageSiSdr": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
               },
-              "outputs": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "properties": {}
-                }
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "slicer"
+                    ]
+                  },
+                  "outputDir": {
+                    "type": "string"
+                  },
+                  "outputPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sourceCount": {
+                    "type": "integer"
+                  },
+                  "segments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "keptDuration": {
+                    "type": "number"
+                  },
+                  "succeeded": {
+                    "type": "integer"
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
               },
-              "files": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "succeeded": {
-                "type": "integer"
-              },
-              "total": {
-                "type": "integer"
-              },
-              "completed": {
-                "type": "integer"
-              },
-              "warnings": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "text": {
-                "type": "string"
-              },
-              "sentences": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "properties": {}
-                }
-              },
-              "segments": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "properties": {}
-                }
-              },
-              "inputPath": {
-                "type": "string"
-              },
-              "fileName": {
-                "type": "string"
-              },
-              "fileSize": {
-                "type": "integer"
-              },
-              "averageSdr": {
-                "type": "number"
-              },
-              "averageSiSdr": {
-                "type": "number"
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "merge",
+                      "loudness",
+                      "midi",
+                      "asr",
+                      "media_image",
+                      "media_video",
+                      "media_workflow",
+                      "media_probe",
+                      "media_convert"
+                    ]
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
               }
-            }
+            ]
           },
           "resultSchemaEvent": "task.result"
         },

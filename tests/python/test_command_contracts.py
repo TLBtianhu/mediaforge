@@ -227,6 +227,25 @@ class CommandContractTests(unittest.TestCase):
         self.assertEqual(validate_payload("import_custom_model", {"configPath": None}), [])
         self.assertEqual(validate_payload("relink_custom_model", {"configPath": None}), [])
 
+    def test_audio_tools_operation_branches(self) -> None:
+        self.assertEqual(validate_result("audio_tools", {
+            "operation": "convert", "outputDir": "out", "outputPaths": ["a.wav"], "succeeded": 1,
+        }), [])
+        self.assertEqual(validate_result("audio_tools", {
+            "operation": "inspect", "inputPath": "a.wav", "fileName": "a.wav", "fileSize": 1,
+            "format": {}, "audioStreams": [],
+        }), [])
+        self.assertEqual(validate_result("audio_tools", {
+            "operation": "sdr", "referencePath": "a.wav", "estimatedPath": "b.wav",
+            "sampleRate": 44100, "sdr": [], "averageSdr": 0, "siSdr": [], "averageSiSdr": 0,
+        }), [])
+        self.assertEqual(validate_result("audio_tools", {
+            "operation": "slicer", "outputDir": "out", "outputPaths": [], "sourceCount": 1,
+            "segments": [], "keptDuration": 0, "succeeded": 0, "failed": [],
+        }), [])
+        self.assertEqual(validate_result("audio_tools", {"operation": "merge"}), [])
+        self.assertTrue(validate_result("audio_tools", {"operation": "unknown"}))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):
