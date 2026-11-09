@@ -119,6 +119,14 @@ class CommandContractTests(unittest.TestCase):
                 with self.subTest(domain=domain_id, name=name):
                     self.assertIsInstance(entry.get("resultSchemaEvent"), str)
 
+    def test_selected_task_results_are_typed(self) -> None:
+        self.assertEqual(validate_result("model_download", {"modelId": "m", "downloaded": [], "skipped": []}), [])
+        self.assertTrue(validate_result("model_download", {"modelId": "m", "downloaded": "bad"}))
+        self.assertEqual(validate_result("install_runtime", {"backend": "cuda", "state": {}, "logPath": "x"}), [])
+        self.assertTrue(validate_result("install_runtime", {"backend": "cuda", "state": "bad", "logPath": "x"}))
+        self.assertEqual(validate_result("infer", {"files": [], "outputs": [], "outputDir": "x"}), [])
+        self.assertTrue(validate_result("infer", {"files": "bad", "outputs": []}))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):

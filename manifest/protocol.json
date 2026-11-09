@@ -1250,7 +1250,39 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "downloaded": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "skipped": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modelDir": {
+                "type": "string"
+              },
+              "modelInfo": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "modelId",
+              "downloaded",
+              "skipped"
+            ]
           },
           "resultSchemaEvent": "asset.done"
         },
@@ -1696,7 +1728,44 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "baseCatalogPath": {
+                "type": "string"
+              },
+              "debugCatalogPath": {
+                "type": "string"
+              },
+              "debugDir": {
+                "type": "string"
+              },
+              "baseCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "debugCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "effectiveCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "status": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "baseCatalogPath",
+              "debugCatalogPath",
+              "debugDir",
+              "effectiveCatalog",
+              "status"
+            ]
           },
           "resultSchemaEvent": "debug_catalog_info"
         },
@@ -1714,7 +1783,44 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "baseCatalogPath": {
+                "type": "string"
+              },
+              "debugCatalogPath": {
+                "type": "string"
+              },
+              "debugDir": {
+                "type": "string"
+              },
+              "baseCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "debugCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "effectiveCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "status": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "baseCatalogPath",
+              "debugCatalogPath",
+              "debugDir",
+              "effectiveCatalog",
+              "status"
+            ]
           },
           "resultSchemaEvent": "debug_catalog_info"
         },
@@ -1958,7 +2064,24 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "state": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "logPath": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend",
+              "state",
+              "logPath"
+            ]
           },
           "resultSchemaEvent": "runtime_install_finished"
         },
@@ -2084,7 +2207,14 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "backend": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend"
+            ]
           },
           "resultSchemaEvent": "runtime_deleted"
         },
@@ -2520,7 +2650,36 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "outputDir": {
+                "type": "string"
+              },
+              "outputRoot": {
+                "type": "string"
+              },
+              "outputFormat": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "files",
+              "outputs",
+              "outputDir"
+            ]
           },
           "resultSchemaEvent": "task.result"
         },

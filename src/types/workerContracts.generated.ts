@@ -77,14 +77,32 @@ export interface WorkerCommandContracts {
   }
   "debug_catalog_reset": {
     payload: Record<string, unknown>
-    result: Record<string, unknown>
+    result: {
+      baseCatalogPath: string
+      debugCatalogPath: string
+      debugDir: string
+      baseCatalog?: Record<string, unknown>
+      debugCatalog?: Record<string, unknown>
+      effectiveCatalog: Record<string, unknown>
+      status: Record<string, unknown>
+      [key: string]: unknown
+    }
   }
   "debug_catalog_save": {
     payload: {
       catalog?: Record<string, unknown>
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      baseCatalogPath: string
+      debugCatalogPath: string
+      debugDir: string
+      baseCatalog?: Record<string, unknown>
+      debugCatalog?: Record<string, unknown>
+      effectiveCatalog: Record<string, unknown>
+      status: Record<string, unknown>
+      [key: string]: unknown
+    }
   }
   "debug_model_config": {
     payload: {
@@ -130,7 +148,10 @@ export interface WorkerCommandContracts {
       backend?: string
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      backend: string
+      [key: string]: unknown
+    }
   }
   "delete_tool_model": {
     payload: {
@@ -274,7 +295,14 @@ export interface WorkerCommandContracts {
       tasks?: Array<Record<string, unknown>>
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      files: Array<string>
+      outputs: Array<Record<string, unknown>>
+      outputDir: string
+      outputRoot?: string
+      outputFormat?: string
+      [key: string]: unknown
+    }
   }
   "infer_workflow": {
     payload: {
@@ -320,7 +348,12 @@ export interface WorkerCommandContracts {
       taskId?: string | null
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      backend: string
+      state: Record<string, unknown>
+      logPath: string
+      [key: string]: unknown
+    }
   }
   "list_models": {
     payload: {
@@ -454,7 +487,15 @@ export interface WorkerCommandContracts {
       source?: string
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      model?: string
+      modelId: string
+      downloaded: Array<string>
+      skipped: Array<string>
+      modelDir?: string
+      modelInfo?: Record<string, unknown>
+      [key: string]: unknown
+    }
   }
   "model_hub": {
     payload: {
