@@ -315,7 +315,14 @@ export interface WorkerCommandContracts {
       workflowName?: string
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      files: Array<string>
+      outputs: Array<Record<string, unknown>>
+      outputDir: string
+      outputRoot?: string
+      outputFormat?: string
+      [key: string]: unknown
+    }
   }
   "inspect_custom_model": {
     payload: {
@@ -418,7 +425,15 @@ export interface WorkerCommandContracts {
       taskId?: string | null
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      installed: Array<Record<string, unknown>>
+      pluginsDir: string
+      verificationError?: string | null
+      runtime: Record<string, unknown>
+      catalog?: Array<Record<string, unknown>>
+      catalogError?: string | null
+      [key: string]: unknown
+    }
   }
   "media_capabilities": {
     payload: {
@@ -593,7 +608,15 @@ export interface WorkerCommandContracts {
   }
   "plugin_marketplace": {
     payload: Record<string, never>
-    result: Record<string, unknown>
+    result: {
+      installed: Array<Record<string, unknown>>
+      pluginsDir: string
+      verificationError?: string | null
+      runtime: Record<string, unknown>
+      catalog?: Array<Record<string, unknown>>
+      catalogError?: string | null
+      [key: string]: unknown
+    }
   }
   "relink_custom_model": {
     payload: {

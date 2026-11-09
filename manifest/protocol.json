@@ -2593,7 +2593,49 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "installed": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "pluginsDir": {
+                "type": "string"
+              },
+              "verificationError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtime": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "catalog": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "catalogError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "installed",
+              "pluginsDir",
+              "runtime"
+            ]
           },
           "resultSchemaEvent": "plugin_marketplace"
         },
@@ -2625,7 +2667,49 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "installed": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "pluginsDir": {
+                "type": "string"
+              },
+              "verificationError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtime": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "catalog": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "catalogError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "installed",
+              "pluginsDir",
+              "runtime"
+            ]
           },
           "resultSchemaEvent": "plugin_manage_result"
         }
@@ -2942,7 +3026,36 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "outputDir": {
+                "type": "string"
+              },
+              "outputRoot": {
+                "type": "string"
+              },
+              "outputFormat": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "files",
+              "outputs",
+              "outputDir"
+            ]
           },
           "resultSchemaEvent": "task.result"
         }

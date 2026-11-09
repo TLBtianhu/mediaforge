@@ -139,6 +139,12 @@ class CommandContractTests(unittest.TestCase):
             "operation": "media_probe", "probes": [],
         }))
 
+    def test_plugin_snapshot_result_is_typed(self) -> None:
+        valid = {"installed": [], "pluginsDir": "plugins", "runtime": {}}
+        self.assertEqual(validate_result("plugin_marketplace", valid), [])
+        self.assertEqual(validate_result("manage_plugin", valid), [])
+        self.assertTrue(validate_result("manage_plugin", {"installed": "bad", "pluginsDir": "p", "runtime": {}}))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):
