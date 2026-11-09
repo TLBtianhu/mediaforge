@@ -1597,7 +1597,172 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modelType": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "architecture": {
+                "type": "string"
+              },
+              "supported": {
+                "type": "boolean"
+              },
+              "unsupportedReason": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "categoryCn": {
+                "type": "string"
+              },
+              "primaryCategory": {
+                "type": "string"
+              },
+              "primaryCategoryCn": {
+                "type": "string"
+              },
+              "secondaryCategory": {
+                "type": "string"
+              },
+              "secondaryCategoryCn": {
+                "type": "string"
+              },
+              "targetStem": {
+                "type": "string"
+              },
+              "configInstruments": {
+                "type": "string"
+              },
+              "configTargetInstrument": {
+                "type": "string"
+              },
+              "classificationConfidence": {
+                "type": "string"
+              },
+              "classificationBasis": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "baseConfigPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "importMode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "downloaded": {
+                "type": "boolean"
+              },
+              "missingPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "auxiliaryPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "defaultInferenceParams": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "defaultInferenceParamsSource": {
+                "type": "string"
+              },
+              "inferenceParamMeta": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "slots": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "slotTask": {
+                "type": "string"
+              },
+              "defaultInferenceParamsResolved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "aliases",
+              "modelType",
+              "architecture",
+              "supported",
+              "unsupportedReason",
+              "category",
+              "categoryCn",
+              "primaryCategory",
+              "primaryCategoryCn",
+              "secondaryCategory",
+              "secondaryCategoryCn",
+              "targetStem",
+              "configInstruments",
+              "configTargetInstrument",
+              "classificationConfidence",
+              "classificationBasis",
+              "sizeBytes",
+              "sha256",
+              "downloaded",
+              "missingPaths",
+              "modelPath",
+              "configPath",
+              "auxiliaryPaths"
+            ]
           },
           "resultSchemaEvent": "model_info"
         },

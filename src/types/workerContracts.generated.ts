@@ -656,7 +656,44 @@ export interface WorkerCommandContracts {
       modelDir?: string | null
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      name: string
+      aliases: Array<string>
+      modelType: string | null
+      architecture: string
+      supported: boolean
+      unsupportedReason: string
+      category: string
+      categoryCn: string
+      primaryCategory: string
+      primaryCategoryCn: string
+      secondaryCategory: string
+      secondaryCategoryCn: string
+      targetStem: string
+      configInstruments: string
+      configTargetInstrument: string
+      classificationConfidence: string
+      classificationBasis: string
+      sizeBytes: number
+      sha256: string
+      source?: string
+      baseConfigPath?: string | null
+      importMode?: string | null
+      downloaded: boolean
+      missingPaths: Array<string>
+      modelPath: string
+      configPath: string | null
+      auxiliaryPaths: Array<string>
+      defaultInferenceParams?: Record<string, unknown>
+      defaultInferenceParamsSource?: string
+      inferenceParamMeta?: Record<string, unknown>
+      capabilities?: Array<string>
+      roles?: Array<string>
+      slots?: Record<string, unknown>
+      slotTask?: string
+      defaultInferenceParamsResolved?: boolean
+      [key: string]: unknown
+    }
   }
   "model_interface": {
     payload: {

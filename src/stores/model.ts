@@ -14,6 +14,7 @@ import { inferenceChunkSizeIssue, normalizeInferenceParamMeta, type InferencePar
 import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus } from '@/features/downloads/lifecycle'
 import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
 import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
+import { getModelInfo } from '@/api/models'
 import { KnownObject } from '@/types/contracts'
 import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
@@ -798,13 +799,11 @@ export const useModelStore = defineStore('model', () => {
     }
 
     detailLoading.value = true
-    return invoke<ModelEntry>('get_model_info', {
-      payload: {
-        model: name,
-        modelDir: settings.modelDir || null,
-      },
+    return getModelInfo({
+      model: name,
+      modelDir: settings.modelDir || null,
     }).then((info) => {
-      const normalizedInfo = normalizeModelEntryWithOverrides(info)
+      const normalizedInfo = normalizeModelEntryWithOverrides(info as ModelEntry)
       if (selectedModel.value === name) selectedInfo.value = normalizedInfo
       return normalizedInfo
     }).catch((err) => {
