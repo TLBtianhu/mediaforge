@@ -742,14 +742,20 @@ export interface WorkerCommandContracts {
     }
     result: {
       channel: string
-      packages: Record<string, unknown>
+      packages: Record<string, {
+              latestVersion?: string | null
+              currentVersion?: string | null
+              updateAvailable?: boolean
+              error?: string
+              [key: string]: unknown
+            }>
       [key: string]: unknown
     }
   }
   "runtime_env_sizes": {
     payload: Record<string, never>
     result: {
-      sizes: Record<string, unknown>
+      sizes: Record<string, number>
       totalBytes: number
       incompleteBackends: Array<string>
       [key: string]: unknown

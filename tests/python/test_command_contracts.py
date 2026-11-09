@@ -178,6 +178,21 @@ class CommandContractTests(unittest.TestCase):
         broken = dict(item); broken.pop("name")
         self.assertTrue(validate_result("list_models", {"models": [broken], "count": 1}))
 
+    def test_runtime_result_maps_are_typed(self) -> None:
+        self.assertEqual(validate_result("runtime_core_versions", {
+            "channel": "stable",
+            "packages": {"pymss": {"latestVersion": "1", "currentVersion": None, "updateAvailable": False}},
+        }), [])
+        self.assertTrue(validate_result("runtime_core_versions", {
+            "channel": "stable", "packages": {"pymss": "bad"},
+        }))
+        self.assertEqual(validate_result("runtime_env_sizes", {
+            "sizes": {"cuda": 1}, "totalBytes": 1, "incompleteBackends": [],
+        }), [])
+        self.assertTrue(validate_result("runtime_env_sizes", {
+            "sizes": {"cuda": "bad"}, "totalBytes": 1, "incompleteBackends": [],
+        }))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):

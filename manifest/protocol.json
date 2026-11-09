@@ -2609,8 +2609,30 @@
               },
               "packages": {
                 "type": "object",
-                "additionalProperties": true,
-                "properties": {}
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "latestVersion": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "currentVersion": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updateAvailable": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             },
             "required": [
@@ -2662,8 +2684,9 @@
             "properties": {
               "sizes": {
                 "type": "object",
-                "additionalProperties": true,
-                "properties": {}
+                "additionalProperties": {
+                  "type": "integer"
+                }
               },
               "totalBytes": {
                 "type": "integer"

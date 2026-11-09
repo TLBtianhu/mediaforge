@@ -8,6 +8,7 @@ import { activeRuntimeEnvironment, supportsRuntimeCoreUpdate, supportsRuntimeMan
 import { isTauriRuntime } from '@/utils/appStore'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import { useSettingsStore } from '@/stores/settings'
+import { runtimeCoreVersions as fetchRuntimeCoreVersions, runtimeEnvSizes as fetchRuntimeEnvSizes } from '@/api/runtime'
 import { KnownObject } from '@/types/contracts'
 import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
@@ -103,15 +104,7 @@ export type InstalledRuntime = {
   coreUpdateSupported?: boolean
 }
 
-export type RuntimeCoreVersions = {
-  channel?: 'stable' | 'prerelease'
-  packages?: Record<string, {
-    latestVersion?: string | null
-    currentVersion?: string | null
-    updateAvailable?: boolean
-    error?: string
-  }>
-}
+export type RuntimeCoreVersions = Partial<KnownObject<WorkerCommandResult<'runtime_core_versions'>>>
 
 export type CudaDeviceInfo = {
   id: number
@@ -451,10 +444,7 @@ export const useAppStore = defineStore('app', () => {
         runtimeIncompleteBackends.value = []
         return runtimeEnvSizes.value
       }
-      const result = await invoke<{
-        sizes?: Record<string, number>
-        incompleteBackends?: string[]
-      }>('runtime_env_sizes')
+      const result = await fetchRuntimeEnvSizes()
       runtimeEnvSizes.value = result?.sizes || {}
       runtimeIncompleteBackends.value = result?.incompleteBackends || []
       return runtimeEnvSizes.value
@@ -542,10 +532,10 @@ export const useAppStore = defineStore('app', () => {
         return runtimeCoreVersions.value
       }
       const info = runtimeInfo.value
-      const result = await invoke<RuntimeCoreVersions>('runtime_core_versions', { payload: {
+      const result = await fetchRuntimeCoreVersions({
         channel,
         versions: { pymss: info?.pymssVersion || info?.installState?.pymssVersion, 'pymss-core': info?.pymssCoreVersion || info?.installState?.pymssCoreVersion },
-      } })
+      })
       if (request === runtimeVersionsRequest && channel === settings.updateChannel) runtimeCoreVersions.value = result
       return result
     } finally {
