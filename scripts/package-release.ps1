@@ -194,6 +194,15 @@ function Assert-ReleaseStage([string]$Stage) {
             'bin/aria2c.exe', 'bin/vcrt/msvcp140.dll', 'integrations/dsh-mediaforge/cordis.patch.yml')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Stage $relative) -PathType Leaf)) { throw "Stage contract is missing $relative" }
     }
+    # The old injector rewrote the user's cordis.patch.yml; a shipped script must be
+    # the migration tool (explicit -RemoveLegacyBlock), never the block rewriter.
+    $register = Join-Path $Stage 'integrations/dsh-mediaforge/register.ps1'
+    if (Test-Path -LiteralPath $register -PathType Leaf) {
+        $content = Get-Content -LiteralPath $register -Raw
+        if ($content -notmatch '\[string\]\$Profile') { throw "staged DSH register.ps1 has no -Profile switch" }
+        if ($content -notmatch '-RemoveLegacyBlock') { throw "staged DSH register.ps1 is not the migration tool" }
+        if ($content -match '\[regex\]::Replace') { throw "staged DSH register.ps1 still replaces an injected block" }
+    }
     foreach ($relative in @('python-runtime/runtime-envs', 'models', 'data', '.dev-data', '.dev-webview', 'mediaforge.portable')) {
         if (Test-Path -LiteralPath (Join-Path $Stage $relative)) { throw "Stage contains mutable user assets: $relative" }
     }

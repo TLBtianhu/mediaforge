@@ -48,8 +48,9 @@ NOTES.md                维护说明
 ```powershell
 # 只报告，不改文件
 powershell -ExecutionPolicy Bypass -File register.ps1
-# 移除遗留区块，保留区块内不属于 MediaForge 的行（先备份）
-powershell -ExecutionPolicy Bypass -File register.ps1 -RemoveLegacyBlock
+# 移除指定 profile 的遗留区块，保留区块内不属于 MediaForge 的行（先备份）
+# 写入必须显式 -Profile；本工具不会遍历所有 profile 写入
+powershell -ExecutionPolicy Bypass -File register.ps1 -Profile desktop -RemoveLegacyBlock
 ```
 
 然后用插件管理器安装 bundle：

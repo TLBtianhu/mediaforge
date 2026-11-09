@@ -7,13 +7,15 @@
 #
 # 本脚本只保留两个职责：
 #   1. 报告遗留的注入区块（以及区块里不属于 MediaForge 的行）；
-#   2. 用 -RemoveLegacyBlock 安全移除该区块，保留区块内的外来行。
+#   2. 用 -Profile <name> -RemoveLegacyBlock 安全移除该区块，保留区块内的外来行。
 #
-# 不再写 cordis.patch.yml（除非显式 -RemoveLegacyBlock），也不会创建/覆盖用户设置。
+# 不再写 cordis.patch.yml（除非显式 -RemoveLegacyBlock -Profile），也不会创建/覆盖用户设置。
+# 写入只针对显式指定的一个 profile；读取/报告可以扫描全部 profile。
 param(
     [string]$DshHome = '',
     [string]$AppRoot = '',
     [string]$LauncherPath = '',
+    [string]$Profile = '',
     [switch]$RemoveLegacyBlock,
     [switch]$DryRun
 )
@@ -55,6 +57,19 @@ if (-not (Test-Path -LiteralPath $profilesDir)) {
     exit 0
 }
 
+if ($RemoveLegacyBlock -and -not $Profile) {
+    throw "指定 -Profile <name> 后再使用 -RemoveLegacyBlock；本工具不再遍历所有 profile 写入。"
+}
+if ($Profile) {
+    if ($Profile -in @('.', '..') -or $Profile -match '[\\/]') { throw "invalid profile name: $Profile" }
+    $target = Join-Path $profilesDir $Profile
+    if (-not (Test-Path -LiteralPath $target -PathType Container)) { throw "profile not found: $target" }
+    $profiles = @(Get-Item -LiteralPath $target)
+} else {
+    # 只读报告允许扫描全部 profile；写入路径已要求显式 -Profile。
+    $profiles = @(Get-ChildItem -LiteralPath $profilesDir -Directory -ErrorAction SilentlyContinue)
+}
+
 function Get-PreservedRows {
     param([string[]]$BlockLines)
     # 保留区块内的顶层 `- id:` 组（外来配置），丢掉 MediaForge 自己的 insert 与禁用覆盖。
@@ -77,7 +92,7 @@ function Get-PreservedRows {
 }
 
 $changed = @()
-foreach ($profile in Get-ChildItem -LiteralPath $profilesDir -Directory -ErrorAction SilentlyContinue) {
+foreach ($profile in $profiles) {
     $patch = Join-Path $profile.FullName 'cordis.patch.yml'
     if (-not (Test-Path -LiteralPath $patch)) { continue }
     $original = Get-Content -LiteralPath $patch -Raw
@@ -96,7 +111,7 @@ foreach ($profile in Get-ChildItem -LiteralPath $profilesDir -Directory -ErrorAc
     if (-not $RemoveLegacyBlock) {
         Write-Host "  本脚本不再写入。推荐迁移："
         Write-Host "    plugin_manager install_bundle target=link:$PSScriptRoot"
-        Write-Host "  或只移除旧区块：register.ps1 -RemoveLegacyBlock"
+        Write-Host "  或只移除旧区块：register.ps1 -Profile $($profile.Name) -RemoveLegacyBlock"
         continue
     }
     if ($DryRun) {
