@@ -8,34 +8,18 @@ import { activeRuntimeEnvironment, supportsRuntimeCoreUpdate, supportsRuntimeMan
 import { isTauriRuntime } from '@/utils/appStore'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import { useSettingsStore } from '@/stores/settings'
+import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
 const studioLog = createLogger('ui.stores.app')
 
-export type EnvInfo = {
-  pythonVersion?: string
-  platform?: string
-  workerVersion?: string
-  pymssAvailable?: boolean
-  /** Whether the active runtime's pymss exposes the user-model registry (2.0.15+). */
-  customModelsSupported?: boolean
-  pymssPath?: string | null
-  pymssVersion?: string | null
-  pymssError?: string
-  torchAvailable?: boolean
-  torchVersion?: string | null
-  torchError?: string
-  torchBackend?: 'cpu' | 'cuda' | 'rocm' | string
-  hipVersion?: string | null
-  cudaAvailable?: boolean
-  cudaAvailableError?: string | null
-  cudaDeviceCount?: number
+type EnvInfoContract = WorkerCommandResult<'env_info'>
+type KnownKeys<T> = keyof { [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K] }
+
+export type EnvInfo = Partial<Pick<EnvInfoContract, Exclude<KnownKeys<EnvInfoContract>, 'cudaDevices'>>> & {
   cudaDevices?: CudaDeviceInfo[]
-  cudaDeviceCountError?: string | null
-  cudaDeviceNamesError?: string | null
-  mpsAvailable?: boolean
-  mlxAvailable?: boolean
-  avAvailable?: boolean
-  librosaAvailable?: boolean
+  /** Probe failures are optional and only present when the corresponding probe failed. */
+  pymssError?: string
+  torchError?: string
 }
 
 export type RuntimeBackend = 'cpu' | 'cuda' | 'rocm' | 'mlx'
