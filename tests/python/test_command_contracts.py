@@ -12,7 +12,13 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.command_schemas import validate_payload  # noqa: E402
+from shared.command_schemas import (  # noqa: E402
+    ResultContractError,
+    result_event_validator,
+    validate_payload,
+    validate_result,
+)
+from shared.worker_protocol import bind_event_validator, emit  # noqa: E402
 
 
 class CommandContractTests(unittest.TestCase):
@@ -106,6 +112,24 @@ class CommandContractTests(unittest.TestCase):
         self.assertTrue(validate_payload("manage_plugin", {"action": 1}))
         self.assertTrue(validate_payload("infer", {"deviceIds": "0"}))
         self.assertTrue(validate_payload("infer_workflow", {"tasks": "bad"}))
+
+    def test_query_commands_declare_a_result_event(self) -> None:
+        for domain_id, domain in self.protocol["domains"].items():
+            for name, entry in domain["commands"].items():
+                if entry.get("kind") != "query":
+                    continue
+                with self.subTest(domain=domain_id, name=name):
+                    self.assertIsInstance(entry.get("resultSchemaEvent"), str)
+
+    def test_result_validator_rejects_a_wrong_shape(self) -> None:
+        self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
+        with self.assertRaises(ResultContractError):
+            with bind_event_validator(result_event_validator("health", "health")):
+                emit("health", {"ok": "yes"})
+
+    def test_result_validator_ignores_other_events(self) -> None:
+        with bind_event_validator(result_event_validator("health", "health")):
+            emit("task.progress", {"fraction": 0.5})
 
     def test_health_rejects_unknown_payload_fields(self) -> None:
         self.assertEqual(validate_payload("health", {}), [])

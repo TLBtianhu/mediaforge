@@ -9,7 +9,7 @@
 
 ```
 manifest/
-  protocol.json      命令表 + 事件表 + payload/result schema（全部 48 条已覆盖）
+  protocol.json      命令表 + 事件表 + payload/result schema（payload/result 全 48 条；query result 已运行时校验）
   capabilities.json  能力：角色、参数 schema、输出形态
   catalog.json       图像/视频模型：文件、体积、许可、URL、参数覆盖
   runtime.json       运行时：需要哪些能力、支持哪些 backend、依赖清单

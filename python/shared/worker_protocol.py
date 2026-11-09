@@ -471,6 +471,7 @@ def _write_debug_line(path: str | None, line: str, max_bytes: int) -> None:
 
 
 _EVENT_SINK: ContextVar[Any] = ContextVar("worker_event_sink", default=None)
+_EVENT_VALIDATOR: ContextVar[Any] = ContextVar("worker_event_validator", default=None)
 
 
 def set_event_sink(sink: Any) -> Token[Any]:
@@ -495,12 +496,30 @@ def bind_event_sink(sink: Any) -> Iterator[None]:
         _EVENT_SINK.reset(token)
 
 
+@contextmanager
+def bind_event_validator(validator: Any) -> Iterator[None]:
+    """Validate matching events before they reach the sink or stdout.
+
+    Query handlers return a direct result event. The dispatcher installs a
+    validator for that one event so a handler drift fails loudly instead of
+    silently handing the frontend a shape it cannot read.
+    """
+    token = _EVENT_VALIDATOR.set(validator)
+    try:
+        yield
+    finally:
+        _EVENT_VALIDATOR.reset(token)
+
+
 # 历史事件名 → 规范事件名。P7 起边界处只发出规范名：
 # 调用方（音频工具、媒体 worker、模型库）仍按历史名书写的代码不需要逐个改，
 # 但管道上再也不会同时出现两个名字。
 
 def _write_event(event_type: str, payload: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
     """底层写出：sink 或 stdout，不含任何业务判断。"""
+    validator = _EVENT_VALIDATOR.get()
+    if validator is not None:
+        validator(event_type, payload)
     sink = _EVENT_SINK.get()
     if sink is not None:
         sink(event_type, payload, request_id, task_id)

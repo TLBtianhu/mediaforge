@@ -92,3 +92,52 @@ def validate_payload(command: str, payload: Any) -> list[str]:
     problems: list[str] = []
     _validate(payload, schema, "payload", problems)
     return problems
+
+@lru_cache(maxsize=1)
+def _result_schemas() -> dict[str, dict[str, Any]]:
+    data = load_protocol()
+    schemas: dict[str, dict[str, Any]] = {}
+    for domain_id, domain in (data.get("domains") or {}).items():
+        for name, entry in (domain.get("commands") or {}).items():
+            schema = entry.get("result")
+            if not isinstance(schema, dict):
+                continue
+            command = str(entry.get("command") or name)
+            if command in schemas:
+                raise ValueError(f"duplicate command result schema: {command}")
+            schemas[command] = schema
+    return schemas
+
+
+class ResultContractError(ValueError):
+    """A query handler emitted a result event that does not match protocol.json."""
+
+    def __init__(self, command: str, event: str, problems: list[str]) -> None:
+        self.command = command
+        self.event = event
+        self.problems = problems
+        super().__init__(f"{command} emitted {event} with invalid result: " + "; ".join(problems))
+
+
+def validate_result(command: str, payload: Any) -> list[str]:
+    """Return field-level problems for a query result; empty means valid."""
+    schema = _result_schemas().get(command)
+    if schema is None:
+        return []
+    problems: list[str] = []
+    _validate(payload, schema, "result", problems)
+    return problems
+
+
+def result_event_validator(command: str, expected_event: str):
+    """Build a validator for the one event that carries a query result."""
+
+    def validator(event_type: str, payload: Any) -> None:
+        if event_type != expected_event:
+            return
+        problems = validate_result(command, payload)
+        if problems:
+            raise ResultContractError(command, event_type, problems)
+
+    return validator
+

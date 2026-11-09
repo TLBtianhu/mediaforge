@@ -14,10 +14,10 @@ export interface WorkerCommandContracts {
     result: {
       version: number
       mcpSchemaVersion: number
-      approvalLevels?: Array<string>
-      costLevels?: Array<string>
+      approvalLevels?: Record<string, unknown>
+      costLevels?: Record<string, unknown>
       slots?: Record<string, unknown>
-      recoveryActions?: Array<Record<string, unknown>>
+      recoveryActions?: Record<string, unknown>
       taskSlots?: Record<string, unknown>
       tools: Array<Record<string, unknown>>
       audit: Record<string, unknown>
@@ -71,7 +71,7 @@ export interface WorkerCommandContracts {
       baseCatalog?: Record<string, unknown>
       debugCatalog?: Record<string, unknown>
       effectiveCatalog?: Record<string, unknown>
-      status?: string
+      status?: Record<string, unknown>
       [key: string]: unknown
     }
   }
@@ -434,7 +434,7 @@ export interface WorkerCommandContracts {
       ok: boolean
       steps: Array<Record<string, unknown>>
       inputs: Array<string>
-      precheck: Record<string, unknown>
+      precheck: Record<string, unknown> | null
       [key: string]: unknown
     }
   }
@@ -600,20 +600,20 @@ export interface WorkerCommandContracts {
       activeRuntimeError?: string | null
       backend?: string | null
       installedBackend?: string | null
-      installState?: string
+      installState?: Record<string, unknown> | null
       rollbackAvailable?: boolean
       statePath?: string
-      logPath?: string
+      logPath?: string | null
       installedEnvironments?: Array<Record<string, unknown>>
       gpuVendors?: Array<string>
       torchVersion?: string | null
       torchBackend?: string
       acceleratorAvailable?: boolean
       packages?: Record<string, unknown>
-      packageVersions?: Record<string, unknown>
+      packageVersions?: Record<string, unknown> | null
       pymssVersion?: string | null
       pymssCoreVersion?: string | null
-      pymssGraphAvailable?: boolean
+      pymssGraphAvailable?: boolean | null
       liveProbeError?: string | null
       ready?: boolean
       [key: string]: unknown

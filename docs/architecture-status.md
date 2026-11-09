@@ -9,8 +9,9 @@
 命令面            manifest/protocol.json：8 个域 / 48 条命令 / handler 为 module:function
                   surfaces/dispatch.py 查表分派；check-command-surface.py --strict 已进 CI
 命令字段契约      全部 8 个域 / 48 条命令已声明 payload/result schema；dispatch 先校验 payload
-                  （PAYLOAD_INVALID），sync_worker_contracts.py 生成前端类型并进 CI；
-                  check-architecture.py 第 13 条要求新命令必须带 schema
+                  （PAYLOAD_INVALID）；27 条 query 另声明 resultSchemaEvent，dispatch 在
+                  emit 写管道前校验结果（RESULT_CONTRACT_INVALID）；生成类型并进 CI；
+                  check-architecture.py 第 13 条还要求 query 必须带 resultSchemaEvent
 架构不变量        scripts/check-architecture.py 十三条全绿：依赖方向 ×3、根目录白名单、
                   事件覆盖、事件命名、handler 存在性、catalog 关联、接口投影、媒体哈希、
                   命令字段契约

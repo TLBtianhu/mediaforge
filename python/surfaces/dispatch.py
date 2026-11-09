@@ -14,9 +14,9 @@ import importlib
 from typing import Any, Callable
 
 from shared.protocol_contract import ProtocolError, command_entries, entry_for
-from shared.command_schemas import validate_payload
+from shared.command_schemas import ResultContractError, result_event_validator, validate_payload
 from shared.worker_proxy import ProxyConfigError, configure_process_proxy, load_proxy_config, parse_proxy_config
-from shared.worker_protocol import emit_error
+from shared.worker_protocol import bind_event_validator, emit_error
 
 _CACHE: dict[str, Callable[[dict[str, Any]], int]] = {}
 
@@ -98,4 +98,11 @@ def run(command: str, payload: dict[str, Any] | None = None) -> int:
     except ProtocolError as exc:
         return emit_error(exc.code, str(exc))
     _apply_proxy(entry, payload)
+    if entry.get("kind") == "query" and entry.get("resultSchemaEvent"):
+        validator = result_event_validator(command, str(entry["resultSchemaEvent"]))
+        try:
+            with bind_event_validator(validator):
+                return function(payload)
+        except ResultContractError as exc:
+            return emit_error("RESULT_CONTRACT_INVALID", str(exc))
     return function(payload)

@@ -38,7 +38,8 @@
               "ok",
               "workerVersion"
             ]
-          }
+          },
+          "resultSchemaEvent": "health"
         },
         "env_info": {
           "handler": "core.worker_models:cmd_env_info",
@@ -186,7 +187,8 @@
               "avAvailable",
               "librosaAvailable"
             ]
-          }
+          },
+          "resultSchemaEvent": "env_info"
         },
         "contract": {
           "handler": "surfaces.agent_contract:cmd_agent_contract",
@@ -210,16 +212,12 @@
                 "type": "integer"
               },
               "approvalLevels": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "type": "object",
+                "additionalProperties": true
               },
               "costLevels": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "type": "object",
+                "additionalProperties": true
               },
               "slots": {
                 "type": "object",
@@ -227,12 +225,8 @@
                 "properties": {}
               },
               "recoveryActions": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "properties": {}
-                }
+                "type": "object",
+                "additionalProperties": true
               },
               "taskSlots": {
                 "type": "object",
@@ -259,7 +253,8 @@
               "tools",
               "audit"
             ]
-          }
+          },
+          "resultSchemaEvent": "agent_contract"
         },
         "failure_stats": {
           "handler": "core.commands:cmd_failure_stats",
@@ -323,7 +318,8 @@
               "topIssues",
               "recommendations"
             ]
-          }
+          },
+          "resultSchemaEvent": "failure_stats"
         },
         "test_connection": {
           "handler": "core.worker_connection:cmd_test_connection",
@@ -390,7 +386,8 @@
               "mode",
               "proxy"
             ]
-          }
+          },
+          "resultSchemaEvent": "test_connection_result"
         }
       }
     },
@@ -447,7 +444,8 @@
               "audit",
               "runtime"
             ]
-          }
+          },
+          "resultSchemaEvent": "media_capabilities_result"
         },
         "precheck": {
           "handler": "core.commands:cmd_media_precheck",
@@ -497,9 +495,11 @@
                 }
               },
               "precheck": {
-                "type": "object",
-                "additionalProperties": true,
-                "properties": {}
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": true
               }
             },
             "required": [
@@ -508,7 +508,8 @@
               "inputs",
               "precheck"
             ]
-          }
+          },
+          "resultSchemaEvent": "media_precheck_result"
         },
         "library": {
           "handler": "core.library_worker:cmd_media_library",
@@ -597,7 +598,8 @@
               "operation",
               "ok"
             ]
-          }
+          },
+          "resultSchemaEvent": "media_library_result"
         },
         "run": {
           "handler": "media_ops.worker:cmd_media_tool",
@@ -674,7 +676,8 @@
             "required": [
               "evaluations"
             ]
-          }
+          },
+          "resultSchemaEvent": "media_evaluation"
         }
       }
     },
@@ -753,7 +756,8 @@
               "sampleRate",
               "channels"
             ]
-          }
+          },
+          "resultSchemaEvent": "audio_metadata"
         },
         "waveform": {
           "handler": "core.worker_audio:cmd_waveform_peaks",
@@ -830,7 +834,8 @@
               "sampleRate",
               "channels"
             ]
-          }
+          },
+          "resultSchemaEvent": "waveform_peaks"
         },
         "export_mix": {
           "handler": "core.worker_audio:cmd_export_editor_mix",
@@ -991,7 +996,8 @@
               "models",
               "count"
             ]
-          }
+          },
+          "resultSchemaEvent": "models"
         },
         "info": {
           "handler": "core.worker_models:cmd_model_info",
@@ -1018,7 +1024,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "model_info"
         },
         "interface": {
           "handler": "core.worker_models:cmd_model_interface",
@@ -1057,7 +1064,8 @@
             "required": [
               "interface"
             ]
-          }
+          },
+          "resultSchemaEvent": "model_interface"
         },
         "delete": {
           "handler": "core.worker_models:cmd_delete_model",
@@ -1207,7 +1215,8 @@
             "required": [
               "ok"
             ]
-          }
+          },
+          "resultSchemaEvent": "model_hub_result"
         },
         "download": {
           "handler": "core.model_hub_worker:cmd_model_download",
@@ -1261,7 +1270,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "model_storage_summary"
         },
         "cleanup": {
           "handler": "core.worker_models:cmd_cleanup_model_residual_files",
@@ -1467,7 +1477,8 @@
                 "type": "string"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "custom_model_inspected"
         },
         "custom.unregister": {
           "handler": "core.worker_custom_models:cmd_unregister_custom_model",
@@ -1647,10 +1658,12 @@
                 "properties": {}
               },
               "status": {
-                "type": "string"
+                "type": "object",
+                "additionalProperties": true
               }
             }
-          }
+          },
+          "resultSchemaEvent": "debug_catalog_info"
         },
         "debug.catalog_save": {
           "handler": "core.worker_models:cmd_debug_catalog_save",
@@ -1751,7 +1764,8 @@
                 "type": "string"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "debug_model_config"
         }
       }
     },
@@ -1813,7 +1827,11 @@
                 ]
               },
               "installState": {
-                "type": "string"
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": true
               },
               "rollbackAvailable": {
                 "type": "boolean"
@@ -1822,7 +1840,10 @@
                 "type": "string"
               },
               "logPath": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "installedEnvironments": {
                 "type": "array",
@@ -1856,9 +1877,11 @@
                 "properties": {}
               },
               "packageVersions": {
-                "type": "object",
-                "additionalProperties": true,
-                "properties": {}
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": true
               },
               "pymssVersion": {
                 "type": [
@@ -1873,7 +1896,10 @@
                 ]
               },
               "pymssGraphAvailable": {
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               },
               "liveProbeError": {
                 "type": [
@@ -1885,7 +1911,8 @@
                 "type": "boolean"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "runtime_info"
         },
         "install": {
           "handler": "core.worker_bootstrap:cmd_install_runtime",
@@ -1958,7 +1985,8 @@
               "channel",
               "packages"
             ]
-          }
+          },
+          "resultSchemaEvent": "runtime_core_versions"
         },
         "activate": {
           "handler": "core.worker_bootstrap:cmd_activate_runtime",
@@ -2019,7 +2047,8 @@
               "totalBytes",
               "incompleteBackends"
             ]
-          }
+          },
+          "resultSchemaEvent": "runtime_env_sizes"
         },
         "delete": {
           "handler": "core.worker_bootstrap:cmd_delete_runtime",
@@ -2104,7 +2133,8 @@
               "installed",
               "present"
             ]
-          }
+          },
+          "resultSchemaEvent": "optional_package_status"
         },
         "optional_manage": {
           "handler": "core.worker_optional_packages:cmd_manage_optional_package",
@@ -2205,7 +2235,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "plugin_marketplace"
         },
         "manage": {
           "handler": "core.worker_plugins:cmd_manage_plugin",
@@ -2249,7 +2280,6 @@
           "proxy": "configured",
           "kind": "query",
           "summary": "",
-          "resultEvent": "nodes_list",
           "payload": {
             "type": "object",
             "additionalProperties": false,
@@ -2271,7 +2301,9 @@
             "required": [
               "nodes"
             ]
-          }
+          },
+          "resultSchemaEvent": "nodes_list",
+          "resultEvent": "nodes_list"
         },
         "operations": {
           "handler": "core.worker_operations:cmd_list_operations",
@@ -2316,7 +2348,8 @@
               "plugins",
               "pymssOperationsAvailable"
             ]
-          }
+          },
+          "resultSchemaEvent": "operations_list"
         },
         "operation": {
           "handler": "core.worker_operations:cmd_describe_operation",
@@ -2340,7 +2373,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "operation_spec"
         },
         "run_operation": {
           "handler": "core.worker_operations:cmd_run_operation",
