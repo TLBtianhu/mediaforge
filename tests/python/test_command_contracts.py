@@ -193,6 +193,14 @@ class CommandContractTests(unittest.TestCase):
             "sizes": {"cuda": "bad"}, "totalBytes": 1, "incompleteBackends": [],
         }))
 
+    def test_audio_tools_common_result_fields(self) -> None:
+        self.assertEqual(validate_result("audio_tools", {
+            "operation": "convert", "outputPaths": ["a.wav"], "succeeded": 1,
+        }), [])
+        self.assertTrue(validate_result("audio_tools", {
+            "operation": "convert", "outputPaths": "a.wav",
+        }))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):

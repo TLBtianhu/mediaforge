@@ -1039,7 +1039,83 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "outputDir": {
+                "type": "string"
+              },
+              "outputPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "succeeded": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "text": {
+                "type": "string"
+              },
+              "sentences": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "segments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "inputPath": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "fileSize": {
+                "type": "integer"
+              },
+              "averageSdr": {
+                "type": "number"
+              },
+              "averageSiSdr": {
+                "type": "number"
+              }
+            }
           },
           "resultSchemaEvent": "task.result"
         },

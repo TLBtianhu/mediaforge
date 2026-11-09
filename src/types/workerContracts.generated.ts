@@ -44,7 +44,26 @@ export interface WorkerCommandContracts {
       requestId?: string | null
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      operation?: string
+      outputDir?: string
+      outputPaths?: Array<string>
+      outputs?: Array<Record<string, unknown>>
+      files?: Array<string>
+      succeeded?: number
+      total?: number
+      completed?: number
+      warnings?: Array<string>
+      text?: string
+      sentences?: Array<Record<string, unknown>>
+      segments?: Array<Record<string, unknown>>
+      inputPath?: string
+      fileName?: string
+      fileSize?: number
+      averageSdr?: number
+      averageSiSdr?: number
+      [key: string]: unknown
+    }
   }
   "cleanup_model_residual_files": {
     payload: {
