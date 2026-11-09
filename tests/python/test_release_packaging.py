@@ -68,6 +68,7 @@ class ReleasePackagingTests(unittest.TestCase):
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
         self.assertIn("Upgrading from an older build", script)
         self.assertIn("Older versions injected MCP rows", script)
+        self.assertIn("delete only MediaForge's own rows", script)
 
     def test_local_installer_copy_stays_inside_release_local(self) -> None:
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")

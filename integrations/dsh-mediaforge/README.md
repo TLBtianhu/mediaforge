@@ -45,11 +45,19 @@ README.md               本文
 旧版安装器会往 `cordis.patch.yml` 里写一段 `BEGIN/END` 区块。本版本不再生成该区块，
 也**不会自动清理**；安装包里同样不带清理脚本。旧版装过 DSH 桥的用户升级后需要手动删除。
 
+**注意：只删 MediaForge 自己的行。** 区块里可能混着 DSH 设置页追加的行
+（例如 `- id: agent-preset-registry`、`- id: web`、`- id: web-search-deepseek`），
+它们不属于 MediaForge，删掉会丢失你的预设选择和网页搜索配置。
+
 1. 打开 `%USERPROFILE%\.dsh\profiles\<你的 profile>\cordis.patch.yml`（桌面版通常是 `desktop`）；
-2. 删除从 `# === mediaforge MCP BEGIN ===` 到 `# === mediaforge MCP END ===` 的整段，
-   **包括这两条标记行**；
-3. 保存，重启 DSH；
-4. 用插件管理器安装 bundle：
+2. 删掉这两条标记行：
+   - `# === mediaforge MCP BEGIN ===`
+   - `# === mediaforge MCP END ===`
+3. 删掉 `- insert:` 这一项（通常只有一条 `- id: mediaforge-mcp`，并带
+   `name: '@deepseek-ai/dsh-mcp-client'`）；
+4. 如果还有 `- id: mediaforge-mcp` 的覆盖行（通常带 `disabled: true`），一并删掉；
+5. 区块内**其它行一律保留**，保存后重启 DSH；
+6. 立刻用插件管理器安装 bundle（中间不要间隔，否则 MediaForge 工具会暂时消失）：
 
    ```
    plugin_manager install_bundle  target=link:<安装目录>\integrations\dsh-mediaforge
@@ -58,5 +66,6 @@ README.md               本文
 不删会怎样：profile 里的注入行和新 bundle 的行 id 相同，两个同名 MCP server 会互相冲突，
 表现为 MediaForge 工具消失。
 
-> 维护者仍可在源码树里运行仓库版 `register.ps1` 做只读检查或 `-Profile <name> -RemoveLegacyBlock`，
-> 但它不随安装包分发。
+> 维护者仍可在源码树里运行仓库版 `register.ps1` 做只读检查或
+> `-Profile <name> -RemoveLegacyBlock`——它会自动保留外来行；但它不随安装包分发。
+> 不确定时，优先用这个脚本，不要手工删区块。

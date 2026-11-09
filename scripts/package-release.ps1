@@ -287,8 +287,10 @@ Upgrading from an older build
 -----------------------------
 Older versions injected MCP rows into the DSH profile's cordis.patch.yml.
 This version does not, and it does not remove the old block automatically.
-If the old block is still present, delete it manually (see README.md in
-integrations\dsh-mediaforge) before installing the bundle.
+If the old block is still present, delete only MediaForge's own rows
+(the BEGIN/END markers, the mediaforge-mcp insert, and any mediaforge-mcp
+override) and keep everything else. Install the bundle immediately after;
+see README.md in integrations\dsh-mediaforge.
 "@ | Set-Content "$stage\README.txt" -Encoding UTF8
 Assert-ReleaseStage $stage
 Get-Item "$stage\MediaForge.exe" | ForEach-Object { Write-Host ("  exe: {0} MB" -f [Math]::Round($_.Length/1MB,1)) }
