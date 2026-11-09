@@ -30,11 +30,22 @@ def _fail(path: str, message: str) -> None:
 def validate_schema(schema: object, path: str) -> None:
     if not isinstance(schema, dict):
         _fail(path, "schema must be an object")
+    if "oneOf" in schema:
+        branches = schema["oneOf"]
+        if not isinstance(branches, list) or not branches:
+            _fail(path, "oneOf must be a non-empty array")
+        for index, branch in enumerate(branches):
+            validate_schema(branch, f"{path}.oneOf[{index}]")
+        return
     node_type = schema.get("type")
-    if isinstance(node_type, list):
+    if node_type is None and "properties" in schema:
+        node_type = "object"
+    if node_type is None and "enum" in schema:
+        pass
+    elif isinstance(node_type, list):
         if not node_type or any(item not in TYPES for item in node_type):
             _fail(path, f"invalid type list: {node_type!r}")
-    elif node_type not in TYPES:
+    elif node_type is not None and node_type not in TYPES:
         _fail(path, f"invalid type: {node_type!r}")
     if "enum" in schema:
         enum = schema["enum"]
@@ -109,9 +120,13 @@ def _type_name(value: str) -> str:
 
 def render_type(schema: dict, indent: int = 0) -> str:
     pad = "  " * indent
+    if "oneOf" in schema:
+        return " | ".join(render_type(branch, indent) for branch in schema["oneOf"])
     if "enum" in schema:
         return " | ".join(_literal(item) for item in schema["enum"])
     node_type = schema.get("type")
+    if node_type is None and "properties" in schema:
+        node_type = "object"
     if isinstance(node_type, list):
         return " | ".join(render_type({**schema, "type": item}, indent) for item in node_type)
     if node_type == "array":

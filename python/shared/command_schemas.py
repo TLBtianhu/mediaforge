@@ -34,6 +34,18 @@ def _type_ok(value: Any, expected: str) -> bool:
 
 
 def _validate(value: Any, schema: dict[str, Any], path: str, problems: list[str]) -> None:
+    branches = schema.get("oneOf")
+    if isinstance(branches, list):
+        matches = 0
+        for branch in branches:
+            branch_problems: list[str] = []
+            _validate(value, branch, path, branch_problems)
+            if not branch_problems:
+                matches += 1
+        if matches != 1:
+            problems.append(f"{path}: expected exactly one oneOf branch (matched {matches})")
+        return
+
     enum = schema.get("enum")
     if isinstance(enum, list) and value not in enum:
         problems.append(f"{path}: expected one of {enum!r}")

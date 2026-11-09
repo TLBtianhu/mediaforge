@@ -478,7 +478,42 @@ export interface WorkerCommandContracts {
       outputDir?: string
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      operation: "media_probe"
+      probes: Array<Record<string, unknown>>
+      probe: Record<string, unknown>
+      [key: string]: unknown
+    } | {
+      operation: "media_image" | "media_video"
+      outputs: Array<Record<string, unknown>>
+      failed: Array<Record<string, unknown>>
+      skipped: Array<Record<string, unknown>>
+      total: number
+      completed: number
+      warnings: Array<string>
+      [key: string]: unknown
+    } | {
+      operation: "media_workflow"
+      modality: string
+      steps: Array<string>
+      elapsed: number
+      outputs: Array<Record<string, unknown>>
+      failed: Array<Record<string, unknown>>
+      skipped: Array<Record<string, unknown>>
+      total: number
+      completed: number
+      warnings: Array<string>
+      [key: string]: unknown
+    } | {
+      operation: "media_convert"
+      outputs: Array<Record<string, unknown>>
+      failed: Array<Record<string, unknown>>
+      skipped: Array<Record<string, unknown>>
+      total: number
+      completed: number
+      warnings: Array<string>
+      [key: string]: unknown
+    }
   }
   "model_download": {
     payload: {

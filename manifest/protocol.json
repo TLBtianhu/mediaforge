@@ -626,9 +626,221 @@
             }
           },
           "result": {
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {}
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_probe"
+                    ]
+                  },
+                  "probes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "probe": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {}
+                  }
+                },
+                "required": [
+                  "operation",
+                  "probes",
+                  "probe"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_image",
+                      "media_video"
+                    ]
+                  },
+                  "outputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "integer"
+                  },
+                  "completed": {
+                    "type": "integer"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "operation",
+                  "outputs",
+                  "failed",
+                  "skipped",
+                  "total",
+                  "completed",
+                  "warnings"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_workflow"
+                    ]
+                  },
+                  "modality": {
+                    "type": "string"
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "elapsed": {
+                    "type": "number"
+                  },
+                  "outputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "integer"
+                  },
+                  "completed": {
+                    "type": "integer"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "operation",
+                  "outputs",
+                  "failed",
+                  "skipped",
+                  "total",
+                  "completed",
+                  "warnings",
+                  "modality",
+                  "steps",
+                  "elapsed"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_convert"
+                    ]
+                  },
+                  "outputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "integer"
+                  },
+                  "completed": {
+                    "type": "integer"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "operation",
+                  "outputs",
+                  "failed",
+                  "skipped",
+                  "total",
+                  "completed",
+                  "warnings"
+                ]
+              }
+            ]
           },
           "resultSchemaEvent": "task.result"
         },

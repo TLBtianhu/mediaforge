@@ -127,6 +127,18 @@ class CommandContractTests(unittest.TestCase):
         self.assertEqual(validate_result("infer", {"files": [], "outputs": [], "outputDir": "x"}), [])
         self.assertTrue(validate_result("infer", {"files": "bad", "outputs": []}))
 
+    def test_media_tool_result_is_a_branch_union(self) -> None:
+        self.assertEqual(validate_result("media_tool", {
+            "operation": "media_probe", "probes": [], "probe": {},
+        }), [])
+        self.assertEqual(validate_result("media_tool", {
+            "operation": "media_image", "outputs": [], "failed": [], "skipped": [],
+            "total": 0, "completed": 0, "warnings": [],
+        }), [])
+        self.assertTrue(validate_result("media_tool", {
+            "operation": "media_probe", "probes": [],
+        }))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):
