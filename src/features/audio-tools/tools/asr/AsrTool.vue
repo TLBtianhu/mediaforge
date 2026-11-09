@@ -5,6 +5,7 @@ import { normalizeLogRecord } from '@/utils/logRecord'
 
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { deleteToolModel } from '@/api/models'
 import { open } from '@tauri-apps/plugin-shell'
 import { useI18n } from 'vue-i18n'
 import { useDialog, useMessage } from 'naive-ui'
@@ -253,13 +254,11 @@ async function redownloadModelsAndRetry(recovery: AudioToolRecovery, payload: Re
   repairingModels.value = true
   try {
     for (const modelId of recovery.modelIds) {
-      await invoke('delete_tool_model', {
-        payload: {
-          id: modelId,
-          tool: recovery.tool,
-          modelDir: recovery.modelDir,
-          missingOk: true,
-        },
+      await deleteToolModel({
+        id: modelId,
+        tool: recovery.tool,
+        modelDir: recovery.modelDir,
+        missingOk: true,
       })
     }
     message.info(t('tools.asrModelRedownloadStarted'))

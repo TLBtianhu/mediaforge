@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand } from './worker.ts'
 import type { WorkerCommandPayload, WorkerCommandResult } from '@/types/workerContracts.generated'
 
 export type ModelInfoRequest = WorkerCommandPayload<'model_info'>
@@ -7,6 +8,8 @@ export type ModelStorageSummaryResponse = WorkerCommandResult<'model_storage_sum
 export type CustomModelInspectionResponse = WorkerCommandResult<'inspect_custom_model'>
 export type CustomModelRemovalResponse = WorkerCommandResult<'unregister_custom_model'>
 export type CustomModelRelinkResponse = WorkerCommandResult<'relink_custom_model'>
+export type ModelStartResponse = { taskId: string; started: boolean }
+export type DeleteToolModelResponse = WorkerCommandResult<'delete_tool_model'>
 
 /** Typed wrapper around the Rust `get_model_info` command (worker `model_info`). */
 export function getModelInfo(payload: ModelInfoRequest): Promise<ModelInfoResponse> {
@@ -46,4 +49,28 @@ export function relinkCustomModel(
   payload: WorkerCommandPayload<'relink_custom_model'>,
 ): Promise<CustomModelRelinkResponse> {
   return invoke<CustomModelRelinkResponse>('relink_custom_model', { payload })
+}
+
+/** Start a model-hub download; completion arrives as asset.* events. */
+export function startModelHubDownload(payload: WorkerCommandPayload<'model_download'>): Promise<ModelStartResponse> {
+  return invoke<ModelStartResponse>('start_model_hub_download', { payload })
+}
+
+/** Start a catalog model deletion; completion arrives as model_delete_* events. */
+export function startModelDelete(payload: WorkerCommandPayload<'delete_model'>): Promise<ModelStartResponse> {
+  return invoke<ModelStartResponse>('start_model_delete', { payload })
+}
+
+/** Start residual-file cleanup; completion arrives as model_residual_cleanup_* events. */
+export function startModelResidualCleanup(
+  payload: WorkerCommandPayload<'cleanup_model_residual_files'>,
+): Promise<unknown> {
+  return invoke('start_cleanup_model_residual_files', { payload })
+}
+
+/** Delete one tool model synchronously through the worker contract. */
+export function deleteToolModel(
+  payload: WorkerCommandPayload<'delete_tool_model'>,
+): Promise<DeleteToolModelResponse> {
+  return invokeWorkerCommand('delete_tool_model', payload)
 }

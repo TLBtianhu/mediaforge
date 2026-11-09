@@ -15,11 +15,14 @@ import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus 
 import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
 import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
 import {
+  deleteToolModel as deleteToolModelRequest,
   getModelInfo,
   getModelStorageSummary,
   inspectCustomModel as inspectCustomModelRequest,
   relinkCustomModel as relinkCustomModelRequest,
   startCustomModelImport,
+  startModelDelete,
+  startModelResidualCleanup,
   unregisterCustomModel,
 } from '@/api/models'
 import { KnownObject } from '@/types/contracts'
@@ -1181,12 +1184,10 @@ export const useModelStore = defineStore('model', () => {
     }
     deleteTaskIndex.value = { ...deleteTaskIndex.value, [taskId]: name }
     try {
-      await invoke<{ taskId: string; started: boolean }>('start_model_delete', {
-        payload: {
-          taskId,
-          model: name,
-          modelDir: settings.modelDir || null,
-        },
+      await startModelDelete({
+        taskId,
+        model: name,
+        modelDir: settings.modelDir || null,
       })
       if (source === 'single') {
         // Batch deletion already awaits each task; a single one used to fire and forget, so a
@@ -1260,15 +1261,13 @@ export const useModelStore = defineStore('model', () => {
 
   async function deleteToolModel(target: ModelStorageDeleteTarget) {
     const settings = useSettingsStore()
-    const result = await invoke<{ modelStorageSummary?: ModelStorageSummary }>('delete_tool_model', {
-      payload: {
-        id: target.id,
-        tool: target.tool,
-        modelDir: settings.modelDir || null,
-      },
+    const result = await deleteToolModelRequest({
+      id: target.id,
+      tool: target.tool,
+      modelDir: settings.modelDir || null,
     })
     if (result.modelStorageSummary) {
-      modelStorageSummary.value = result.modelStorageSummary
+      modelStorageSummary.value = result.modelStorageSummary as ModelStorageSummary
       modelStorageSummaryLoadedAt.value = Date.now()
     }
   }
@@ -1361,9 +1360,7 @@ export const useModelStore = defineStore('model', () => {
       notified: false,
     }
     try {
-      await invoke<any>('start_cleanup_model_residual_files', {
-        payload: { taskId, modelDir: settings.modelDir || null },
-      })
+      await startModelResidualCleanup({ taskId, modelDir: settings.modelDir || null })
     } catch (err) {
       residualCleanupState.value = {
         ...residualCleanupState.value,
