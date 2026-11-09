@@ -345,24 +345,30 @@ export interface WorkerCommandContracts {
   }
   "inspect_custom_model": {
     payload: {
-      configPath?: string
+      configPath?: string | null
       modelPath?: string
       [key: string]: unknown
     }
     result: {
-      modelPath?: string
-      configPath?: string
-      sizeBytes?: number
-      suggestions?: Array<string>
-      suggestedModelType?: string
-      suggestedName?: string
-      instruments?: Array<string>
-      targetInstrument?: string
-      knownModelTypes?: Array<string>
-      configOptionalModelTypes?: Array<string>
-      configRequired?: boolean
-      stateDictReadable?: boolean
-      stateDictError?: string
+      modelPath: string
+      configPath: string | null
+      sizeBytes: number
+      suggestions: Array<{
+              modelType: string
+              confidence: string
+              basisCode: string
+              basisDetail: string
+              [key: string]: unknown
+            }>
+      suggestedModelType: string | null
+      suggestedName: string
+      instruments: Array<string>
+      targetInstrument: string
+      knownModelTypes: Array<string>
+      configOptionalModelTypes: Array<string>
+      configRequired: boolean | null
+      stateDictReadable: boolean
+      stateDictError: string | null
       [key: string]: unknown
     }
   }

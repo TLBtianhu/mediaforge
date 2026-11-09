@@ -14,7 +14,7 @@ import { inferenceChunkSizeIssue, normalizeInferenceParamMeta, type InferencePar
 import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus } from '@/features/downloads/lifecycle'
 import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
 import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
-import { getModelInfo, getModelStorageSummary } from '@/api/models'
+import { getModelInfo, getModelStorageSummary, inspectCustomModel as inspectCustomModelRequest } from '@/api/models'
 import { KnownObject } from '@/types/contracts'
 import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
@@ -33,30 +33,10 @@ export type ModelEntry = Omit<ModelEntryContract, 'slots' | 'defaultInferencePar
 }
 
 /** One architecture the worker thinks a weights file might be, with why it thinks so. */
-export type CustomModelSuggestion = {
-  modelType: string
-  confidence: 'high' | 'medium' | 'low'
-  /** Translated by the UI — the worker must not emit prose it cannot localise. */
-  basisCode: 'config_model_key' | 'config_kwargs_section' | 'state_dict_key' | string
-  basisDetail: string
-}
+type CustomSuggestionContract = NonNullable<WorkerCommandResult<'inspect_custom_model'>['suggestions']>[number]
 
-export type CustomModelInspection = {
-  modelPath: string
-  configPath: string | null
-  sizeBytes: number
-  suggestions: CustomModelSuggestion[]
-  suggestedModelType: string | null
-  suggestedName: string
-  instruments: string[]
-  targetInstrument: string
-  knownModelTypes: string[]
-  configOptionalModelTypes: string[]
-  /** Null when nothing could be suggested — there is then no type to require a config for. */
-  configRequired: boolean | null
-  stateDictReadable: boolean
-  stateDictError: string | null
-}
+export type CustomModelSuggestion = KnownObject<CustomSuggestionContract>
+export type CustomModelInspection = KnownObject<WorkerCommandResult<'inspect_custom_model'>>
 
 export type CustomModelImportRequest = {
   name: string
@@ -1451,9 +1431,7 @@ export const useModelStore = defineStore('model', () => {
 
   /** Inspect a weights file to suggest an architecture before the user has to pick one. */
   async function inspectCustomModel(modelPath: string, configPath?: string | null) {
-    return invoke<CustomModelInspection>('inspect_custom_model', {
-      payload: { modelPath, configPath: configPath || null },
-    })
+    return inspectCustomModelRequest({ modelPath, configPath: configPath || null })
   }
 
   /**

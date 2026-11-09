@@ -201,6 +201,20 @@ class CommandContractTests(unittest.TestCase):
             "operation": "convert", "outputPaths": "a.wav",
         }))
 
+    def test_custom_inspection_result_is_typed(self) -> None:
+        result = {
+            "modelPath": "m.ckpt", "configPath": None, "sizeBytes": 1,
+            "suggestions": [{"modelType": "mdx", "confidence": "high",
+                             "basisCode": "config_model_key", "basisDetail": "model"}],
+            "suggestedModelType": "mdx", "suggestedName": "m", "instruments": [],
+            "targetInstrument": "", "knownModelTypes": ["mdx"],
+            "configOptionalModelTypes": [], "configRequired": False,
+            "stateDictReadable": True, "stateDictError": None,
+        }
+        self.assertEqual(validate_result("inspect_custom_model", result), [])
+        broken = {**result, "suggestions": [{"modelType": "mdx"}]}
+        self.assertTrue(validate_result("inspect_custom_model", broken))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):

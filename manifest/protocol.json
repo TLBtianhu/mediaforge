@@ -2326,7 +2326,10 @@
             "additionalProperties": true,
             "properties": {
               "configPath": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "modelPath": {
                 "type": "string"
@@ -2341,7 +2344,10 @@
                 "type": "string"
               },
               "configPath": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "sizeBytes": {
                 "type": "integer"
@@ -2349,11 +2355,35 @@
               "suggestions": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "modelType": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "string"
+                    },
+                    "basisCode": {
+                      "type": "string"
+                    },
+                    "basisDetail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "modelType",
+                    "confidence",
+                    "basisCode",
+                    "basisDetail"
+                  ]
                 }
               },
               "suggestedModelType": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "suggestedName": {
                 "type": "string"
@@ -2380,15 +2410,36 @@
                 }
               },
               "configRequired": {
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               },
               "stateDictReadable": {
                 "type": "boolean"
               },
               "stateDictError": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
-            }
+            },
+            "required": [
+              "modelPath",
+              "configPath",
+              "sizeBytes",
+              "suggestions",
+              "suggestedModelType",
+              "suggestedName",
+              "instruments",
+              "targetInstrument",
+              "knownModelTypes",
+              "configOptionalModelTypes",
+              "configRequired",
+              "stateDictReadable",
+              "stateDictError"
+            ]
           },
           "resultSchemaEvent": "custom_model_inspected"
         },
