@@ -74,3 +74,9 @@ export function deleteToolModel(
 ): Promise<DeleteToolModelResponse> {
   return invokeWorkerCommand('delete_tool_model', payload)
 }
+
+export function remapCustomModelPaths(
+  payload: WorkerCommandPayload<'remap_custom_model_paths'>,
+): Promise<WorkerCommandResult<'remap_custom_model_paths'>> {
+  return invokeWorkerCommand('remap_custom_model_paths', payload)
+}

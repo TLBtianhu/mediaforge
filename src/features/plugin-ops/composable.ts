@@ -157,11 +157,11 @@ export function usePluginOps() {
     loading.value = true
     error.value = null
     try {
-      const response = await invoke<{
+      const response = (await invokeWorkerQuery('list_operations')) as unknown as {
         operations: OperationSpec[]
         pymssOperationsAvailable: boolean
         error?: string
-      }>('list_operations')
+      }
       state.available = response.pymssOperationsAvailable !== false
       state.unavailableReason = response.error
       state.specs = response.operations || []

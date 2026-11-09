@@ -8,7 +8,13 @@ import { activeRuntimeEnvironment, supportsRuntimeCoreUpdate, supportsRuntimeMan
 import { isTauriRuntime } from '@/utils/appStore'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import { useSettingsStore } from '@/stores/settings'
-import { runtimeCoreVersions as fetchRuntimeCoreVersions, runtimeEnvSizes as fetchRuntimeEnvSizes } from '@/api/runtime'
+import {
+  activateRuntime as activateRuntimeRequest,
+  deleteRuntime as deleteRuntimeRequest,
+  runtimeCoreVersions as fetchRuntimeCoreVersions,
+  runtimeEnvSizes as fetchRuntimeEnvSizes,
+  runtimeInfo as fetchRuntimeInfo,
+} from '@/api/runtime'
 import { KnownObject } from '@/types/contracts'
 import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
@@ -496,7 +502,7 @@ export const useAppStore = defineStore('app', () => {
           runtimeInfoError.value = ''
           return result
         }
-        const result = await invoke<RuntimeInfo>('runtime_info', { payload: backend ? { backend } : {} })
+        const result = (await fetchRuntimeInfo(backend ? { backend } : {})) as RuntimeInfo
         runtimeInfo.value = result
         runtimeInfoError.value = ''
         return result
@@ -660,7 +666,7 @@ export const useAppStore = defineStore('app', () => {
       ...target,
       ...(options.onlyIfNoActive ? { onlyIfNoActive: true } : {}),
     }
-    await mutateRuntime(() => invoke('activate_runtime', { payload }))
+    await mutateRuntime(() => activateRuntimeRequest(payload))
     const checks: Promise<unknown>[] = [checkRuntimeInfo(), checkEnv()]
     if (options.refreshCoreVersions !== false) checks.push(loadRuntimeCoreVersions())
     await Promise.all(checks)
@@ -729,7 +735,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function deleteRuntime(backend: RuntimeBackend, target: { pythonPath?: string } = {}) {
     requireRuntimeManagement()
-    await mutateRuntime(() => invoke('delete_runtime', { payload: { backend, ...target } }))
+    await mutateRuntime(() => deleteRuntimeRequest({ backend, ...target }))
     await checkRuntimeInfo()
   }
 

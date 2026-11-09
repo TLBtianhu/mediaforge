@@ -21,6 +21,7 @@ import {
 import { normalizeLocaleSetting, setLocale, type LocaleSetting } from '@/i18n'
 import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
 import { isMainTaskOwner } from '@/utils/taskOwner'
+import { remapCustomModelPaths } from '@/api/models'
 import { requestEditorExportPreference, type EditorExportPreference } from '@/utils/editorExportPreferences'
 import {
   DEFAULT_CONCURRENT_SEPARATIONS,
@@ -851,8 +852,8 @@ export const useSettingsStore = defineStore('settings', () => {
       // Fire-and-forget: a failure here leaves those models showing as missing with a relink
       // action, which must not turn a completed migration into a failed one.
       if (isMainTaskOwner() && payload.sourceModelDir && payload.targetModelDir) {
-        void invoke('remap_custom_model_paths', {
-          payload: { fromRoot: payload.sourceModelDir, toRoot: payload.targetModelDir },
+        void remapCustomModelPaths({
+          fromRoot: payload.sourceModelDir, toRoot: payload.targetModelDir,
         }).then(() => import('@/stores/model'))
           .then(({ useModelStore }) => useModelStore().loadModels())
           .catch(() => {})

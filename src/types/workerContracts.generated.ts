@@ -926,7 +926,9 @@ export interface WorkerCommandContracts {
     }
   }
   "runtime_info": {
-    payload: Record<string, never>
+    payload: {
+      backend?: string | null
+    }
     result: {
       manifestVersion?: string
       pythonVersion?: string

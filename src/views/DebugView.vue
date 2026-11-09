@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand } from '@/api/worker'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
@@ -558,9 +559,9 @@ async function loadDebugModelConfig() {
   if (!selectedDebugModel.value) return false
   debugConfigLoading.value = true
   try {
-    const result = await invoke<DebugModelConfig>('debug_model_config', {
-      payload: { action: 'read', model: selectedDebugModel.value, modelDir: settings.modelDir || null },
-    })
+    const result = (await invokeWorkerCommand('debug_model_config', {
+      action: 'read', model: selectedDebugModel.value, modelDir: settings.modelDir || null,
+    })) as unknown as DebugModelConfig
     debugModelConfig.value = result
     debugConfigText.value = result.effectiveContent || ''
     return true
@@ -576,14 +577,12 @@ async function saveDebugModelConfig() {
   if (!selectedDebugModel.value || debugModelConfig.value?.readOnly) return
   debugConfigSaving.value = true
   try {
-    const result = await invoke<DebugModelConfig>('debug_model_config', {
-      payload: {
-        action: 'save',
-        model: selectedDebugModel.value,
-        modelDir: settings.modelDir || null,
-        content: debugConfigText.value,
-      },
-    })
+    const result = (await invokeWorkerCommand('debug_model_config', {
+      action: 'save',
+      model: selectedDebugModel.value,
+      modelDir: settings.modelDir || null,
+      content: debugConfigText.value,
+    })) as unknown as DebugModelConfig
     debugModelConfig.value = result
     debugConfigText.value = result.effectiveContent || ''
     await modelStore.loadModels()

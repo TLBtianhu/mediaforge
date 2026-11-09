@@ -12,6 +12,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { invokeWorkerCommand } from '@/api/worker'
 import { open } from '@tauri-apps/plugin-dialog'
 import { pluginViewUrl } from './viewUrl'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
@@ -58,7 +59,7 @@ async function handleCall(id: number, method: string, params: Record<string, unk
       return { studio: 'pymss-studio', version: build.version, locale: t('plugins.sdkLocale' as never) || 'en' }
     }
     case 'operations.describe':
-      return await invoke('describe_operation', { payload: { operation: params.operation } })
+      return await invokeWorkerCommand('describe_operation', { operation: String(params.operation) })
     case 'operations.start': {
       const requestId = `plugin_view_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const promise = new Promise<unknown>((resolve, reject) => {

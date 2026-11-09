@@ -3163,7 +3163,14 @@
           "payload": {
             "type": "object",
             "additionalProperties": false,
-            "properties": {}
+            "properties": {
+              "backend": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
           },
           "result": {
             "type": "object",
