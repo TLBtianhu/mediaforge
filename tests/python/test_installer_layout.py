@@ -26,6 +26,13 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertNotIn("register.ps1", run_section.group(1))
         self.assertIn("由 DSH 插件管理器加载", run_section.group(1))
 
+    def test_developer_only_dsh_scripts_are_never_installed(self) -> None:
+        files = re.search(r"\[Files\](.*?)(?=\n\[|\Z)", self.script, re.S).group(1)
+        self.assertIn('Excludes: "*.ps1,*.bak*"', files)
+        install_delete = re.search(r"\[InstallDelete\](.*?)(?=\n\[|\Z)", self.script, re.S).group(1)
+        self.assertIn("integrations\\dsh-mediaforge\\*.ps1", install_delete)
+        self.assertIn("integrations\\dsh-mediaforge\\*.bak*", install_delete)
+
     def test_resource_cleanup_is_opt_in_and_exactly_scoped(self) -> None:
         self.assertIn("CurUninstallStepChanged", self.script)
         for relative in ("runtime-envs", "models", "data"):

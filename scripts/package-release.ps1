@@ -154,6 +154,16 @@ function Copy-ReleaseTree {
     }
 }
 
+function Remove-DevOnlyIntegrationScripts([string]$Root) {
+    # The PS1 helpers are repository maintenance tools; user bundles and portable
+    # zip must never contain them.
+    $directory = Join-Path $Root 'integrations/dsh-mediaforge'
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) { return }
+    foreach ($pattern in @('*.ps1', '*.bak*')) {
+        Get-ChildItem -LiteralPath $directory -File -Filter $pattern -ErrorAction SilentlyContinue | Remove-Item -Force
+    }
+}
+
 function Assert-ReleaseContract([string]$Stage) {
     foreach ($name in @('protocol.json', 'runtime.json', 'execution-quota.json', 'library-schema.json')) {
         $path = Join-Path (Join-Path $Stage 'manifest') $name
@@ -170,6 +180,7 @@ function Copy-ReleaseUpdate([string]$Stage, [string]$Destination) {
     foreach ($item in @('MediaForge.exe', 'python', 'bin', 'integrations', 'manifest')) {
         Copy-ReleaseTree -Source (Join-Path $Stage $item) -Destination (Join-Path $Destination $item)
     }
+    Remove-DevOnlyIntegrationScripts $Destination
     Assert-ReleaseContract $Destination
 }
 
@@ -183,6 +194,7 @@ function Copy-ReleaseResources([string]$Root, [string]$Stage, [string]$Bootstrap
         $exclude = if ($item -eq 'python-runtime') { @('runtime-envs') } else { @('data', 'models', '.dev-data', '.dev-webview') }
         Copy-ReleaseTree -Source $source -Destination $target -ExcludeRootDirectories $exclude
     }
+    Remove-DevOnlyIntegrationScripts $Stage
     Assert-ReleaseContract $Stage
 }
 
@@ -194,14 +206,11 @@ function Assert-ReleaseStage([string]$Stage) {
             'bin/aria2c.exe', 'bin/vcrt/msvcp140.dll', 'integrations/dsh-mediaforge/cordis.patch.yml')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Stage $relative) -PathType Leaf)) { throw "Stage contract is missing $relative" }
     }
-    # The old injector rewrote the user's cordis.patch.yml; a shipped script must be
-    # the migration tool (explicit -RemoveLegacyBlock), never the block rewriter.
-    $register = Join-Path $Stage 'integrations/dsh-mediaforge/register.ps1'
-    if (Test-Path -LiteralPath $register -PathType Leaf) {
-        $content = Get-Content -LiteralPath $register -Raw
-        if ($content -notmatch '\[string\]\$Profile') { throw "staged DSH register.ps1 has no -Profile switch" }
-        if ($content -notmatch '-RemoveLegacyBlock') { throw "staged DSH register.ps1 is not the migration tool" }
-        if ($content -match '\[regex\]::Replace') { throw "staged DSH register.ps1 still replaces an injected block" }
+    # Developer-only PS1 helpers must never ship; they are removed during staging.
+    $integration = Join-Path $Stage 'integrations/dsh-mediaforge'
+    if (Test-Path -LiteralPath $integration -PathType Container) {
+        $helpers = @(Get-ChildItem -LiteralPath $integration -File -Filter '*.ps1' -ErrorAction SilentlyContinue)
+        if ($helpers.Count) { throw "staging still contains developer-only DSH scripts: $($helpers.Name -join ', ')" }
     }
     foreach ($relative in @('python-runtime/runtime-envs', 'models', 'data', '.dev-data', '.dev-webview', 'mediaforge.portable')) {
         if (Test-Path -LiteralPath (Join-Path $Stage $relative)) { throw "Stage contains mutable user assets: $relative" }

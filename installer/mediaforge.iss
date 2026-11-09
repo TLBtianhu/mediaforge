@@ -54,11 +54,17 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "dshbridge"; Description: "附带 DSH 集成桥（由 DSH 插件管理器加载）"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; Older builds shipped the developer-only PS1 helpers into the user's install.
+; Delete them on upgrade so nobody can run the legacy injector by habit.
+Type: files; Name: "{app}\integrations\dsh-mediaforge\*.ps1"; Tasks: dshbridge
+Type: files; Name: "{app}\integrations\dsh-mediaforge\*.bak*"; Tasks: dshbridge
+
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion
 ; Root anchors preserve code directories such as pip/_internal/models and distlib/data.
 Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "\{#MyAppExeName},\mediaforge.portable,\python-runtime\runtime-envs\*,\integrations\*,\models\*,\data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\integrations\*"; DestDir: "{app}\integrations"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Tasks: dshbridge
+Source: "{#SourceDir}\integrations\*"; DestDir: "{app}\integrations"; Excludes: "*.ps1,*.bak*"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Tasks: dshbridge
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 
 [Dirs]

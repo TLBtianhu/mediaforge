@@ -38,7 +38,8 @@ README.md               本文
 NOTES.md                维护说明
 ```
 
-仓库中的 `setup.ps1`、`register.ps1`、`verify.ps1` 只作为开发维护工具保留，**不随用户 bundle 分发**。
+仓库中的 `setup.ps1`、`register.ps1`、`verify.ps1` 只作为开发维护工具保留；安装包与便携包在打包阶段排除这些脚本，
+也不随用户 bundle 分发。
 
 ## 迁移旧的注入方式
 

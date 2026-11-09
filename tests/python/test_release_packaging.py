@@ -57,6 +57,13 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertNotIn("-p $", script)
         self.assertNotIn("Get-SigningPassword", script)
 
+    def test_developer_only_dsh_scripts_are_removed_before_staging(self) -> None:
+        script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
+        self.assertIn("function Remove-DevOnlyIntegrationScripts", script)
+        self.assertIn("Remove-DevOnlyIntegrationScripts $Stage", script)
+        self.assertIn("Remove-DevOnlyIntegrationScripts $Destination", script)
+        self.assertIn("developer-only DSH scripts", script)
+
     def test_local_installer_copy_stays_inside_release_local(self) -> None:
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
         self.assertIn('$localOut = "$out\\local"', script)
