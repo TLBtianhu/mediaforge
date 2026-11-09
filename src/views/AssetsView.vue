@@ -7,6 +7,8 @@ import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import { KnownObject } from '@/types/contracts'
+import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 import {
   FolderOpenOutline,
   ImagesOutline,
@@ -20,22 +22,8 @@ import {
 
 defineOptions({ name: 'AssetsView' })
 
-type Asset = {
-  id: number
-  path: string
-  name: string
-  kind: 'audio' | 'image' | 'video'
-  format: string
-  size: number
-  duration: number
-  width: number
-  height: number
-  fps: number
-  thumbnail: string
-  tags: string
-  created_at: string
-  updated_at: string
-}
+type AssetContract = NonNullable<WorkerCommandResult<'media_library'>['assets']>[number]
+type Asset = KnownObject<AssetContract>
 type LibraryStats = {
   kinds?: Record<string, { count: number; bytes: number }>
   total?: { count: number; bytes: number }
@@ -49,7 +37,6 @@ type LibraryResult = {
   total?: number
   removed?: number
 }
-
 const { t } = useI18n()
 const message = useMessage()
 const router = useRouter()

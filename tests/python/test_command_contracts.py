@@ -145,6 +145,17 @@ class CommandContractTests(unittest.TestCase):
         self.assertEqual(validate_result("manage_plugin", valid), [])
         self.assertTrue(validate_result("manage_plugin", {"installed": "bad", "pluginsDir": "p", "runtime": {}}))
 
+    def test_library_asset_result_item_is_typed(self) -> None:
+        asset = {
+            "id": 1, "path": "a.wav", "name": "a.wav", "kind": "audio",
+            "format": "wav", "size": 10, "duration": 1.0, "width": 0,
+            "height": 0, "fps": 0.0, "thumbnail": "", "tags": "",
+            "created_at": "2026-01-01", "updated_at": "2026-01-01",
+        }
+        self.assertEqual(validate_result("media_library", {"operation": "list", "ok": True, "assets": [asset]}), [])
+        broken = dict(asset); broken.pop("id")
+        self.assertTrue(validate_result("media_library", {"operation": "list", "ok": True, "assets": [broken]}))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):

@@ -571,7 +571,70 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": true,
-                  "properties": {}
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "audio",
+                        "image",
+                        "video"
+                      ]
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "duration": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "integer"
+                    },
+                    "height": {
+                      "type": "integer"
+                    },
+                    "fps": {
+                      "type": "number"
+                    },
+                    "thumbnail": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "path",
+                    "name",
+                    "kind",
+                    "format",
+                    "size",
+                    "duration",
+                    "width",
+                    "height",
+                    "fps",
+                    "thumbnail",
+                    "tags",
+                    "created_at",
+                    "updated_at"
+                  ]
                 }
               },
               "errors": {
@@ -579,13 +642,54 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": true,
-                  "properties": {}
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "error"
+                  ]
                 }
               },
               "stats": {
                 "type": "object",
                 "additionalProperties": true,
-                "properties": {}
+                "properties": {
+                  "kinds": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {}
+                  },
+                  "total": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                      "count": {
+                        "type": "integer"
+                      },
+                      "bytes": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "bytes"
+                    ]
+                  },
+                  "database": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kinds",
+                  "total",
+                  "database"
+                ]
               },
               "total": {
                 "type": "integer"

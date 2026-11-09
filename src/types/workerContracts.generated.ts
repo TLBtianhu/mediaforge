@@ -464,9 +464,38 @@ export interface WorkerCommandContracts {
     result: {
       operation: string
       ok: boolean
-      assets?: Array<Record<string, unknown>>
-      errors?: Array<Record<string, unknown>>
-      stats?: Record<string, unknown>
+      assets?: Array<{
+              id: number
+              path: string
+              name: string
+              kind: "audio" | "image" | "video"
+              format: string
+              size: number
+              duration: number
+              width: number
+              height: number
+              fps: number
+              thumbnail: string
+              tags: string
+              created_at: string
+              updated_at: string
+              [key: string]: unknown
+            }>
+      errors?: Array<{
+              path: string
+              error: string
+              [key: string]: unknown
+            }>
+      stats?: {
+              kinds: Record<string, unknown>
+              total: {
+                        count: number
+                        bytes: number
+                        [key: string]: unknown
+                      }
+              database: string
+              [key: string]: unknown
+            }
       total?: number
       removed?: number
       [key: string]: unknown

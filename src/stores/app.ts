@@ -8,14 +8,14 @@ import { activeRuntimeEnvironment, supportsRuntimeCoreUpdate, supportsRuntimeMan
 import { isTauriRuntime } from '@/utils/appStore'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import { useSettingsStore } from '@/stores/settings'
+import { KnownObject } from '@/types/contracts'
 import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
 const studioLog = createLogger('ui.stores.app')
 
-type EnvInfoContract = WorkerCommandResult<'env_info'>
-type KnownKeys<T> = keyof { [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K] }
+type EnvInfoContract = Omit<KnownObject<WorkerCommandResult<'env_info'>>, 'cudaDevices'>
 
-export type EnvInfo = Partial<Pick<EnvInfoContract, Exclude<KnownKeys<EnvInfoContract>, 'cudaDevices'>>> & {
+export type EnvInfo = Partial<EnvInfoContract> & {
   cudaDevices?: CudaDeviceInfo[]
   /** Probe failures are optional and only present when the corresponding probe failed. */
   pymssError?: string
