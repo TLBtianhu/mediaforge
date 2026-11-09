@@ -16,6 +16,12 @@ export interface WorkerCommandContracts {
       [key: string]: unknown
     }
   }
+  "describe_operation": {
+    payload: {
+      operation: string
+    }
+    result: Record<string, unknown>
+  }
   "env_info": {
     payload: Record<string, never>
     result: {
@@ -64,6 +70,37 @@ export interface WorkerCommandContracts {
     result: {
       ok: boolean
       workerVersion: string
+    }
+  }
+  "list_nodes": {
+    payload: Record<string, never>
+    result: {
+      nodes: Array<Record<string, unknown>>
+    }
+  }
+  "list_operations": {
+    payload: Record<string, never>
+    result: {
+      operations: Array<Record<string, unknown>>
+      plugins: Array<Record<string, unknown>>
+      pymssOperationsAvailable: boolean
+      error?: string
+    }
+  }
+  "run_operation": {
+    payload: {
+      operation: string
+      params?: Record<string, unknown>
+      inputs?: Record<string, unknown>
+      outputDir?: string | null
+      requestId?: string | null
+      [key: string]: unknown
+    }
+    result: {
+      operation: string
+      outputs: Record<string, unknown>
+      outputDir: string
+      [key: string]: unknown
     }
   }
   "test_connection": {

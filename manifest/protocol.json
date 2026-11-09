@@ -695,21 +695,98 @@
           "proxy": "configured",
           "kind": "query",
           "summary": "",
-          "resultEvent": "nodes_list"
+          "resultEvent": "nodes_list",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              }
+            },
+            "required": [
+              "nodes"
+            ]
+          }
         },
         "operations": {
           "handler": "core.worker_operations:cmd_list_operations",
           "command": "list_operations",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "plugins": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "pymssOperationsAvailable": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operations",
+              "plugins",
+              "pymssOperationsAvailable"
+            ]
+          }
         },
         "operation": {
           "handler": "core.worker_operations:cmd_describe_operation",
           "command": "describe_operation",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "run_operation": {
           "handler": "core.worker_operations:cmd_run_operation",
@@ -717,7 +794,63 @@
           "resultEvent": "task.result",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "inputs": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "outputDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "outputDir": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operation",
+              "outputs",
+              "outputDir"
+            ]
+          }
         }
       }
     },

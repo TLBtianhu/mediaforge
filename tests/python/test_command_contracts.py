@@ -20,12 +20,25 @@ class CommandContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.protocol = json.loads((ROOT / "manifest" / "protocol.json").read_text(encoding="utf-8"))
         cls.system = cls.protocol["domains"]["system"]["commands"]
+        cls.graph = cls.protocol["domains"]["graph"]["commands"]
 
     def test_every_system_command_declares_payload_and_result(self) -> None:
         for name, entry in self.system.items():
             with self.subTest(name=name):
                 self.assertIsInstance(entry.get("payload"), dict)
                 self.assertIsInstance(entry.get("result"), dict)
+
+    def test_every_graph_command_declares_payload_and_result(self) -> None:
+        for name, entry in self.graph.items():
+            with self.subTest(name=name):
+                self.assertIsInstance(entry.get("payload"), dict)
+                self.assertIsInstance(entry.get("result"), dict)
+
+    def test_graph_payload_types(self) -> None:
+        self.assertEqual(validate_payload("list_nodes", {}), [])
+        self.assertEqual(validate_payload("describe_operation", {"operation": "separate"}), [])
+        self.assertTrue(validate_payload("describe_operation", {}))
+        self.assertTrue(validate_payload("run_operation", {"operation": "separate", "params": "bad"}))
 
     def test_health_rejects_unknown_payload_fields(self) -> None:
         self.assertEqual(validate_payload("health", {}), [])
