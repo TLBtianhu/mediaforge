@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { mediaLibrary } from '@/api/mediaLibrary'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
@@ -25,14 +26,6 @@ defineOptions({ name: 'AssetsView' })
 type AssetContract = NonNullable<WorkerCommandResult<'media_library'>['assets']>[number]
 type Asset = KnownObject<AssetContract>
 type LibraryStats = Partial<KnownObject<NonNullable<WorkerCommandResult<'media_library'>['stats']>>>
-type LibraryResult = {
-  ok?: boolean
-  assets?: Asset[]
-  errors?: Array<{ path: string; error: string }>
-  stats?: LibraryStats
-  total?: number
-  removed?: number
-}
 
 const { t } = useI18n()
 const message = useMessage()
@@ -100,13 +93,11 @@ function thumbnailSrc(asset: Asset) {
 async function refresh() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   try {
-    const result = await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'list', query: query.value, kind: kind.value, limit: 1000 },
+    const result = await mediaLibrary({
+      operation: 'list', query: query.value, kind: kind.value, limit: 1000,
     })
     assets.value = result.assets || []
-    const statsResult = await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'stats' },
-    })
+    const statsResult = await mediaLibrary({ operation: 'stats' })
     stats.value = statsResult.stats || {}
     libraryError.value = ''
   } catch (error) {
@@ -119,9 +110,7 @@ async function importPaths(paths: string[]) {
   importing.value = true
   busy.value = true
   try {
-    const result = await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'import', paths },
-    })
+    const result = await mediaLibrary({ operation: 'import', paths })
     const count = result.assets?.length || 0
     const errors = result.errors?.length || 0
     message.success(t('assets.imported', { count }))
@@ -163,9 +152,7 @@ async function pickFolder() {
 
 async function removeAsset(asset: Asset) {
   try {
-    await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'remove', ids: [asset.id] },
-    })
+    await mediaLibrary({ operation: 'remove', ids: [asset.id] })
     await refresh()
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
