@@ -8,11 +8,12 @@
 ```
 命令面            manifest/protocol.json：8 个域 / 48 条命令 / handler 为 module:function
                   surfaces/dispatch.py 查表分派；check-command-surface.py --strict 已进 CI
-命令字段契约      system + graph + audio + media + model 域 36 条命令已声明 payload/result schema；dispatch 先校验 payload
+命令字段契约      全部 8 个域 / 48 条命令已声明 payload/result schema；dispatch 先校验 payload
                   （PAYLOAD_INVALID），sync_worker_contracts.py 生成前端类型并进 CI；
-                  其余域按域逐步铺开，未声明的命令暂不校验
-架构不变量        scripts/check-architecture.py 十条全绿：依赖方向 ×3、根目录白名单、
-                  事件覆盖、事件命名、handler 存在性、catalog 关联、接口投影、媒体哈希
+                  check-architecture.py 第 13 条要求新命令必须带 schema
+架构不变量        scripts/check-architecture.py 十三条全绿：依赖方向 ×3、根目录白名单、
+                  事件覆盖、事件命名、handler 存在性、catalog 关联、接口投影、媒体哈希、
+                  命令字段契约
 Python 物理分层   python/ 根只剩 worker.py、agent_bridge.py、audio_catalog.json、
                   runtime-manifest.json；实现分布在 audio_tools / core / third_party /
                   media_ops / shared / surfaces

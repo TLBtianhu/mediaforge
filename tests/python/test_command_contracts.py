@@ -24,6 +24,9 @@ class CommandContractTests(unittest.TestCase):
         cls.audio = cls.protocol["domains"]["audio"]["commands"]
         cls.media = cls.protocol["domains"]["media"]["commands"]
         cls.model = cls.protocol["domains"]["model"]["commands"]
+        cls.runtime = cls.protocol["domains"]["runtime"]["commands"]
+        cls.plugin = cls.protocol["domains"]["plugin"]["commands"]
+        cls.workflow = cls.protocol["domains"]["workflow"]["commands"]
 
     def test_every_system_command_declares_payload_and_result(self) -> None:
         for name, entry in self.system.items():
@@ -79,6 +82,30 @@ class CommandContractTests(unittest.TestCase):
         self.assertTrue(validate_payload("list_models", {"category": 1}))
         self.assertTrue(validate_payload("model_download", {"modelId": 1}))
         self.assertTrue(validate_payload("debug_catalog_save", {"catalog": "bad"}))
+
+    def test_every_runtime_command_declares_payload_and_result(self) -> None:
+        for name, entry in self.runtime.items():
+            with self.subTest(name=name):
+                self.assertIsInstance(entry.get("payload"), dict)
+                self.assertIsInstance(entry.get("result"), dict)
+
+    def test_runtime_payload_types(self) -> None:
+        self.assertEqual(validate_payload("runtime_info", {}), [])
+        self.assertTrue(validate_payload("install_runtime", {"backend": 1}))
+        self.assertTrue(validate_payload("optional_package_status", {"package": 1}))
+
+    def test_every_protocol_command_declares_payload_and_result(self) -> None:
+        for domain_id, domain in self.protocol["domains"].items():
+            for name, entry in domain["commands"].items():
+                with self.subTest(domain=domain_id, name=name):
+                    self.assertIsInstance(entry.get("payload"), dict)
+                    self.assertIsInstance(entry.get("result"), dict)
+
+    def test_plugin_and_workflow_payload_types(self) -> None:
+        self.assertEqual(validate_payload("plugin_marketplace", {}), [])
+        self.assertTrue(validate_payload("manage_plugin", {"action": 1}))
+        self.assertTrue(validate_payload("infer", {"deviceIds": "0"}))
+        self.assertTrue(validate_payload("infer_workflow", {"tasks": "bad"}))
 
     def test_health_rejects_unknown_payload_fields(self) -> None:
         self.assertEqual(validate_payload("health", {}), [])

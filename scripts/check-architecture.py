@@ -1,6 +1,6 @@
 """架构不变量检查（docs/architecture-blueprint.md §3）。
 
-现在守十条：
+现在守十三条：
   1. 引擎层（python/media_ops）不许 import app 层、音频层或 pymss；
   2. shared 层不许 import core / surfaces / media_ops；
   3. core 层不许 import surfaces；
@@ -13,6 +13,7 @@
   10. 每个可下载媒体模型都必须声明有效 SHA-256；
   11. Rust 里硬编码的 task.* / asset.* 事件名必须在 protocol.json 里声明，且 events.terminal 是 canonical 的子集；
   12. protocol.json.execution 的 bootstrap 清单必须对应真实命令（worker 项在 domains 里，native 项不与 worker 重叠）。
+  13. 每条命令都必须声明 payload / result schema；生成的前端类型由 sync_worker_contracts.py --check 守。
 
 退出码非 0 即视为不变量被破坏。放进 CI 与 check-command-surface.py 并列。
 """
@@ -419,6 +420,17 @@ def check_media_hashes() -> list[str]:
 LEGACY_EVENT_PREFIXES = ("task_", "download_")
 
 
+def check_command_schemas(manifest: dict) -> list[str]:
+    """每条命令都必须有 payload/result；schema 语法由 sync_worker_contracts.py 校验。"""
+    problems: list[str] = []
+    for domain_id, domain in (manifest.get("domains") or {}).items():
+        for name, entry in (domain.get("commands") or {}).items():
+            for field in ("payload", "result"):
+                if not isinstance(entry.get(field), dict):
+                    problems.append(f"{domain_id}.{name} 缺少 {field} schema")
+    return problems
+
+
 def check_event_names() -> list[str]:
     """流式事件必须是 <域>.<动词>：task_* / download_* 是历史写法，出现即违规。
 
@@ -452,6 +464,7 @@ def main() -> int:
         "catalog 关联": check_catalog_links(),
         "接口投影": check_registry_projection(),
         "媒体哈希": check_media_hashes(),
+        "命令字段契约": check_command_schemas(manifest),
     }
     failed = False
     for label, problems in results.items():

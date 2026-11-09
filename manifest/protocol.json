@@ -1763,7 +1763,129 @@
           "command": "runtime_info",
           "proxy": "none",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "manifestVersion": {
+                "type": "string"
+              },
+              "pythonVersion": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "machine": {
+                "type": "string"
+              },
+              "bootstrapPython": {
+                "type": "string"
+              },
+              "runtimeEnvsDir": {
+                "type": "string"
+              },
+              "activeRuntimeFile": {
+                "type": "string"
+              },
+              "activeRuntimeError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "backend": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "installedBackend": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "installState": {
+                "type": "string"
+              },
+              "rollbackAvailable": {
+                "type": "boolean"
+              },
+              "statePath": {
+                "type": "string"
+              },
+              "logPath": {
+                "type": "string"
+              },
+              "installedEnvironments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "gpuVendors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "torchVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "torchBackend": {
+                "type": "string"
+              },
+              "acceleratorAvailable": {
+                "type": "boolean"
+              },
+              "packages": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "packageVersions": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "pymssVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pymssCoreVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pymssGraphAvailable": {
+                "type": "boolean"
+              },
+              "liveProbeError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ready": {
+                "type": "boolean"
+              }
+            }
+          }
         },
         "install": {
           "handler": "core.worker_bootstrap:cmd_install_runtime",
@@ -1771,28 +1893,133 @@
           "resultEvent": "runtime_install_finished",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "locale": {
+                "type": "string"
+              },
+              "mirror": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "core_versions": {
           "handler": "core.worker_bootstrap:cmd_runtime_core_versions",
           "command": "runtime_core_versions",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "versions": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "packages": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "channel",
+              "packages"
+            ]
+          }
         },
         "activate": {
           "handler": "core.worker_bootstrap:cmd_activate_runtime",
           "command": "activate_runtime",
           "proxy": "none",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "onlyIfNoActive": {
+                "type": "boolean"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "sizes": {
           "handler": "core.worker_bootstrap:cmd_runtime_env_sizes",
           "command": "runtime_env_sizes",
           "proxy": "none",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "sizes": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "totalBytes": {
+                "type": "integer"
+              },
+              "incompleteBackends": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "sizes",
+              "totalBytes",
+              "incompleteBackends"
+            ]
+          }
         },
         "delete": {
           "handler": "core.worker_bootstrap:cmd_delete_runtime",
@@ -1800,14 +2027,84 @@
           "resultEvent": "runtime_deleted",
           "proxy": "none",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "optional_status": {
           "handler": "core.worker_optional_packages:cmd_optional_package_status",
           "command": "optional_package_status",
           "proxy": "none",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "package": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "package": {
+                "type": "string"
+              },
+              "requirement": {
+                "type": "string"
+              },
+              "installed": {
+                "type": "boolean"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "canUninstall": {
+                "type": "boolean"
+              },
+              "issue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtimeIdentity": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "package",
+              "installed",
+              "present"
+            ]
+          }
         },
         "optional_manage": {
           "handler": "core.worker_optional_packages:cmd_manage_optional_package",
@@ -1815,7 +2112,78 @@
           "resultEvent": "optional_package_status",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "package": {
+                "type": "string"
+              },
+              "locale": {
+                "type": "string"
+              },
+              "mirror": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "package": {
+                "type": "string"
+              },
+              "requirement": {
+                "type": "string"
+              },
+              "installed": {
+                "type": "boolean"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "canUninstall": {
+                "type": "boolean"
+              },
+              "issue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtimeIdentity": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "package",
+              "installed",
+              "present"
+            ]
+          }
         }
       }
     },
@@ -1827,7 +2195,17 @@
           "command": "plugin_marketplace",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "manage": {
           "handler": "core.worker_plugins:cmd_manage_plugin",
@@ -1835,7 +2213,30 @@
           "resultEvent": "plugin_manage_result",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         }
       }
     },
@@ -2015,14 +2416,109 @@
           "command": "infer",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "device": {
+                "type": "string"
+              },
+              "deviceIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "input": {
+                "type": "string"
+              },
+              "inputIndex": {
+                "type": "integer"
+              },
+              "model": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "outputLayout": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "run": {
           "handler": "core.worker_workflows:cmd_infer_workflow",
           "command": "infer_workflow",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "input": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "output": {
+                "type": "string"
+              },
+              "outputLayout": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "workflowName": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         }
       }
     }
