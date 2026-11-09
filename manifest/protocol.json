@@ -2255,7 +2255,10 @@
                 }
               },
               "configPath": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "force": {
                 "type": "boolean"
@@ -2478,10 +2481,13 @@
                 "type": "string"
               },
               "filesDeleted": {
-                "type": "boolean"
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               },
               "deletedFiles": {
-                "type": "integer"
+                "type": "boolean"
               },
               "fileDeletionSupported": {
                 "type": "boolean"
@@ -2492,7 +2498,14 @@
                   "type": "string"
                 }
               }
-            }
+            },
+            "required": [
+              "name",
+              "filesDeleted",
+              "deletedFiles",
+              "fileDeletionSupported",
+              "errors"
+            ]
           },
           "resultSchemaEvent": "custom_model_unregistered"
         },
@@ -2507,7 +2520,10 @@
             "additionalProperties": true,
             "properties": {
               "configPath": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "modelPath": {
                 "type": "string"

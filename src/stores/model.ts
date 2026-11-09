@@ -14,7 +14,14 @@ import { inferenceChunkSizeIssue, normalizeInferenceParamMeta, type InferencePar
 import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus } from '@/features/downloads/lifecycle'
 import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
 import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
-import { getModelInfo, getModelStorageSummary, inspectCustomModel as inspectCustomModelRequest } from '@/api/models'
+import {
+  getModelInfo,
+  getModelStorageSummary,
+  inspectCustomModel as inspectCustomModelRequest,
+  relinkCustomModel as relinkCustomModelRequest,
+  startCustomModelImport,
+  unregisterCustomModel,
+} from '@/api/models'
 import { KnownObject } from '@/types/contracts'
 import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
@@ -59,14 +66,7 @@ export type CustomModelImportState = {
   message: string
 }
 
-export type CustomModelRemoval = {
-  name: string
-  filesDeleted: string[]
-  deletedFiles: boolean
-  /** False for referenced models, whose weights the app must never delete. */
-  fileDeletionSupported: boolean
-  errors: string[]
-}
+export type CustomModelRemoval = KnownObject<WorkerCommandResult<'unregister_custom_model'>>
 
 export type ModelDefaultInferenceParams = {
   batch_size?: number
@@ -1483,16 +1483,16 @@ export const useModelStore = defineStore('model', () => {
 
   async function removeCustomModel(name: string, deleteFiles = false) {
     const settings = useSettingsStore()
-    const result = await invoke<CustomModelRemoval>('unregister_custom_model', {
-      payload: { name, deleteFiles, modelDir: settings.modelDir || null },
+    const result = await unregisterCustomModel({
+      name, deleteFiles, modelDir: settings.modelDir || null,
     })
     await loadModels()
     return result
   }
 
   async function relinkCustomModel(name: string, modelPath: string, configPath?: string | null) {
-    const result = await invoke<{ name: string }>('relink_custom_model', {
-      payload: { name, modelPath, configPath: configPath || null },
+    const result = await relinkCustomModelRequest({
+      name, modelPath, configPath: configPath || null,
     })
     await loadModels()
     return result

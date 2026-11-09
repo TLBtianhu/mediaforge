@@ -215,6 +215,18 @@ class CommandContractTests(unittest.TestCase):
         broken = {**result, "suggestions": [{"modelType": "mdx"}]}
         self.assertTrue(validate_result("inspect_custom_model", broken))
 
+    def test_custom_model_mutation_contracts(self) -> None:
+        self.assertEqual(validate_result("unregister_custom_model", {
+            "name": "m", "filesDeleted": ["m.ckpt"], "deletedFiles": True,
+            "fileDeletionSupported": True, "errors": [],
+        }), [])
+        self.assertTrue(validate_result("unregister_custom_model", {
+            "name": "m", "filesDeleted": True, "deletedFiles": True,
+            "fileDeletionSupported": True, "errors": [],
+        }))
+        self.assertEqual(validate_payload("import_custom_model", {"configPath": None}), [])
+        self.assertEqual(validate_payload("relink_custom_model", {"configPath": None}), [])
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):

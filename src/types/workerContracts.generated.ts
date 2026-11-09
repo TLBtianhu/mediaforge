@@ -279,7 +279,7 @@ export interface WorkerCommandContracts {
   "import_custom_model": {
     payload: {
       aliases?: Array<string>
-      configPath?: string
+      configPath?: string | null
       force?: boolean
       importMode?: string
       modelDir?: string | null
@@ -787,7 +787,7 @@ export interface WorkerCommandContracts {
   }
   "relink_custom_model": {
     payload: {
-      configPath?: string
+      configPath?: string | null
       modelPath?: string
       modelType?: string
       name?: string
@@ -921,11 +921,11 @@ export interface WorkerCommandContracts {
       [key: string]: unknown
     }
     result: {
-      name?: string
-      filesDeleted?: boolean
-      deletedFiles?: number
-      fileDeletionSupported?: boolean
-      errors?: Array<string>
+      name: string
+      filesDeleted: Array<string>
+      deletedFiles: boolean
+      fileDeletionSupported: boolean
+      errors: Array<string>
       [key: string]: unknown
     }
   }
