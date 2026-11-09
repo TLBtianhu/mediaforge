@@ -74,6 +74,18 @@ export interface WorkerCommandContracts {
       [key: string]: unknown
     }
   }
+  "evaluate_media": {
+    payload: {
+      inputs?: Array<string>
+      reference?: string | null
+      [key: string]: unknown
+    }
+    result: {
+      evaluations: Array<Record<string, unknown>>
+      reference?: Record<string, unknown>
+      [key: string]: unknown
+    }
+  }
   "export_editor_mix": {
     payload: {
       project: Record<string, unknown>
@@ -129,6 +141,66 @@ export interface WorkerCommandContracts {
       pymssOperationsAvailable: boolean
       error?: string
     }
+  }
+  "media_capabilities": {
+    payload: {
+      modelDir?: string | null
+      [key: string]: unknown
+    }
+    result: {
+      capabilities: Array<Record<string, unknown>>
+      modelDir: string
+      audit: Record<string, unknown>
+      runtime: Record<string, unknown>
+      [key: string]: unknown
+    }
+  }
+  "media_library": {
+    payload: {
+      operation?: string
+      query?: string
+      kind?: string
+      limit?: number
+      dataRoot?: string
+      paths?: Array<string>
+      ids?: Array<number>
+      id?: number
+      tags?: string
+      [key: string]: unknown
+    }
+    result: {
+      operation: string
+      ok: boolean
+      assets?: Array<Record<string, unknown>>
+      errors?: Array<Record<string, unknown>>
+      stats?: Record<string, unknown>
+      total?: number
+      removed?: number
+      [key: string]: unknown
+    }
+  }
+  "media_precheck": {
+    payload: {
+      steps?: Array<Record<string, unknown>>
+      inputs?: Array<string>
+      [key: string]: unknown
+    }
+    result: {
+      ok: boolean
+      steps: Array<Record<string, unknown>>
+      inputs: Array<string>
+      precheck: Record<string, unknown>
+      [key: string]: unknown
+    }
+  }
+  "media_tool": {
+    payload: {
+      operation?: string
+      inputs?: Array<string>
+      outputDir?: string
+      [key: string]: unknown
+    }
+    result: Record<string, unknown>
   }
   "run_operation": {
     payload: {

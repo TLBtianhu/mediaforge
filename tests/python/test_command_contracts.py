@@ -22,6 +22,7 @@ class CommandContractTests(unittest.TestCase):
         cls.system = cls.protocol["domains"]["system"]["commands"]
         cls.graph = cls.protocol["domains"]["graph"]["commands"]
         cls.audio = cls.protocol["domains"]["audio"]["commands"]
+        cls.media = cls.protocol["domains"]["media"]["commands"]
 
     def test_every_system_command_declares_payload_and_result(self) -> None:
         for name, entry in self.system.items():
@@ -52,6 +53,19 @@ class CommandContractTests(unittest.TestCase):
         self.assertTrue(validate_payload("audio_metadata", {}))
         self.assertTrue(validate_payload("waveform_peaks", {"path": "a.wav", "resolution": "high"}))
         self.assertTrue(validate_payload("export_editor_mix", {"project": "bad"}))
+
+    def test_every_media_command_declares_payload_and_result(self) -> None:
+        for name, entry in self.media.items():
+            with self.subTest(name=name):
+                self.assertIsInstance(entry.get("payload"), dict)
+                self.assertIsInstance(entry.get("result"), dict)
+
+    def test_media_payload_types(self) -> None:
+        self.assertEqual(validate_payload("media_capabilities", {}), [])
+        self.assertTrue(validate_payload("media_capabilities", {"modelDir": 1}))
+        self.assertTrue(validate_payload("media_precheck", {"inputs": "a.wav"}))
+        self.assertTrue(validate_payload("media_library", {"limit": "ten"}))
+        self.assertTrue(validate_payload("media_tool", {"operation": 1}))
 
     def test_health_rejects_unknown_payload_fields(self) -> None:
         self.assertEqual(validate_payload("health", {}), [])

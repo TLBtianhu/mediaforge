@@ -402,35 +402,279 @@
           "command": "media_capabilities",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "modelDir": {
+                "type": "string"
+              },
+              "audit": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "runtime": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "capabilities",
+              "modelDir",
+              "audit",
+              "runtime"
+            ]
+          }
         },
         "precheck": {
           "handler": "core.commands:cmd_media_precheck",
           "command": "media_precheck",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "precheck": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "ok",
+              "steps",
+              "inputs",
+              "precheck"
+            ]
+          }
         },
         "library": {
           "handler": "core.library_worker:cmd_media_library",
           "command": "media_library",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "dataRoot": {
+                "type": "string"
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "id": {
+                "type": "integer"
+              },
+              "tags": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "assets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "stats": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "total": {
+                "type": "integer"
+              },
+              "removed": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "operation",
+              "ok"
+            ]
+          }
         },
         "run": {
           "handler": "media_ops.worker:cmd_media_tool",
           "command": "media_tool",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputDir": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "evaluate": {
           "handler": "core.media_eval:cmd_evaluate_media",
           "command": "evaluate_media",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reference": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "evaluations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "reference": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "evaluations"
+            ]
+          }
         }
       }
     },
