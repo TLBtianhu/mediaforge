@@ -717,10 +717,39 @@ fn write_json_file_with_replace(
             )));
         }
     }
+    if result.is_ok() {
+        bump_modified_time(path);
+    }
     if result.is_err() {
         let _ = std::fs::remove_file(&temporary);
     }
     result
+}
+
+/// ReplaceFileW may keep the replaced file's creation time, and two writes can
+/// land in the same timestamp tick; a job cache keyed by (len, mtime, ctime)
+/// would then miss the update. Give every successful replacement a strictly
+/// increasing mtime so the stamp always changes.
+fn bump_modified_time(path: &Path) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos() as u64)
+        .unwrap_or(0);
+    let mut previous = LAST.load(Ordering::Relaxed);
+    let stamp = loop {
+        let next = now.max(previous.saturating_add(1));
+        match LAST.compare_exchange_weak(previous, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => break next,
+            Err(actual) => previous = actual,
+        }
+    };
+    if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
+        let _ = file.set_modified(UNIX_EPOCH + Duration::from_nanos(stamp));
+    }
 }
 
 pub fn mutate_workflow_store(app: &AppHandle, mutation: &Value) -> AppResult<Value> {

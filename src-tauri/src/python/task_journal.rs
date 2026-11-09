@@ -1545,11 +1545,13 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_index_is_reported_and_preserved_without_a_fallback() {
+    fn legacy_index_is_ignored_and_preserved_without_a_fallback() {
         let root = tempfile::tempdir().unwrap();
         let journal = started(root.path(), "fresh_1");
         fs::write(root.path().join("agent-jobs/index.json"), b"not-json").unwrap();
-        assert!(list(root.path()).is_err());
+        let rows = list(root.path()).unwrap();
+        assert_eq!(rows.len(), 1, "index.json must not be treated as a job");
+        assert_eq!(rows[0]["jobId"], "fresh_1");
         journal.lock().unwrap().observe(&event("task.result", None, json!({"outputs": [{"path": "out.png"}]}))).unwrap();
         assert_eq!(snapshot(root.path(), "fresh_1")["status"], "completed");
         assert_eq!(fs::read(root.path().join("agent-jobs/index.json")).unwrap(), b"not-json");

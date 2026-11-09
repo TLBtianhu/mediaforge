@@ -293,8 +293,7 @@ class SingleFileHistoryTests(unittest.TestCase):
                 kernel._persist(job, force=True)
                 job.update(status="completed", result={"outputs": ["done.wav"]})
                 kernel._persist(job)
-            with self.assertRaises(JobStoreError):
-                kernel.get("new_job")
+            self.assertEqual(kernel.get("new_job").snapshot()["status"], "completed")
             self.assertEqual(read_json(kernel.jobs_root / "new_job.json")["status"], "completed")
             self.assertEqual(legacy_index.read_bytes(), b"leave previous index untouched")
             self.assertEqual(legacy_workspace.read_bytes(), b"leave previous workspace untouched")
