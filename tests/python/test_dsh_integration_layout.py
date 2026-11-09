@@ -88,6 +88,7 @@ class DshIntegrationLayoutTest(unittest.TestCase):
         self.assertIn("手动删除", readme)
         self.assertIn("只删 MediaForge 自己的行", readme)
         self.assertIn("其它行一律保留", readme)
+        self.assertIn("不要动其它区块", readme)
         self.assertNotIn("删除从", readme, "deleting the whole block would remove the user's rows")
 
     def test_published_bundle_excludes_powershell_helpers(self) -> None:

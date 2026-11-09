@@ -53,8 +53,9 @@ README.md               本文
 2. 删掉这两条标记行：
    - `# === mediaforge MCP BEGIN ===`
    - `# === mediaforge MCP END ===`
-3. 删掉 `- insert:` 这一项（通常只有一条 `- id: mediaforge-mcp`，并带
-   `name: '@deepseek-ai/dsh-mcp-client'`）；
+3. 在 MediaForge 区块内，删掉包含 `id: mediaforge-mcp` 的那一个 `- insert:`
+   （连同它的 `name` / `config` 行）以及上面那行 `# 由 MediaForge 安装器维护…` 注释；
+   **不要动其它区块（例如 qq-bridge）的 `- insert:`**；
 4. 如果还有 `- id: mediaforge-mcp` 的覆盖行（通常带 `disabled: true`），一并删掉；
 5. 区块内**其它行一律保留**，保存后重启 DSH；
 6. 立刻用插件管理器安装 bundle（中间不要间隔，否则 MediaForge 工具会暂时消失）：
