@@ -21,6 +21,7 @@ class CommandContractTests(unittest.TestCase):
         cls.protocol = json.loads((ROOT / "manifest" / "protocol.json").read_text(encoding="utf-8"))
         cls.system = cls.protocol["domains"]["system"]["commands"]
         cls.graph = cls.protocol["domains"]["graph"]["commands"]
+        cls.audio = cls.protocol["domains"]["audio"]["commands"]
 
     def test_every_system_command_declares_payload_and_result(self) -> None:
         for name, entry in self.system.items():
@@ -39,6 +40,18 @@ class CommandContractTests(unittest.TestCase):
         self.assertEqual(validate_payload("describe_operation", {"operation": "separate"}), [])
         self.assertTrue(validate_payload("describe_operation", {}))
         self.assertTrue(validate_payload("run_operation", {"operation": "separate", "params": "bad"}))
+
+    def test_every_audio_command_declares_payload_and_result(self) -> None:
+        for name, entry in self.audio.items():
+            with self.subTest(name=name):
+                self.assertIsInstance(entry.get("payload"), dict)
+                self.assertIsInstance(entry.get("result"), dict)
+
+    def test_audio_payload_types(self) -> None:
+        self.assertEqual(validate_payload("audio_metadata", {"path": "a.wav"}), [])
+        self.assertTrue(validate_payload("audio_metadata", {}))
+        self.assertTrue(validate_payload("waveform_peaks", {"path": "a.wav", "resolution": "high"}))
+        self.assertTrue(validate_payload("export_editor_mix", {"project": "bad"}))
 
     def test_health_rejects_unknown_payload_fields(self) -> None:
         self.assertEqual(validate_payload("health", {}), [])

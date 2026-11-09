@@ -442,21 +442,151 @@
           "command": "audio_tools",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          }
         },
         "metadata": {
           "handler": "core.worker_audio:cmd_audio_metadata",
           "command": "audio_metadata",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              },
+              "sampleRate": {
+                "type": "integer"
+              },
+              "channels": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "name",
+              "duration",
+              "sampleRate",
+              "channels"
+            ]
+          }
         },
         "waveform": {
           "handler": "core.worker_audio:cmd_waveform_peaks",
           "command": "waveform_peaks",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "dataRoot": {
+                "type": "string"
+              },
+              "cacheDir": {
+                "type": "string"
+              },
+              "resolution": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "peaksPath": {
+                "type": "string"
+              },
+              "peaks": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "channelPeaks": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "resolution": {
+                "type": "integer"
+              },
+              "duration": {
+                "type": "number"
+              },
+              "sampleRate": {
+                "type": "integer"
+              },
+              "channels": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "peaksPath",
+              "peaks",
+              "channelPeaks",
+              "resolution",
+              "duration",
+              "sampleRate",
+              "channels"
+            ]
+          }
         },
         "export_mix": {
           "handler": "core.worker_audio:cmd_export_editor_mix",
@@ -464,7 +594,80 @@
           "proxy": "configured",
           "kind": "task",
           "summary": "",
-          "resultEvent": "editor_mix_exported"
+          "resultEvent": "editor_mix_exported",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "project": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "exportDir": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              },
+              "audioParams": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "project"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              },
+              "sampleRate": {
+                "type": "integer"
+              },
+              "channels": {
+                "type": "integer"
+              },
+              "format": {
+                "type": "string"
+              },
+              "peakProtectionApplied": {
+                "type": "boolean"
+              },
+              "peakAdjustmentDb": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "path",
+              "duration",
+              "sampleRate",
+              "channels",
+              "format",
+              "peakProtectionApplied",
+              "peakAdjustmentDb"
+            ]
+          }
         }
       }
     },

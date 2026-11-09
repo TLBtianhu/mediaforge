@@ -16,6 +16,28 @@ export interface WorkerCommandContracts {
       [key: string]: unknown
     }
   }
+  "audio_metadata": {
+    payload: {
+      path: string
+      [key: string]: unknown
+    }
+    result: {
+      path: string
+      name: string
+      duration: number
+      sampleRate: number
+      channels: number
+      [key: string]: unknown
+    }
+  }
+  "audio_tools": {
+    payload: {
+      operation?: string
+      requestId?: string | null
+      [key: string]: unknown
+    }
+    result: Record<string, unknown>
+  }
   "describe_operation": {
     payload: {
       operation: string
@@ -49,6 +71,27 @@ export interface WorkerCommandContracts {
       mlxAvailable: boolean
       avAvailable: boolean
       librosaAvailable: boolean
+      [key: string]: unknown
+    }
+  }
+  "export_editor_mix": {
+    payload: {
+      project: Record<string, unknown>
+      exportDir?: string
+      format?: string
+      audioParams?: Record<string, unknown>
+      taskId?: string | null
+      requestId?: string | null
+      [key: string]: unknown
+    }
+    result: {
+      path: string
+      duration: number
+      sampleRate: number
+      channels: number
+      format: string
+      peakProtectionApplied: boolean
+      peakAdjustmentDb: number
       [key: string]: unknown
     }
   }
@@ -122,6 +165,26 @@ export interface WorkerCommandContracts {
       elapsedMs: number
       mode: string
       proxy: string
+    }
+  }
+  "waveform_peaks": {
+    payload: {
+      path: string
+      dataRoot?: string
+      cacheDir?: string
+      resolution?: number
+      [key: string]: unknown
+    }
+    result: {
+      path: string
+      peaksPath: string
+      peaks: Array<number>
+      channelPeaks: Array<Array<number>>
+      resolution: number
+      duration: number
+      sampleRate: number
+      channels: number
+      [key: string]: unknown
     }
   }
 }

@@ -8,7 +8,7 @@
 ```
 命令面            manifest/protocol.json：8 个域 / 48 条命令 / handler 为 module:function
                   surfaces/dispatch.py 查表分派；check-command-surface.py --strict 已进 CI
-命令字段契约      system + graph 域 9 条命令已声明 payload/result schema；dispatch 先校验 payload
+命令字段契约      system + graph + audio 域 13 条命令已声明 payload/result schema；dispatch 先校验 payload
                   （PAYLOAD_INVALID），sync_worker_contracts.py 生成前端类型并进 CI；
                   其余域按域逐步铺开，未声明的命令暂不校验
 架构不变量        scripts/check-architecture.py 十条全绿：依赖方向 ×3、根目录白名单、
