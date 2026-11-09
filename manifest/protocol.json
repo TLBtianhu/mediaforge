@@ -17,35 +17,380 @@
           "command": "health",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "workerVersion": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ok",
+              "workerVersion"
+            ]
+          }
         },
         "env_info": {
           "handler": "core.worker_models:cmd_env_info",
           "command": "env_info",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "pythonVersion": {
+                "type": "string"
+              },
+              "expectedPython": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtimeMatchesManifest": {
+                "type": "boolean"
+              },
+              "runtimeManifestVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "platform": {
+                "type": "string"
+              },
+              "workerVersion": {
+                "type": "string"
+              },
+              "pymssAvailable": {
+                "type": "boolean"
+              },
+              "pymssPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pymssVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "customModelsSupported": {
+                "type": "boolean"
+              },
+              "torchAvailable": {
+                "type": "boolean"
+              },
+              "torchVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "torchBackend": {
+                "type": "string"
+              },
+              "hipVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cudaAvailable": {
+                "type": "boolean"
+              },
+              "cudaAvailableError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cudaDeviceCount": {
+                "type": "integer"
+              },
+              "cudaDevices": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "cudaDeviceCountError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cudaDeviceNamesError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mpsAvailable": {
+                "type": "boolean"
+              },
+              "mlxAvailable": {
+                "type": "boolean"
+              },
+              "avAvailable": {
+                "type": "boolean"
+              },
+              "librosaAvailable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "pythonVersion",
+              "expectedPython",
+              "runtimeMatchesManifest",
+              "runtimeManifestVersion",
+              "platform",
+              "workerVersion",
+              "pymssAvailable",
+              "pymssPath",
+              "pymssVersion",
+              "customModelsSupported",
+              "torchAvailable",
+              "torchVersion",
+              "torchBackend",
+              "hipVersion",
+              "cudaAvailable",
+              "cudaAvailableError",
+              "cudaDeviceCount",
+              "cudaDevices",
+              "cudaDeviceCountError",
+              "cudaDeviceNamesError",
+              "mpsAvailable",
+              "mlxAvailable",
+              "avAvailable",
+              "librosaAvailable"
+            ]
+          }
         },
         "contract": {
           "handler": "surfaces.agent_contract:cmd_agent_contract",
           "command": "agent_contract",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "version": {
+                "type": "integer"
+              },
+              "mcpSchemaVersion": {
+                "type": "integer"
+              },
+              "approvalLevels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "costLevels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "slots": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "recoveryActions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "taskSlots": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "audit": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "version",
+              "mcpSchemaVersion",
+              "tools",
+              "audit"
+            ]
+          }
         },
         "failure_stats": {
           "handler": "core.commands:cmd_failure_stats",
           "command": "failure_stats",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scanned": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              },
+              "recoverable": {
+                "type": "integer"
+              },
+              "recoverableShare": {
+                "type": "number"
+              },
+              "byCode": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "byCommand": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "topIssues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "recommendations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "scanned",
+              "failed",
+              "recoverable",
+              "recoverableShare",
+              "byCode",
+              "byCommand",
+              "topIssues",
+              "recommendations"
+            ]
+          }
         },
         "test_connection": {
           "handler": "core.worker_connection:cmd_test_connection",
           "command": "test_connection",
           "proxy": "payload",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "mode": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "bypass": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "status": {
+                "type": "integer"
+              },
+              "ip": {
+                "type": "string"
+              },
+              "filesCount": {
+                "type": "integer"
+              },
+              "elapsedMs": {
+                "type": "number"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "proxy": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ok",
+              "elapsedMs",
+              "mode",
+              "proxy"
+            ]
+          }
         }
       }
     },

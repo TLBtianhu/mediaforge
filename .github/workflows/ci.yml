@@ -138,6 +138,9 @@ jobs:
       - name: Check the worker command surface
         run: python scripts/check-command-surface.py --strict
 
+      - name: Check generated worker command contracts
+        run: python scripts/sync_worker_contracts.py --check
+
       - name: Check the theme token contract
         run: python scripts/check-theme-tokens.py
 
