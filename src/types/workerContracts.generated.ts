@@ -711,7 +711,43 @@ export interface WorkerCommandContracts {
       modelDir?: string | null
       [key: string]: unknown
     }
-    result: Record<string, unknown>
+    result: {
+      modelDir: string
+      totalBytes: number
+      toolModelsBytes?: number
+      downloadedCount: number
+      models: Array<{
+              name: string
+              downloaded: boolean
+              sizeBytes: number
+              expectedSizeBytes: number
+              files: Array<{
+                        path: string
+                        sizeBytes: number
+                        exists?: boolean
+                        [key: string]: unknown
+                      }>
+              [key: string]: unknown
+            }>
+      toolModels: Array<{
+              id: string
+              name: string
+              tool: string
+              role: string
+              path: string
+              sizeBytes: number
+              fileCount: number
+              [key: string]: unknown
+            }>
+      residualFiles: Array<{
+              path: string
+              sizeBytes: number
+              exists?: boolean
+              [key: string]: unknown
+            }>
+      residualBytes: number
+      [key: string]: unknown
+    }
   }
   "optional_package_status": {
     payload: {

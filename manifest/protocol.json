@@ -2043,7 +2043,143 @@
           "result": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {}
+            "properties": {
+              "modelDir": {
+                "type": "string"
+              },
+              "totalBytes": {
+                "type": "integer"
+              },
+              "toolModelsBytes": {
+                "type": "integer"
+              },
+              "downloadedCount": {
+                "type": "integer"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "downloaded": {
+                      "type": "boolean"
+                    },
+                    "sizeBytes": {
+                      "type": "integer"
+                    },
+                    "expectedSizeBytes": {
+                      "type": "integer"
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "type": "integer"
+                          },
+                          "exists": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "sizeBytes"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "downloaded",
+                    "sizeBytes",
+                    "expectedSizeBytes",
+                    "files"
+                  ]
+                }
+              },
+              "toolModels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "integer"
+                    },
+                    "fileCount": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "tool",
+                    "role",
+                    "path",
+                    "sizeBytes",
+                    "fileCount"
+                  ]
+                }
+              },
+              "residualFiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "integer"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "sizeBytes"
+                  ]
+                }
+              },
+              "residualBytes": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "modelDir",
+              "totalBytes",
+              "downloadedCount",
+              "models",
+              "toolModels",
+              "residualFiles",
+              "residualBytes"
+            ]
           },
           "resultSchemaEvent": "model_storage_summary"
         },
