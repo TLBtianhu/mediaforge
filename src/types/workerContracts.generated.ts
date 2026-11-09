@@ -487,7 +487,10 @@ export interface WorkerCommandContracts {
               [key: string]: unknown
             }>
       stats?: {
-              kinds: Record<string, unknown>
+              kinds: Record<string, {
+                        count: number
+                        bytes: number
+                      }>
               total: {
                         count: number
                         bytes: number

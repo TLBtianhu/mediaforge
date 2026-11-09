@@ -24,11 +24,7 @@ defineOptions({ name: 'AssetsView' })
 
 type AssetContract = NonNullable<WorkerCommandResult<'media_library'>['assets']>[number]
 type Asset = KnownObject<AssetContract>
-type LibraryStats = {
-  kinds?: Record<string, { count: number; bytes: number }>
-  total?: { count: number; bytes: number }
-  database?: string
-}
+type LibraryStats = Partial<KnownObject<NonNullable<WorkerCommandResult<'media_library'>['stats']>>>
 type LibraryResult = {
   ok?: boolean
   assets?: Asset[]
@@ -37,6 +33,7 @@ type LibraryResult = {
   total?: number
   removed?: number
 }
+
 const { t } = useI18n()
 const message = useMessage()
 const router = useRouter()

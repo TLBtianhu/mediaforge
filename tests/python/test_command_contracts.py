@@ -156,6 +156,14 @@ class CommandContractTests(unittest.TestCase):
         broken = dict(asset); broken.pop("id")
         self.assertTrue(validate_result("media_library", {"operation": "list", "ok": True, "assets": [broken]}))
 
+    def test_library_stats_kind_values_are_typed(self) -> None:
+        stats = {"kinds": {"audio": {"count": 1, "bytes": 2}}, "total": {"count": 1, "bytes": 2}, "database": "x"}
+        self.assertEqual(validate_result("media_library", {"operation": "stats", "ok": True, "stats": stats}), [])
+        self.assertTrue(validate_result("media_library", {
+            "operation": "stats", "ok": True,
+            "stats": {"kinds": {"audio": {"count": 1}}, "total": {"count": 1, "bytes": 2}, "database": "x"},
+        }))
+
     def test_result_validator_rejects_a_wrong_shape(self) -> None:
         self.assertEqual(validate_result("health", {"ok": True, "workerVersion": "0.1.0"}), [])
         with self.assertRaises(ResultContractError):

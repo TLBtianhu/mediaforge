@@ -662,8 +662,22 @@
                 "properties": {
                   "kinds": {
                     "type": "object",
-                    "additionalProperties": true,
-                    "properties": {}
+                    "additionalProperties": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "bytes": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "count",
+                        "bytes"
+                      ]
+                    }
                   },
                   "total": {
                     "type": "object",

@@ -63,7 +63,9 @@ def validate_schema(schema: object, path: str) -> None:
             _fail(path, f"required keys missing from properties: {missing}")
         additional = schema.get("additionalProperties", True)
         if not isinstance(additional, bool):
-            _fail(path, "additionalProperties must be a boolean")
+            if not isinstance(additional, dict):
+                _fail(path, "additionalProperties must be a boolean or a schema")
+            validate_schema(additional, f"{path}.additionalProperties")
         for key, child in properties.items():
             if not isinstance(key, str) or not key:
                 _fail(path, "property names must be non-empty strings")
@@ -138,8 +140,11 @@ def render_type(schema: dict, indent: int = 0) -> str:
 
     properties = schema.get("properties") or {}
     required = set(schema.get("required") or [])
+    additional = schema.get("additionalProperties")
     if not properties:
-        return "Record<string, never>" if schema.get("additionalProperties") is False else "Record<string, unknown>"
+        if isinstance(additional, dict):
+            return f"Record<string, {render_type(additional, indent)}>"
+        return "Record<string, never>" if additional is False else "Record<string, unknown>"
 
     lines = ["{"]
     for key, child in properties.items():
@@ -151,7 +156,9 @@ def render_type(schema: dict, indent: int = 0) -> str:
             lines.extend(f"{pad}  {line}" for line in rest)
         else:
             lines.append(f"{pad}  {key}{optional}: {rendered}")
-    if schema.get("additionalProperties") is True:
+    if isinstance(additional, dict):
+        lines.append(f"{pad}  [key: string]: {render_type(additional, indent + 1)}")
+    elif additional is True:
         lines.append(f"{pad}  [key: string]: unknown")
     lines.append(f"{pad}}}")
     return "\n".join(lines)

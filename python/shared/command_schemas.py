@@ -66,7 +66,12 @@ def _validate(value: Any, schema: dict[str, Any], path: str, problems: list[str]
         for key in required:
             if key not in value:
                 problems.append(f"{path}.{key}: required")
-        if schema.get("additionalProperties") is False:
+        additional = schema.get("additionalProperties")
+        if isinstance(additional, dict):
+            for key, item in value.items():
+                if key not in properties:
+                    _validate(item, additional, f"{path}.{key}", problems)
+        elif additional is False:
             for key in value:
                 if key not in properties:
                     problems.append(f"{path}.{key}: unknown field")
