@@ -244,6 +244,11 @@ def read_jobs_unlocked(jobs_root: Path) -> dict[str, dict[str, Any]]:
     records = {}
     present: set[str] = set()
     for path in sorted(jobs_root.glob("*.json")):
+        if not valid_job_id(path.stem):
+            # `index.json` is the legacy task-history index, never a job record.
+            if path.stem.casefold() == "index":
+                continue
+            raise JobStoreError(f"Invalid job file {path}: invalid job id")
         # Unchanged files need no open, so a poll does not take a lease per job.
         present.add(str(path))
         value = cached_job(jobs_root, path)

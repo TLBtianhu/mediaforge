@@ -274,7 +274,14 @@ fn catalog_members(root: &Path) -> AppResult<Vec<(String, PathBuf, fs::Metadata)
         }
         if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
         let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        if !valid_id(id) { return Err(AppError::Worker("unsupported job filename; original file preserved".into())); }
+        if !valid_id(id) {
+            // `index.json` is the legacy task-history index, never a job record.
+            if id.eq_ignore_ascii_case("index") { continue; }
+            return Err(AppError::Worker(format!(
+                "unsupported job filename {}; original file preserved",
+                path.file_name().and_then(|name| name.to_str()).unwrap_or("?")
+            )));
+        }
         let metadata = fs::symlink_metadata(&path)?;
         #[cfg(windows)]
         {
@@ -1086,6 +1093,17 @@ mod tests {
         assert_eq!(journal_parse_count(root.path()), after_write);
     }
 
+
+    #[test]
+    fn legacy_index_json_is_ignored_but_other_bad_names_are_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        enqueue_manual(root.path(), "run_operation", "real_job", &json!({"operation": "fixture"})).unwrap();
+        std::fs::write(root.path().join("agent-jobs").join("index.json"), b"{}").unwrap();
+        assert_eq!(list(root.path()).unwrap().len(), 1, "index.json is not a job");
+        std::fs::write(root.path().join("agent-jobs").join("bad name.json"), b"{}").unwrap();
+        let error = list(root.path()).unwrap_err().to_string();
+        assert!(error.contains("bad name.json"), "{error}");
+    }
 
     #[test]
     fn thousand_job_histories_are_read_once_and_delta_polls_stay_cheap() {

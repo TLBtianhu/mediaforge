@@ -38,6 +38,18 @@ class JobStoreTests(unittest.TestCase):
         third = job_store.read_jobs_copy(self.jobs)
         self.assertNotEqual(third[key]["status"], "mutated")
 
+    def test_legacy_index_json_is_not_a_job_and_is_ignored(self):
+        write_record(self.jobs, job_record("real_job"))
+        (self.jobs / "index.json").write_text("{}", encoding="utf-8")
+        records = job_store.read_jobs(self.jobs)
+        self.assertEqual(list(records), ["real_job"])
+
+    def test_other_invalid_job_filenames_are_reported(self):
+        (self.jobs / "bad name.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(job_store.JobStoreError) as context:
+            job_store.read_jobs(self.jobs)
+        self.assertIn("bad name.json", str(context.exception))
+
     def snapshot(self):
         return {path.name: path.read_bytes() for path in self.jobs.glob("*.json")}
 
