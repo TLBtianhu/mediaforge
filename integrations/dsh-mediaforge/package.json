@@ -13,8 +13,7 @@
     "mediaforge-mcp.cmd",
     "locale/*.json",
     "icon.svg",
-    "README.md",
-    "NOTES.md"
+    "README.md"
   ],
   "dsh": {
     "bundle": {

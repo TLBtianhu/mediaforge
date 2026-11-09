@@ -35,27 +35,28 @@ mediaforge-mcp.cmd      实际启动器
 icon.svg                DSH 图标（小于 256 KiB）
 locale/                 插件显示文本
 README.md               本文
-NOTES.md                维护说明
 ```
 
-仓库中的 `setup.ps1`、`register.ps1`、`verify.ps1` 只作为开发维护工具保留；安装包与便携包在打包阶段排除这些脚本，
-也不随用户 bundle 分发。
+仓库中的 `setup.ps1`、`register.ps1`、`verify.ps1` 只作为开发维护工具保留；
+安装包与便携包在打包阶段排除这些脚本，用户机器上不会出现它们。
 
-## 迁移旧的注入方式
+## 从旧版升级（含 DSH 注入区块）
 
-旧版安装器会往 `cordis.patch.yml` 里写一段 `BEGIN/END` 区块。该方式会把 DSH 设置页追加的行吞进区块，
-**不要再使用**。`register.ps1` 现在是迁移工具：
+旧版安装器会往 `cordis.patch.yml` 里写一段 `BEGIN/END` 区块。本版本不再生成该区块，
+也**不会自动清理**；安装包里同样不带清理脚本。旧版装过 DSH 桥的用户升级后需要手动删除。
 
-```powershell
-# 只报告，不改文件
-powershell -ExecutionPolicy Bypass -File register.ps1
-# 移除指定 profile 的遗留区块，保留区块内不属于 MediaForge 的行（先备份）
-# 写入必须显式 -Profile；本工具不会遍历所有 profile 写入
-powershell -ExecutionPolicy Bypass -File register.ps1 -Profile desktop -RemoveLegacyBlock
-```
+1. 打开 `%USERPROFILE%\.dsh\profiles\<你的 profile>\cordis.patch.yml`（桌面版通常是 `desktop`）；
+2. 删除从 `# === mediaforge MCP BEGIN ===` 到 `# === mediaforge MCP END ===` 的整段，
+   **包括这两条标记行**；
+3. 保存，重启 DSH；
+4. 用插件管理器安装 bundle：
 
-然后用插件管理器安装 bundle：
+   ```
+   plugin_manager install_bundle  target=link:<安装目录>\integrations\dsh-mediaforge
+   ```
 
-```
-plugin_manager install_bundle  target=link:<安装目录>\integrations\dsh-mediaforge
-```
+不删会怎样：profile 里的注入行和新 bundle 的行 id 相同，两个同名 MCP server 会互相冲突，
+表现为 MediaForge 工具消失。
+
+> 维护者仍可在源码树里运行仓库版 `register.ps1` 做只读检查或 `-Profile <name> -RemoveLegacyBlock`，
+> 但它不随安装包分发。

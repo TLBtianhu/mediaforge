@@ -64,6 +64,11 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertIn("Remove-DevOnlyIntegrationScripts $Destination", script)
         self.assertIn("developer-only DSH scripts", script)
 
+    def test_upgrade_note_reaches_the_staged_readme(self) -> None:
+        script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
+        self.assertIn("Upgrading from an older build", script)
+        self.assertIn("Older versions injected MCP rows", script)
+
     def test_local_installer_copy_stays_inside_release_local(self) -> None:
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
         self.assertIn('$localOut = "$out\\local"', script)

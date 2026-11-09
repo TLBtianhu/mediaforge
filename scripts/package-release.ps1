@@ -282,6 +282,13 @@ DeepSeek Harness integration
 Bundle: <install-root>\integrations\dsh-mediaforge
 Load this folder through Harness's plugin manager if you want MCP integration.
 MediaForge's installer does not modify or restart Harness.
+
+Upgrading from an older build
+-----------------------------
+Older versions injected MCP rows into the DSH profile's cordis.patch.yml.
+This version does not, and it does not remove the old block automatically.
+If the old block is still present, delete it manually (see README.md in
+integrations\dsh-mediaforge) before installing the bundle.
 "@ | Set-Content "$stage\README.txt" -Encoding UTF8
 Assert-ReleaseStage $stage
 Get-Item "$stage\MediaForge.exe" | ForEach-Object { Write-Host ("  exe: {0} MB" -f [Math]::Round($_.Length/1MB,1)) }

@@ -74,6 +74,19 @@ class DshIntegrationLayoutTest(unittest.TestCase):
         self.assertIn("[string]$AppRoot = ''", self.register)
         self.assertIn("[string]$LauncherPath = ''", self.register)
         self.assertNotIn(".mediaforge\\home.txt", self.register)
+    def test_bundle_file_manifest_entries_exist(self) -> None:
+        package = json.loads((self.root / "package.json").read_text(encoding="utf-8"))
+        for entry in package["files"]:
+            if "*" in entry:
+                continue
+            self.assertTrue((self.root / entry).is_file(), f"bundle manifest lists a missing file: {entry}")
+
+    def test_readme_documents_manual_upgrade_cleanup(self) -> None:
+        readme = (self.root / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("-File register.ps1", readme, "users no longer have the helper")
+        self.assertIn("mediaforge MCP BEGIN", readme)
+        self.assertIn("手动删除", readme)
+
     def test_published_bundle_excludes_powershell_helpers(self) -> None:
         import json
         package = json.loads((self.root / "package.json").read_text(encoding="utf-8"))

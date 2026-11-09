@@ -57,8 +57,8 @@ Name: "dshbridge"; Description: "附带 DSH 集成桥（由 DSH 插件管理器�
 [InstallDelete]
 ; Older builds shipped the developer-only PS1 helpers into the user's install.
 ; Delete them on upgrade so nobody can run the legacy injector by habit.
-Type: files; Name: "{app}\integrations\dsh-mediaforge\*.ps1"; Tasks: dshbridge
-Type: files; Name: "{app}\integrations\dsh-mediaforge\*.bak*"; Tasks: dshbridge
+Type: files; Name: "{app}\integrations\dsh-mediaforge\*.ps1"
+Type: files; Name: "{app}\integrations\dsh-mediaforge\*.bak*"
 
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion

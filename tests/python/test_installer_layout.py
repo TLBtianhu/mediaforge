@@ -32,6 +32,9 @@ class InstallerLayoutTests(unittest.TestCase):
         install_delete = re.search(r"\[InstallDelete\](.*?)(?=\n\[|\Z)", self.script, re.S).group(1)
         self.assertIn("integrations\\dsh-mediaforge\\*.ps1", install_delete)
         self.assertIn("integrations\\dsh-mediaforge\\*.bak*", install_delete)
+        for line in install_delete.splitlines():
+            if "dsh-mediaforge" in line:
+                self.assertNotIn("Tasks:", line, "old-helper cleanup must run even when the optional task is unselected")
 
     def test_resource_cleanup_is_opt_in_and_exactly_scoped(self) -> None:
         self.assertIn("CurUninstallStepChanged", self.script)
