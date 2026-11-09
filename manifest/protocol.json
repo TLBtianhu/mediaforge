@@ -629,7 +629,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "task.result"
         },
         "evaluate": {
           "handler": "core.media_eval:cmd_evaluate_media",
@@ -709,7 +710,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "task.result"
         },
         "metadata": {
           "handler": "core.worker_audio:cmd_audio_metadata",
@@ -916,7 +918,8 @@
               "peakProtectionApplied",
               "peakAdjustmentDb"
             ]
-          }
+          },
+          "resultSchemaEvent": "editor_mix_exported"
         }
       }
     },
@@ -1124,7 +1127,8 @@
                 "type": "string"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "model_delete_done"
         },
         "delete_tool": {
           "handler": "core.worker_models:cmd_delete_tool_model",
@@ -1169,7 +1173,8 @@
                 "properties": {}
               }
             }
-          }
+          },
+          "resultSchemaEvent": "tool_model_deleted"
         },
         "hub": {
           "handler": "core.model_hub_worker:cmd_model_hub",
@@ -1246,7 +1251,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "asset.done"
         },
         "storage": {
           "handler": "core.worker_models:cmd_model_storage_summary",
@@ -1324,7 +1330,8 @@
                 "type": "string"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "model_residual_cleanup_done"
         },
         "custom.import": {
           "handler": "core.worker_custom_models:cmd_import_custom_model",
@@ -1401,7 +1408,8 @@
                 "type": "boolean"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "custom_model_import_finished"
         },
         "custom.inspect": {
           "handler": "core.worker_custom_models:cmd_inspect_custom_model",
@@ -1530,7 +1538,8 @@
                 }
               }
             }
-          }
+          },
+          "resultSchemaEvent": "custom_model_unregistered"
         },
         "custom.relink": {
           "handler": "core.worker_custom_models:cmd_relink_custom_model",
@@ -1573,7 +1582,8 @@
                 "type": "string"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "custom_model_relinked"
         },
         "custom.remap": {
           "handler": "core.worker_custom_models:cmd_remap_custom_model_paths",
@@ -1616,7 +1626,8 @@
                 "type": "integer"
               }
             }
-          }
+          },
+          "resultSchemaEvent": "custom_models_remapped"
         },
         "debug.catalog_info": {
           "handler": "core.worker_models:cmd_debug_catalog_info",
@@ -1686,7 +1697,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "debug_catalog_info"
         },
         "debug.catalog_reset": {
           "handler": "core.worker_models:cmd_debug_catalog_reset",
@@ -1703,7 +1715,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "debug_catalog_info"
         },
         "debug.model_config": {
           "handler": "core.worker_models:cmd_debug_model_config",
@@ -1946,7 +1959,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "runtime_install_finished"
         },
         "core_versions": {
           "handler": "core.worker_bootstrap:cmd_runtime_core_versions",
@@ -2010,7 +2024,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "runtime_activated"
         },
         "sizes": {
           "handler": "core.worker_bootstrap:cmd_runtime_env_sizes",
@@ -2070,7 +2085,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "runtime_deleted"
         },
         "optional_status": {
           "handler": "core.worker_optional_packages:cmd_optional_package_status",
@@ -2213,7 +2229,8 @@
               "installed",
               "present"
             ]
-          }
+          },
+          "resultSchemaEvent": "optional_package_status"
         }
       }
     },
@@ -2267,7 +2284,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "plugin_manage_result"
         }
       }
     },
@@ -2438,7 +2456,8 @@
               "outputs",
               "outputDir"
             ]
-          }
+          },
+          "resultSchemaEvent": "task.result"
         }
       }
     },
@@ -2502,7 +2521,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "task.result"
         },
         "run": {
           "handler": "core.worker_workflows:cmd_infer_workflow",
@@ -2552,7 +2572,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {}
-          }
+          },
+          "resultSchemaEvent": "task.result"
         }
       }
     }

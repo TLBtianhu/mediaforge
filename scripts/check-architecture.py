@@ -428,8 +428,8 @@ def check_command_schemas(manifest: dict) -> list[str]:
             for field in ("payload", "result"):
                 if not isinstance(entry.get(field), dict):
                     problems.append(f"{domain_id}.{name} 缺少 {field} schema")
-            if entry.get("kind") == "query" and not isinstance(entry.get("resultSchemaEvent"), str):
-                problems.append(f"{domain_id}.{name} 是 query，但缺少 resultSchemaEvent")
+            if not isinstance(entry.get("resultSchemaEvent"), str):
+                problems.append(f"{domain_id}.{name} 缺少 resultSchemaEvent")
     return problems
 
 

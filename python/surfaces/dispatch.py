@@ -98,7 +98,7 @@ def run(command: str, payload: dict[str, Any] | None = None) -> int:
     except ProtocolError as exc:
         return emit_error(exc.code, str(exc))
     _apply_proxy(entry, payload)
-    if entry.get("kind") == "query" and entry.get("resultSchemaEvent"):
+    if entry.get("resultSchemaEvent"):
         validator = result_event_validator(command, str(entry["resultSchemaEvent"]))
         try:
             with bind_event_validator(validator):

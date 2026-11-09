@@ -113,11 +113,9 @@ class CommandContractTests(unittest.TestCase):
         self.assertTrue(validate_payload("infer", {"deviceIds": "0"}))
         self.assertTrue(validate_payload("infer_workflow", {"tasks": "bad"}))
 
-    def test_query_commands_declare_a_result_event(self) -> None:
+    def test_every_command_declares_a_result_event(self) -> None:
         for domain_id, domain in self.protocol["domains"].items():
             for name, entry in domain["commands"].items():
-                if entry.get("kind") != "query":
-                    continue
                 with self.subTest(domain=domain_id, name=name):
                     self.assertIsInstance(entry.get("resultSchemaEvent"), str)
 
