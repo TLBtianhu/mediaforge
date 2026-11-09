@@ -7,6 +7,8 @@ import { clonePluginChain, hasEditorPlugins, neutralPluginRenderProject, normali
 import { assertPluginProjectSupported, currentPluginSession, discardUnavailablePluginSession, observePluginSession, PluginHostDialogPendingError, pluginHostCapabilities, reloadPluginSession, snapshotPluginStates, unloadPluginSession, type PluginSessionState } from '@/utils/pluginHost'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { generateWaveformPeaks, getAudioMetadata, startEditorMixExport } from '@/api/editor'
+import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import i18n, { getCurrentLocale } from '@/i18n'
 import {
@@ -94,23 +96,8 @@ type RelinkEditorSourcesResult = {
 
 type PickFileResult = string | null
 
-type AudioMetadata = {
-  path: string
-  name: string
-  duration: number
-  sampleRate: number
-  channels: number
-}
-
-type WaveformPeaks = {
-  path: string
-  peaksPath: string
-  peaks: number[]
-  channelPeaks?: number[][]
-  duration: number
-  sampleRate: number
-  channels: number
-}
+type AudioMetadata = WorkerCommandResult<'audio_metadata'>
+type WaveformPeaks = WorkerCommandResult<'waveform_peaks'>
 
 type LoadedWaveformPeaks = {
   peaks: number[]
@@ -973,7 +960,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   async function getMetadata(path: string) {
-    return invoke<AudioMetadata>('get_audio_metadata', { payload: { path } })
+    return getAudioMetadata({ path })
   }
 
   function hasUsableAudioMetadata(metadata: AudioMetadata | EditorSource | null | undefined) {
@@ -998,13 +985,11 @@ export const useEditorStore = defineStore('editor', () => {
     const projectId = session.value.id
     const task = (async () => {
       try {
-        const result = await invoke<WaveformPeaks>('generate_waveform_peaks', {
-          payload: {
-            projectId,
-            path: source.path,
-            resolution: WAVEFORM_FULL_RESOLUTION,
-          },
-        })
+    const result = await generateWaveformPeaks({
+      projectId,
+      path: source.path,
+      resolution: WAVEFORM_FULL_RESOLUTION,
+    })
         if (!session.value || session.value.id !== projectId) return source
         const current = session.value.sources.find((item) => item.id === sourceId)
         if (!current) return source
@@ -1764,8 +1749,7 @@ export const useEditorStore = defineStore('editor', () => {
           reject,
         }
       })
-      exportStartPromise = invoke<{ taskId: string; started: boolean }>('start_editor_mix_export', {
-        payload: {
+      exportStartPromise = startEditorMixExport({
           taskId,
           format: fmt,
           exportDir: normalized.exportDir,
@@ -1781,7 +1765,6 @@ export const useEditorStore = defineStore('editor', () => {
             assets: project.sources.map(sourceToExportAsset),
             tracks: project.tracks.map((track) => trackToExportTrack(track, project.sources.find(source => source.id === track.sourceId))),
           },
-        },
       }).then(() => undefined)
       await exportStartPromise
       exportStartPromise = null
