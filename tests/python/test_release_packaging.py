@@ -68,7 +68,8 @@ class ReleasePackagingTests(unittest.TestCase):
         script = (ROOT / "scripts/package-release.ps1").read_text(encoding="utf-8")
         self.assertIn("Upgrading from an older build", script)
         self.assertIn("Older versions injected MCP rows", script)
-        self.assertIn("inside the MediaForge block", script)
+        self.assertIn("inside the range between the BEGIN and END", script)
+        self.assertIn("delete the two markers last", script)
         self.assertIn("Do not touch other blocks", script)
 
     def test_local_installer_copy_stays_inside_release_local(self) -> None:

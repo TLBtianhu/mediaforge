@@ -50,15 +50,16 @@ README.md               本文
 它们不属于 MediaForge，删掉会丢失你的预设选择和网页搜索配置。
 
 1. 打开 `%USERPROFILE%\.dsh\profiles\<你的 profile>\cordis.patch.yml`（桌面版通常是 `desktop`）；
-2. 删掉这两条标记行：
+2. 在 `# === mediaforge MCP BEGIN ===` 与 `# === mediaforge MCP END ===` 之间，
+   删掉包含 `id: mediaforge-mcp` 的那一个 `- insert:`（连同它的 `name` / `config` 行）
+   以及上面那行 `# 由 MediaForge 安装器维护…` 注释；
+   **不要动其它区块（例如 qq-bridge）的 `- insert:`**；
+3. 如果还有 `- id: mediaforge-mcp` 的覆盖行（通常带 `disabled: true`），一并删掉；
+4. 区块内**其它行一律保留**；
+5. **最后**再删掉这两条标记行（先删行、后删标记，避免边界消失后误删）：
    - `# === mediaforge MCP BEGIN ===`
    - `# === mediaforge MCP END ===`
-3. 在 MediaForge 区块内，删掉包含 `id: mediaforge-mcp` 的那一个 `- insert:`
-   （连同它的 `name` / `config` 行）以及上面那行 `# 由 MediaForge 安装器维护…` 注释；
-   **不要动其它区块（例如 qq-bridge）的 `- insert:`**；
-4. 如果还有 `- id: mediaforge-mcp` 的覆盖行（通常带 `disabled: true`），一并删掉；
-5. 区块内**其它行一律保留**，保存后重启 DSH；
-6. 立刻用插件管理器安装 bundle（中间不要间隔，否则 MediaForge 工具会暂时消失）：
+6. 保存后重启 DSH，并**立刻**用插件管理器安装 bundle（中间不要间隔，否则 MediaForge 工具会暂时消失）：
 
    ```
    plugin_manager install_bundle  target=link:<安装目录>\integrations\dsh-mediaforge
