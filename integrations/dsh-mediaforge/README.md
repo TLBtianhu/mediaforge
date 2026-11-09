@@ -39,3 +39,21 @@ NOTES.md                维护说明
 ```
 
 仓库中的 `setup.ps1`、`register.ps1`、`verify.ps1` 只作为开发维护工具保留，**不随用户 bundle 分发**。
+
+## 迁移旧的注入方式
+
+旧版安装器会往 `cordis.patch.yml` 里写一段 `BEGIN/END` 区块。该方式会把 DSH 设置页追加的行吞进区块，
+**不要再使用**。`register.ps1` 现在是迁移工具：
+
+```powershell
+# 只报告，不改文件
+powershell -ExecutionPolicy Bypass -File register.ps1
+# 移除遗留区块，保留区块内不属于 MediaForge 的行（先备份）
+powershell -ExecutionPolicy Bypass -File register.ps1 -RemoveLegacyBlock
+```
+
+然后用插件管理器安装 bundle：
+
+```
+plugin_manager install_bundle  target=link:<安装目录>\integrations\dsh-mediaforge
+```

@@ -89,5 +89,63 @@ class DshIntegrationLayoutTest(unittest.TestCase):
         self.assertNotIn("data:image", icon.read_text(encoding="utf-8"))
 
 
+
+
+
+@unittest.skipUnless(os.name == "nt", "Windows PowerShell migration tool")
+class DshRegisterMigrationTests(unittest.TestCase):
+    """register.ps1 不再是安装器：默认只报告，-RemoveLegacyBlock 才写文件。"""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="dsh-register-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.root, True))
+        profile = self.root / "profiles" / "desktop"
+        profile.mkdir(parents=True)
+        self.patch = profile / "cordis.patch.yml"
+        self.patch.write_text(
+            "- id: keep-me\n"
+            "  name: keep\n"
+            "# === mediaforge MCP BEGIN ===\n"
+            "- insert:\n"
+            "    - id: mediaforge-mcp\n"
+            "      name: '@deepseek-ai/dsh-mcp-client'\n"
+            "- id: mediaforge-mcp\n"
+            "  disabled: true\n"
+            "- id: web\n"
+            "  name: \"@deepseek-ai/dsh-web\"\n"
+            "  config:\n"
+            "    searchProvider: deepseek-search-api\n"
+            "# === mediaforge MCP END ===\n"
+            "- id: after-block\n"
+            "  name: after\n",
+            encoding="utf-8",
+        )
+        self.script = Path(__file__).parents[2] / "integrations" / "dsh-mediaforge" / "register.ps1"
+
+    def run_script(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(self.script),
+             "-DshHome", str(self.root), "-AppRoot", str(self.root / "none"), *args],
+            capture_output=True, text=True, timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    def test_default_run_never_writes_the_profile_patch(self) -> None:
+        before = self.patch.read_bytes()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.patch.read_bytes(), before, "default run must not touch the file")
+
+    def test_remove_legacy_block_keeps_foreign_rows(self) -> None:
+        result = self.run_script("-RemoveLegacyBlock")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.patch.read_text(encoding="utf-8")
+        self.assertIn("- id: keep-me", text)
+        self.assertIn("- id: web", text)
+        self.assertIn("- id: after-block", text)
+        self.assertNotIn("mediaforge MCP BEGIN", text)
+        self.assertNotIn("mediaforge-mcp", text)
+
+
 if __name__ == "__main__":
     unittest.main()
