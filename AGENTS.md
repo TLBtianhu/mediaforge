@@ -5,7 +5,7 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 ## 当前交接（2026-11-08）
 
 - DeepSeek Harness/后续 Agent 先读 [docs/handoff-2026-11-08.md](docs/handoff-2026-11-08.md)，其中记录当前修复、测试证据和下一步验收顺序。
-- 当前修复均未提交；接手先检查 `git status`/`git diff`，不得用 reset、clean 或旧包覆盖工作区。
+- 2026-11-09 的协议/运行时收敛已提交（`9c7fc32` 起，含 `f86042c`）；工作区应保持干净。接手先检查 `git status`/`git log`，不得用 reset、clean 或旧包覆盖工作区。
 
 ## 强制规则：环境与数据隔离
 
@@ -51,6 +51,17 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 用户明确禁止ComputerUse/桌面操控；不为验收弹窗而启动GUI、操作现有窗口或强杀旧测试实例。
 - 安装验收用`smoke-installer.ps1`显式stage/版本/Python3.12/编译器，重编唯一测试身份，只跑bootstrap health；正式安装包只读记录哈希，不拿生产AppId覆盖用户安装来冒烟。
 - Inno `[Files]`的可变资产排除须从包根锚定，不能以任意层级`models/data`排除合法Python依赖代码；安装验收逐文件比对完整stage，不能只验EXE/health或关键文件抽样。
+
+## 强制规则：DSH 插件集成（2026-11-09 事故后）
+
+MediaForge 曾把 MCP 配置注入 DSH 的 profile `cordis.patch.yml`，而 DSH 设置页会把新行追加到文件末尾注释之前——用户的 web_search 配置因此落进注入区块，下一次安装器整块替换就会删除它。差点发生，已迁移到 bundle。规则：
+
+- **只走 bundle**：`integrations/dsh-mediaforge` 是合法 bundle（`dsh.bundle.patch`）；安装用 `plugin_manager install_bundle target=link:<安装目录>\integrations\dsh-mediaforge`。安装器不得写 profile 的 `cordis.patch.yml`。
+- **安装器只拥有自己的行/文件**：任何"从我的标记到我的标记之间都归我"的设计，在用户会持续编辑的共享配置里迟早会吃掉用户的东西。
+- **禁止整文件重写**：不做 `yaml.load`→`yaml.dump` 全量回写；禁止把 `BEGIN/END` 区块留在文件末尾。
+- **写入必须可逆**：先备份（保留最近 5 份）、锁/原子替换；区块内有外来行时拒绝并报告，不得静默删除。
+- **幂等可验证**：连跑安装器/迁移脚本 3 次，`cordis.patch.yml` 的 SHA-256 必须不变。
+- 迁移工具与回归测试：`integrations/dsh-mediaforge/register.ps1`（默认只读，`-RemoveLegacyBlock` 才写）与 `tests/python/test_dsh_integration_layout.py`；安全规范总纲见 `C:\Users\30680\Documents\deepseek-harness\default-workspace\DSH-插件接入安全规范-2026-11-09.md`。
 
 ## Architecture
 
