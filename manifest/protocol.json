@@ -2643,7 +2643,16 @@
                 "type": "object",
                 "additionalProperties": true
               }
-            }
+            },
+            "required": [
+              "baseCatalogPath",
+              "debugCatalogPath",
+              "debugDir",
+              "baseCatalog",
+              "debugCatalog",
+              "effectiveCatalog",
+              "status"
+            ]
           },
           "resultSchemaEvent": "debug_catalog_info"
         },
@@ -2702,6 +2711,8 @@
               "baseCatalogPath",
               "debugCatalogPath",
               "debugDir",
+              "baseCatalog",
+              "debugCatalog",
               "effectiveCatalog",
               "status"
             ]
@@ -2757,6 +2768,8 @@
               "baseCatalogPath",
               "debugCatalogPath",
               "debugDir",
+              "baseCatalog",
+              "debugCatalog",
               "effectiveCatalog",
               "status"
             ]

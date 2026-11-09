@@ -12,6 +12,7 @@
  */
 import { reactive, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand, invokeWorkerQuery } from '@/api/worker'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
@@ -175,7 +176,7 @@ export function usePluginOps() {
 
   async function describe(operationId: string): Promise<OperationSpec | null> {
     try {
-      return await invoke<OperationSpec>('describe_operation', { payload: { operation: operationId } })
+      return (await invokeWorkerCommand('describe_operation', { operation: operationId })) as unknown as OperationSpec
     } catch {
       return null
     }

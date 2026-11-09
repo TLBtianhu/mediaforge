@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerQuery } from '@/api/worker'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 
@@ -136,7 +137,7 @@ async function refresh() {
   loading.value = true
   error.value = ''
   try {
-    const result = await invoke<PluginMarketplace>('plugin_marketplace')
+    const result = (await invokeWorkerQuery('plugin_marketplace')) as unknown as PluginMarketplace
     if (request !== sequence) return
     const runtimeChanged = snapshot.value?.runtime.identity !== result.runtime.identity
     if (runtimeChanged) updates.value = {}

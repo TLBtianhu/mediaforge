@@ -47,7 +47,7 @@ function setup() {
   }
   const state = {
     computed, window, document, LGraph, LGraphCanvas: Canvas,
-    disposed: false, pluginNodeLoadId: 0, invoke: () => response,
+    disposed: false, pluginNodeLoadId: 0, invoke: () => response, invokeWorkerQuery: () => response,
     ALL_SPECS: reactive({ ...registry.NODE_SPECS, ...registry.BUILTIN_SPECS }),
     NODE_SPECS: registry.NODE_SPECS, BUILTIN_SPECS: registry.BUILTIN_SPECS,
     registerPymssNodes: registry.registerPymssNodes, registerPluginNodeSpecs: registry.registerPluginNodeSpecs,

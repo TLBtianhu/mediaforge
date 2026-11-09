@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { AddOutline, ArrowRedoOutline, ArrowUndoOutline, ExpandOutline, SearchOutline } from '@vicons/ionicons5'
 import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerQuery } from '@/api/worker'
 import { LGraph, LGraphCanvas, LiteGraph, createBounds, type LGraphNode } from '@comfyorg/litegraph'
 import '@comfyorg/litegraph/style.css'
 import {
@@ -78,7 +79,7 @@ async function loadPluginNodeSpecs() {
   if (disposed || typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   const request = ++pluginNodeLoadId
   try {
-    const response = await invoke<{ nodes?: PluginNodeDecl[] }>('list_nodes')
+    const response = (await invokeWorkerQuery('list_nodes')) as unknown as { nodes?: PluginNodeDecl[] }
     if (disposed || request !== pluginNodeLoadId) return
     const declarations = Array.isArray(response?.nodes) ? response.nodes : []
     const PORT_VALUES = ['AUDIO', 'STRING', 'COMBO', 'BOOLEAN', 'PYMSS_MSS_PARAMS', 'PYMSS_VR_PARAMS'] as const

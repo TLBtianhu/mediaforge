@@ -1,6 +1,6 @@
 // DebugView 的调试模型目录编辑器：状态、校验、草稿与保存。
 import { computed, ref, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand, invokeWorkerQuery } from '@/api/worker'
 import type { CatalogEditMode, DebugCatalogInfo } from '../debug_types'
 
 type Options = {
@@ -252,7 +252,7 @@ async function loadDebugCatalog() {
   debugCatalogLoading.value = true
   debugCatalogError.value = ''
   try {
-    const result = await invoke<DebugCatalogInfo>('debug_catalog_info')
+    const result = await invokeWorkerQuery('debug_catalog_info')
     debugCatalogInfo.value = result
     setCatalogEditor(catalogForEditor(result))
   } catch (error) {
@@ -267,7 +267,7 @@ async function saveDebugCatalog() {
   try {
     if (catalogEditMode.value === 'simple') syncCatalogTextFromSimple()
     const catalog = parseDebugCatalogText()
-    const result = await invoke<DebugCatalogInfo>('debug_catalog_save', { payload: { catalog, fullCatalog: true } })
+    const result = await invokeWorkerCommand('debug_catalog_save', { catalog, fullCatalog: true })
     debugCatalogInfo.value = result
     setCatalogEditor(catalogForEditor(result))
     await modelStore.loadModels()
@@ -282,7 +282,7 @@ async function saveDebugCatalog() {
 async function resetDebugCatalog() {
   debugCatalogSaving.value = true
   try {
-    const result = await invoke<DebugCatalogInfo>('debug_catalog_reset')
+    const result = await invokeWorkerQuery('debug_catalog_reset')
     debugCatalogInfo.value = result
     setCatalogEditor(catalogForEditor(result))
     await modelStore.loadModels()

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand } from '@/api/worker'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import ModelParameterField from '@/components/ModelParameterField.vue'
@@ -145,9 +145,9 @@ async function load() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   loading.value = true
   try {
-    const result = await invoke<{ capabilities: Capability[] }>('media_capabilities', {
-      payload: { modelDir: props.modelDir || null },
-    })
+    const result = (await invokeWorkerCommand('media_capabilities', {
+      modelDir: props.modelDir || null,
+    })) as unknown as { capabilities: Capability[] }
     capabilities.value = result.capabilities || []
     loadError.value = ''
     if (!props.modelValue?.capability && available.value[0]) emit('update:modelValue', buildStep(available.value[0]))

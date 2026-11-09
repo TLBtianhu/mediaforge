@@ -84,13 +84,13 @@ export interface WorkerCommandContracts {
   "debug_catalog_info": {
     payload: Record<string, unknown>
     result: {
-      baseCatalogPath?: string
-      debugCatalogPath?: string
-      debugDir?: string
-      baseCatalog?: Record<string, unknown>
-      debugCatalog?: Record<string, unknown>
-      effectiveCatalog?: Record<string, unknown>
-      status?: Record<string, unknown>
+      baseCatalogPath: string
+      debugCatalogPath: string
+      debugDir: string
+      baseCatalog: Record<string, unknown>
+      debugCatalog: Record<string, unknown>
+      effectiveCatalog: Record<string, unknown>
+      status: Record<string, unknown>
       [key: string]: unknown
     }
   }
@@ -100,8 +100,8 @@ export interface WorkerCommandContracts {
       baseCatalogPath: string
       debugCatalogPath: string
       debugDir: string
-      baseCatalog?: Record<string, unknown>
-      debugCatalog?: Record<string, unknown>
+      baseCatalog: Record<string, unknown>
+      debugCatalog: Record<string, unknown>
       effectiveCatalog: Record<string, unknown>
       status: Record<string, unknown>
       [key: string]: unknown
@@ -116,8 +116,8 @@ export interface WorkerCommandContracts {
       baseCatalogPath: string
       debugCatalogPath: string
       debugDir: string
-      baseCatalog?: Record<string, unknown>
-      debugCatalog?: Record<string, unknown>
+      baseCatalog: Record<string, unknown>
+      debugCatalog: Record<string, unknown>
       effectiveCatalog: Record<string, unknown>
       status: Record<string, unknown>
       [key: string]: unknown

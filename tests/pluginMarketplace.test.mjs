@@ -16,6 +16,7 @@ const vite = await createServer({
       if (!id.replaceAll('\\', '/').endsWith('/src/features/plugin-marketplace/composable.ts')) return null
       return code
         .replace("import { invoke } from '@tauri-apps/api/core'", 'const invoke = (...args) => globalThis.__pluginInvoke(...args)')
+        .replace("import { invokeWorkerQuery } from '@/api/worker'", 'const invokeWorkerQuery = (...args) => globalThis.__pluginInvoke(...args)')
         .replace("import { listen, type UnlistenFn } from '@tauri-apps/api/event'", 'type UnlistenFn = () => void; const listen = (...args) => globalThis.__pluginListen(...args)')
     },
   }],
