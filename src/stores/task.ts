@@ -8,220 +8,56 @@ import { useSettingsStore } from '@/stores/settings'
 import { useModelStore, type ModelDefaultInferenceParams } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import type { WorkflowEntry } from '@/stores/workflow'
-import type { WorkflowNodeLogs } from '@/workflows/nodeLogs'
-import type { LogEntry } from '@/utils/logRecord'
 import { detectWorkflowFormat, WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
 import {
   prepareWorkflowDefinitionForRun,
   resolveWorkflowRuntimeDefaults,
 } from '@/workflows/runtimeDefinition'
 import {
-  isInterruptedTaskStatus,
   isTerminalTaskStatus,
   selectQueuedJobGroups,
   taskJobId,
   type TaskStatus,
 } from '@/features/tasks/lifecycle'
-import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
-import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
+import type { StemOutput } from '@/utils/stemOutputs'
+import { resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
 import { CURRENT_INFERENCE_PARAMS_VERSION, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming } from '@/stores/taskNormalize'
 import { JOURNAL_POLL_INTERVAL_MS, useMediaJobsStore } from '@/stores/mediaJobs'
 import { audioTasksFromJobs, audioEnqueueFromTasks } from '@/features/tasks/audioJobs'
 import { enqueueAudioJobs, removeAudioJobs, type ResultRemovalResponse } from '@/features/tasks/journal'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
-import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
+import { finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
 import { validateSeparateWorkflowInput, workflowDefinitionValidationError } from '@/stores/taskValidation'
 import { resolveRetryOutput } from '@/stores/taskRetry'
 import { buildInferenceParams as buildInferenceParamsFromValues, modelInferenceParamsFromState as modelInferenceParamsFromValues } from '@/stores/taskInferenceParams'
 import { buildJobs, findJobById } from '@/stores/taskJobs'
+import { makeTaskInputActions } from '@/stores/taskInputActions'
+import { makeTaskCancelActions } from '@/stores/taskCancelActions'
+import { makeTaskInferenceParams } from '@/stores/taskInferenceActions'
+import { makeTaskResultHelpers } from '@/stores/taskResultHelpers'
+import { normalizePersistedModelState, resolveTaskErrorMessage } from '@/stores/taskHelpers'
 import { getRemovalTasks as getRemovalTasksFromState, primaryRevealPath } from '@/stores/taskResultCleanup'
-import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
+import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, applyModelDefaultsToUi, type InferenceNumberField } from '@/stores/taskInference'
 import { isMainTaskOwner } from '@/utils/taskOwner'
-import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, type WorkflowRuntimeBindings, type WorkflowWorkbenchSnapshot, type WorkflowNodeState } from '@/workflows/workbench'
+import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, type WorkflowRuntimeBindings } from '@/workflows/workbench'
 import { SEPARATE_MODEL_PAGE_SIZES, normalizePageSize } from '@/utils/pagination'
 
 const studioLog = createLogger('ui.stores.task')
 
+import {
+  type OutputLayout, type ModelListSortMode, type OutputNamingConfig,
+  type SeparationRunConfig, type SeparationTask, type SeparationJob,
+  type PersistedSeparateModelState, type PersistedSeparateState,
+  type ModelInferenceUiDefaults,
+} from '@/stores/taskTypes'
+
+export type {
+  OutputLayout, ModelListSortMode, OutputNamingConfig, SeparationRunConfig,
+  SeparationTask, SeparationJob,
+} from '@/stores/taskTypes'
 export type { TaskStatus } from '@/features/tasks/lifecycle'
 export type { StemOutput } from '@/utils/stemOutputs'
-
-export type OutputLayout = 'folders' | 'flat'
-export type ModelListSortMode = 'usage' | 'recent' | 'favorite' | 'name-asc' | 'name-desc'
-
-export type OutputNamingConfig = {
-  enabled: boolean
-  template: string
-  stemOrder: string[]
-}
-
-export type SeparationRunConfig = {
-  runMode?: 'model' | 'workflow'
-  modelDir: string | null
-  downloadSource: string
-  downloadMethod: string
-  workflowId?: string
-  workflowName?: string
-  workflowDefinition?: Record<string, unknown>
-  workbench?: WorkflowWorkbenchSnapshot
-  modelType?: string | null
-  outputLayout: OutputLayout
-  outputNaming?: OutputNamingConfig
-  device: string
-  deviceIds: number[]
-  outputFormat: string
-  selectedStems: string[]
-  useTta: boolean
-  debug: boolean
-  audioParams: Record<string, string | number>
-  inferenceParamsVersion?: number
-  inferenceParams: Record<string, unknown>
-}
-
-
-type ScanMediaPathsResult = {
-  files: string[]
-  warnings: string[]
-}
-
-export type SeparationTask = {
-  id: string
-  jobId?: string
-  batchIndex?: number
-  model: string
-  input: string
-  jobOutput?: string
-  output: string
-  outputDirectories?: string[]
-  status: TaskStatus
-  message: string
-  createdAt: number
-  updatedAt: number
-  startedAt?: number
-  finishedAt?: number
-  durationMs?: number
-  progress: number
-  stageLabel: string
-  progressCurrent?: number
-  progressTotal?: number
-  progressDetail?: string
-  files: string[]
-  outputs: StemOutput[]
-  /** Plugin graph leaf values (ASR text, measurements, MIDI paths) by node. */
-  nodeValues?: { nodeId: number; nodeType: string; slot: number; value: string }[]
-  logs: LogEntry[]
-  nodeLogs?: WorkflowNodeLogs
-  error?: string
-  runConfig?: SeparationRunConfig
-  nodeStates?: Record<string, WorkflowNodeState>
-  nodeExecutionOrder?: string[]
-  currentNodeId?: string
-}
-
-export type SeparationJob = {
-  id: string
-  output: string
-  tasks: SeparationTask[]
-  primary: SeparationTask
-  model: string
-  inputCount: number
-  outputCount: number
-  createdAt: number
-  updatedAt: number
-  startedAt?: number
-  finishedAt?: number
-  durationMs?: number
-  status: TaskStatus
-  progress: number
-}
-
-type PersistedSeparateModelState = {
-  batch_size?: number | null
-  overlap_size?: number | null
-  num_overlap?: number | null
-  chunk_size?: number | null
-  standardize?: boolean
-  normalize?: boolean
-  window_size?: number | null
-  aggression?: number | null
-  enable_post_process?: boolean
-  post_process_threshold?: number | null
-  high_end_process?: boolean
-  selectedStems?: string[]
-  selectedStemsCleared?: boolean
-}
-
-type PersistedSeparateState = {
-  version?: number
-  runMode?: 'model' | 'workflow'
-  ensembleEnabled?: boolean
-  ensembleModels?: string[]
-  ensembleStem?: string
-  ensembleModelStems?: Record<string, string>
-  ensembleType?: string
-  ensembleWeights?: Record<string, number>
-  outputLayout?: OutputLayout
-  outputNamingTemplate?: string
-  customStemOrder?: string[]
-  modelListViewMode?: 'card' | 'list'
-  modelListSortMode?: ModelListSortMode
-  modelListPageSize?: number
-  useTta?: boolean
-  inferenceParamsByModel?: Record<string, PersistedSeparateModelState>
-}
-
-type ModelInferenceUiDefaults = {
-  [K in keyof ModelDefaultInferenceParams]: ModelDefaultInferenceParams[K] | null
-}
-
-const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus']
-const VIDEO_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv']
-
-
-function isSupportedInputPath(path: string) {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  return AUDIO_EXTENSIONS.includes(ext) || VIDEO_EXTENSIONS.includes(ext)
-}
-
-
-
-function normalizePersistedModelState(value: unknown): PersistedSeparateModelState {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  const raw = value as Record<string, unknown>
-  const numberFields = ['batch_size', 'overlap_size', 'num_overlap', 'chunk_size', 'window_size', 'aggression', 'post_process_threshold']
-  const next: PersistedSeparateModelState = {}
-  numberFields.forEach((key) => {
-    const item = raw[key]
-    if (item === null) (next as Record<string, unknown>)[key] = null
-    else if (typeof item === 'number' && Number.isFinite(item)) (next as Record<string, unknown>)[key] = item
-  })
-  ;['standardize', 'normalize', 'enable_post_process', 'high_end_process'].forEach((key) => {
-    if (typeof raw[key] === 'boolean') (next as Record<string, unknown>)[key] = raw[key]
-  })
-  if (Array.isArray(raw.selectedStems)) {
-    next.selectedStems = raw.selectedStems.map(item => String(item || '').trim()).filter(Boolean)
-  }
-  if (typeof raw.selectedStemsCleared === 'boolean') {
-    next.selectedStemsCleared = raw.selectedStemsCleared
-  }
-  return next
-}
-
-
-
-
-
-function resolveTaskErrorMessage(code: unknown, message: unknown, input?: string) {
-  const detail = typeof message === 'string' ? message : ''
-  const path = typeof input === 'string' ? input : ''
-  if (code === 'INPUT_AUDIO_STREAM_MISSING') {
-    return i18n.global.t('separate.inputAudioStreamMissing', { path })
-  }
-  if (code === 'INPUT_MEDIA_UNSUPPORTED') {
-    return i18n.global.t('separate.inputMediaUnsupported', { path })
-  }
-  return detail || i18n.global.t('toast.taskFailed')
-}
 
 export const useTaskStore = defineStore('task', () => {
   const initialized = ref(false)
@@ -256,6 +92,10 @@ export const useTaskStore = defineStore('task', () => {
   const focusedResultTaskId = ref<string | null>(null)
   const focusedTaskId = ref<string | null>(null)
   const inputFiles = ref<string[]>([])
+const {
+  addInputFiles, removeInputFile, clearInputFiles, moveInputFile,
+  pickFiles, scanAndAddPaths, pickInputFolder, addPaths, revealPath, trashPaths,
+} = makeTaskInputActions({ inputFiles, invoke })
   const separateRunMode = ref<'model' | 'workflow'>('model')
   const ensembleEnabled = ref(false)
   const ensembleModels = ref<string[]>([])
@@ -714,103 +554,14 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  function addInputFiles(paths: string[]) {
-    const valid = paths.filter((p) => p?.trim() && isSupportedInputPath(p))
-    if (!valid.length) return 0
-    const existing = new Set(inputFiles.value)
-    const additions = valid.filter((p) => !existing.has(p))
-    if (additions.length) inputFiles.value = [...inputFiles.value, ...additions]
-    return additions.length
-  }
-
-  function removeInputFile(path: string) {
-    inputFiles.value = inputFiles.value.filter((p) => p !== path)
-  }
-
-  function clearInputFiles() {
-    inputFiles.value = []
-  }
-
-  function moveInputFile(fromIndex: number, toIndex: number) {
-    const from = Math.trunc(Number(fromIndex))
-    const to = Math.trunc(Number(toIndex))
-    if (from === to || from < 0 || to < 0 || from >= inputFiles.value.length || to >= inputFiles.value.length) return false
-    const next = [...inputFiles.value]
-    const [item] = next.splice(from, 1)
-    next.splice(to, 0, item)
-    inputFiles.value = next
-    return true
-  }
-
-  async function pickFiles() {
-    const files = await invoke<string[]>('pick_media_files')
-    addInputFiles(files || [])
-    return files?.length || 0
-  }
-
-  async function scanAndAddPaths(paths: string[]) {
-    if (!paths?.length) return { added: 0, warnings: [] as string[] }
-    const result = await invoke<ScanMediaPathsResult>('scan_media_paths', { paths })
-    return { added: addInputFiles(result.files || []), warnings: result.warnings || [] }
-  }
-
-  async function pickInputFolder() {
-    const folder = await invoke<string | null>('pick_input_folder')
-    if (!folder) return 0
-    const result = await scanAndAddPaths([folder])
-    return result.added
-  }
-
-  async function addPaths(paths: string[]) {
-    const result = await scanAndAddPaths(paths)
-    return result.added
-  }
-
-  async function revealPath(path: string) {
-    await invoke('reveal_path', { path })
-  }
-
-  async function trashPaths(paths: string[]) {
-    const valid = paths.filter((p) => p?.trim())
-    if (!valid.length) return { trashed: [] as string[], failed: [] as string[] }
-    return invoke<{ trashed: string[]; failed: string[] }>('move_paths_to_trash', { paths: valid, emptyDirs: [] })
-  }
-
-  function getTaskById(id: string) {
-    return tasks.value.find((task) => task.id === id) || null
-  }
-
-  function focusResultTask(id: string | null) {
-    focusedResultTaskId.value = id
-  }
-
-  function focusTask(id: string | null) {
-    focusedTaskId.value = id
-  }
-
-  // Histories with produced files must use the results removal flow. Empty
-  // terminal histories may still be explicitly removed from their run list.
-  function hasResultPresence(task: SeparationTask) {
-    return isTerminalTaskStatus(task.status)
-      && (task.outputs.length > 0 || task.files.length > 0)
-  }
-
-  function getRemovalTasks(ids: string[]) {
-    return getRemovalTasksFromState(tasks.value, ids, i18n.global.t('results.removeRunningBatch'))
-  }
+  const {
+    getTaskById, focusResultTask, focusTask, hasResultPresence, getRemovalTasks, checkRemoval, removeResult,
+  } = makeTaskResultHelpers({
+    tasks, focusedTaskId, focusedResultTaskId, getRemovalTasksFromState, i18n, removeAudioJobs,
+    removeResults: (ids) => removeResults(ids),
+  })
 
   // The native transaction owns the complete group and optional file recycling.
-  async function removeResult(id: string) {
-    return (await removeResults([id])).removedJobIds.length
-  }
-
-  async function checkRemoval(ids: string[], deleteFiles = false) {
-    const related = getRemovalTasks(ids)
-    const response = await removeAudioJobs(related.map(task => task.id), { deleteFiles, checkOnly: true })
-    if (response.checkedJobIds.length !== related.length || related.some(task => !response.checkedJobIds.includes(task.id))) throw new Error('Result removal preflight did not confirm the exact group')
-    return response
-  }
-
   async function removeResults(ids: string[], options: { deleteFiles?: boolean } = {}): Promise<ResultRemovalResponse> {
     const related = getRemovalTasks(ids)
     if (!related.length) return { schemaVersion: 2, checkedJobIds: [], removedJobIds: [], trashed: [], failed: [], retained: [] }
@@ -852,77 +603,20 @@ export const useTaskStore = defineStore('task', () => {
     return (await removeResults(ids ?? terminalGroups.flatMap(job => job.tasks.map(task => task.id)))).removedJobIds.length
   }
 
-  async function cancelAllTasks() {
-    const current = [...runningTasks.value]
-    let cancelled = 0
-    schedulingSuppressed++
-    try {
-      for (const task of current) if (await cancelTask(task.id)) cancelled++
-    } finally {
-      schedulingSuppressed--
-      scheduleQueue()
-    }
-    return { total: current.length, cancelled }
-  }
+  const {
+    cancelAllTasks, cancelTask, cancelWorkbenchJob,
+  } = makeTaskCancelActions({
+    tasks, runningTasks, journal, invoke, syncJournalTasks, scheduleQueue,
+    suppressScheduling: () => { schedulingSuppressed++ },
+    resumeScheduling: () => { schedulingSuppressed-- },
+  })
 
-  async function cancelTask(id: string) {
-    const task = tasks.value.find(item => item.id === id)
-    if (!task || isTerminalTaskStatus(task.status)) return false
-    const cancelled = await invoke<boolean>('cancel_task', { taskId: id })
-    if (cancelled) {
-      await journal.refresh()
-      syncJournalTasks()
-      scheduleQueue()
-    }
-    return cancelled
-  }
-
-  async function cancelWorkbenchJob(jobId: string) {
-    const targets = tasks.value.filter(task => taskJobId(task) === jobId && !isTerminalTaskStatus(task.status))
-    schedulingSuppressed++
-    try {
-      for (const target of targets) await invoke('cancel_task', { taskId: target.id })
-      await journal.refresh()
-      syncJournalTasks()
-    } finally {
-      schedulingSuppressed--
-      scheduleQueue()
-    }
-  }
-
-  function buildInferenceParams(modelType?: string | null): Record<string, unknown> {
-    return buildInferenceParamsFromValues({
-      modelType,
-      defaults: selectedModelDefaults.value,
-      modelOverrides: selectedModelOverrides.value,
-      dirty: inferenceParamsDirty.value,
-      values: {
-        batch_size: batch_size.value,
-        overlap_size: overlap_size.value,
-        num_overlap: num_overlap.value,
-        chunk_size: chunk_size.value,
-        window_size: window_size.value,
-        aggression: aggression.value,
-        enable_post_process: enable_post_process.value,
-        post_process_threshold: post_process_threshold.value,
-        high_end_process: high_end_process.value,
-        standardize: standardize.value,
-        normalize: normalize.value,
-      },
-    })
-  }
-
-  function modelInferenceParamsFromState(modelName: string, modelType?: string | null): Record<string, unknown> {
-    const modelStore = useModelStore()
-    if (modelStore.selectedModel === modelName) return buildInferenceParams(modelType)
-    const entry = modelStore.models.find(item => item.name === modelName) || null
-    const defaults = modelStore.hasKnownModelInferenceBase(modelName)
-      ? (modelStore.getModelBaseInferenceDefaults(modelName) || {})
-      : (entry?.defaultInferenceParams || {})
-    const overrides = modelStore.getModelInferenceOverrides(modelName) || {}
-    const saved = getSavedModelState(modelName) || {}
-    return modelInferenceParamsFromValues({ modelType, defaults, overrides, saved })
-  }
+  const { buildInferenceParams, modelInferenceParamsFromState } = makeTaskInferenceParams({
+    selectedModelDefaults, selectedModelOverrides, inferenceParamsDirty,
+    batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
+    enable_post_process, post_process_threshold, high_end_process, standardize, normalize,
+    getSavedModelState, useModelStore, buildInferenceParamsFromValues, modelInferenceParamsFromValues,
+  })
 
   function submitOne(input: string, model: string, inferenceParams: Record<string, unknown>, modelType?: string | null, jobId?: string, jobOutput?: string, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig, batchIndex?: number) {
     return createQueuedTask(input, model, inferenceParams, modelType, jobId, jobOutput, outputLayout, outputNaming, batchIndex)
@@ -1134,8 +828,8 @@ export const useTaskStore = defineStore('task', () => {
     focusTask,
     removeSessionJob,
     clearFinishedSessionJobs,
-    removeResult,
     removeResults,
+    removeResult,
     checkRemoval,
     getRemovalTasks,
     removeWorkflowRun,
