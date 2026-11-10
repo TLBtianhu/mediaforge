@@ -10,6 +10,8 @@
                   surfaces/dispatch.py 查表分派；check-command-surface.py --strict 已进 CI
 命令字段契约      全部 8 个域 / 48 条命令已声明 payload/result schema；dispatch 先校验 payload
 前端契约边界      worker 契约调用集中在 src/api/*；scripts/check-frontend-invokes.py 扫描
+CSP              tauri.conf.json 设置生产 csp 与 devCsp（Vite websocket/开发脚本单独放行）；
+                  禁止生产 script-src 'unsafe-eval'，asset/plugin 协议显式列入
                   src/ 其余直接 invoke，只允许 media_precheck 与 manage_plugin 两个已记录例外
 模型库分流        主音频模型库 = list_models（完整 ModelEntry/分类/debug 状态）；
                   媒体目录 = model_hub（id/provider/modality/downloadable 行）
