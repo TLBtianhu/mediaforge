@@ -145,7 +145,7 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
 ## 技术债
 
 ```
-巨文件（行数）   SettingsView.vue 1023 / ModelsView.vue 1370 / SeparateView.vue 2285 /
+巨文件（行数）   SettingsView.vue 790 / ModelsView.vue 1370 / SeparateView.vue 2285 /
                  DebugView.vue 1736 / stores/task.ts 1155 / stores/editor.ts 2001
                  SeparateView 与 DebugView 已按工厂拆过一轮，剩下的先把有测试契约的簇外移。
 门面间接         已移除：worker_bootstrap.py 合并为普通模块，bootstrap_parts 分包已删除。
