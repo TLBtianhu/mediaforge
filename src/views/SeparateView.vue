@@ -75,6 +75,9 @@ import SeparateAdvancedPanel from '@/components/separate/SeparateAdvancedPanel.v
 import SeparateNamingModal from '@/components/separate/SeparateNamingModal.vue'
 import SeparateQueueModal from '@/components/separate/SeparateQueueModal.vue'
 import SeparateSettingsDrawer from '@/components/separate/SeparateSettingsDrawer.vue'
+import SeparateEnsembleModal from '@/components/separate/SeparateEnsembleModal.vue'
+import SeparateNoteModal from '@/components/separate/SeparateNoteModal.vue'
+import SeparateLogModal from '@/components/separate/SeparateLogModal.vue'
 import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
@@ -1331,6 +1334,16 @@ const settingsDrawerContext = {
   locateGuidedParameter,
 }
 
+const ensembleModalContext = {
+  ensembleModels, ensembleStem, ensembleType, ensembleTypeOptions,
+  ensembleModelStems, ensembleStemOptionsByModel, ensembleWeights,
+}
+
+const noteModalContext = {
+  noteEditorModel, noteDraft, handleModelNoteEditorUpdate,
+  closeModelNoteEditor, saveModelNote,
+}
+
 </script>
 
 <template>
@@ -1831,99 +1844,12 @@ const settingsDrawerContext = {
       @select="handleSeparateContextMenuSelect"
     />
 
-    <n-modal
-      :show="showModelNoteEditor"
-      @update:show="handleModelNoteEditorUpdate"
-    >
-      <n-card
-        class="separate-note-modal"
-        :title="t('models.editNote')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="closeModelNoteEditor"
-      >
-        <div v-if="noteEditorModel" class="separate-note-modal__body">
-          <strong class="separate-note-modal__name">{{ noteEditorModel.name }}</strong>
-          <n-input
-            v-model:value="noteDraft"
-            type="textarea"
-            :autosize="{ minRows: 4, maxRows: 8 }"
-            clearable
-            :maxlength="240"
-            show-count
-            :placeholder="t('models.notePlaceholder')"
-          />
-        </div>
-        <template #footer>
-          <div class="separate-note-modal__footer">
-            <n-button secondary @click="closeModelNoteEditor">{{ t('common.cancel') }}</n-button>
-            <n-button type="primary" :disabled="!noteEditorModel" @click="saveModelNote">{{ t('common.save') }}</n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <n-modal v-model:show="showEnsembleModal" :mask-closable="true">
-      <n-card
-        class="ensemble-modal"
-        :title="t('separate.ensembleConfigureTitle')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="showEnsembleModal = false"
-      >
-        <div class="ensemble-modal__intro">
-          <span>{{ t('separate.ensembleHint') }}</span>
-          <strong>{{ t('separate.ensembleSelectedCount', { count: ensembleModels.length }) }}</strong>
-        </div>
-        <div class="ensemble-config__fields">
-          <label>
-            <span>{{ t('separate.ensembleStem') }}</span>
-            <n-input v-model:value="ensembleStem" :placeholder="t('separate.ensembleStemPlaceholder')" />
-          </label>
-          <label>
-            <span>{{ t('separate.ensembleType') }}</span>
-            <n-select v-model:value="ensembleType" :options="ensembleTypeOptions" />
-          </label>
-        </div>
-        <n-divider title-placement="left">{{ t('separate.ensembleWeights') }}</n-divider>
-        <div class="ensemble-modal__weights">
-          <div v-for="name in ensembleModels" :key="name" class="ensemble-modal__weight">
-            <span class="ensemble-modal__model-name" :title="name">{{ name }}</span>
-            <n-select
-              v-model:value="ensembleModelStems[name]"
-              size="small"
-              :options="ensembleStemOptionsByModel[name] || []"
-              :placeholder="t('separate.ensembleModelStemPlaceholder')"
-              :disabled="!(ensembleStemOptionsByModel[name] || []).length"
-            />
-            <n-slider v-model:value="ensembleWeights[name]" :min="0" :max="1" :step="0.05" />
-            <n-input-number v-model:value="ensembleWeights[name]" class="ensemble-modal__weight-input" size="small" :min="0" :max="1" :step="0.05" />
-          </div>
-        </div>
-        <template #footer>
-          <n-button type="primary" @click="showEnsembleModal = false">{{ t('common.close') }}</n-button>
-        </template>
-      </n-card>
-    </n-modal>
-
+    <SeparateNoteModal v-model:show="showModelNoteEditor" :context="noteModalContext" />
+    <SeparateEnsembleModal v-model:show="showEnsembleModal" :context="ensembleModalContext" />
     <SeparateSettingsDrawer v-model:show="showSettingsDrawer" :context="settingsDrawerContext" />
     <SeparateNamingModal v-model:show="showNamingModal" :context="namingModalContext" />
     <SeparateQueueModal v-model:show="showQueueModal" v-model:scope="queueScope" :context="queueModalContext" />
-    <n-modal v-model:show="showLogModal" style="width:var(--modal-width-lg)">
-      <n-card
-        :title="currentTask ? `${currentTaskFileName} - ${t('tasks.logs')}` : t('tasks.logs')"
-        :bordered="false"
-        size="small"
-        role="dialog"
-        aria-modal="true"
-      >
-        <TaskLogConsole :lines="currentTask?.logs || []" />
-      </n-card>
-    </n-modal>
+    <SeparateLogModal v-model:show="showLogModal" :current-task="currentTask" :current-task-file-name="currentTaskFileName" />
   </div>
 </template>
 
