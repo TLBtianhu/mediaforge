@@ -14,6 +14,7 @@ import sys
 from shared.worker_protocol import debug_log, emit_error, load_payload, protocol_logging
 from shared.worker_proxy import ProxyConfigError
 from shared import worker_paths
+from shared.runtime_lease import RuntimeLeaseError, runtime_lease
 from surfaces.dispatch import run as dispatch_run
 
 
@@ -64,9 +65,13 @@ def main(argv: list[str]) -> int:
             job_id=payload.get("jobId"),
             batch=isinstance(payload.get("tasks"), list) and bool(payload["tasks"]),
         ):
-            code = run_command(args.command, payload)
+            with runtime_lease(args.command):
+                code = run_command(args.command, payload)
         debug_log("worker.exit", command=args.command, code=code)
         return code
+    except RuntimeLeaseError as exc:
+        debug_log("worker.exception", command=args.command, error=str(exc))
+        return emit_error(exc.code, str(exc))
     except ProxyConfigError as exc:
         debug_log("worker.exception", command=args.command, error=str(exc))
         return emit_error(exc.code, str(exc))
