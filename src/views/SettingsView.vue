@@ -787,4 +787,5 @@ onMounted(async () => {
   </div>
 </template>
 
+<style scoped src="./settings/settings-shared.css"></style>
 <style scoped src="./settings/settings-view.css"></style>

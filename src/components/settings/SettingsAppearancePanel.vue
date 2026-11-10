@@ -171,48 +171,8 @@ const { t } = useI18n()
   </section>
 </template>
 
+<style scoped src="../../views/settings/settings-shared.css"></style>
 <style scoped>
-.settings-card {
-  border-color: color-mix(in srgb, var(--outline) 58%, transparent) !important;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.025), transparent 42%),
-    color-mix(in srgb, var(--surface-1) 72%, transparent) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-}
-
-.settings-card :deep(.n-card__header) {
-  padding: 18px 20px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--outline) 42%, transparent);
-}
-
-.settings-card :deep(.n-card__content) {
-  padding: 4px 20px 18px;
-}
-
-.settings-card--compact :deep(.n-card__content) {
-  padding-bottom: 20px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.section-title__icon {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  color: color-mix(in srgb, var(--primary-ink) 74%, var(--on-surface-muted));
-  background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface-2));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 36%, transparent);
-}
 
 .appearance-list {
   display: grid;
@@ -223,45 +183,6 @@ const { t } = useI18n()
   color: var(--on-surface-muted);
   font-size: 12px;
   line-height: 1.7;
-}
-
-.setting-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 18px;
-  padding: 13px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--outline) 36%, transparent);
-}
-
-.setting-row + .setting-row {
-  border-top: 0;
-}
-
-.setting-row__label {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.setting-row__title {
-  color: var(--on-surface);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.setting-row__hint {
-  margin: 0;
-  color: var(--on-surface-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.setting-row__control {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
 }
 
 .accent-dots {

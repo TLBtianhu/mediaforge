@@ -192,44 +192,8 @@ const { t } = useI18n()
   </section>
 </template>
 
+<style scoped src="../../views/settings/settings-shared.css"></style>
 <style scoped>
-.settings-card {
-  border-color: color-mix(in srgb, var(--outline) 58%, transparent) !important;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.025), transparent 42%),
-    color-mix(in srgb, var(--surface-1) 72%, transparent) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-}
-
-.settings-card :deep(.n-card__header) {
-  padding: 18px 20px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--outline) 42%, transparent);
-}
-
-.settings-card :deep(.n-card__content) {
-  padding: 4px 20px 18px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.section-title__icon {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  color: color-mix(in srgb, var(--primary-ink) 74%, var(--on-surface-muted));
-  background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface-2));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 36%, transparent);
-}
 
 .setting-field {
   display: grid;

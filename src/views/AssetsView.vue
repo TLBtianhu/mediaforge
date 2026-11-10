@@ -336,7 +336,7 @@ onBeforeUnmount(() => {
   margin: 8px 0 0;
   padding: 8px 10px;
   border-radius: 6px;
-  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  background: var(--surface-2);
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   line-height: 1.45;

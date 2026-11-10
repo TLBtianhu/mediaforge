@@ -311,33 +311,8 @@ const { t } = useI18n()
   </section>
 </template>
 
+<style scoped src="../../views/settings/settings-shared.css"></style>
 <style scoped>
-.about-hero,
-.about-info-card {
-  border: 1px solid color-mix(in srgb, var(--outline) 48%, transparent);
-  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
-}
-
-.about-hero {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 20px 22px;
-  border-radius: 20px;
-}
-
-.about-hero__main {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  min-width: 0;
-}
-
-.about-hero__copy {
-  min-width: 0;
-  flex: 1 1 auto;
-}
 
 .about-eyebrow {
   display: inline-flex;
@@ -353,99 +328,6 @@ const { t } = useI18n()
   white-space: nowrap;
 }
 
-.about-hero__title {
-  margin: 8px 0 4px;
-  color: var(--on-surface);
-  font-size: clamp(22px, 2.6vw, 28px);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
-  white-space: nowrap;
-}
-
-.about-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  width: 100%;
-  min-width: 0;
-}
-
-.about-stat {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 32%, transparent);
-}
-
-.about-stat__label {
-  overflow: hidden;
-  color: var(--on-surface-muted);
-  font-size: clamp(10px, 1.1vw, 11px);
-  font-weight: 600;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.about-stat__value {
-  overflow: hidden;
-  color: var(--on-surface);
-  font-size: clamp(14px, 1.6vw, 16px);
-  font-weight: 700;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.about-stat__meta {
-  overflow: hidden;
-  color: color-mix(in srgb, var(--on-surface-muted) 88%, var(--on-surface));
-  font-size: clamp(9px, 1vw, 10px);
-  font-weight: 600;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.about-info-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-  padding: 18px 20px;
-  border-radius: 18px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.section-title--plain {
-  justify-content: flex-start;
-}
-
-.section-title__icon {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  color: color-mix(in srgb, var(--primary-ink) 74%, var(--on-surface-muted));
-  background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface-2));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 36%, transparent);
-}
-
 .runtime-hero__icon {
   flex: 0 0 auto;
 }
@@ -458,7 +340,7 @@ const { t } = useI18n()
 }
 
 .runtime-hero__desc--error {
-  color: var(--danger, #dc2626);
+  color: var(--danger);
 }
 
 .runtime-section {
@@ -655,12 +537,5 @@ const { t } = useI18n()
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.setting-row__hint {
-  margin: 0;
-  color: var(--on-surface-muted);
-  font-size: 12px;
-  line-height: 1.5;
 }
 </style>
