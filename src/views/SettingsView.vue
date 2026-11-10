@@ -58,6 +58,7 @@ import {
 } from '@vicons/ionicons5'
 import SettingsAboutPanel from '@/components/settings/SettingsAboutPanel.vue'
 import SettingsPathsPanel from '@/components/settings/SettingsPathsPanel.vue'
+import SettingsAppearancePanel from '@/components/settings/SettingsAppearancePanel.vue'
 
 const { t, locale: currentLocale } = useI18n()
 const message = useMessage()
@@ -338,6 +339,18 @@ async function loadBuildInfo() {
 }
 
 const languageSelectWrap = ref<HTMLElement | null>(null)
+
+function setLanguageSelectWrap(element: HTMLElement | null) {
+  languageSelectWrap.value = element
+}
+
+function setScaleSliderIndex(index: number) {
+  scaleSliderIndex.value = index
+}
+
+function setAnimationsEnabled(enabled: boolean) {
+  animationsEnabled.value = enabled
+}
 const {
   scaleFactorPercent, scaleSliderIndex, scaleSliderMarks, isDefaultScaleFactor,
   currentResolvedLanguageLabel, appearanceThemeAccentLabel,
@@ -492,135 +505,29 @@ onMounted(async () => {
         />
 
         <!-- Appearance -->
-        <section v-else-if="activeSection === 'appearance'" class="settings-section-panel">
-        <n-card class="settings-card settings-card--compact settings-card--appearance" :bordered="true" size="small">
-          <template #header>
-            <div class="section-title">
-              <span class="section-title__icon">
-                <n-icon :component="ColorPaletteOutline" size="18" />
-              </span>
-              <span>{{ t('settings.appearance') }}</span>
-            </div>
-          </template>
-
-          <div class="appearance-list">
-            <p class="appearance-hint">{{ t('settings.appearanceHint') }}</p>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.theme') }}</label>
-              </div>
-              <div class="setting-row__control">
-                <div class="theme-switcher">
-                  <button
-                    type="button"
-                    :class="{ active: themeMode === 'system' }"
-                    @click="selectThemeMode('system', $event)"
-                  >
-                    {{ t('settings.themeSystem') }}
-                  </button>
-                  <button
-                    type="button"
-                    :class="{ active: themeMode === 'dark' }"
-                    @click="selectThemeMode('dark', $event)"
-                  >
-                    {{ t('settings.themeDark') }}
-                  </button>
-                  <button
-                    type="button"
-                    :class="{ active: themeMode === 'light' }"
-                    @click="selectThemeMode('light', $event)"
-                  >
-                    {{ t('settings.themeLight') }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.themeColor') }}</label>
-              </div>
-              <div class="setting-row__control">
-                <div class="accent-dots">
-                  <button
-                    v-for="accent in themeAccentOptions"
-                    :key="accent.value"
-                    type="button"
-                    class="accent-dot"
-                    :class="{ active: themeAccent === accent.value }"
-                    :title="accent.label"
-                    :aria-label="accent.label"
-                    @click="selectThemeAccent(accent.value, $event)"
-                  >
-                    <span
-                      class="accent-dot__fill"
-                      :style="{ background: `linear-gradient(135deg, ${accent.preview[0]} 0 50%, ${accent.preview[1]} 50% 100%)` }"
-                    />
-                  </button>
-                  <span class="accent-current">{{ appearanceThemeAccentLabel }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.language') }}</label>
-                <p v-if="locale === SYSTEM_LOCALE" class="setting-row__hint">
-                  {{ t('settings.languageFollowSystemHint', { locale: currentResolvedLanguageLabel }) }}
-                </p>
-              </div>
-              <div class="setting-row__control">
-                <div ref="languageSelectWrap" class="language-select-wrap">
-                  <n-select
-                    :value="locale"
-                    :options="languageOptions"
-                    :consistent-menu-width="false"
-                    @update:value="selectLocale"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.scaleFactor') }}</label>
-                <button
-                  type="button"
-                  class="scale-reset"
-                  :disabled="isDefaultScaleFactor"
-                  @click="resetScaleFactorToDefault"
-                >
-                  {{ t('settings.restoreDefaultScale') }}
-                </button>
-              </div>
-              <div class="setting-row__control">
-                <div class="scale-control">
-                  <n-slider
-                    v-model:value="scaleSliderIndex"
-                    :min="0"
-                    :max="5"
-                    :step="1"
-                    :marks="scaleSliderMarks"
-                    :tooltip="false"
-                  />
-                  <span class="scale-value">{{ scaleFactorPercent }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.animations') }}</label>
-                <p class="setting-row__hint">{{ t('settings.animationsHint') }}</p>
-              </div>
-              <div class="setting-row__control">
-                <n-switch v-model:value="animationsEnabled" />
-              </div>
-            </div>
-          </div>
-        </n-card>
-        </section>
+        <SettingsAppearancePanel
+          v-else-if="activeSection === 'appearance'"
+          :theme-mode="themeMode"
+          :theme-accent="themeAccent"
+          :theme-accent-options="themeAccentOptions"
+          :appearance-theme-accent-label="appearanceThemeAccentLabel"
+          :locale="locale"
+          :system-locale="SYSTEM_LOCALE"
+          :current-resolved-language-label="currentResolvedLanguageLabel"
+          :language-options="languageOptions"
+          :scale-slider-index="scaleSliderIndex"
+          :scale-slider-marks="scaleSliderMarks"
+          :scale-factor-percent="scaleFactorPercent"
+          :is-default-scale-factor="isDefaultScaleFactor"
+          :animations-enabled="animationsEnabled"
+          :set-language-select-wrap="setLanguageSelectWrap"
+          @select-theme-mode="selectThemeMode"
+          @select-theme-accent="selectThemeAccent"
+          @select-locale="selectLocale"
+          @reset-scale-factor="resetScaleFactorToDefault"
+          @update-scale-slider-index="setScaleSliderIndex"
+          @update-animations-enabled="setAnimationsEnabled"
+        />
 
         <!-- Runtime -->
         <section v-else-if="activeSection === 'runtime'" class="settings-section-panel runtime-section">
