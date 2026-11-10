@@ -659,14 +659,17 @@ class OperationKernel:
                     process = subprocess.Popen(
                         [self.python_path or sys.executable, str(WORKER), job.command, "--payload", str(payload_path)],
                         cwd=str(ROOT),
+                        stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE,
                         stderr=stderr,
                         text=True,
                         encoding="utf-8",
                         errors="replace",
                         env={**os.environ, "MEDIAFORGE_DATA_ROOT": str(self.data_root), "MEDIAFORGE_DATA_DIR": str(self.data_root),
-                             "PYMSS_USER_MODELS": str(worker_paths.user_models_file(self.data_root))},
+                             "PYMSS_USER_MODELS": str(worker_paths.user_models_file(self.data_root)),
+                             "MEDIAFORGE_PARENT_PIPE": "1"},
                         **hidden_subprocess_kwargs(),
+                        **({"start_new_session": True} if os.name != "nt" else {}),
                     )
                     job.process = process
                     job._process_reaped = False

@@ -16,6 +16,7 @@ import threading
 from shared.worker_protocol import debug_log, emit_error, load_payload, protocol_logging
 from shared.worker_proxy import ProxyConfigError
 from shared import worker_paths
+from shared.worker_subprocess import hidden_subprocess_kwargs
 from shared.runtime_lease import RuntimeLeaseError, runtime_lease
 from surfaces.dispatch import run as dispatch_run
 
@@ -41,7 +42,18 @@ def _watch_parent_pipe() -> None:
             pass
     except Exception:  # noqa: BLE001 - the parent disappearing is the normal path
         pass
-    if os.name != "nt":
+    if os.name == "nt":
+        try:
+            import subprocess
+            subprocess.run(
+                ["taskkill", "/PID", str(os.getpid()), "/T", "/F"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False,
+                **hidden_subprocess_kwargs(),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    else:
         try:
             os.killpg(os.getpgrp(), signal.SIGTERM)
         except Exception:  # noqa: BLE001

@@ -220,6 +220,8 @@ class CustomModelAssetLeaseTests(unittest.TestCase):
                 mock.patch("core.operation_kernel.threading.Thread"):
             kernel._run_worker(job)
         self.assertEqual(spawn.call_args.kwargs["env"]["PYMSS_USER_MODELS"], str(self.registry))
+        self.assertEqual(spawn.call_args.kwargs["env"]["MEDIAFORGE_PARENT_PIPE"], "1")
+        self.assertEqual(spawn.call_args.kwargs["stdin"], subprocess.PIPE)
         self.assertEqual(job.status, "completed")
         self.assertFalse((job.workdir / "payload.json").exists())
 
