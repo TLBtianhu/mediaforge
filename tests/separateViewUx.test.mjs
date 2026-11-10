@@ -19,6 +19,7 @@ const readyTemplate = parse(readFileSync(readyPath, 'utf8')).descriptor.template
 const taskPath = new URL('../src/components/separate/SeparateTaskStage.vue', import.meta.url)
 const taskTemplate = parse(readFileSync(taskPath, 'utf8')).descriptor.template?.content || ''
 const stageState = readFileSync(new URL('../src/views/separate/stageState.ts', import.meta.url), 'utf8')
+const actionsSource = readFileSync(new URL('../src/views/separate/separateActions.ts', import.meta.url), 'utf8')
 const queueTemplate = parse(readFileSync(queuePath, 'utf8')).descriptor.template?.content || ''
 const advancedTemplate = parse(readFileSync(advancedPath, 'utf8')).descriptor.template?.content || ''
 const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
@@ -243,10 +244,10 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(scriptSource.includes('const composingNewJob = ref(false)'))
   assert.ok(scriptSource.includes('const showQueueModal = ref(false)'))
   assert.ok(queueModuleSource.includes('composingNewJob.value ? null : (focusedJob.value || newestRunningJob.value)'))
-  assert.ok(scriptSource.includes('function beginNextSeparation()'))
+  assert.ok(actionsSource.includes('function beginNextSeparation()'))
   assert.ok(queueModuleSource.includes('function focusQueueJob(target: SeparationJob)'))
   assert.ok(queueModuleSource.includes('const recentFailedJobs'))
-  assert.ok(scriptSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
+  assert.ok(actionsSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
   assert.ok(queueModuleSource.includes('clearFinishedSessionJobs(separationSessionJobs.value.map'))
   assert.ok(taskTemplate.includes("t('separate.addNextBatch')"))
   assert.ok(taskTemplate.includes('v-if="ctx.hasQueueEntries"'))

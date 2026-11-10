@@ -2,8 +2,6 @@
 import { createLogger } from '@/utils/logger'
 import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
 import TaskInputFiles from '@/components/TaskInputFiles.vue'
-import ModelParameterField from '@/components/ModelParameterField.vue'
-import ModelPanelState from '@/components/ModelPanelState.vue'
 
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -15,31 +13,13 @@ import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
-  CubeOutline,
-  CheckmarkCircle,
-  PlayOutline,
   MusicalNotesOutline,
-  SearchOutline,
-  FolderOutline,
   CloudUploadOutline,
-  CloseOutline,
   SettingsOutline,
-  OpenOutline,
-  PauseOutline,
-  TerminalOutline,
-  TimeOutline,
-  ReorderFourOutline,
-  ChevronUpOutline,
-  ChevronDownOutline,
-  GridOutline,
-  ListOutline,
-  InformationCircleOutline,
 } from '@vicons/ionicons5'
 import {
   WINDOWS_RESERVED_FILENAMES,
-  compareModelNames, formatDateToken, formatLegacyTimeToken, formatPlaybackTime,
-  formatTimeToken, getFileName, normalizeFilenameFragment, padNumber, safeFilenamePart,
-  stripFileExtension, truncateUtf8,
+  compareModelNames, formatPlaybackTime, getFileName, padNumber,
 } from './separate/format'
 import { useModelList } from './separate/useModelList'
 import { makeInferenceDefaults } from './separate/inferenceDefaults'
@@ -49,30 +29,25 @@ import { makeQueue } from './separate/queue'
 import { makeOutputDirectory } from './separate/outputDirectory'
 import { makeSlotPanel } from './separate/slotPanel'
 import { makeStageState } from './separate/stageState'
+import { makeModelPanel } from './separate/modelPanel'
+import { makeSeparateActions } from './separate/separateActions'
+import { makeAudioOptions } from './separate/audioOptions'
 import { launchTask } from '@/features/tasks/launch'
 import { makeTaskPresentation } from './separate/taskPresentation'
 import { makeReorder } from './separate/reorder'
 import { useOutputNaming } from './separate/useOutputNaming'
-import { useTaskStore, type ModelListSortMode, type OutputLayout, type SeparationJob, type SeparationTask, type StemOutput } from '@/stores/task'
-import { isTerminalTaskStatus, resolveJobStatus } from '@/features/tasks/lifecycle'
+import { useTaskStore, type OutputLayout, type StemOutput } from '@/stores/task'
+import { isTerminalTaskStatus } from '@/features/tasks/lifecycle'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
 import type { WorkflowEntry } from '@/stores/workflow'
 import { WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
 import { useSettingsStore } from '@/stores/settings'
-import { useModelStore, type ModelDefaultInferenceParams, type ModelEntry } from '@/stores/model'
+import { useModelStore, type ModelEntry } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
-import { buildModelCategoryOptionsFromModels, getModelCategoryLabel } from '@/utils/modelCategory'
-import { matchesModelQuery } from '@/utils/modelSearch'
-import { sortStemOutputsByOrder } from '@/utils/stemOrder'
 import { retainAvailableModelNames } from '@/utils/modelSource'
-import { SEPARATE_MODEL_PAGE_SIZES } from '@/utils/pagination'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
-import TaskLogConsole from '@/components/TaskLogConsole.vue'
-import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
-import ModelSlotFields from '@/components/ModelSlotFields.vue'
-import SeparateAdvancedPanel from '@/components/separate/SeparateAdvancedPanel.vue'
 import SeparateNamingModal from '@/components/separate/SeparateNamingModal.vue'
 import SeparateQueueModal from '@/components/separate/SeparateQueueModal.vue'
 import SeparateSettingsDrawer from '@/components/separate/SeparateSettingsDrawer.vue'
@@ -82,9 +57,7 @@ import SeparateLogModal from '@/components/separate/SeparateLogModal.vue'
 import SeparateReadyStage from '@/components/separate/SeparateReadyStage.vue'
 import SeparateTaskStage from '@/components/separate/SeparateTaskStage.vue'
 import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
-import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
-import ParameterFieldGuide from '@/components/ParameterFieldGuide.vue'
 import { isTutorialFrame } from '@/features/onboarding/demoContext'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
 import { visibleParameterGuides } from '@/features/onboarding/parameters'
@@ -193,40 +166,15 @@ const {
 } = makePlayback({ outputPlayback, playingOutputPath, audioAccessOrder, audioElements, PREVIEW_AUDIO_CACHE_LIMIT, Audio, convertFileSrc })
 let unlistenDragDrop: UnlistenFn | null = null
 
-const formatOptions = [
-  { label: 'WAV', value: 'wav' },
-  { label: 'FLAC', value: 'flac' },
-  { label: 'MP3', value: 'mp3' },
-  { label: 'M4A', value: 'm4a' },
-]
-
-function getFileKindLabel(path: string) {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  if (['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv'].includes(ext)) return t('separate.videoFile')
-  return t('separate.audioFile')
-}
-
-const wavBitDepthOptions = computed(() => [
-  { label: t('audio.pcm16'), value: 'PCM_16' },
-  { label: t('audio.pcm24'), value: 'PCM_24' },
-  { label: t('audio.float'), value: 'FLOAT' },
-])
-const flacBitDepthOptions = computed(() => [
-  { label: t('audio.pcm16'), value: 'PCM_16' },
-  { label: t('audio.pcm24'), value: 'PCM_24' },
-])
-const bitRateOptions = computed(() => [
-  { label: t('audio.bitrate128'), value: '128k' },
-  { label: t('audio.bitrate192'), value: '192k' },
-  { label: t('audio.bitrate256'), value: '256k' },
-  { label: t('audio.bitrate320'), value: '320k' },
-  { label: t('audio.bitrate512'), value: '512k' },
-])
-const mp3BitRateOptions = computed(() => bitRateOptions.value.filter(option => parseInt(option.value, 10) <= 320))
-const m4aCodecOptions = computed(() => [
-  { label: t('audio.codecAac'), value: 'aac' },
-])
+const {
+  formatOptions, getFileKindLabel, wavBitDepthOptions, flacBitDepthOptions,
+  bitRateOptions, mp3BitRateOptions, m4aCodecOptions, audioSteps,
+} = makeAudioOptions({ t, computed })
 const selectedModelName = computed(() => String(selectedModel.value || ''))
+
+function modelNote(name: string) {
+  return modelPreferences.value?.[name]?.note || ''
+}
 
 const {
   modelSearch, modelCategoryFilter, modelPage, modelSortOptions, listedDownloadedModels,
@@ -262,7 +210,6 @@ const overlapSizeStep = computed(() => resolveInferenceSampleStep(currentModelIn
 const chunkSizeStep = computed(() => resolveInferenceChunkStep(currentModelInfo.value?.inferenceParamMeta, 1024))
 const currentChunkConstraint = computed(() => currentModelInfo.value?.inferenceParamMeta?.chunkSizeConstraint)
 const currentChunkIssue = computed(() => inferenceChunkSizeIssue(chunk_size.value, currentModelInfo.value?.inferenceParamMeta))
-
 
 function updateOverlapSize(value: number | null) {
   overlap_size.value = value
@@ -432,7 +379,6 @@ const selectedStemDetail = computed(() => {
   return selectedStemSummary.value
 })
 
-
 function normalizeStemOrder(order: string[], stems: string[]) {
   const byKey = new Map(stems.map(stem => [stem.toLowerCase(), stem]))
   const used = new Set<string>()
@@ -544,6 +490,14 @@ const outputSummaryPath = computed(() => outputPreview.value)
 const finishedSessionJobCount = computed(() => recentFailedJobs.value.length + completedSessionJobs.value.length + cancelledSessionJobs.value.length)
 const hasQueueEntries = computed(() => queueJobs.value.length > 0 || noResultSeparationJobs.value.length > 0)
 const {
+  categoryLabel, modelTargetLabel, modelArchitectureLabel, modelUseCount,
+  modelMetaLine, handleSelectModel, prefetchSelectedModelAdvancedParams,
+} = makeModelPanel({
+  t, locale, model, listedDownloadedModels, selectedModelName,
+  ensembleEnabled, ensembleModels, shouldPrefetchAdvancedParams, detailLoading, isLoading,
+})
+
+const {
   focusedBatchTasks, activeFocusedBatchTask, currentTask, completedActionOptions,
   currentBatchTasks, currentBatchTotal, currentBatchDoneCount, currentBatchFailedCount,
   currentBatchCancelledCount, currentBatchFinishedCount, currentBatchIsMulti, currentBatchIsQueued,
@@ -617,10 +571,6 @@ function stopAllPreviewAudio() {
   outputPlayback.value = {}
 }
 
-
-
-
-
 const {
   draggedInputIndex, draggedStemIndex, moveStem,
   onInputPointerDown, onInputPointerMove, finishInputPointerDrag,
@@ -632,62 +582,9 @@ const {
   moveInputFile: (fromIndex, toIndex) => task.moveInputFile(fromIndex, toIndex),
 })
 
-
 function resetOutputNaming() {
   outputNamingTemplate.value = '%index%_%filename%_%stem%'
   customStemOrder.value = []
-}
-
-function categoryLabel(item: { categoryCn?: string; category?: string; primaryCategoryCn?: string; primaryCategory?: string } | null | undefined) {
-  return getModelCategoryLabel(item, locale.value, t('common.notSet'))
-}
-
-function modelTargetLabel(item: {
-  targetStem?: string
-  configTargetInstrument?: string
-} | null | undefined) {
-  return item?.targetStem || item?.configTargetInstrument || t('common.notSet')
-}
-
-function modelArchitectureLabel(item: {
-  architecture?: string
-  modelType?: string | null
-} | null | undefined) {
-  return item?.architecture || item?.modelType || t('common.notSet')
-}
-
-/** The user's own note for a model, kept beside the catalog entry rather than in it. */
-function modelNote(name: string) {
-  return modelPreferences.value[name]?.note || ''
-}
-
-function modelUseCount(name: string) {
-  return model.getModelUseCount(name)
-}
-
-function modelMetaLine(item: {
-  targetStem?: string
-  configTargetInstrument?: string
-  architecture?: string
-  modelType?: string | null
-}) {
-  return `${modelTargetLabel(item)} · ${modelArchitectureLabel(item)}`
-}
-
-function handleSelectModel(item: (typeof listedDownloadedModels.value)[number]) {
-  if (ensembleEnabled.value) {
-    const next = ensembleModels.value.includes(item.name)
-      ? ensembleModels.value.filter(name => name !== item.name)
-      : [...ensembleModels.value, item.name]
-    ensembleModels.value = next
-    return
-  }
-  model.selectModel(item).catch(() => {})
-}
-
-function prefetchSelectedModelAdvancedParams() {
-  if (!shouldPrefetchAdvancedParams.value || detailLoading.value || isLoading.value || !selectedModelName.value) return
-  model.selectModel(selectedModelName.value).catch(() => {})
 }
 
 watch(selectedModelName, (name, previousName) => {
@@ -945,42 +842,6 @@ function positiveInferenceNumber(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 }
 
-function nonNegativeInferenceNumber(value: number | null | undefined) {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
-}
-
-function buildEnsembleInferenceParams(modelType?: string | null) {
-  const normalizedModelType = String(modelType || '').trim().toLowerCase()
-  const vrModel = normalizedModelType === 'vr'
-  const apolloModel = normalizedModelType === 'apollo'
-  const params: Record<string, unknown> = {
-    standardize: standardize.value,
-    normalize: normalize.value,
-  }
-  const batchSizeValue = positiveInferenceNumber(batch_size.value)
-  if (batchSizeValue !== null) params.batch_size = batchSizeValue
-
-  if (vrModel) {
-    const windowSizeValue = positiveInferenceNumber(window_size.value)
-    const aggressionValue = nonNegativeInferenceNumber(aggression.value)
-    const postProcessThresholdValue = nonNegativeInferenceNumber(post_process_threshold.value)
-    if (windowSizeValue !== null) params.window_size = windowSizeValue
-    if (aggressionValue !== null) params.aggression = aggressionValue
-    params.enable_post_process = enable_post_process.value
-    if (postProcessThresholdValue !== null) params.post_process_threshold = postProcessThresholdValue
-    params.high_end_process = high_end_process.value
-    return params
-  }
-
-  const overlapSizeValue = positiveInferenceNumber(overlap_size.value)
-  const numOverlapValue = apolloModel ? null : positiveInferenceNumber(num_overlap.value)
-  const chunkSizeValue = positiveInferenceNumber(chunk_size.value)
-  if (overlapSizeValue !== null) params.overlap_size = overlapSizeValue
-  if (numOverlapValue !== null) params.num_overlap = numOverlapValue
-  if (chunkSizeValue !== null) params.chunk_size = chunkSizeValue
-  return params
-}
-
 function buildEnsembleWorkflow(): WorkflowEntry {
   const outputStem = ensembleStem.value.trim()
   const runtimeDevice = settings.getRuntimeDeviceConfig(app.envInfo)
@@ -1070,7 +931,6 @@ function buildEnsembleWorkflow(): WorkflowEntry {
   }
 }
 
-
 const {
   outputDirectoryInput, outputDirectoryPlatform, outputDirectoryError, outputPreview,
   validateOutputDirectory, canStart, start,
@@ -1080,126 +940,17 @@ const {
   currentChunkIssue, task, focusedSeparationJobId, newestRunningJob, composingNewJob, ensembleModels, model,
   buildEnsembleWorkflow, outputNamingConfig, WINDOWS_RESERVED_FILENAMES, computed, launchTask,
 })
-function beginNextSeparation() {
-  stopAllPreviewAudio()
-  showLogModal.value = false
-  focusedSeparationJobId.value = null
-  composingNewJob.value = true
-}
+const {
+  beginNextSeparation, viewQueueJobLogs, removeSeparationRunRecords, queueJobInputSummary,
+  requestCancelQueueJob, goToResults, openCurrentLogs, handleCompletedAction,
+  handleCancelCurrentTask, retryCurrentTask,
+} = makeSeparateActions({
+  t, message, dialog, task, router, currentTask, currentBatchTasks, cancellingTaskId,
+  removingRunRecords, showLogModal, focusedSeparationJobId, composingNewJob,
+  stopAllPreviewAudio, focusQueueJob, cancelQueueJob, isNoResultSeparationJob,
+  isTerminalTaskStatus, getFileName,
+})
 
-function viewQueueJobLogs(target: SeparationJob) {
-  if (!focusQueueJob(target)) return
-  void nextTick(() => { showLogModal.value = true })
-}
-
-function removeSeparationRunRecords(jobs: SeparationJob[]) {
-  if (removingRunRecords.value || !jobs.length || jobs.some(job => !isNoResultSeparationJob(job))) return
-  const ids = jobs.map(job => job.id)
-  dialog.warning({
-    title: t('workbench.removeRun'), content: t('separate.removeRunRecordsContent', { count: ids.length }),
-    positiveText: t('results.removeAction'), negativeText: t('common.cancel'), positiveButtonProps: { type: 'error' },
-    onPositiveClick: async () => {
-      removingRunRecords.value = true
-      try {
-        await task.removeSeparationRuns(ids)
-        if (focusedSeparationJobId.value && ids.includes(focusedSeparationJobId.value)) {
-          showLogModal.value = false
-          focusedSeparationJobId.value = null
-        }
-      } catch (error) { message.error(error instanceof Error ? error.message : String(error)); return false }
-      finally { removingRunRecords.value = false }
-    },
-  })
-}
-
-function queueJobInputSummary(job: SeparationJob) {
-  const first = getFileName(job.primary.input)
-  return job.inputCount > 1
-    ? t('separate.queueBatchInputs', { count: job.inputCount, name: first })
-    : first
-}
-
-function requestCancelQueueJob(job: SeparationJob) {
-  if (!isSeparationJob(job)) return
-  dialog.warning({
-    title: t('separate.cancelBatchTitle'),
-    content: t('separate.cancelBatchHint', { name: job.model }),
-    positiveText: t('tasks.cancelAction'),
-    negativeText: t('common.cancel'),
-    positiveButtonProps: { type: 'error' },
-    onPositiveClick: () => cancelQueueJob(job),
-  })
-}
-
-function goToResults() {
-  router.push('/results')
-}
-
-function openCurrentLogs() {
-  if (!currentTask.value) return
-  showLogModal.value = true
-}
-
-
-function handleCompletedAction(key: string | number) {
-  if (key === 'retry') {
-    void retryCurrentTask()
-  } else if (key === 'logs') {
-    openCurrentLogs()
-  }
-}
-
-function handleCancelCurrentTask() {
-  const targets = currentBatchTasks.value.filter(item => !isTerminalTaskStatus(item.status))
-  if (!targets.length) return
-  dialog.warning({
-    title: t('tasks.cancelConfirmTitle'),
-    content: t('tasks.cancelConfirmContent'),
-    positiveText: t('tasks.cancelAction'),
-    negativeText: t('common.cancel'),
-    positiveButtonProps: { type: 'error' },
-    negativeButtonProps: { secondary: true },
-    onPositiveClick: async () => {
-      if (cancellingTaskId.value) return
-      cancellingTaskId.value = targets.length > 1 ? 'batch' : targets[0].id
-      try {
-        const results = await Promise.all(targets.map(item => task.cancelTask(item.id)))
-        if (results.some(Boolean)) message.success(t('tasks.cancelSuccess'))
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : String(error))
-      } finally {
-        cancellingTaskId.value = null
-      }
-    },
-  })
-}
-
-async function retryCurrentTask() {
-  const item = currentTask.value
-  if (!item) return
-  dialog.warning({
-    title: t('tasks.confirmRetryTitle'),
-    content: t('tasks.confirmRetry'),
-    positiveText: t('common.retry'),
-    negativeText: t('common.cancel'),
-    negativeButtonProps: { secondary: true },
-    onPositiveClick: async () => {
-      stopAllPreviewAudio()
-      try {
-        const next = await task.retryTask(item.id)
-        focusedSeparationJobId.value = next?.jobId || next?.id || focusedSeparationJobId.value
-        message.success(t('toast.taskRetried'))
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : String(error))
-      }
-    },
-  })
-}
-const audioSteps = computed(() => [
-  { title: t('separate.input'), text: t('separate.stepInputHint') },
-  { title: t('separate.output'), text: t('separate.stepOutputHint') },
-  { title: t('separate.model'), text: t('separate.stepRunHint') },
-])
 const namingModalContext = {
   namingTemplateInputRef, outputNamingTemplate, outputNamingPreviewParts, namingTokens,
   insertNamingToken, usesIndexToken, orderedOutputStems, draggedStemIndex,
@@ -1412,6 +1163,5 @@ const taskStageContext = {
     <SeparateLogModal v-model:show="showLogModal" :current-task="currentTask" :current-task-file-name="currentTaskFileName" />
   </div>
 </template>
-
 
 <style scoped src="./SeparateView.css"></style>
