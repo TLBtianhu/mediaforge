@@ -10,6 +10,7 @@ export type CustomModelRemovalResponse = WorkerCommandResult<'unregister_custom_
 export type CustomModelRelinkResponse = WorkerCommandResult<'relink_custom_model'>
 export type ModelStartResponse = { taskId: string; started: boolean }
 export type DeleteToolModelResponse = WorkerCommandResult<'delete_tool_model'>
+export type ListModelsResponse = WorkerCommandResult<'list_models'>
 
 /** Typed wrapper around the Rust `get_model_info` command (worker `model_info`). */
 export function getModelInfo(payload: ModelInfoRequest): Promise<ModelInfoResponse> {
@@ -79,4 +80,9 @@ export function remapCustomModelPaths(
   payload: WorkerCommandPayload<'remap_custom_model_paths'>,
 ): Promise<WorkerCommandResult<'remap_custom_model_paths'>> {
   return invokeWorkerCommand('remap_custom_model_paths', payload)
+}
+
+/** Rust `list_models` exposes the full audio-model rows for the main library. */
+export function listModels(payload: WorkerCommandPayload<'list_models'>): Promise<ListModelsResponse> {
+  return invokeWorkerCommand('list_models', payload)
 }

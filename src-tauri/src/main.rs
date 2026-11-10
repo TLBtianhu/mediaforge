@@ -182,6 +182,7 @@ fn main() {
             commands::app::editor::recording::discard_editor_recording,
             commands::app::session::get_build_info,
             commands::app::editor::preview::get_audio_metadata,
+            commands::app::models::list_models,
             commands::app::models::get_model_info,
             commands::app::models::get_model_storage_summary,
             commands::app::editor::import_editor_assets,

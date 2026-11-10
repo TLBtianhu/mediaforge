@@ -16,6 +16,7 @@ import { startModelHubDownload } from '@/features/downloads/startModelHubDownloa
 import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
 import {
   deleteToolModel as deleteToolModelRequest,
+  listModels,
   getModelInfo,
   getModelStorageSummary,
   inspectCustomModel as inspectCustomModelRequest,
@@ -85,14 +86,6 @@ export type ModelDefaultInferenceParams = {
   high_end_process?: boolean
 }
 
-type ModelsPayload = {
-  models: ModelEntry[]
-  categories: string[]
-  categoriesCn: string[]
-  count: number
-  modelDir: string
-  debugStatus?: ModelDebugStatus
-}
 
 export type ModelDebugStatus = {
   active: boolean
@@ -732,18 +725,18 @@ export const useModelStore = defineStore('model', () => {
     isLoading.value = true
     error.value = null
     try {
-      // 统一数据源：模型库（model_hub）是唯一真相，字段已与其对齐。
-      const result = await invoke<ModelsPayload>('model_hub', {
-        payload: {
-          modality: 'all',
-          modelDir: settings.modelDir || null,
-        },
+      // 主音频模型库走 list_models（完整 ModelEntry）；model_hub 只服务媒体模型页。
+      const result = await listModels({
+        includeLocalState: true,
+        includeCustom: true,
+        supportedOnly: true,
+        modelDir: settings.modelDir || null,
       })
-      models.value = result.models.map((model) => normalizeModelEntryWithOverrides(model))
-      categories.value = result.categories
-      categoriesCn.value = result.categoriesCn
-      modelDir.value = result.modelDir
-      debugStatus.value = result.debugStatus || null
+      models.value = result.models.map((model) => normalizeModelEntryWithOverrides(model as ModelEntry))
+      categories.value = result.categories || []
+      categoriesCn.value = result.categoriesCn || []
+      modelDir.value = result.modelDir || ''
+      debugStatus.value = (result.debugStatus as ModelDebugStatus) || null
       modelsLoaded.value = true
       const nextSelected = models.value.find((model) => model.name === selectedModel.value) || null
       if (nextSelected) selectedInfo.value = nextSelected
