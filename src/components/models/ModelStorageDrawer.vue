@@ -180,6 +180,11 @@ const { t } = useI18n()
 </template>
 
 <style scoped>
+.mc-dl-files {
+  font-size: 11px;
+  color: var(--on-surface-muted);
+}
+
 .storage-panel {
   display: grid;
   gap: 14px;

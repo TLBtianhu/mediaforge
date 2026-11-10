@@ -379,6 +379,34 @@ function handleDetailModalAfterLeave() {
   if (!showDetail.value) selectedInfo.value = null
 }
 
+const modelCardContext = {
+  modelNameParts,
+  modelNote,
+  modelUseCount,
+  isFavorite: (model: ModelEntry) => isFavoriteModel(model),
+  toggleFavorite: (model: ModelEntry, event: MouseEvent) => toggleFavorite(model, event),
+  selectModel: (model: ModelEntry) => selectModel(model),
+  openContextMenu: (event: MouseEvent, model: ModelEntry) => openModelContextMenu(event, model),
+  showModelTypeTag: (model: ModelEntry) => showModelTypeTag(model),
+  targetStemLabel: (model: ModelEntry) => targetStemLabel(model),
+  categoryLabel: (model: ModelEntry) => categoryLabel(model),
+  sizeLabel: (model: ModelEntry) => sizeLabel(model),
+  isDeletingModel: (name: string) => isDeletingModel(name),
+  deleteMessage: (name: string) => deleteStatusMessage(name),
+  deleteTask: (name: string) => deleteTasks.value[name],
+  isCustomModel: (model: ModelEntry) => isCustomModel(model),
+  relinkCustom: (model: ModelEntry, event?: MouseEvent) => relinkCustomModel(model, event),
+  downloadTask: (name: string) => downloadTasks.value[name],
+  cardDownloadMessage: (name: string) => cardDownloadMessage(name),
+  downloadSpeed: (name: string) => downloadSpeed(name),
+  openDownloadDetail: (name: string) => openDownloadDetail(name),
+  cancelDownload: (model: ModelEntry, event?: MouseEvent) => cancelDownloadModel(model, event),
+  downloadModel: (model: ModelEntry, event?: MouseEvent) => downloadModel(model, event),
+  isModelBusy: (model: ModelEntry) => isModelBusy(model),
+  cardProgressPercent: (model: ModelEntry) => cardProgressPercent(model),
+  cardProgressState: (model: ModelEntry) => cardProgressState(model),
+}
+
 const modelDetailContext = {
   isFavorite: (model: ModelEntry) => isFavoriteModel(model),
   statusType: (model: ModelEntry) => modelStatusType(model),
@@ -776,172 +804,14 @@ onMounted(() => {
       <!-- Model Grid -->
       <template v-else>
         <div :class="['model-grid', `model-grid--${modelViewMode}`]">
-          <div
+
+          <ModelCard
             v-for="model in pagedModels"
             :key="model.name"
-            :data-guide="model.supported ? 'model-library' : undefined"
-            :class="['model-card', {
-              'model-card--selected': selectedModel === model.name,
-              'model-card--unsupported': !model.supported,
-              'model-card--busy': isModelBusy(model)
-            }]"
-            tabindex="0"
-            :aria-label="t('models.viewDetailAria', { name: model.name })"
-            :aria-current="selectedModel === model.name ? 'true' : undefined"
-            @click="selectModel(model)"
-            @contextmenu.stop.prevent="openModelContextMenu($event, model)"
-            @keydown.enter.self.prevent="selectModel(model)"
-            @keydown.space.self.prevent="selectModel(model)"
-          >
-          <!-- Card Header -->
-          <div class="mc-header">
-            <div class="mc-title">
-              <span class="mc-name" :title="model.name"><template v-for="(part, index) in modelNameParts(model.name)" :key="index">{{ part }}<wbr /></template></span>
-              <span v-if="modelNote(model)" class="mc-note" :title="modelNote(model)">{{ modelNote(model) }}</span>
-            </div>
-            <div class="mc-controls">
-              <n-button
-                quaternary
-                circle
-                size="tiny"
-                :type="isFavoriteModel(model) ? 'warning' : 'default'"
-                :title="isFavoriteModel(model) ? t('models.unfavorite') : t('models.favorite')"
-                :aria-label="isFavoriteModel(model) ? t('models.unfavorite') : t('models.favorite')"
-                class="mc-favorite"
-                @click.stop="toggleFavorite(model, $event)"
-              >
-                <template #icon>
-                  <n-icon :component="isFavoriteModel(model) ? Star : StarOutline" />
-                </template>
-              </n-button>
-              <n-button
-                quaternary
-                circle
-                size="tiny"
-                class="mc-more"
-                :title="t('models.moreActions')"
-                :aria-label="t('models.moreActions')"
-                @click.stop="openModelContextMenu($event, model)"
-              >
-                <template #icon><n-icon :component="EllipsisHorizontalOutline" /></template>
-              </n-button>
-            </div>
-          </div>
-          <!-- Meta Tags -->
-          <div class="mc-tags">
-            <n-tag v-if="model.architecture" :bordered="false" size="tiny" type="info" round :title="model.architecture">
-              {{ model.architecture }}
-            </n-tag>
-            <n-tag v-if="showModelTypeTag(model)" :bordered="false" size="tiny" round :title="model.modelType || undefined">
-              {{ model.modelType }}
-            </n-tag>
-          </div>
-
-          <!-- Stable field positions keep models comparable across each card row. -->
-          <div class="mc-meta">
-            <div class="mc-meta-item mc-meta-item--target">
-              <span class="mc-label">{{ t('models.targetStem') }}</span>
-              <span class="mc-value" :title="targetStemLabel(model)">{{ targetStemLabel(model) || '—' }}</span>
-            </div>
-            <div class="mc-meta-item mc-meta-item--category">
-              <span class="mc-label">{{ t('models.category') }}</span>
-              <span class="mc-value" :title="categoryLabel(model) || undefined">{{ categoryLabel(model) || '—' }}</span>
-            </div>
-            <div class="mc-meta-item mc-meta-item--usage">
-              <span class="mc-label">{{ t('models.useCountLabel') }}</span>
-              <span class="mc-value">{{ t('models.useCountValue', { count: modelUseCount(model) }) }}</span>
-            </div>
-          </div>
-
-          <!-- Bottom bar: size on the left, whatever the model needs on the right. Keeping
-               them in one element means a state change swaps its contents instead of
-               re-choreographing the card grid. -->
-          <!-- Action row: one line in every state, so a downloading card is the same height as
-               its neighbours. The progress itself becomes the card's bottom edge. -->
-          <div class="mc-bottom">
-            <span class="mc-size">{{ sizeLabel(model) }}</span>
-
-            <template v-if="isDeletingModel(model.name)">
-              <span class="mc-state mc-state--downloading">
-                <span class="mc-state__dot" />
-                {{ deleteStatusMessage(model.name) || t('models.deleting') }}
-              </span>
-              <span class="mc-pct">{{ deleteTasks[model.name]?.progress || 0 }}%</span>
-            </template>
-
-            <!-- Imported models are local-only: a missing file means "relink", not "download". -->
-            <template v-else-if="isCustomModel(model)">
-              <span :class="['mc-state', model.downloaded ? 'mc-state--ok' : 'mc-state--warn']">
-                <n-icon :component="model.downloaded ? CheckmarkCircleOutline : LinkOutline" />
-                {{ model.downloaded ? t('models.customReady') : t('models.customFilesMissing') }}
-               </span>
-               <div class="mc-actions">
-                 <n-button size="tiny" quaternary @click.stop="relinkCustomModel(model, $event)">
-                   <template #icon><n-icon :component="LinkOutline" /></template>
-                 </n-button>
-               </div>
-            </template>
-
-            <template v-else-if="!model.downloaded && downloadTasks[model.name] && downloadTasks[model.name].status !== 'done'">
-              <span :class="['mc-state', `mc-state--${downloadTasks[model.name].status}`]">
-                <span class="mc-state__dot" />
-                {{ cardDownloadMessage(model.name) }}
-              </span>
-              <span v-if="downloadSpeed(model.name)" class="mc-speed">{{ downloadSpeed(model.name) }}</span>
-              <span class="mc-pct">{{ downloadTasks[model.name].progress }}%</span>
-              <div class="mc-actions">
-                <n-button size="tiny" quaternary @click.stop="openDownloadDetail(model.name)">
-                  {{ t('models.downloadDetail') }}
-                </n-button>
-                <n-button
-                  v-if="['preparing', 'downloading'].includes(downloadTasks[model.name].status)"
-                  size="tiny"
-                  quaternary
-                  @click.stop="cancelDownloadModel(model, $event)"
-                >
-                  {{ t('common.cancel') }}
-                </n-button>
-                <n-button
-                  v-else-if="downloadTasks[model.name].status !== 'preparing'"
-                  size="tiny"
-                  quaternary
-                  type="primary"
-                  @click.stop="downloadModel(model, $event)"
-                >
-                  {{ downloadTasks[model.name]?.status === 'interrupted' ? t('models.continueDownload') : t('common.resume') }}
-                </n-button>
-              </div>
-            </template>
-
-            <template v-else-if="model.downloaded">
-              <span class="mc-state mc-state--ok">
-                <n-icon :component="CheckmarkCircleOutline" />
-                {{ t('models.downloaded') }}
-              </span>
-            </template>
-
-            <n-button
-              v-else-if="model.supported"
-              class="mc-download-button"
-              secondary
-              size="tiny"
-              :disabled="isModelBusy(model)"
-              @click.stop="downloadModel(model, $event)"
-            >
-              <template #icon><n-icon :component="DownloadOutline" /></template>
-              {{ t('common.download') }}
-            </n-button>
-          </div>
-
-          <!-- Progress as the card's bottom edge: findable at a glance across the grid, and it
-               costs no height, which is what made downloading cards tower over their neighbours. -->
-          <div
-            v-if="cardProgressPercent(model) !== null"
-            class="mc-progressbar"
-            :style="{ '--mc-progress': cardProgressPercent(model) + '%' }"
-            :data-state="cardProgressState(model)"
+            :model="model"
+            :selected="selectedModel === model.name"
+            :context="modelCardContext"
           />
-          </div>
         </div>
         <div class="pagination-row">
           <span class="text-sm text-muted">{{ t('models.pageSummary', { total: sortedModels.length }) }}</span>

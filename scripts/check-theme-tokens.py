@@ -91,7 +91,7 @@ DEBT: dict[str, tuple[int, str]] = {
     "src/views/DebugView.css": (38, "调试页深色日志块与页面阴影混用，待决定是否跟随主题"),
     "src/views/ImageView.vue": (3, "计数色与遮罩仍为字面量"),
     "src/views/ModelHubView.vue": (4, "var() 回退值仍为字面量"),
-    "src/views/models/models-view.css": (4, "var() 回退值仍为字面量"),
+    "src/views/models/models-view.css": (2, "var() 回退值仍为字面量"),
     "src/views/PluginsView.vue": (3, "状态色回退值仍为字面量"),
     "src/views/QueueView.vue": (2, "状态色回退值仍为字面量"),
     "src/views/results/results-view.css": (3, "var() 回退值与内阴影仍为字面量"),
