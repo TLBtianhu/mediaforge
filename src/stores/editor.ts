@@ -1,14 +1,15 @@
 import { defineStore } from 'pinia'
-import { STEM_NAME_KEYS, LEGACY_STEM_NAMES, EXACT_STEM_KEYS, stemKeyFromOutput, normalizedDefaultName, recordingTrackIndex, trackColor, duplicatedTrackColor, fileName, stripExt, COLOR_BY_STEM } from '@/stores/editorStems'
-import { makeId, clamp, cloneTracks, normalizeSource, normalizeClip, normalizeTrack, normalizeSession, toPersistedSession } from '@/stores/editorNormalize'
+import { makeEditorTrackActions } from '@/stores/editorTrackActions'
+import { makeEditorSourceActions } from '@/stores/editorSourceActions'
+import { trackColor, duplicatedTrackColor, fileName, stripExt } from '@/stores/editorStems'
+import { makeId, clamp, cloneTracks, normalizeClip, normalizeSession, toPersistedSession } from '@/stores/editorNormalize'
 import { masterLimiterRenderRate, normalizeMasterLimiter } from '@/utils/masterLimiter'
 import { createLogger } from '@/utils/logger'
-import { clonePluginChain, hasEditorPlugins, neutralPluginRenderProject, normalizePluginChain, pluginProcessingProject, projectPluginSlots, pluginProjectVersion } from '@/utils/editorPlugins'
+import { clonePluginChain, hasEditorPlugins, neutralPluginRenderProject, pluginProcessingProject, projectPluginSlots, pluginProjectVersion } from '@/utils/editorPlugins'
 import { assertPluginProjectSupported, currentPluginSession, discardUnavailablePluginSession, observePluginSession, PluginHostDialogPendingError, pluginHostCapabilities, reloadPluginSession, snapshotPluginStates, unloadPluginSession, type PluginSessionState } from '@/utils/pluginHost'
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { generateWaveformPeaks, getAudioMetadata, startEditorMixExport } from '@/api/editor'
-import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import i18n, { getCurrentLocale } from '@/i18n'
 import {
@@ -20,7 +21,6 @@ import { registerWindowCloseGuard, WindowClosePersistenceError } from '@/utils/w
 import { isTauriRuntime } from '@/utils/appStore'
 import type { SeparationTask, StemOutput } from '@/stores/task'
 import type {
-  EditorMasterLimiter,
   EditorPluginSlot,
   EditorExportFormat,
   EditorExportOptions,
@@ -28,7 +28,6 @@ import type {
   EditorSession,
   EditorSource,
   EditorSourceRole,
-  EditorClip,
   EditorTrack,
   EditorAssetTreeNode,
 } from '@/types/editor'
@@ -46,271 +45,28 @@ export type {
   EditorAssetTreeNode,
 } from '@/types/editor'
 
-type HistorySnapshot = {
-  tracks: EditorTrack[]
-  masterVolume: number
-  masterPan: number
-  masterLimiter?: EditorMasterLimiter
-  pluginChain?: EditorPluginSlot[]
-  selectedTrackId: string | null
-  selectedClipId: string | null
-}
-
-type ScanAudioPathsResult = {
-  files: string[]
-  warnings: string[]
-}
-
-type LinkedEditorAsset = {
-  path: string
-  name: string
-  originKind: string
-  originRoot?: string | null
-  relativePath?: string | null
-  missing?: boolean
-}
-
-type ImportEditorAssetsResult = {
-  files: LinkedEditorAsset[]
-  warnings: string[]
-}
-
-type EditorProjectCleanupResult = {
-  deletedProjectIds: string[]
-  missingProjectIds: string[]
-  blockedProjectIds: string[]
-  failedProjectIds: string[]
-}
-
-export type OrphanedEditorProject = {
-  projectId: string
-  sourceTaskId: string
-  name: string
-}
-
-type RelinkEditorSourcesResult = {
-  project: PersistedSession
-  relinked: number
-  unresolved: string[]
-}
-
-type PickFileResult = string | null
-
-type AudioMetadata = WorkerCommandResult<'audio_metadata'>
-type WaveformPeaks = WorkerCommandResult<'waveform_peaks'>
-
-type LoadedWaveformPeaks = {
-  peaks: number[]
-  channelPeaks: number[][]
-}
-
-type ExportResult = {
-  path: string
-  duration: number
-  sampleRate: number
-  channels: number
-  format: string
-  peakProtectionApplied?: boolean
-  peakAdjustmentDb?: number
-  pluginTailLimited?: boolean
-}
-
-export type EditorExportProgress = {
-  phase: 'preparing' | 'rendering' | 'finalizing' | 'writing' | 'completed'
-  completed: number
-  total: number
-  current: string
-}
-
-type EditorExportWorkerEvent = {
-  type: string
-  taskId?: string | null
-  requestId?: string | null
-  payload?: Record<string, unknown>
-}
-
-type PendingEditorExport = {
-  id: string
-  projectId: string
-  exportDir?: string
-  progressOffset?: number
-  resolve: (result: ExportResult) => void
-  reject: (error: Error) => void
-}
-
-export class EditorExportCancelledError extends Error {
-  constructor(message = 'Editor export cancelled') {
-    super(message)
-    this.name = 'EditorExportCancelledError'
-  }
-}
-
-export type PersistedSession = EditorSession & { version: 4 }
-
-const HISTORY_LIMIT = 80
-const AUTO_SAVE_DELAY = 420
-const NATIVE_RENDER_PROGRESS_WEIGHT = 75
-const WAVEFORM_FULL_RESOLUTION = 2200
-
-
-
-
-function blankProjectName() {
-  const locale = getCurrentLocale()
-  return String(i18n.global.t('projects.blankProjectDefaultName', {}, { locale }))
-}
-
-export function isDefaultBlankProjectName(name: string) {
-  const normalized = String(name || '').trim()
-  if (!normalized) return true
-  return normalized === '未命名工程'
-    || normalized === '未命名空工程'
-    || normalized === 'Untitled Project'
-    || normalized === 'Untitled Blank Project'
-}
-
-
-
-
-function localizedStemName(stemKey: string | null | undefined, fallback: string) {
-  if (!stemKey) return fallback
-  const exactStemKey = EXACT_STEM_KEYS.get(normalizedDefaultName(stemKey))
-  const broadStemKey = stemKeyFromOutput({ stem: stemKey })
-  const fallbackIsLegacyName = (LEGACY_STEM_NAMES[broadStemKey] || [])
-    .some(name => normalizedDefaultName(name) === normalizedDefaultName(fallback))
-  const canonicalKey = exactStemKey || (fallbackIsLegacyName ? broadStemKey : '')
-  const translationKey = STEM_NAME_KEYS[canonicalKey]
-  return translationKey ? String(i18n.global.t(translationKey)) : fallback
-}
-
-
-
-function localizedAutoTrackName(
-  name: string,
-  role: EditorSourceRole,
-  stemKey?: string | null,
-) {
-  if (role === 'recording') {
-    const index = recordingTrackIndex(name)
-    return index === null ? name : String(i18n.global.t('editor.recordingTrackName', { index }))
-  }
-  if (role === 'stem') return localizedStemName(stemKey, name)
-  return name
-}
-
-
-
-function normalizePathKey(value: string) {
-  return value.replace(/\\/g, '/').toLowerCase()
-}
-
-function sourceDisplayGroup(source: EditorSource) {
-  if (source.role === 'recording') return String(i18n.global.t('editor.assetGroupRecordings'))
-  if (source.originKind === 'task-result' || source.role === 'stem') {
-    return String(i18n.global.t('editor.assetGroupSeparationResults'))
-  }
-  return String(i18n.global.t('editor.assetGroupExternal'))
-}
-
-function resolveAssetUrl(path: string) {
-  try {
-    return convertFileSrc(path)
-  } catch {
-    const normalized = path.replace(/\\/g, '/')
-    if (/^[a-zA-Z]:\//.test(normalized)) return `file:///${normalized}`
-    return path
-  }
-}
-
-async function loadPeaksFromCache(path?: string | null, sourcePath?: string | null) {
-  if (!path) return null
-  try {
-    const response = await fetch(resolveAssetUrl(path))
-    if (!response.ok) return null
-    const data = await response.json() as { path?: unknown, peaks?: unknown, channelPeaks?: unknown }
-    if (sourcePath && typeof data.path === 'string' && normalizePathKey(data.path) !== normalizePathKey(sourcePath)) {
-      return null
-    }
-    if (!Array.isArray(data.peaks)) return null
-    return {
-      peaks: data.peaks.map((value) => Number(value || 0)),
-      channelPeaks: Array.isArray(data.channelPeaks)
-        ? data.channelPeaks
-            .filter((channel) => Array.isArray(channel))
-            .map((channel) => channel.map((value) => Number(value || 0)))
-        : [],
-    }
-  } catch {
-    return null
-  }
-}
-
-
-
-
-
-const hasPeaks = (p?: number[]) => p !== undefined && p.length > 0 && !(p.length === 1 && p[0] === -1)
-
-function hasRenderablePeaks(source: EditorSource) {
-  return hasPeaks(source.peaks) && (source.channels < 2 || (source.channelPeaks?.length || 0) >= 2)
-}
-
-function cachedPeaksMatchSource(source: EditorSource, peaks: LoadedWaveformPeaks) {
-  return source.channels < 2 || peaks.channelPeaks.length >= 2
-}
-
-function sourceToExportAsset(source: EditorSource) {
-  return {
-    id: source.id,
-    path: source.path,
-    name: source.name,
-    duration: source.duration,
-    sampleRate: source.sampleRate,
-    channels: source.channels,
-    peaksPath: source.peaksPath || null,
-    peaks: [],
-  }
-}
-
-function runLimited<T>(items: T[], limit: number, runner: (item: T) => Promise<void>) {
-  let index = 0
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (index < items.length) {
-      const item = items[index]
-      index += 1
-      await runner(item)
-    }
-  })
-  return Promise.all(workers)
-}
-
-function trackToExportTrack(track: EditorTrack, source?: EditorSource) {
-  const clips = track.clips?.length
-    ? track.clips.map((clip) => ({ ...clip }))
-    : [{
-        id: `clip_${track.id}`,
-        assetId: track.sourceId,
-        start: 0,
-        offset: 0,
-        duration: source?.duration || 0,
-        volume: 1,
-        fadeIn: track.fadeIn,
-        fadeOut: track.fadeOut,
-        muted: false,
-        locked: false,
-      }]
-  return {
-    id: track.id,
-    sourceId: track.sourceId,
-    name: track.name,
-    type: track.role,
-    volume: track.volume,
-    pan: track.pan,
-    muted: track.muted,
-    solo: track.solo,
-    clips,
-  }
-}
+import { EditorExportCancelledError } from '@/stores/editorSupport'
+import type {
+  ExportResult, PendingEditorExport, ImportEditorAssetsResult, ScanAudioPathsResult,
+  RelinkEditorSourcesResult, EditorExportWorkerEvent, EditorExportProgress,
+  EditorProjectCleanupResult, OrphanedEditorProject, PersistedSession, AudioMetadata,
+  WaveformPeaks, LoadedWaveformPeaks, HistorySnapshot,
+} from '@/stores/editorSupport'
+import {
+  AUTO_SAVE_DELAY, HISTORY_LIMIT, NATIVE_RENDER_PROGRESS_WEIGHT, WAVEFORM_FULL_RESOLUTION,
+  blankProjectName, localizedAutoTrackName, normalizePathKey,
+  sourceDisplayGroup, loadPeaksFromCache, hasPeaks,
+  hasRenderablePeaks, cachedPeaksMatchSource, sourceToExportAsset, runLimited,
+  trackToExportTrack, isDefaultBlankProjectName,
+} from '@/stores/editorSupport'
+export type {
+  OrphanedEditorProject, EditorExportProgress, PersistedSession,
+  HistorySnapshot, ScanAudioPathsResult, LinkedEditorAsset, ImportEditorAssetsResult,
+  EditorProjectCleanupResult, RelinkEditorSourcesResult, AudioMetadata,
+  WaveformPeaks, LoadedWaveformPeaks, ExportResult, EditorExportWorkerEvent,
+  PendingEditorExport,
+} from '@/stores/editorSupport'
+export { EditorExportCancelledError, isDefaultBlankProjectName } from '@/stores/editorSupport'
 
 export const useEditorStore = defineStore('editor', () => {
   const session = ref<EditorSession | null>(null)
@@ -715,20 +471,13 @@ export const useEditorStore = defineStore('editor', () => {
     if (exporting.value) await cancelExport()
   }, 100))
 
-  function selectTrack(trackId: string | null) {
-    selectedTrackId.value = trackId
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    if (!track?.clips?.some((clip) => clip.id === selectedClipId.value)) {
-      selectedClipId.value = track?.clips?.[0]?.id || null
-    }
-  }
-
-  function selectClip(trackId: string, clipId: string) {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    if (!track?.clips?.some((clip) => clip.id === clipId)) return
-    selectedTrackId.value = trackId
-    selectedClipId.value = clipId
-  }
+  const {
+    selectTrack, selectClip, renameTrack, localizeDefaultTrackNames,
+    toggleTrackFlag, setTrackVolume, setTrackPan, setClipFades, setClipTiming,
+    setMasterVolume, setMasterLimiter, setMasterPan, removeTrack, removeClip, removeSource, setPluginChain,
+  } = makeEditorTrackActions({
+    session, selectedTrackId, selectedClipId, pushHistory, scheduleSave, interactionDepth, sourceMap,
+  })
 
   async function requestProjectFromTask(task: SeparationTask) {
     return invoke<PersistedSession>('create_editor_project_from_task', {
@@ -1379,241 +1128,12 @@ export const useEditorStore = defineStore('editor', () => {
     } satisfies ScanAudioPathsResult
   }
 
-  function sourcesInUse() {
-    if (!session.value) return []
-    const sourceIds = new Set(session.value.tracks.flatMap((track) => [
-      track.sourceId,
-      ...(track.clips || []).map((clip) => clip.assetId),
-    ]).filter(Boolean))
-    return session.value.sources.filter((source) => sourceIds.has(source.id))
-  }
-
-  function missingSources() {
-    return session.value?.sources.filter((source) => source.missing) || []
-  }
-
-  function missingSourcesInUse() {
-    return sourcesInUse().filter((source) => source.missing)
-  }
-
-  function assertNoMissingSourcesInUse(message: string) {
-    const missing = missingSourcesInUse()
-    if (!missing.length) return
-    throw new Error(message)
-  }
-
-  async function pickRelinkFile() {
-    return invoke<PickFileResult>('pick_single_audio_file')
-  }
-
-  async function relinkSource(sourceId: string, pickedPath?: string | null) {
-    if (!session.value) throw new Error('Editor session is not loaded')
-    const source = session.value.sources.find((item) => item.id === sourceId)
-    if (!source) throw new Error('Source asset not found')
-    const resolvedPath = pickedPath ?? await pickRelinkFile()
-    if (!resolvedPath) return null
-    const result = await invoke<RelinkEditorSourcesResult>('relink_editor_sources', {
-      payload: {
-        projectId: session.value.id,
-        sourceId,
-        pickedPath: resolvedPath,
-      },
-    })
-    session.value = normalizeSession(result.project, localizedAutoTrackName)
-    await hydratePeaksFromCache(session.value.id)
-    hydrateSessionSourcesInBackground(session.value.id)
-    return result
-  }
-
-  async function relinkMissingSources(pickedPath?: string | null) {
-    const firstMissing = missingSources()[0]
-    if (!firstMissing) return null
-    return relinkSource(firstMissing.id, pickedPath)
-  }
-
-  function renameTrack(trackId: string, name: string, commit = true) {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    if (!track) return
-    const currentName = track.name
-    const trimmedName = name.trim()
-    const resolvedName = trimmedName || currentName
-
-    if (!commit) {
-      if (resolvedName === currentName) return
-      track.name = resolvedName
-      return
-    }
-
-    if (resolvedName === currentName) {
-      scheduleSave()
-      return
-    }
-
-    pushHistory()
-    track.name = resolvedName
-    track.autoName = false
-    scheduleSave()
-  }
-
-  function localizeDefaultTrackNames() {
-    if (!session.value) return
-    for (const track of session.value.tracks) {
-      if (!track.autoName) continue
-      const source = sourceMap.value.get(track.sourceId)
-      track.name = localizedAutoTrackName(track.name, track.role, source?.stemKey)
-    }
-  }
-
-  function toggleTrackFlag(trackId: string, flag: 'muted' | 'solo') {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    if (!track) return
-    pushHistory()
-    track[flag] = !track[flag]
-    scheduleSave()
-  }
-
-  function setTrackVolume(trackId: string, value: number) {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    if (!track) return
-    track.volume = clamp(Number(value), 0, 2)
-    if (interactionDepth.value === 0) scheduleSave()
-  }
-
-  function setTrackPan(trackId: string, value: number) {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    if (!track) return
-    track.pan = clamp(Number(value), -1, 1)
-    if (interactionDepth.value === 0) scheduleSave()
-  }
-
-  function setClipFades(
-    trackId: string,
-    clipId: string,
-    patch: { fadeIn?: number; fadeOut?: number },
-  ) {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    const clip = track?.clips?.find((item) => item.id === clipId)
-    if (!track || !clip) return
-    const maxDuration = Math.max(0, Number(clip.duration || 0))
-    pushHistory()
-    if (patch.fadeIn !== undefined) clip.fadeIn = clamp(Number(patch.fadeIn || 0), 0, maxDuration)
-    if (patch.fadeOut !== undefined) clip.fadeOut = clamp(Number(patch.fadeOut || 0), 0, maxDuration)
-    syncSingleClipFadeCompatibility(track)
-    scheduleSave()
-  }
-
-  function setClipTiming(
-    trackId: string,
-    clipId: string,
-    patch: Partial<Pick<EditorClip, 'start' | 'offset' | 'duration'>>,
-  ) {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    const clip = track?.clips?.find((item) => item.id === clipId)
-    if (!track || !clip) return
-    const source = sourceMap.value.get(clip.assetId)
-    const sourceDuration = Math.max(0, Number(source?.duration || 0))
-    const maxOffset = sourceDuration > 0 ? Math.max(0, sourceDuration - 0.01) : Number.MAX_SAFE_INTEGER
-    const nextOffset = clamp(Number(patch.offset ?? clip.offset), 0, maxOffset)
-    const availableDuration = sourceDuration > 0
-      ? Math.max(0.01, sourceDuration - nextOffset)
-      : Number.MAX_SAFE_INTEGER
-    clip.start = Math.max(0, Number(patch.start ?? clip.start))
-    clip.offset = nextOffset
-    clip.duration = clamp(Number(patch.duration ?? clip.duration), 0.01, availableDuration)
-    clip.fadeIn = clamp(clip.fadeIn, 0, clip.duration)
-    clip.fadeOut = clamp(clip.fadeOut, 0, clip.duration)
-    syncSingleClipFadeCompatibility(track)
-    if (interactionDepth.value === 0) scheduleSave()
-  }
-
-  function setMasterVolume(value: number) {
-    if (!session.value) return
-    session.value.masterVolume = clamp(Number(value), 0, 2)
-    if (interactionDepth.value === 0) scheduleSave()
-  }
-
-  function setMasterLimiter(patch: Partial<EditorMasterLimiter>) {
-    if (!session.value) return
-    const previous = normalizeMasterLimiter(session.value.masterLimiter)
-    const next = normalizeMasterLimiter({ ...previous, ...patch })
-    if (JSON.stringify(previous) === JSON.stringify(next)) return
-    pushHistory()
-    session.value.masterLimiter = next
-    if (interactionDepth.value === 0) scheduleSave()
-  }
-
-  function setMasterPan(value: number) {
-    if (!session.value) return
-    session.value.masterPan = clamp(Number(value), -1, 1)
-    if (interactionDepth.value === 0) scheduleSave()
-  }
-
-  function removeTrack(trackId: string) {
-    if (!session.value) return
-    const track = session.value.tracks.find((item) => item.id === trackId)
-    if (!track) return
-    pushHistory()
-    session.value.tracks = session.value.tracks.filter((item) => item.id !== trackId)
-    if (selectedTrackId.value === trackId) {
-      selectTrack(session.value.tracks[0]?.id || null)
-    }
-    scheduleSave()
-  }
-
-  function removeClip(trackId: string, clipId: string) {
-    const track = session.value?.tracks.find((item) => item.id === trackId)
-    const clipIndex = track?.clips?.findIndex((item) => item.id === clipId) ?? -1
-    if (!track || clipIndex < 0) return false
-
-    pushHistory()
-    const removedClip = track.clips![clipIndex]
-    const nextClips = track.clips!.filter((item) => item.id !== clipId)
-    track.clips = nextClips
-    syncSingleClipFadeCompatibility(track)
-
-    if (track.sourceId === removedClip.assetId && !nextClips.some((item) => item.assetId === removedClip.assetId)) {
-      track.sourceId = nextClips[nextClips.length - 1]?.assetId || ''
-    }
-
-    if (selectedTrackId.value === trackId && selectedClipId.value === clipId) {
-      selectedClipId.value = nextClips[Math.min(clipIndex, nextClips.length - 1)]?.id || null
-    }
-
-    scheduleSave()
-    return true
-  }
-
-  function removeSource(sourceId: string) {
-    if (!session.value) return { removedSource: false, removedTracks: 0 }
-    const source = session.value.sources.find((item) => item.id === sourceId)
-    if (!source) return { removedSource: false, removedTracks: 0 }
-    if (source.role === 'stem') return { removedSource: false, removedTracks: 0 }
-
-    pushHistory()
-    const removedTrackIds: string[] = []
-    session.value.tracks = session.value.tracks.flatMap((track) => {
-      const nextClips = (track.clips || []).filter((clip) => clip.assetId !== sourceId)
-      const usedByTrack = track.sourceId === sourceId || nextClips.length !== (track.clips || []).length
-      if (!usedByTrack) return [track]
-      if (!nextClips.length) {
-        removedTrackIds.push(track.id)
-        return []
-      }
-      const nextTrack = { ...track, sourceId: nextClips[nextClips.length - 1].assetId, clips: nextClips }
-      syncSingleClipFadeCompatibility(nextTrack)
-      return [nextTrack]
-    })
-    session.value.sources = session.value.sources.filter((item) => item.id !== sourceId)
-
-    if (selectedTrackId.value && removedTrackIds.includes(selectedTrackId.value)) {
-      selectTrack(session.value.tracks[0]?.id || null)
-    } else if (selectedClipId.value && !selectedTrack.value?.clips?.some((clip) => clip.id === selectedClipId.value)) {
-      selectTrack(selectedTrackId.value)
-    }
-
-    scheduleSave()
-    return { removedSource: true, removedTracks: removedTrackIds.length }
-  }
+  const {
+    sourcesInUse, missingSources, missingSourcesInUse, assertNoMissingSourcesInUse,
+    pickRelinkFile, relinkSource, relinkMissingSources,
+  } = makeEditorSourceActions({
+    session, invoke, hydratePeaksFromCache, hydrateSessionSourcesInBackground,
+  })
 
   async function ensureEditorExportListener() {
     if (!isTauriRuntime() || exportUnlisten) return
@@ -1821,15 +1341,6 @@ export const useEditorStore = defineStore('editor', () => {
       exportCancelling.value = false
       throw error
     }
-  }
-
-  function setPluginChain(trackId: string | null, chain: EditorPluginSlot[]) {
-    if (!session.value) return
-    const target = trackId ? session.value.tracks.find(track => track.id === trackId) : session.value
-    if (!target) return
-    pushHistory()
-    target.pluginChain = clonePluginChain(chain)
-    scheduleSave()
   }
 
   async function recoverPluginChain(options: {
