@@ -2,7 +2,6 @@
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import RuntimePreparationProgress from '@/components/RuntimePreparationProgress.vue'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
-import AppBrandMark from '@/components/AppBrandMark.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -49,7 +48,6 @@ import {
   InformationCircleOutline,
   DocumentTextOutline,
   LinkOutline,
-  OpenOutline,
   DownloadOutline,
   AlertCircleOutline,
   CheckmarkCircleOutline,
@@ -57,12 +55,8 @@ import {
   PlayOutline,
   HardwareChipOutline,
   CloudDownloadOutline,
-  RefreshOutline,
-  ChevronForwardOutline,
-  CompassOutline,
-  OptionsOutline,
 } from '@vicons/ionicons5'
-import VersionUpdateCard from '@/components/settings/VersionUpdateCard.vue'
+import SettingsAboutPanel from '@/components/settings/SettingsAboutPanel.vue'
 
 const { t, locale: currentLocale } = useI18n()
 const message = useMessage()
@@ -482,104 +476,19 @@ onMounted(async () => {
       </aside>
 
       <main class="settings-content">
-        <section v-if="activeSection === 'about'" class="about-panel">
-          <article class="about-hero">
-            <div class="about-hero__main">
-              <div class="about-logo-wrap">
-                <AppBrandMark class="about-logo" :size="80" variant="hero" />
-              </div>
-              <div class="about-hero__copy">
-                <span class="about-eyebrow">{{ t('settings.aboutEyebrow') }}</span>
-                <h2 class="about-hero__title">MediaForge</h2>
-              </div>
-            </div>
-
-            <div class="about-stats" :aria-label="t('settings.about')">
-              <div v-for="item in aboutVersionItems" :key="item.label" class="about-stat">
-                <span class="about-stat__label">{{ item.label }}</span>
-                <strong class="about-stat__value">{{ item.value }}</strong>
-                <small class="about-stat__meta">{{ item.meta }}</small>
-              </div>
-            </div>
-          </article>
-
-          <article class="about-build-card" :class="`about-build-card--${buildVerification.tone}`">
-            <div class="about-build-card__head">
-              <span>{{ t('settings.officialVerification') }}</span>
-              <strong>{{ buildVerification.label }}</strong>
-            </div>
-            <p>{{ buildVerification.description }}</p>
-            <div class="about-build-fingerprint">
-              <span>{{ t('settings.buildFingerprint') }}</span>
-              <code>{{ buildFingerprint }}</code>
-            </div>
-          </article>
-
-          <article class="about-info-card about-guide-card" data-guide="guide-help">
-            <div class="section-title section-title--plain">
-              <span class="section-title__icon"><n-icon :component="CompassOutline" size="18" /></span>
-              <span>{{ t('beginnerGuide.label') }}</span>
-            </div>
-            <div class="about-guide-card__actions">
-              <n-button v-if="settings.beginnerGuideProgress.status === 'active'" type="primary" @click="beginnerGuide.start()">
-                <template #icon><n-icon :component="ChevronForwardOutline" /></template>
-                {{ t('beginnerGuide.resume') }}
-              </n-button>
-              <n-button type="primary" secondary @click="beginnerGuide.start(true)">
-                <template #icon><n-icon :component="RefreshOutline" /></template>
-                {{ t('beginnerGuide.restart') }}
-              </n-button>
-              <n-button secondary @click="showParameterHelp = true">
-                <template #icon><n-icon :component="OptionsOutline" /></template>
-                {{ t('parameterHelp.label') }}
-              </n-button>
-            </div>
-          </article>
-
-          <div class="about-detail-grid">
-            <article class="about-info-card about-info-card--license">
-              <div class="section-title section-title--plain">
-                <span class="section-title__icon">
-                  <n-icon :component="DocumentTextOutline" size="18" />
-                </span>
-                <span>{{ t('settings.license') }}</span>
-              </div>
-              <div class="license-stack">
-                <div class="license-row">
-                  <span>{{ t('settings.desktopLicense') }}</span>
-                  <strong>{{ desktopLicense }}</strong>
-                </div>
-                <div class="license-row">
-                  <span>{{ t('settings.coreLicense') }}</span>
-                  <strong>{{ coreLicense }}</strong>
-                </div>
-              </div>
-            </article>
-
-            <article class="about-info-card about-info-card--links">
-              <div class="section-title section-title--plain">
-                <span class="section-title__icon">
-                  <n-icon :component="LinkOutline" size="18" />
-                </span>
-                <span>{{ t('settings.relatedLinks') }}</span>
-              </div>
-              <div class="about-link-list">
-                <button
-                  v-for="link in aboutLinks"
-                  :key="link.url"
-                  type="button"
-                  class="about-link-item"
-                  @click="openExternalUrl(link.url)"
-                >
-                  <span class="about-link-item__icon"><n-icon :component="link.icon" size="18" /></span>
-                  <span class="about-link-item__label">{{ link.label }}</span>
-                  <n-icon class="about-link-item__open" :component="OpenOutline" size="16" />
-                </button>
-              </div>
-            </article>
-            <VersionUpdateCard />
-          </div>
-        </section>
+        <SettingsAboutPanel
+          v-if="activeSection === 'about'"
+          :version-items="aboutVersionItems"
+          :build-verification="buildVerification"
+          :build-fingerprint="buildFingerprint"
+          :guide-active="settings.beginnerGuideProgress.status === 'active'"
+          :about-links="aboutLinks"
+          :desktop-license="desktopLicense"
+          :core-license="coreLicense"
+          @start-guide="beginnerGuide.start($event)"
+          @parameter-help="showParameterHelp = true"
+          @open-link="openExternalUrl"
+        />
 
         <!-- Appearance -->
         <section v-else-if="activeSection === 'appearance'" class="settings-section-panel">
