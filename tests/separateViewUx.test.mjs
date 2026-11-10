@@ -12,6 +12,8 @@ const { descriptor } = parse(readFileSync(path, 'utf8'))
 const template = descriptor.template?.content || ''
 const style = descriptor.styles.map(item => item.content
   || (item.src ? readFileSync(new URL(item.src, path), 'utf8') : '')).join('\n')
+const advancedPath = new URL('../src/components/separate/SeparateAdvancedPanel.vue', import.meta.url)
+const advancedTemplate = parse(readFileSync(advancedPath, 'utf8')).descriptor.template?.content || ''
 const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
 const modelsTemplate = parse(readFileSync(modelsPath, 'utf8')).descriptor.template?.content || ''
 const scriptSource = descriptor.scriptSetup.content
@@ -350,10 +352,10 @@ test('output stem bulk actions distinguish all stems from an empty selection', (
 })
 
 test('advanced inference settings expose model-scoped save and reset actions', async () => {
-  assert.ok(template.includes('@click="saveCurrentModelInferenceDefaults"'))
-  assert.ok(template.includes('@click="resetCurrentModelInferenceDefaults"'))
-  assert.ok(template.includes("t('separate.saveInferenceDefaults')"))
-  assert.ok(template.includes("t('separate.resetInferenceDefaults')"))
+  assert.ok(advancedTemplate.includes('@click="ctx.saveCurrentModelInferenceDefaults"'))
+  assert.ok(advancedTemplate.includes('@click="ctx.resetCurrentModelInferenceDefaults"'))
+  assert.ok(advancedTemplate.includes("t('separate.saveInferenceDefaults')"))
+  assert.ok(advancedTemplate.includes("t('separate.resetInferenceDefaults')"))
 
   const calls = []
   const info = {

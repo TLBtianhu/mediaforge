@@ -47,6 +47,7 @@ import { makePlayback } from './separate/playback'
 import { makeStemSelection } from './separate/stemSelection'
 import { makeQueue } from './separate/queue'
 import { makeOutputDirectory } from './separate/outputDirectory'
+import { makeSlotPanel } from './separate/slotPanel'
 import { launchTask } from '@/features/tasks/launch'
 import { makeTaskPresentation } from './separate/taskPresentation'
 import { makeReorder } from './separate/reorder'
@@ -70,9 +71,8 @@ import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
 import ModelSlotFields from '@/components/ModelSlotFields.vue'
+import SeparateAdvancedPanel from '@/components/separate/SeparateAdvancedPanel.vue'
 import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
-import { buildRenderPlan, type ModelInterface } from '@/litegraph/renderPlan.ts'
-import { layoutFor } from '@/litegraph/layouts.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
 import ParameterFieldGuide from '@/components/ParameterFieldGuide.vue'
@@ -274,49 +274,9 @@ const slotRefs: Record<string, Ref<unknown>> = {
   enable_post_process, high_end_process, post_process_threshold, standardize,
 }
 
-const slotPanelInterface = computed<ModelInterface | null>(() => {
-  const info = currentModelInfo.value
-  const slots = (info as { slots?: ModelInterface['slots'] } | null)?.slots
-  if (!info?.name || !slots || Object.keys(slots).length === 0) return null
-  const task = (info as { slotTask?: string }).slotTask || 'separation'
-  const interface_: ModelInterface = { modelId: info.name, task, slots: { ...slots } }
-  // 派生约束（分块对齐）由后端给出，这里只把参数透传给滑块吸附
-  const constraint = currentChunkConstraint.value
-  const chunk = interface_.slots.chunk_size
-  if (chunk && constraint) {
-    interface_.slots.chunk_size = {
-      ...chunk,
-      align: { step: constraint.step, offset: constraint.offset, min: constraint.min },
-    }
-  }
-  return interface_
+const { slotPanelPlan, slotPanelValues, updateSlotPanel } = makeSlotPanel({
+  computed, currentModelInfo, currentChunkConstraint, slotRefs,
 })
-
-const slotPanelPlan = computed(() => {
-  const current = slotPanelInterface.value
-  return current ? buildRenderPlan(current, layoutFor(current.task)) : null
-})
-
-const slotPanelValues = computed<Record<string, unknown>>(() => {
-  const current = slotPanelInterface.value
-  if (!current) return {}
-  const values: Record<string, unknown> = {}
-  for (const [slot, binding] of Object.entries(current.slots)) {
-    const target = slotRefs[binding.bind]
-    if (target && target.value !== undefined) values[slot] = target.value
-  }
-  return values
-})
-
-function updateSlotPanel(next: Record<string, unknown>) {
-  const current = slotPanelInterface.value
-  if (!current) return
-  for (const [slot, value] of Object.entries(next)) {
-    const binding = current.slots[slot]
-    const target = binding ? slotRefs[binding.bind] : undefined
-    if (target) target.value = value
-  }
-}
 
 const isApolloModel = computed(() => currentModelType.value === 'apollo')
 const showStandardizeField = computed(() => Boolean(currentModelInfo.value) && !isVrModel.value)
@@ -342,6 +302,18 @@ function hasInferenceField(key: string) {
   if (key === 'standardize' || key === 'normalize') return false
   if (key === 'num_overlap' && isApolloModel.value) return false
   return Object.prototype.hasOwnProperty.call(currentModelDefaults.value, key)
+}
+
+const advancedPanelContext = {
+  slotPanelPlan, slotPanelValues, updateSlotPanel, advancedParamsLoading,
+  guidedParameter, hasInferenceField, hasVisibleAdvancedFields,
+  batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
+  post_process_threshold, standardize, enable_post_process, high_end_process,
+  overlapSizeStep, currentInferenceSampleStep, chunkSizeStep,
+  currentChunkConstraint, currentChunkIssue, updateOverlapSize, updateChunkSize,
+  showStandardizeField, currentModelInfo, currentModelDefaultsResolved,
+  resetCurrentModelInferenceDefaults, saveCurrentModelInferenceDefaults,
+  restoreInferenceNumberFallback: (key: string) => task.restoreInferenceNumberFallback(key as never),
 }
 
 watch(() => beginnerGuide.parameterStep, active => {
@@ -1990,87 +1962,7 @@ const audioSteps = computed(() => [
             <n-collapse v-model:expanded-names="expandedInferenceSections">
               <n-collapse-item :title="t('inference.advancedParams')" name="inference">
                 <template #header-extra><n-button v-if="!beginnerGuide.parameterStep" text size="small" :aria-label="t('parameterHelp.label')" @click.stop="openParameterHelp"><n-icon :component="InformationCircleOutline" size="18" /></n-button></template>
-                <p class="advanced-hint">{{ t('separate.advancedPanelHint') }}</p>
-                <div v-if="advancedParamsLoading" class="advanced-loading">
-                  <n-spin size="small" />
-                  <span>{{ t('separate.advancedPanelLoading') }}</span>
-                </div>
-                <!-- 有槽位接口时按渲染计划画（分组/顺序来自布局档）；没有接口的模型走下面的旧控件。 -->
-                <ModelSlotFields
-                  v-if="slotPanelPlan"
-                  :plan="slotPanelPlan"
-                  :model-value="slotPanelValues"
-                  :active-slot="guidedParameter?.id"
-                  @update:model-value="updateSlotPanel"
-                />
-                <template v-else>
-                <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
-                  <n-grid-item v-if="hasInferenceField('batch_size')">
-                    <div class="field-block" data-parameter-guide="batch_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'batch_size' }">
-                      <label>{{ t('inference.batchSize') }}</label>
-                      <ModelParameterField :label="t('inference.batchSize')" :value="batch_size" type="integer" :min="0" :max="32" @update:value="value => batch_size = Number(value)" @blur="task.restoreInferenceNumberFallback('batch_size')" />
-                    </div>
-                  </n-grid-item>
-                  <n-grid-item v-if="hasInferenceField('overlap_size')">
-                    <div class="field-block" data-parameter-guide="overlap_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'overlap_size' }">
-                      <label>{{ t('inference.overlapSize') }}</label>
-                      <AlignedInferenceInputNumber :value="overlap_size" :step="overlapSizeStep" :alignment-step="currentInferenceSampleStep" @update:value="updateOverlapSize" @blur="task.restoreInferenceNumberFallback('overlap_size')" />
-                    </div>
-                  </n-grid-item>
-                  <n-grid-item v-if="hasInferenceField('num_overlap')">
-                    <div class="field-block" data-parameter-guide="num_overlap" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'num_overlap' }">
-                      <label>{{ t('inference.numOverlap') }}</label>
-                      <ModelParameterField :label="t('inference.numOverlap')" :value="num_overlap" type="integer" :min="0" :max="128" @update:value="value => num_overlap = Number(value)" @blur="task.restoreInferenceNumberFallback('num_overlap')" />
-                    </div>
-                  </n-grid-item>
-                  <n-grid-item v-if="hasInferenceField('chunk_size')">
-                    <div class="field-block" data-parameter-guide="chunk_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'chunk_size' }">
-                      <label>{{ t('inference.chunkSize') }}</label>
-                      <AlignedInferenceInputNumber :value="chunk_size" :step="chunkSizeStep" :alignment-step="currentChunkConstraint?.step || currentInferenceSampleStep" :alignment-offset="currentChunkConstraint?.offset" :alignment-min="currentChunkConstraint?.min" @update:value="updateChunkSize" @blur="task.restoreInferenceNumberFallback('chunk_size')" />
-                      <n-text v-if="currentChunkIssue" type="warning">{{ t('inference.invalidChunkSize', currentChunkIssue) }}</n-text>
-                    </div>
-                  </n-grid-item>
-                  <n-grid-item v-if="hasInferenceField('window_size')">
-                    <div class="field-block" data-parameter-guide="window_size" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'window_size' }">
-                      <label>{{ t('inference.vrWindowSize') }}</label>
-                      <ModelParameterField :label="t('inference.vrWindowSize')" :value="window_size" type="integer" :min="0" :max="4096" @update:value="value => window_size = Number(value)" @blur="task.restoreInferenceNumberFallback('window_size')" />
-                    </div>
-                  </n-grid-item>
-                  <n-grid-item v-if="hasInferenceField('aggression')">
-                    <div class="field-block" data-parameter-guide="aggression" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'aggression' }">
-                      <label>{{ t('inference.vrAggression') }}</label>
-                      <ModelParameterField :label="t('inference.vrAggression')" :value="aggression" type="integer" :min="0" :max="100" @update:value="value => aggression = Number(value)" />
-                    </div>
-                  </n-grid-item>
-                  <n-grid-item v-if="hasInferenceField('post_process_threshold')">
-                    <div class="field-block" data-parameter-guide="post_process_threshold" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'post_process_threshold' }">
-                      <label>{{ t('inference.vrPostProcessThreshold') }}</label>
-                      <ModelParameterField :label="t('inference.vrPostProcessThreshold')" :value="post_process_threshold" type="number" :min="0" :max="1" :step="0.05" @update:value="value => post_process_threshold = Number(value)" />
-                    </div>
-                  </n-grid-item>
-                </n-grid>
-                <div class="check-list check-list--spaced">
-                  <n-checkbox v-if="showStandardizeField" v-model:checked="standardize" data-parameter-guide="standardize" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'standardize' }">{{ t('inference.standardize') }}</n-checkbox>
-                  <n-checkbox v-if="hasInferenceField('enable_post_process')" v-model:checked="enable_post_process" data-parameter-guide="enable_post_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'enable_post_process' }">{{ t('inference.vrEnablePostProcess') }}</n-checkbox>
-                  <n-checkbox v-if="hasInferenceField('high_end_process')" v-model:checked="high_end_process" data-parameter-guide="high_end_process" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'high_end_process' }">{{ t('inference.vrHighEndProcess') }}</n-checkbox>
-                </div>
-                </template>
-                <p v-if="!advancedParamsLoading && !hasVisibleAdvancedFields" class="advanced-empty">
-                  {{ t('separate.advancedPanelEmpty') }}
-                </p>
-                <div
-                  v-if="currentModelInfo && currentModelDefaultsResolved && !advancedParamsLoading"
-                  class="advanced-actions"
-                  data-parameter-guide="modelDefaults"
-                  :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'modelDefaults' }"
-                >
-                  <n-button size="small" secondary @click="resetCurrentModelInferenceDefaults">
-                    {{ t('separate.resetInferenceDefaults') }}
-                  </n-button>
-                  <n-button size="small" type="primary" @click="saveCurrentModelInferenceDefaults">
-                    {{ t('separate.saveInferenceDefaults') }}
-                  </n-button>
-                </div>
+                <SeparateAdvancedPanel :context="advancedPanelContext" />
               </n-collapse-item>
             </n-collapse>
           </div>

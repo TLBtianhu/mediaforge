@@ -8,16 +8,18 @@ const models = parse(readFileSync(new URL('../src/views/ModelsView.vue', import.
 const alignedInput = parse(readFileSync(new URL('../src/components/AlignedInferenceInputNumber.vue', import.meta.url), 'utf8')).descriptor
 const simpleWorkflow = parse(readFileSync(new URL('../src/components/workflow/WorkflowSimpleNodeEditor.vue', import.meta.url), 'utf8')).descriptor
 const separateTemplate = separate.template?.content || ''
+const advanced = parse(readFileSync(new URL('../src/components/separate/SeparateAdvancedPanel.vue', import.meta.url), 'utf8')).descriptor
+const advancedTemplate = advanced.template?.content || ''
 const modelsTemplate = models.template?.content || ''
 const simpleWorkflowTemplate = simpleWorkflow.template?.content || ''
 
 test('separation parameters use model-provided sample steps with existing fallbacks', () => {
   assert.ok(separate.scriptSetup?.content.includes('resolveInferenceSampleStep(currentModelInfo.value?.inferenceParamMeta, 1)'))
   assert.ok(separate.scriptSetup?.content.includes('resolveInferenceChunkStep(currentModelInfo.value?.inferenceParamMeta, 1024)'))
-  assert.ok(separateTemplate.includes(':step="overlapSizeStep"'))
-  assert.ok(separateTemplate.includes(':step="chunkSizeStep"'))
-  assert.ok(separateTemplate.includes('@update:value="updateOverlapSize"'))
-  assert.ok(separateTemplate.includes('@update:value="updateChunkSize"'))
+  assert.ok(advancedTemplate.includes(':step="ctx.overlapSizeStep"'))
+  assert.ok(advancedTemplate.includes(':step="ctx.chunkSizeStep"'))
+  assert.ok(advancedTemplate.includes('@update:value="ctx.updateOverlapSize"'))
+  assert.ok(advancedTemplate.includes('@update:value="ctx.updateChunkSize"'))
 })
 
 test('model defaults editor uses the same sample-step metadata', () => {
