@@ -50,6 +50,7 @@ import { buildModelCategoryOptionsFromPairs } from '@/utils/modelCategory'
 import { MODEL_LIBRARY_PAGE_SIZES } from '@/utils/pagination'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
 import ModelProgressBlock from '@/components/ModelProgressBlock.vue'
+import ModelStorageDrawer from '@/components/models/ModelStorageDrawer.vue'
 import DownloadDetailModal from '@/components/DownloadDetailModal.vue'
 import CustomModelImportDialog from '@/components/CustomModelImportDialog.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
@@ -1223,135 +1224,31 @@ onMounted(() => {
       </n-card>
     </n-modal>
 
-    <n-drawer v-model:show="showStorage" :width="760" placement="right" :z-index="isTutorialFrame() ? 3500 : undefined" :trap-focus="!isTutorialFrame()">
-      <n-drawer-content :title="t('models.storageTitle')" closable>
-        <div class="storage-panel">
-          <div class="storage-summary">
-            <div class="storage-stat">
-              <span>{{ t('models.storageTotal') }}</span>
-              <strong>{{ formatBytes(modelStorageSummary?.totalBytes || 0) }}</strong>
-            </div>
-            <div class="storage-stat">
-              <span>{{ t('models.storageDownloadedCount') }}</span>
-              <strong>{{ modelStorageSummary?.downloadedCount || 0 }}</strong>
-            </div>
-            <div class="storage-stat">
-              <span>{{ t('models.storageResidual') }}</span>
-              <strong>{{ formatBytes(modelStorageSummary?.residualBytes || 0) }}</strong>
-            </div>
-          </div>
-
-          <div class="storage-dir">
-            <span class="text-muted">{{ t('models.modelDir') }}:</span>
-            <code>{{ modelStorageSummary?.modelDir || modelDir || settings.modelDir || '?' }}</code>
-          </div>
-
-          <div class="storage-toolbar">
-            <n-input v-model:value="storageSearch" :placeholder="t('models.storageSearch')" clearable>
-              <template #prefix><n-icon :component="SearchOutline" /></template>
-            </n-input>
-            <n-select
-              v-model:value="storageSort"
-              :options="[
-                { label: t('models.storageSortSizeDesc'), value: 'size-desc' },
-                { label: t('models.storageSortSizeAsc'), value: 'size-asc' },
-                { label: t('models.storageSortNameAsc'), value: 'name-asc' },
-                { label: t('models.storageSortNameDesc'), value: 'name-desc' },
-              ]"
-              style="width:160px"
-            />
-            <n-switch v-model:value="storageDownloadedOnly" size="small" />
-            <span class="text-sm text-muted">{{ t('models.downloadedOnly') }}</span>
-          </div>
-
-          <div class="storage-actions">
-            <n-button size="small" secondary :loading="storageLoading" @click="modelStore.loadModelStorageSummary({ force: true })">
-              <template #icon><n-icon :component="RefreshOutline" /></template>
-              {{ t('models.storageRefresh') }}
-            </n-button>
-            <n-button size="small" secondary @click="openModelDir">
-              <template #icon><n-icon :component="FolderOpenOutline" /></template>
-              {{ t('models.openModelDir') }}
-            </n-button>
-            <n-button
-              size="small"
-              type="error"
-              secondary
-              :disabled="!selectedStorageModels.length || hasDeletingSelectedStorageModels || batchDeleteState.active || residualCleanupState.active"
-              @click="confirmBatchDelete"
-            >
-              {{ t('models.storageBatchDelete') }}
-              <span v-if="selectedStorageModels.length">（{{ selectedStorageModels.length }} / {{ formatBytes(selectedStorageBytes) }}）</span>
-            </n-button>
-            <n-button
-              size="small"
-              type="warning"
-              secondary
-              :disabled="!(modelStorageSummary?.residualFiles.length) || batchDeleteState.active || residualCleanupState.active"
-              @click="confirmCleanupResidual"
-            >
-              {{ t('models.storageCleanup') }}
-            </n-button>
-          </div>
-
-          <div v-if="batchDeleteState.active" class="storage-progress-card">
-            <strong>{{ t('models.batchDeleting', { count: batchDeleteState.totalModels }) }}</strong>
-            <span class="text-muted">{{ batchDeleteState.completedModels }} / {{ batchDeleteState.totalModels }}</span>
-            <div class="text-sm text-muted">{{ batchDeleteState.currentModel }}</div>
-            <div v-if="batchDeleteState.currentModel && deleteTasks[batchDeleteState.currentModel]" class="mc-dl-files">
-              {{ t('models.deleteProgress', { completed: deleteTasks[batchDeleteState.currentModel]?.completedFiles || 0, total: deleteTasks[batchDeleteState.currentModel]?.totalFiles || 0 }) }}
-            </div>
-            <n-progress
-              :percentage="batchDeleteProgress"
-              :show-indicator="false"
-              :height="8"
-              :border-radius="4"
-              type="line"
-              :rail-color="'var(--surface-3)'"
-            />
-          </div>
-
-          <div v-if="residualCleanupState.active" class="storage-progress-card">
-            <strong>{{ t('models.cleanupInProgress') }}</strong>
-            <span class="text-muted">{{ t('models.deleteProgress', { completed: residualCleanupState.completedFiles, total: residualCleanupState.totalFiles }) }}</span>
-            <n-progress
-              :percentage="residualCleanupState.progress"
-              :show-indicator="false"
-              :height="8"
-              :border-radius="4"
-              type="line"
-              :rail-color="'var(--surface-3)'"
-            />
-          </div>
-
-          <div class="storage-list">
-            <label
-              v-for="item in storageModels"
-              :key="item.selectionKey"
-              class="storage-row"
-            >
-              <n-checkbox
-                :checked="selectedStorageModels.includes(item.selectionKey)"
-                :disabled="item.sizeBytes <= 0 || (item.kind === 'catalog' && isDeletingModel(item.id)) || batchDeleteState.active || residualCleanupState.active"
-                @update:checked="(checked: boolean) => setStorageSelected(item.selectionKey, checked)"
-              />
-              <div class="storage-row__main">
-                <strong>{{ item.name }}</strong>
-                <span>{{ t('models.storageFileCount', { count: item.fileCount }) }}</span>
-              </div>
-              <n-tag size="small" :bordered="false" :type="item.kind === 'tool' ? 'info' : item.downloaded ? 'success' : 'default'">
-                {{ storageModelTypeLabel(item) }}
-              </n-tag>
-              <strong class="storage-row__size">{{ formatBytes(item.sizeBytes || item.expectedSizeBytes) }}</strong>
-            </label>
-            <div v-if="!storageModels.length" class="empty-state storage-empty">
-              <n-icon :component="CubeOutline" size="36" color="var(--on-surface-muted)" />
-              <span class="text-muted">{{ t('models.searchEmpty') }}</span>
-            </div>
-          </div>
-        </div>
-      </n-drawer-content>
-    </n-drawer>
+    <ModelStorageDrawer
+      v-model:show="showStorage"
+      v-model:search="storageSearch"
+      v-model:sort="storageSort"
+      v-model:downloaded-only="storageDownloadedOnly"
+      :summary="modelStorageSummary"
+      :model-dir="modelDir"
+      :settings-model-dir="settings.modelDir || ''"
+      :loading="storageLoading"
+      :models="storageModels"
+      :selected="selectedStorageModels"
+      :selected-bytes="selectedStorageBytes"
+      :has-deleting-selected="hasDeletingSelectedStorageModels"
+      :batch-delete-state="batchDeleteState"
+      :residual-cleanup-state="residualCleanupState"
+      :delete-tasks="deleteTasks"
+      :batch-delete-progress="batchDeleteProgress"
+      :storage-model-type-label="storageModelTypeLabel"
+      :is-deleting-model="isDeletingModel"
+      :set-storage-selected="setStorageSelected"
+      @refresh="modelStore.loadModelStorageSummary({ force: true })"
+      @open-model-dir="openModelDir"
+      @batch-delete="confirmBatchDelete"
+      @cleanup-residual="confirmCleanupResidual"
+    />
 
     <DownloadDetailModal
       v-model:show="showDownloadDetail"
