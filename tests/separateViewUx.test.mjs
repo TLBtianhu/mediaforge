@@ -18,6 +18,7 @@ const readyPath = new URL('../src/components/separate/SeparateReadyStage.vue', i
 const readyTemplate = parse(readFileSync(readyPath, 'utf8')).descriptor.template?.content || ''
 const taskPath = new URL('../src/components/separate/SeparateTaskStage.vue', import.meta.url)
 const taskTemplate = parse(readFileSync(taskPath, 'utf8')).descriptor.template?.content || ''
+const stageState = readFileSync(new URL('../src/views/separate/stageState.ts', import.meta.url), 'utf8')
 const queueTemplate = parse(readFileSync(queuePath, 'utf8')).descriptor.template?.content || ''
 const advancedTemplate = parse(readFileSync(advancedPath, 'utf8')).descriptor.template?.content || ''
 const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
@@ -295,7 +296,7 @@ test('separation task views and queue actions exclude editor workflows while ret
 })
 
 test('terminal task actions use state-specific hierarchy', () => {
-  assert.ok(scriptSource.includes('const completedActionOptions = computed<DropdownOption[]>'))
+  assert.ok(stageState.includes('const completedActionOptions = computed('))
   assert.ok(taskTemplate.includes('v-if="ctx.taskPanelState === \'done\'"'))
   assert.ok(taskTemplate.includes("t('separate.moreActions')"))
   assert.ok(taskTemplate.includes("t('separate.viewResults')"))
