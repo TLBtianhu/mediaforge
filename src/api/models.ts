@@ -11,6 +11,7 @@ export type CustomModelRelinkResponse = WorkerCommandResult<'relink_custom_model
 export type ModelStartResponse = { taskId: string; started: boolean }
 export type DeleteToolModelResponse = WorkerCommandResult<'delete_tool_model'>
 export type ListModelsResponse = WorkerCommandResult<'list_models'>
+export type ModelHubListResult = Extract<WorkerCommandResult<'model_hub'>, { models: unknown[] }>
 
 /** Typed wrapper around the Rust `get_model_info` command (worker `model_info`). */
 export function getModelInfo(payload: ModelInfoRequest): Promise<ModelInfoResponse> {
@@ -85,4 +86,11 @@ export function remapCustomModelPaths(
 /** Rust `list_models` exposes the full audio-model rows for the main library. */
 export function listModels(payload: WorkerCommandPayload<'list_models'>): Promise<ListModelsResponse> {
   return invokeWorkerCommand('list_models', payload)
+}
+
+/** Media model hub listing (audio/image/video); the main audio library uses listModels. */
+export function modelHub(
+  payload: WorkerCommandPayload<'model_hub'>,
+): Promise<WorkerCommandResult<'model_hub'>> {
+  return invokeWorkerCommand('model_hub', payload)
 }

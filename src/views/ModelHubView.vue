@@ -1,9 +1,8 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { invokeWorkerCommand } from '@/api/worker'
+import { modelHub, type ModelHubListResult } from '@/api/models'
 import { KnownObject } from '@/types/contracts'
-import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
@@ -28,8 +27,7 @@ defineOptions({ name: 'ModelHubView' })
 const modelStore = useModelStore()
 
 type Modality = 'all' | 'audio' | 'image' | 'video'
-type HubListResult = Extract<WorkerCommandResult<'model_hub'>, { models: unknown[] }>
-type ModelRecord = KnownObject<HubListResult['models'][number]>
+type ModelRecord = KnownObject<ModelHubListResult['models'][number]>
 type WorkerPayload = {
   fraction?: number
   current?: string
@@ -112,9 +110,9 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-  const result = (await invokeWorkerCommand('model_hub', {
+  const result = (await modelHub({
     operation: 'list', query: '', modality: 'all', source: 'modelscope', modelDir: modelDir.value,
-  })) as HubListResult
+  })) as ModelHubListResult
     models.value = result.models || []
     environment.value = result.environment || {}
     if (!modelDir.value) modelDir.value = result.modelDir
