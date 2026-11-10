@@ -16,6 +16,8 @@ const advancedPath = new URL('../src/components/separate/SeparateAdvancedPanel.v
 const queuePath = new URL('../src/components/separate/SeparateQueueModal.vue', import.meta.url)
 const readyPath = new URL('../src/components/separate/SeparateReadyStage.vue', import.meta.url)
 const readyTemplate = parse(readFileSync(readyPath, 'utf8')).descriptor.template?.content || ''
+const taskPath = new URL('../src/components/separate/SeparateTaskStage.vue', import.meta.url)
+const taskTemplate = parse(readFileSync(taskPath, 'utf8')).descriptor.template?.content || ''
 const queueTemplate = parse(readFileSync(queuePath, 'utf8')).descriptor.template?.content || ''
 const advancedTemplate = parse(readFileSync(advancedPath, 'utf8')).descriptor.template?.content || ''
 const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
@@ -245,8 +247,8 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(queueModuleSource.includes('const recentFailedJobs'))
   assert.ok(scriptSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
   assert.ok(queueModuleSource.includes('clearFinishedSessionJobs(separationSessionJobs.value.map'))
-  assert.ok(template.includes("t('separate.addNextBatch')"))
-  assert.ok(template.includes('v-if="hasQueueEntries"'))
+  assert.ok(taskTemplate.includes("t('separate.addNextBatch')"))
+  assert.ok(taskTemplate.includes('v-if="ctx.hasQueueEntries"'))
   assert.ok(template.includes('v-model:show="showQueueModal"'))
   assert.ok(queueTemplate.includes('v-for="job in ctx.queueJobs"'))
   assert.ok(queueTemplate.includes("job.status === 'failed'"))
@@ -294,12 +296,12 @@ test('separation task views and queue actions exclude editor workflows while ret
 
 test('terminal task actions use state-specific hierarchy', () => {
   assert.ok(scriptSource.includes('const completedActionOptions = computed<DropdownOption[]>'))
-  assert.ok(template.includes('v-if="taskPanelState === \'done\'"'))
-  assert.ok(template.includes("t('separate.moreActions')"))
-  assert.ok(template.includes("t('separate.viewResults')"))
-  assert.ok(template.includes("t('separate.runAgain')"))
-  assert.ok(template.includes('class="result-path"'))
-  assert.ok(template.includes("@click.stop=\"task.revealPath(currentTask.outputs[0]?.path || currentTask.output)\""))
+  assert.ok(taskTemplate.includes('v-if="ctx.taskPanelState === \'done\'"'))
+  assert.ok(taskTemplate.includes("t('separate.moreActions')"))
+  assert.ok(taskTemplate.includes("t('separate.viewResults')"))
+  assert.ok(taskTemplate.includes("t('separate.runAgain')"))
+  assert.ok(taskTemplate.includes('class="result-path"'))
+  assert.ok(taskTemplate.includes('@click.stop="ctx.revealOutput"'))
 })
 
 test('output stem picker uses the app scrollbar instead of native browser controls', () => {

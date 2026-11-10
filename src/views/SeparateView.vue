@@ -79,6 +79,7 @@ import SeparateEnsembleModal from '@/components/separate/SeparateEnsembleModal.v
 import SeparateNoteModal from '@/components/separate/SeparateNoteModal.vue'
 import SeparateLogModal from '@/components/separate/SeparateLogModal.vue'
 import SeparateReadyStage from '@/components/separate/SeparateReadyStage.vue'
+import SeparateTaskStage from '@/components/separate/SeparateTaskStage.vue'
 import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
@@ -1356,6 +1357,18 @@ const readyStageContext = {
   submittingJob, start,
 }
 
+const taskStageContext = {
+  currentTask, taskPanelState, statusLabel, showQueueModal, queueJobs, openCurrentLogs,
+  currentBatchTitle, currentBatchLine, currentBatchProgress, currentBatchIsMulti,
+  progressTitle, progressDetail, taskSubMessage, currentTaskDuration,
+  currentTaskOutputPath, currentTaskOutputSummary, cancellingTaskId,
+  handleCancelCurrentTask, beginNextSeparation, hasQueueEntries, currentBatchOutputSummary,
+  playableOutputs, playableOutputGroups, getFileName, toggleOutputPlayback,
+  playingOutputPath, getOutputPlayback, seekOutput, formatPlaybackTime,
+  completedActionOptions, handleCompletedAction, goToResults, retryCurrentTask,
+  revealOutput: () => task.revealPath(currentTask.value?.outputs[0]?.path || currentTask.value?.output || normalizedOutputDir.value),
+}
+
 </script>
 
 <template>
@@ -1484,187 +1497,10 @@ const readyStageContext = {
 
       <main class="console__stage">
         <transition name="stage-swap" mode="out-in">
-          <section v-if="taskPanelState === 'running' && currentTask" key="running" class="stage-view stage-view--running">
-            <div class="stage-hero">
-              <div class="stage-hero__top">
-                <span class="stage-badge stage-badge--running">
-                  <span class="stage-badge__dot"></span>
-                  {{ statusLabel(currentTask.status) }}
-                </span>
-                <div class="stage-hero__top-actions">
-                  <n-button text size="small" data-guide="task-queue" @click="showQueueModal = true">
-                    {{ t('separate.batchQueue') }} ({{ queueJobs.length }})
-                  </n-button>
-                  <n-button text size="small" :disabled="!currentTask.logs.length" @click="openCurrentLogs">
-                    <template #icon><n-icon :component="TerminalOutline" /></template>
-                    {{ t('tasks.logs') }}
-                  </n-button>
-                </div>
-              </div>
-              <div class="stage-hero__title">
-                <h2>{{ currentBatchTitle }}</h2>
-                <p>{{ currentBatchLine }}</p>
-              </div>
-              <div class="progress-ring-block">
-                <div class="progress-ring" :style="{ '--pct': currentBatchProgress }">
-                  <div class="progress-ring__center">
-                    <strong>{{ currentBatchProgress }}</strong>
-                    <span>%</span>
-                  </div>
-                </div>
-                <div class="progress-ring__meta">
-                  <div class="progress-meta-line">
-                    <span class="progress-meta-line__label">
-                      {{ currentBatchIsMulti ? t('separate.batchOverallProgress') : progressTitle(currentTask) }}
-                    </span>
-                    <span v-if="!currentBatchIsMulti && progressDetail(currentTask)" class="progress-meta-line__detail">{{ progressDetail(currentTask) }}</span>
-                  </div>
-                  <p v-if="taskSubMessage(currentTask)" class="progress-submessage">{{ taskSubMessage(currentTask) }}</p>
-                  <div class="progress-facts">
-                    <span><n-icon :component="TimeOutline" /> {{ currentTaskDuration }}</span>
-                    <span :title="currentTaskOutputPath">{{ t('separate.outputTo') }} {{ currentTaskOutputSummary }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="stage-actions">
-              <n-button
-                secondary
-                strong
-                size="large"
-                @click="beginNextSeparation"
-              >
-                {{ t('separate.addNextBatch') }}
-              </n-button>
-              <n-button
-                strong
-                size="large"
-                type="error"
-                secondary
-                class="stage-actions__primary"
-                :loading="cancellingTaskId === currentTask.id || cancellingTaskId === 'batch'"
-                :disabled="cancellingTaskId === currentTask.id || cancellingTaskId === 'batch'"
-                @click="handleCancelCurrentTask"
-              >
-                {{ t('tasks.cancelAction') }}
-              </n-button>
-            </div>
-          </section>
-
-          <section v-else-if="isTerminalState && currentTask" key="terminal" :class="['stage-view', 'stage-view--terminal', `stage-view--${taskPanelState}`]">
-            <div class="stage-hero stage-hero--result">
-              <div class="stage-hero__top">
-                <span class="stage-badge" :class="`stage-badge--${taskPanelState}`">
-                  <n-icon :component="taskPanelState === 'done' ? CheckmarkCircle : (taskPanelState === 'failed' ? CloseOutline : PauseOutline)" />
-                  {{ statusLabel(currentTask.status) }}
-                </span>
-                <div class="stage-hero__top-actions">
-                  <n-button v-if="hasQueueEntries" text size="small" data-guide="task-queue" @click="showQueueModal = true">
-                    {{ t('separate.batchQueue') }} ({{ queueJobs.length }})
-                  </n-button>
-                  <n-button v-if="taskPanelState !== 'done' && currentTask.logs.length" text size="small" @click="openCurrentLogs">
-                    <template #icon><n-icon :component="TerminalOutline" /></template>
-                    {{ t('tasks.logs') }}
-                  </n-button>
-                </div>
-              </div>
-              <div class="stage-hero__title">
-                <h2>{{ currentBatchIsMulti ? currentBatchTitle : statusLabel(currentTask.status) }}</h2>
-                <p>
-                  {{ currentBatchLine }}
-                  <template v-if="taskPanelState === 'done' && !currentBatchIsMulti"> · {{ currentTask.outputs.length }} {{ t('separate.previewStemUnit') }} · {{ currentTaskDuration }}</template>
-                </p>
-              </div>
-              <div v-if="taskPanelState === 'done'" class="result-path" :title="currentTaskOutputPath">
-                <n-icon :component="FolderOutline" />
-                <code>{{ currentBatchOutputSummary }}</code>
-                <n-button
-                  size="small"
-                  quaternary
-                  :title="t('separate.openOutput')"
-                  @click.stop="task.revealPath(currentTask.outputs[0]?.path || currentTask.output)"
-                >
-                  <template #icon><n-icon :component="OpenOutline" /></template>
-                  {{ t('common.open') }}
-                </n-button>
-              </div>
-              <div v-else-if="taskSubMessage(currentTask)" class="result-note">{{ taskSubMessage(currentTask) }}</div>
-              <section v-if="taskPanelState === 'done' && playableOutputs.length" class="result-preview-panel">
-                <div class="result-preview-panel__head">
-                  <strong>{{ t('separate.previewTitle') }}</strong>
-                  <span>{{ playableOutputs.length }} {{ t('separate.previewStemUnit') }}</span>
-                </div>
-                <div class="preview-output-groups">
-                  <div v-for="group in playableOutputGroups" :key="group.taskId" class="preview-output-group">
-                    <div v-if="currentBatchIsMulti" class="preview-output-group__head">
-                      <strong :title="group.input">{{ getFileName(group.input) }}</strong>
-                      <span>{{ group.outputs.length }} {{ t('separate.previewStemUnit') }}</span>
-                    </div>
-                    <div class="preview-track-list">
-                      <div v-for="output in group.outputs" :key="`${group.taskId}:${output.path}`" class="preview-track">
-                        <div class="preview-track__title">
-                          <strong :title="output.path">{{ getFileName(output.path) }}</strong>
-                          <small :title="output.path">{{ output.stem }}</small>
-                        </div>
-                        <n-button circle secondary size="small" @click="toggleOutputPlayback(output)">
-                          <template #icon>
-                            <n-icon :component="playingOutputPath === output.path ? PauseOutline : PlayOutline" />
-                          </template>
-                        </n-button>
-                        <n-slider
-                          class="preview-track__slider"
-                          :value="getOutputPlayback(output.path).currentTime"
-                          :min="0"
-                          :max="Math.max(getOutputPlayback(output.path).duration, 1)"
-                          :step="0.1"
-                          :tooltip="false"
-                          @update:value="(value: number) => seekOutput(output.path, value)"
-                        />
-                        <span class="preview-track__time">
-                          {{ formatPlaybackTime(getOutputPlayback(output.path).currentTime) }} / {{ formatPlaybackTime(getOutputPlayback(output.path).duration) }}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-            <div class="stage-actions">
-              <template v-if="taskPanelState === 'done'">
-                <n-dropdown :options="completedActionOptions" placement="top-end" @select="handleCompletedAction">
-                  <n-button secondary size="large">
-                    {{ t('separate.moreActions') }}
-                    <n-icon :component="ChevronDownOutline" />
-                  </n-button>
-                </n-dropdown>
-                <n-button secondary size="large" @click="goToResults">
-                  {{ t('separate.viewResults') }}
-                </n-button>
-                <n-button type="primary" size="large" class="stage-actions__primary" @click="beginNextSeparation">
-                  {{ t('separate.newSeparation') }}
-                </n-button>
-              </template>
-              <template v-else-if="taskPanelState === 'failed'">
-                <n-button secondary size="large" @click="beginNextSeparation">
-                  {{ t('separate.newSeparation') }}
-                </n-button>
-                <n-button type="primary" size="large" class="stage-actions__primary" @click="retryCurrentTask">
-                  <template #icon><n-icon :component="PlayOutline" /></template>
-                  {{ t('common.retry') }}
-                </n-button>
-              </template>
-              <template v-else>
-                <n-button secondary size="large" @click="retryCurrentTask">
-                  <template #icon><n-icon :component="PlayOutline" /></template>
-                  {{ t('separate.runAgain') }}
-                </n-button>
-                <n-button type="primary" size="large" class="stage-actions__primary" @click="beginNextSeparation">
-                  {{ t('separate.newSeparation') }}
-                </n-button>
-              </template>
-            </div>
-          </section>
-
+          <SeparateTaskStage
+            v-if="currentTask && (taskPanelState === 'running' || isTerminalState)"
+            :context="taskStageContext"
+          />
           <SeparateReadyStage v-else :context="readyStageContext" />
         </transition>
       </main>
