@@ -72,6 +72,8 @@ import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
 import ModelSlotFields from '@/components/ModelSlotFields.vue'
 import SeparateAdvancedPanel from '@/components/separate/SeparateAdvancedPanel.vue'
+import SeparateNamingModal from '@/components/separate/SeparateNamingModal.vue'
+import SeparateQueueModal from '@/components/separate/SeparateQueueModal.vue'
 import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
@@ -1305,6 +1307,21 @@ const audioSteps = computed(() => [
   { title: t('separate.output'), text: t('separate.stepOutputHint') },
   { title: t('separate.model'), text: t('separate.stepRunHint') },
 ])
+const namingModalContext = {
+  namingTemplateInputRef, outputNamingTemplate, outputNamingPreviewParts, namingTokens,
+  insertNamingToken, usesIndexToken, orderedOutputStems, draggedStemIndex,
+  onStemPointerDown, onStemPointerMove, finishStemPointerDrag, padNumber,
+  moveStem, resetOutputNaming,
+}
+
+const queueModalContext = {
+  openQueuePage: () => router.push('/queue'),
+  finishedSessionJobCount, clearFinishedQueueJobs, noResultSeparationJobs, removingRunRecords,
+  removeSeparationRunRecords, queueJobs, statusLabel, queueJobInputSummary,
+  isNoResultSeparationJob, focusQueueJob, viewQueueJobLogs, dismissQueueJob,
+  cancellingQueueJobId, requestCancelQueueJob,
+}
+
 </script>
 
 <template>
@@ -1977,188 +1994,8 @@ const audioSteps = computed(() => [
         </template>
       </n-card>
     </n-modal>
-    <n-modal v-model:show="showNamingModal" style="width:var(--modal-width-sm)">
-      <n-card
-        class="naming-modal"
-        :title="t('separate.namingModalTitle')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="showNamingModal = false"
-      >
-        <div class="naming-modal__content">
-          <div class="naming-section naming-section--main">
-            <div class="naming-section__head">
-              <strong>{{ t('separate.namingTemplate') }}</strong>
-              <span>{{ t('separate.namingTemplateHint') }}</span>
-            </div>
-            <n-input
-              ref="namingTemplateInputRef"
-              v-model:value="outputNamingTemplate"
-              placeholder="%index%_%filename%_%stem%"
-            />
-            <div class="naming-preview-inline">
-              <span>{{ t('separate.namingPreview') }}</span>
-              <div v-for="row in outputNamingPreviewParts" :key="row.key" class="naming-preview-file">
-                <span
-                  v-for="(part, partIndex) in row.parts"
-                  :key="`${row.key}-${partIndex}`"
-                  class="naming-preview-part"
-                  :class="`naming-preview-part--${part.token.replace(/[%_]/g, '')}`"
-                >{{ part.text }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="naming-section">
-            <div class="naming-section__head">
-              <strong>{{ t('separate.namingVariables') }}</strong>
-              <span>{{ t('separate.namingVariablesHint') }}</span>
-            </div>
-            <div class="token-grid">
-              <button
-                v-for="token in namingTokens"
-                :key="token.value"
-                type="button"
-                class="token-chip"
-                :title="token.value"
-                @click="insertNamingToken(token.value)"
-              >
-                <span>{{ token.label }}</span>
-                <code>{{ token.value }}</code>
-              </button>
-            </div>
-          </div>
-
-          <div v-if="usesIndexToken" class="naming-section">
-            <div class="naming-section__head">
-              <strong>{{ t('separate.namingNumberOrder') }}</strong>
-              <span>{{ t('separate.namingNumberOrderHint') }}</span>
-            </div>
-            <div v-if="orderedOutputStems.length" class="stem-order-list">
-              <div
-                v-for="(stem, index) in orderedOutputStems"
-                :key="stem"
-                class="stem-order-row"
-                :class="{ 'stem-order-row--dragging': draggedStemIndex === index }"
-                @pointerdown="onStemPointerDown($event, index)"
-                @pointermove="onStemPointerMove"
-                @pointerup="finishStemPointerDrag"
-                @pointercancel="finishStemPointerDrag"
-              >
-                <n-icon :component="ReorderFourOutline" />
-                <span>{{ padNumber(index + 1) }}</span>
-                <strong>{{ stem }}</strong>
-                <div class="stem-order-row__actions">
-                  <n-button quaternary circle size="tiny" :disabled="index === 0" :title="t('separate.moveUp')" @click="moveStem(index, index - 1)">
-                    <template #icon><n-icon :component="ChevronUpOutline" /></template>
-                  </n-button>
-                  <n-button quaternary circle size="tiny" :disabled="index === orderedOutputStems.length - 1" :title="t('separate.moveDown')" @click="moveStem(index, index + 1)">
-                    <template #icon><n-icon :component="ChevronDownOutline" /></template>
-                  </n-button>
-                </div>
-              </div>
-            </div>
-            <n-empty v-else size="small" :description="t('separate.namingNoStems')" />
-          </div>
-          <div v-else class="naming-section naming-section--muted">
-            {{ t('separate.namingNumberOrderDisabled') }}
-          </div>
-        </div>
-
-        <template #footer>
-          <div class="drawer-footer">
-            <n-button secondary @click="resetOutputNaming">{{ t('separate.namingReset') }}</n-button>
-            <n-button type="primary" @click="showNamingModal = false">{{ t('common.close') }}</n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-    <n-modal v-model:show="showQueueModal" style="width:var(--modal-width-md)">
-      <n-card
-        class="batch-queue-modal"
-        :title="t('separate.batchQueue')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="showQueueModal = false"
-      >
-        <template #header-extra>
-          <n-button size="small" quaternary @click="router.push('/queue')">{{ t('agent.queue') }}</n-button>
-          <n-button
-            v-if="queueScope === 'session' && finishedSessionJobCount"
-            size="small"
-            quaternary
-            @click="clearFinishedQueueJobs"
-          >
-            {{ t('separate.clearFinishedTasks') }}
-          </n-button>
-          <n-button v-else-if="queueScope === 'no-results' && noResultSeparationJobs.length" size="small" quaternary type="error"
-            :loading="removingRunRecords" :disabled="removingRunRecords" @click="removeSeparationRunRecords(noResultSeparationJobs)">
-            {{ t('separate.clearNoResultHistory') }}
-          </n-button>
-        </template>
-        <n-radio-group v-model:value="queueScope" size="small" class="batch-queue-scopes">
-          <n-radio-button value="session">{{ t('separate.queueCurrent') }}</n-radio-button>
-          <n-radio-button value="no-results">{{ t('separate.queueNoResultHistory') }} · {{ noResultSeparationJobs.length }}</n-radio-button>
-        </n-radio-group>
-        <div v-if="queueJobs.length" class="batch-queue-list">
-          <article
-            v-for="job in queueJobs"
-            :key="job.id"
-            class="batch-queue-row"
-            :class="`batch-queue-row--${job.status}`"
-          >
-            <button type="button" class="batch-queue-row__main" @click="focusQueueJob(job)">
-              <span class="batch-queue-row__status">
-                <i></i>
-                {{ statusLabel(job.status) }}
-              </span>
-              <strong>{{ job.model }}</strong>
-              <span class="batch-queue-row__input" :title="job.primary.input">{{ queueJobInputSummary(job) }}</span>
-              <n-progress
-                type="line"
-                :percentage="job.progress"
-                :show-indicator="false"
-                :height="5"
-                :border-radius="3"
-              />
-            </button>
-            <div class="batch-queue-row__meta">
-              <span>{{ job.inputCount }} {{ t('separate.queueFileUnit') }}</span>
-              <div class="batch-queue-row__actions">
-                <template v-if="isTerminalTaskStatus(job.status)">
-                  <n-button size="small" secondary @click="job.status === 'failed' ? viewQueueJobLogs(job) : focusQueueJob(job)">
-                    {{ job.status === 'failed' ? t('tasks.logs') : t('separate.viewTaskDetails') }}
-                  </n-button>
-                  <n-button v-if="isNoResultSeparationJob(job)" size="small" quaternary type="error"
-                    :loading="removingRunRecords" :disabled="removingRunRecords" @click="removeSeparationRunRecords([job])">
-                    {{ t('workbench.removeRun') }}
-                  </n-button>
-                  <n-button v-else size="small" quaternary @click="dismissQueueJob(job)">
-                    {{ t('common.remove') }}
-                  </n-button>
-                </template>
-                <n-button
-                  v-else
-                  size="small"
-                  tertiary
-                  type="error"
-                  :loading="cancellingQueueJobId === job.id"
-                  :disabled="Boolean(cancellingQueueJobId)"
-                  @click="requestCancelQueueJob(job)"
-                >
-                  {{ t('tasks.cancelAction') }}
-                </n-button>
-              </div>
-            </div>
-          </article>
-        </div>
-        <n-empty v-else :description="t(queueScope === 'no-results' ? 'separate.queueNoResultEmpty' : 'separate.queueEmpty')" />
-      </n-card>
-    </n-modal>
+    <SeparateNamingModal v-model:show="showNamingModal" :context="namingModalContext" />
+    <SeparateQueueModal v-model:show="showQueueModal" v-model:scope="queueScope" :context="queueModalContext" />
     <n-modal v-model:show="showLogModal" style="width:var(--modal-width-lg)">
       <n-card
         :title="currentTask ? `${currentTaskFileName} - ${t('tasks.logs')}` : t('tasks.logs')"

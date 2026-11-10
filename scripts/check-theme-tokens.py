@@ -97,6 +97,7 @@ DEBT: dict[str, tuple[int, str]] = {
     "src/views/results/results-view.css": (3, "var() 回退值与内阴影仍为字面量"),
     "src/views/SeparateView.css": (17, "阴影与强调色仍为字面量"),
     "src/views/settings/settings-view.css": (3, "危险色回退值与内阴影仍为字面量"),
+    "src/components/separate/SeparateNamingModal.vue": (10, "命名预览 token 身份色，跟随固定语义色"),
     "src/views/VideoView.vue": (1, "var() 回退值仍为字面量"),
     "src/views/workflows/workflows-view.css": (1, "var() 回退值仍为字面量"),
     "src/views/WorkflowSimpleEditorView.vue": (1, "var() 回退值仍为字面量"),

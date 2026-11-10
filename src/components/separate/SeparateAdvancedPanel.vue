@@ -94,3 +94,48 @@ const { t } = useI18n()
     </n-button>
   </div>
 </template>
+
+<style scoped>
+.field-block{
+  display: grid;
+  gap: 6px;
+}.parameter-guide-target--active{ position: relative; }.field-block.parameter-guide-target--active > label{ color: var(--primary-ink); }.field-block label{
+  font-size: 12px;
+  color: var(--on-surface-muted);
+}.field-block--inline-check{
+  min-height: 56px;
+  align-content: end;
+  padding-bottom: 7px;
+}.field-block__hint{
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--on-surface-muted);
+}.advanced-hint{
+  margin: 0 0 12px;
+  color: var(--on-surface-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}.advanced-loading,
+.advanced-empty{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--on-surface-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}.advanced-empty{
+  margin-top: 14px;
+}.advanced-actions{
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}.check-list{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 18px;
+}.check-list--spaced{
+  margin-top: 14px;
+}</style>

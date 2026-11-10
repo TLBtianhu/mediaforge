@@ -13,6 +13,8 @@ const template = descriptor.template?.content || ''
 const style = descriptor.styles.map(item => item.content
   || (item.src ? readFileSync(new URL(item.src, path), 'utf8') : '')).join('\n')
 const advancedPath = new URL('../src/components/separate/SeparateAdvancedPanel.vue', import.meta.url)
+const queuePath = new URL('../src/components/separate/SeparateQueueModal.vue', import.meta.url)
+const queueTemplate = parse(readFileSync(queuePath, 'utf8')).descriptor.template?.content || ''
 const advancedTemplate = parse(readFileSync(advancedPath, 'utf8')).descriptor.template?.content || ''
 const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
 const modelsTemplate = parse(readFileSync(modelsPath, 'utf8')).descriptor.template?.content || ''
@@ -244,8 +246,8 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(template.includes("t('separate.addNextBatch')"))
   assert.ok(template.includes('v-if="hasQueueEntries"'))
   assert.ok(template.includes('v-model:show="showQueueModal"'))
-  assert.ok(template.includes('v-for="job in queueJobs"'))
-  assert.ok(template.includes("job.status === 'failed'"))
+  assert.ok(queueTemplate.includes('v-for="job in ctx.queueJobs"'))
+  assert.ok(queueTemplate.includes("job.status === 'failed'"))
   assert.ok(template.includes(':loading="submittingJob"'))
 })
 
