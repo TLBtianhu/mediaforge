@@ -1673,6 +1673,19 @@ fn run_worker_with_payload_inner(
         }
     };
 
+    #[cfg(windows)]
+    let _worker_job = match crate::process_job::ProcessJob::attach(&child) {
+        Ok(job) => job,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            if let Some(path) = payload_file.as_ref() {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(AppError::Worker(format!("无法绑定 worker 进程生命周期：{error}")));
+        }
+    };
+
     if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
     let stdout = child
         .stdout
@@ -2040,6 +2053,8 @@ struct WorkerStartResources {
     audio_scope: Option<audio_output::AudioOutputScope>,
     runtime_access: Option<RuntimeAccessGuard<'static>>,
     runtime_file_lease: Option<RuntimeLease>,
+    #[cfg(windows)]
+    process_job: Option<crate::process_job::ProcessJob>,
     application_access: Option<Box<dyn Send>>,
     stderr: Option<std::thread::JoinHandle<()>>,
     cancel: Option<ManualCancelWatch>,
@@ -2053,6 +2068,8 @@ impl WorkerStartResources {
         if let Some(mut mutation) = self.reference_mutation.take() { mutation.reaped(); }
         drop(self.runtime_access.take());
         drop(self.runtime_file_lease.take());
+        #[cfg(windows)]
+        drop(self.process_job.take());
         drop(self.application_access.take());
     }
 }
@@ -2201,11 +2218,21 @@ fn spawn_worker_background_inner(
     for id in &registered_task_ids {
         if task_registry.contains_key(id) { return Err(AppError::Worker(format!("task already running: {id}"))); }
     }
-    let child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+    let mut child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
         Ok(child) => child,
         Err(error) => {
             let _ = std::fs::remove_file(&payload_file);
             return Err(error.into());
+        }
+    };
+    #[cfg(windows)]
+    let process_job = match crate::process_job::ProcessJob::attach(&child) {
+        Ok(job) => Some(job),
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&payload_file);
+            return Err(AppError::Worker(format!("无法绑定 worker 进程生命周期：{error}")));
         }
     };
     if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
@@ -2219,6 +2246,8 @@ fn spawn_worker_background_inner(
         resources: Arc::new(Mutex::new(WorkerStartResources {
             reference_mutation,
             audio_scope: audio_scope.take(), runtime_access: runtime_access.take(), runtime_file_lease,
+            #[cfg(windows)]
+            process_job,
             application_access: application_access.take().map(|guard| Box::new(guard) as Box<dyn Send>), stderr: None, cancel: None,
         })),
         cleanup: Some(WorkerStartCleanup { app: app.clone(), ids: registered_task_ids.clone(), payload: payload_file.clone() }),
@@ -2546,7 +2575,10 @@ mod tests {
         let mut reference_mutation = crate::storage::model_reference_mutation("import_custom_model").unwrap();
         reference_mutation.spawned();
         let guard = super::WorkerStartGuard { child: child.clone(), _journal: Some(journal), cleanup: None, reaped: false, owns_cleanup: true,
-            resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, runtime_file_lease: None, stderr: None, cancel: None,
+            resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, runtime_file_lease: None,
+        #[cfg(windows)]
+        process_job: None,
+        stderr: None, cancel: None,
                 reference_mutation: Some(reference_mutation),
                 application_access: Some(Box::new(StartupReleaseProbe { child: child.clone(), root: root.path().into(), reaped: reaped.clone(), slot_held: slot_held.clone() })) })),
         };
