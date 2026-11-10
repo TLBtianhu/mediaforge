@@ -13,6 +13,11 @@
                   src/ 其余直接 invoke，只允许 media_precheck 与 manage_plugin 两个已记录例外
 模型库分流        主音频模型库 = list_models（完整 ModelEntry/分类/debug 状态）；
                   媒体目录 = model_hub（id/provider/modality/downloadable 行）
+模型库分流        主音频模型库 = list_models（完整 ModelEntry/分类/debug 状态）；
+                  媒体目录 = model_hub（id/provider/modality/downloadable 行）
+Tauri 命令映射     manifest/tauri-commands.json（137 条，由 Rust #[tauri::command] 生成）；
+                  sync-tauri-commands.py --check 与 check-tauri-command-map.py 进 CI，
+                  保证注册表、worker 路由、src/api invoke 名三处一致
                   （PAYLOAD_INVALID）；48 条命令都声明 resultSchemaEvent，dispatch 在
                   emit 写管道前校验结果（RESULT_CONTRACT_INVALID）；生成类型并进 CI；
                   check-architecture.py 第 13 条要求每条命令都带 resultSchemaEvent
