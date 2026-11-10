@@ -57,6 +57,7 @@ import {
   CloudDownloadOutline,
 } from '@vicons/ionicons5'
 import SettingsAboutPanel from '@/components/settings/SettingsAboutPanel.vue'
+import SettingsPathsPanel from '@/components/settings/SettingsPathsPanel.vue'
 
 const { t, locale: currentLocale } = useI18n()
 const message = useMessage()
@@ -883,80 +884,19 @@ onMounted(async () => {
         </section>
 
         <!-- Paths -->
-        <section v-else-if="activeSection === 'paths'" class="settings-section-panel">
-        <n-card class="settings-card settings-card--feature settings-card--paths" :bordered="true" size="small">
-          <template #header>
-            <div class="section-title">
-              <span class="section-title__icon">
-                <n-icon :component="FolderOpenOutline" size="18" />
-              </span>
-              <span>{{ t('settings.dataDir') }}</span>
-            </div>
-          </template>
-
-          <div class="path-panel">
-            <div class="path-panel__intro">{{ t('settings.pathsHint') }}</div>
-
-            <div class="path-root-block">
-              <div class="path-root-row">
-                <code class="path-root" :title="dataRoot || t('common.notSet')">{{ dataRoot || t('common.notSet') }}</code>
-                <n-button secondary size="small" :disabled="!dataRoot" @click="revealPath(dataRoot)">
-                  {{ t('common.open') }}
-                </n-button>
-              </div>
-            </div>
-
-            <div class="path-primary-grid" data-guide="settings-paths">
-              <div class="path-item path-item--primary">
-                <div class="path-item__head">
-                  <div class="path-item__head-copy">
-                    <strong>{{ t('settings.modelDir') }}</strong>
-                  </div>
-                  <div class="path-item__actions">
-                    <n-tag v-if="hasActiveModelDirUsage && !isModelDirMigrating" :bordered="false" size="small" type="warning">
-                      {{ t('settings.modelDirInUse') }}
-                    </n-tag>
-                    <n-button
-                      secondary
-                      type="primary"
-                      size="small"
-                      :loading="isCheckingModelDir"
-                      :disabled="hasActiveModelDirUsage || isCheckingModelDir"
-                      @click="changeModelDir"
-                    >
-                      <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
-                      {{ t('settings.changeModelDir') }}
-                    </n-button>
-                  </div>
-                </div>
-                <code class="path-item__value" :title="modelDir || t('common.notSet')">{{ modelDir || t('common.notSet') }}</code>
-              </div>
-
-              <div class="path-item path-item--primary">
-                <div class="path-item__head">
-                  <div class="path-item__head-copy">
-                    <strong>{{ t('settings.outputDir') }}</strong>
-                  </div>
-                  <div class="path-item__actions">
-                    <n-button secondary type="primary" size="small" @click="changeOutputDir">
-                      <template #icon><n-icon :component="FolderOpenOutline" /></template>
-                      {{ t('settings.changeOutputDir') }}
-                    </n-button>
-                  </div>
-                </div>
-                <code class="path-item__value" :title="outputDir || t('common.notSet')">{{ outputDir || t('common.notSet') }}</code>
-              </div>
-            </div>
-
-            <div class="path-grid">
-              <div v-for="entry in dataDirEntries" :key="entry.key" class="path-subcard">
-                <span>{{ t(entry.key) }}</span>
-                <code class="path-field__value" :title="entry.value || entry.fallback">{{ dirName(entry.value, entry.fallback) }}</code>
-              </div>
-            </div>
-          </div>
-        </n-card>
-        </section>
+        <SettingsPathsPanel
+          v-else-if="activeSection === 'paths'"
+          :data-root="dataRoot"
+          :model-dir="modelDir"
+          :output-dir="outputDir"
+          :data-dir-entries="dataDirEntries"
+          :has-active-model-dir-usage="hasActiveModelDirUsage"
+          :is-model-dir-migrating="isModelDirMigrating"
+          :is-checking-model-dir="isCheckingModelDir"
+          @reveal-path="revealPath"
+          @change-model-dir="changeModelDir"
+          @change-output-dir="changeOutputDir"
+        />
 
         <!-- Defaults & Execution -->
         <section v-else-if="activeSection === 'defaults'" class="settings-section-panel">
