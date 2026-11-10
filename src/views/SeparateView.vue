@@ -74,6 +74,7 @@ import ModelSlotFields from '@/components/ModelSlotFields.vue'
 import SeparateAdvancedPanel from '@/components/separate/SeparateAdvancedPanel.vue'
 import SeparateNamingModal from '@/components/separate/SeparateNamingModal.vue'
 import SeparateQueueModal from '@/components/separate/SeparateQueueModal.vue'
+import SeparateSettingsDrawer from '@/components/separate/SeparateSettingsDrawer.vue'
 import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
@@ -1322,6 +1323,14 @@ const queueModalContext = {
   cancellingQueueJobId, requestCancelQueueJob,
 }
 
+const settingsDrawerContext = {
+  parameterHelpPage, helpTopics, settingsCardRef, fieldGuideRef, guidedParameter, guideTarget,
+  beginnerGuide, openParameterHelp, useTta, expandedInferenceSections, advancedPanelContext,
+  effectiveFormat, formatLabel, settings, wavBitDepthOptions, flacBitDepthOptions,
+  mp3BitRateOptions, bitRateOptions, m4aCodecOptions, showNormalizeField, normalize,
+  locateGuidedParameter,
+}
+
 </script>
 
 <template>
@@ -1901,99 +1910,7 @@ const queueModalContext = {
       </n-card>
     </n-modal>
 
-    <n-modal v-model:show="showSettingsDrawer" @after-enter="locateGuidedParameter">
-      <InferenceParameterLesson
-        v-if="parameterHelpPage !== null" :topic="helpTopics[parameterHelpPage]!" :topics="helpTopics" :progress="`${parameterHelpPage + 1} / ${helpTopics.length}`"
-        :close-label="t('parameterHelp.backToParameters')" :next-label="parameterHelpPage === helpTopics.length - 1 ? t('parameterHelp.done') : undefined"
-        @select="topic => parameterHelpPage = helpTopics.indexOf(topic)"
-        @close="parameterHelpPage = null" @previous="parameterHelpPage > 0 ? parameterHelpPage-- : parameterHelpPage = null"
-        @next="parameterHelpPage < helpTopics.length - 1 ? parameterHelpPage++ : parameterHelpPage = null"
-      />
-      <n-card
-        v-else
-        ref="settingsCardRef"
-        class="settings-modal"
-        :title="t('separate.settingsDrawerTitle')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="showSettingsDrawer = false"
-      >
-        <div class="settings-drawer__content">
-          <div class="settings-group settings-group--run">
-            <div class="settings-group__head">
-              <strong>{{ t('separate.runOptionsTitle') }}</strong>
-              <span>{{ t('separate.runOptionsHint') }}</span>
-            </div>
-            <div class="check-list">
-              <n-checkbox v-model:checked="useTta" data-parameter-guide="tta" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'tta' }">{{ t('separate.tta') }}</n-checkbox>
-            </div>
-          </div>
-
-          <div class="settings-group">
-            <div class="settings-group__head">
-              <strong>{{ t('separate.audioQualityTitle') }} · {{ formatLabel }}</strong>
-              <span>{{ t('separate.audioQualityEditable') }}</span>
-            </div>
-            <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
-              <n-grid-item v-if="effectiveFormat === 'wav'">
-                <div class="field-block" data-parameter-guide="wavBitDepth" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'wavBitDepth' }">
-                  <label>{{ t('audio.wavBitDepth') }}</label>
-                  <n-select v-model:value="settings.wavBitDepth" :options="wavBitDepthOptions" />
-                </div>
-              </n-grid-item>
-              <n-grid-item v-if="effectiveFormat === 'flac'">
-                <div class="field-block" data-parameter-guide="flacBitDepth" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'flacBitDepth' }">
-                  <label>{{ t('audio.flacBitDepth') }}</label>
-                  <n-select v-model:value="settings.flacBitDepth" :options="flacBitDepthOptions" />
-                </div>
-              </n-grid-item>
-              <n-grid-item v-if="effectiveFormat === 'mp3'">
-                <div class="field-block" data-parameter-guide="mp3BitRate" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'mp3BitRate' }">
-                  <label>{{ t('audio.mp3BitRate') }}</label>
-                  <n-select v-model:value="settings.mp3BitRate" :options="mp3BitRateOptions" />
-                </div>
-              </n-grid-item>
-              <n-grid-item v-if="effectiveFormat === 'm4a'">
-                <div class="field-block" data-parameter-guide="m4aBitRate" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'm4aBitRate' }">
-                  <label>{{ t('audio.m4aBitRate') }}</label>
-                  <n-select v-model:value="settings.m4aBitRate" :options="bitRateOptions" />
-                </div>
-              </n-grid-item>
-              <n-grid-item v-if="effectiveFormat === 'm4a'">
-                <div class="field-block" data-parameter-guide="m4aCodec" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'm4aCodec' }">
-                  <label>{{ t('audio.m4aCodec') }}</label>
-                  <n-select v-model:value="settings.m4aCodec" :options="m4aCodecOptions" />
-                </div>
-              </n-grid-item>
-              <n-grid-item v-if="showNormalizeField">
-                <div class="field-block field-block--inline-check" data-parameter-guide="normalize" :class="{ 'parameter-guide-target--active': guidedParameter?.id === 'normalize' }">
-                  <n-checkbox v-model:checked="normalize">{{ t('inference.normalize') }}</n-checkbox>
-                </div>
-              </n-grid-item>
-            </n-grid>
-          </div>
-
-          <div class="settings-group">
-            <n-collapse v-model:expanded-names="expandedInferenceSections">
-              <n-collapse-item :title="t('inference.advancedParams')" name="inference">
-                <template #header-extra><n-button v-if="!beginnerGuide.parameterStep" text size="small" :aria-label="t('parameterHelp.label')" @click.stop="openParameterHelp"><n-icon :component="InformationCircleOutline" size="18" /></n-button></template>
-                <SeparateAdvancedPanel :context="advancedPanelContext" />
-              </n-collapse-item>
-            </n-collapse>
-          </div>
-        </div>
-
-        <ParameterFieldGuide v-if="guidedParameter" ref="fieldGuideRef" :parameter="guidedParameter" :target="guideTarget" />
-
-        <template #footer>
-          <div class="drawer-footer">
-            <n-button type="primary" @click="showSettingsDrawer = false">{{ t('common.close') }}</n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
+    <SeparateSettingsDrawer v-model:show="showSettingsDrawer" :context="settingsDrawerContext" />
     <SeparateNamingModal v-model:show="showNamingModal" :context="namingModalContext" />
     <SeparateQueueModal v-model:show="showQueueModal" v-model:scope="queueScope" :context="queueModalContext" />
     <n-modal v-model:show="showLogModal" style="width:var(--modal-width-lg)">
