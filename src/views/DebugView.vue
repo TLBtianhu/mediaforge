@@ -30,6 +30,7 @@ import { detectRuntimePlatform } from '@/utils/runtime'
 import { isTauriRuntime } from '@/utils/appStore'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import DebugLogsPanel from '@/components/debug/DebugLogsPanel.vue'
+import DebugEventsPanel from '@/components/debug/DebugEventsPanel.vue'
 import { formatBytes } from '@/utils/format'
 import { normalizeLogRecord, formatLogRecord, logMessagePreview, type LogRecord } from '@/utils/logRecord'
 
@@ -1358,54 +1359,24 @@ watch(developerMode, (enabled) => {
       </div>
     </n-modal>
 
-    <n-card v-if="activeTab === 'events'" class="debug-card debug-card--events" :bordered="true" size="small">
-      <template #header>
-        <div class="debug-section-title">
-          <n-icon :component="TerminalOutline" />
-          <span>{{ t('debug.workerEvents') }}</span>
-        </div>
-      </template>
-      <div class="debug-event-toolbar">
-        <n-input v-model:value="eventQuery" clearable :placeholder="t('debug.eventSearch')" :input-props="{ 'aria-label': t('debug.eventSearch') }" />
-        <n-checkbox v-model:checked="eventIssuesOnly">{{ t('debug.logCategoryIssues') }}</n-checkbox>
-        <span>{{ t('debug.eventGroupCount', { shown: recentWorkerEventGroups.length, total: workerEventGroups.length }) }}</span>
-      </div>
-      <div v-if="eventQuery === executionLogTaskId && canReturnToTask" class="debug-task-context">
-        <span>{{ t('debug.logScope', { id: executionLogTaskId }) }}</span>
-        <n-button size="tiny" tertiary @click="showExecutionLogs(executionLogTaskId)">{{ t('debug.returnToTask') }}</n-button>
-      </div>
-      <div class="worker-event-list">
-        <button
-          v-for="group in recentWorkerEventGroups"
-          :key="group.key"
-          type="button"
-          class="worker-event-row"
-          @click="openWorkerEvent(group)"
-        >
-          <code>{{ group.taskId ? t('debug.workerEventTaskGroup') : group.latestType }}</code>
-          <span>{{ shortTaskId(group.taskId) }}</span>
-          <span>{{ workerEventGroupSummary(group) }}</span>
-          <time>{{ eventTime(group.lastTimestamp) }}</time>
-          <strong>{{ group.eventCount }}</strong>
-        </button>
-        <n-empty v-if="!recentWorkerEventGroups.length" :description="t('settings.developerNoWorkerEvents')" />
-      </div>
-      <n-modal
-        v-model:show="workerEventDialogVisible"
-        preset="card"
-        :title="workerEventGroupTitle(selectedWorkerEvent)"
-        :style="{ width: 'min(920px, calc(100vw - 48px))' }"
-      >
-        <div class="worker-event-modal-meta">
-          <span>{{ shortTaskId(selectedWorkerEvent?.taskId) }}</span>
-          <span>{{ t('debug.workerEventCount', { count: selectedWorkerEvent?.eventCount || 0 }) }}</span>
-          <span>{{ workerEventGroupSummary(selectedWorkerEvent) }}</span>
-          <time>{{ eventTime(selectedWorkerEvent?.lastTimestamp) }}</time>
-          <n-button size="tiny" tertiary @click="copyText(workerEventGroupPayload(selectedWorkerEvent), 'debug.eventCopied')">{{ t('common.copy') }}</n-button>
-        </div>
-        <pre class="worker-event-modal-payload">{{ workerEventGroupPayload(selectedWorkerEvent) }}</pre>
-      </n-modal>
-    </n-card>
+    <DebugEventsPanel
+      v-if="activeTab === 'events'"
+      v-model:query="eventQuery"
+      v-model:issues-only="eventIssuesOnly"
+      v-model:dialog-visible="workerEventDialogVisible"
+      :groups="workerEventGroups"
+      :recent-groups="recentWorkerEventGroups"
+      :selected="selectedWorkerEvent"
+      :execution-log-task-id="executionLogTaskId"
+      :can-return-to-task="canReturnToTask"
+      :open-event="openWorkerEvent"
+      :show-execution-logs="showExecutionLogs"
+      :copy-text="copyText"
+      :group-summary="workerEventGroupSummary"
+      :group-title="workerEventGroupTitle"
+      :group-payload="workerEventGroupPayload"
+      :event-time="eventTime"
+    />
 
     <DebugLogsPanel
       v-if="activeTab === 'logs'"
