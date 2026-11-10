@@ -78,6 +78,7 @@ import SeparateSettingsDrawer from '@/components/separate/SeparateSettingsDrawer
 import SeparateEnsembleModal from '@/components/separate/SeparateEnsembleModal.vue'
 import SeparateNoteModal from '@/components/separate/SeparateNoteModal.vue'
 import SeparateLogModal from '@/components/separate/SeparateLogModal.vue'
+import SeparateReadyStage from '@/components/separate/SeparateReadyStage.vue'
 import { findDropZone, toCssPoint } from '@/utils/dropZones.ts'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import { parameterHelpTopics } from '@/features/inference/parameterHelp'
@@ -1344,6 +1345,17 @@ const noteModalContext = {
   closeModelNoteEditor, saveModelNote,
 }
 
+const readyStageContext = {
+  ensembleEnabled, hasQueueEntries, queueJobs, showQueueModal, modelPanelHasModels,
+  modelSearch, modelCategoryFilter, modelCategoryOptions, modelListSortMode, modelSortOptions,
+  modelListViewMode, ensembleModels, showEnsembleModal, pagedDownloadedModels, selectedModelName,
+  handleSelectModel, openSeparateContextMenu, categoryLabel, modelMetaLine, modelUseCount, modelNote,
+  filteredDownloadedModels, modelPage, modelPageSize, modelPageSizeOptions, modelDownloaded,
+  modelPanelLoading, openModelsPage: () => router.push('/models'), canStart, startStatusText,
+  outputSummaryPath, revealOutput: () => task.revealPath(currentTask.value?.outputs[0]?.path || normalizedOutputDir.value),
+  submittingJob, start,
+}
+
 </script>
 
 <template>
@@ -1653,182 +1665,7 @@ const noteModalContext = {
             </div>
           </section>
 
-          <section v-else key="ready" class="stage-view stage-view--ready">
-            <div class="stage-head">
-              <div class="stage-head__label">
-                <n-icon :component="CubeOutline" />
-                <div>
-                  <h2>{{ t('separate.runTarget') }}</h2>
-                  <p>{{ t('separate.modelPanelHint') }}</p>
-                </div>
-              </div>
-              <div class="stage-head__controls">
-                <div class="stage-head__extra" data-guide="model-mode">
-                  <n-select
-                    :value="ensembleEnabled ? 'ensemble' : 'single'"
-                    size="small"
-                    :options="[
-                      { label: t('separate.singleModelMode'), value: 'single' },
-                      { label: t('separate.ensembleMode'), value: 'ensemble' },
-                    ]"
-                    class="model-mode-select"
-                    :aria-label="t('separate.modelModeLabel')"
-                    @update:value="(value: string | number) => { ensembleEnabled = value === 'ensemble' }"
-                  />
-                </div>
-                <n-button class="stage-head__queue" size="small" secondary data-guide="task-queue" @click="showQueueModal = true">
-                  <template #icon><n-icon :component="ListOutline" /></template>
-                  {{ t('separate.batchQueue') }}
-                  <span class="stage-head__queue-count" :class="{ 'stage-head__queue-count--active': hasQueueEntries }">{{ queueJobs.length }}</span>
-                </n-button>
-              </div>
-            </div>
-
-            <transition name="stage-swap" mode="out-in">
-              <div key="model" class="target-pane" :class="{ 'target-pane--ensemble': ensembleEnabled }">
-                <template v-if="modelPanelHasModels">
-                  <div class="target-toolbar" data-guide="separation-models">
-                    <n-input
-                      v-model:value="modelSearch"
-                      clearable
-                      :placeholder="t('separate.modelSearchPlaceholder')"
-                    >
-                      <template #prefix><n-icon :component="SearchOutline" /></template>
-                    </n-input>
-                    <n-select
-                      class="target-toolbar__filter"
-                      v-model:value="modelCategoryFilter"
-                      :menu-props="{ class: 'model-picker__category-menu' }"
-                      :options="modelCategoryOptions"
-                    />
-                    <n-select
-                      v-model:value="modelListSortMode"
-                      class="target-toolbar__sort"
-                      :options="modelSortOptions"
-                      :aria-label="t('separate.modelSortLabel')"
-                    />
-                    <div class="view-toggle target-toolbar__view" role="group" :aria-label="t('models.viewMode')">
-                      <button
-                        type="button"
-                        class="view-toggle__button"
-                        :class="{ 'view-toggle__button--active': modelListViewMode === 'list' }"
-                        :aria-pressed="modelListViewMode === 'list'"
-                        :title="t('models.viewList')"
-                        @click="modelListViewMode = 'list'"
-                      >
-                        <n-icon :component="ListOutline" />
-                      </button>
-                      <button
-                        type="button"
-                        class="view-toggle__button"
-                        :class="{ 'view-toggle__button--active': modelListViewMode === 'card' }"
-                        :aria-pressed="modelListViewMode === 'card'"
-                        :title="t('models.viewCard')"
-                        @click="modelListViewMode = 'card'"
-                      >
-                        <n-icon :component="GridOutline" />
-                      </button>
-                    </div>
-                  </div>
-                  <div v-if="ensembleEnabled" class="ensemble-summary-bar">
-                    <div class="ensemble-summary-bar__info">
-                      <strong>{{ t('separate.ensembleMode') }}</strong>
-                      <span>{{ ensembleModels.length ? t('separate.ensembleSelectedCount', { count: ensembleModels.length }) : t('separate.ensembleNeedModels') }}</span>
-                    </div>
-                    <n-button size="small" secondary :disabled="!ensembleModels.length" @click="showEnsembleModal = true">
-                      <template #icon><n-icon :component="SettingsOutline" /></template>
-                      {{ t('separate.ensembleConfigure') }}
-                    </n-button>
-                  </div>
-                  <div
-                    v-if="pagedDownloadedModels.length"
-                    class="target-list target-list--models"
-                    :class="`target-list--${modelListViewMode}`"
-                    role="listbox"
-                    :aria-label="t('separate.model')"
-                  >
-                    <button
-                      v-for="item in pagedDownloadedModels"
-                      :key="item.name"
-                      type="button"
-                      role="option"
-                      :aria-selected="ensembleEnabled ? ensembleModels.includes(item.name) : selectedModelName === item.name"
-                      class="target-row"
-                      :class="{ 'target-row--active': ensembleEnabled ? ensembleModels.includes(item.name) : selectedModelName === item.name }"
-                      @click="handleSelectModel(item)"
-                      @contextmenu.stop.prevent="openSeparateContextMenu($event, 'model', item)"
-                    >
-                      <span class="target-row__radio"></span>
-                      <span class="target-row__body">
-                        <span class="target-row__name" :title="item.name">{{ item.name }}</span>
-                        <span class="target-row__meta">
-                          <span class="target-row__tag" :title="categoryLabel(item)">{{ categoryLabel(item) }}</span>
-                          <span class="target-row__desc" :title="modelMetaLine(item)">{{ modelMetaLine(item) }}</span>
-                          <span v-if="modelListViewMode === 'list'" class="target-row__usage">{{ t('models.useCountValue', { count: modelUseCount(item.name) }) }}</span>
-                        </span>
-                        <!-- Shown because it is searchable: matching on text the user cannot see
-                             would make the result list look wrong. -->
-                        <span
-                          v-if="modelNote(item.name)"
-                          class="target-row__note"
-                          :title="modelNote(item.name)"
-                        >{{ modelNote(item.name) }}</span>
-                      </span>
-                    </button>
-                  </div>
-                  <div v-else class="stage-empty">
-                    <div class="stage-empty__glyph"><n-icon :component="SearchOutline" /></div>
-                    <strong>{{ t('separate.modelSearchEmpty') }}</strong>
-                  </div>
-                  <div v-if="filteredDownloadedModels.length" class="model-pagination">
-                    <span>{{ t('separate.modelPageSummary', { total: filteredDownloadedModels.length }) }}</span>
-                    <n-pagination
-                      v-model:page="modelPage"
-                      v-model:page-size="modelPageSize"
-                      :item-count="filteredDownloadedModels.length"
-                      :page-sizes="modelPageSizeOptions"
-                      show-size-picker
-                      size="small"
-                    />
-                  </div>
-                  <div v-if="selectedModelName && !modelDownloaded" class="stage-alert">
-                    {{ t('separate.startHintModelMissing') }}
-                  </div>
-                </template>
-                <ModelPanelState
-                  v-else
-                  :loading="modelPanelLoading"
-                  :empty-title="t('separate.modelPanelEmptyTitle')"
-                  :empty-description="t('separate.modelPanelEmptyDesc')"
-                  :loading-title="t('separate.modelPanelLoadingTitle')"
-                  :loading-description="t('separate.modelPanelLoadingDesc')"
-                  :action-label="t('separate.modelPanelPrimaryAction')"
-                  @action="router.push('/models')"
-                />
-              </div>
-
-            </transition>
-
-            <footer class="launch-bar" :class="`launch-bar--${canStart ? 'ready' : 'idle'}`">
-              <div class="launch-bar__status">
-                <span class="launch-bar__glyph"><n-icon :component="CheckmarkCircle" /></span>
-                <div class="launch-bar__text">
-                  <strong>{{ startStatusText }}</strong>
-                  <span :title="outputSummaryPath">{{ outputSummaryPath }}</span>
-                </div>
-              </div>
-              <div class="launch-bar__actions">
-                <n-button quaternary class="launch-bar__reveal" :title="t('separate.openOutput')" @click="task.revealPath(currentTask?.outputs[0]?.path || normalizedOutputDir)">
-                  <template #icon><n-icon :component="OpenOutline" /></template>
-                  {{ t('separate.openOutput') }}
-                </n-button>
-                <n-button type="primary" size="large" class="launch-bar__go" data-guide="start-separation" :loading="submittingJob" :disabled="!canStart" @click="start">
-                  <template #icon><n-icon :component="PlayOutline" /></template>
-                  {{ t('separate.startTask') }}
-                </n-button>
-              </div>
-            </footer>
-          </section>
+          <SeparateReadyStage v-else :context="readyStageContext" />
         </transition>
       </main>
     </div>
