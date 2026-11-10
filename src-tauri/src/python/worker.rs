@@ -972,12 +972,16 @@ fn build_worker_command(
     let worker_for_log = worker.clone();
     let mut cmd = crate::process_command::hidden_command(&python);
     #[cfg(unix)]
-    if command == "manage_plugin" {
+    {
         use std::os::unix::process::CommandExt;
+        // Every worker gets its own process group so the parent-pipe watchdog can
+        // terminate the worker and its FFmpeg/tool children together.
         cmd.process_group(0);
     }
     isolate_python_environment(&mut cmd, &storage::temp_dir(app)?);
-    cmd.arg(worker)
+    cmd.stdin(Stdio::piped())
+        .env("MEDIAFORGE_PARENT_PIPE", "1")
+        .arg(worker)
         .arg(command)
         .env("PYTHONIOENCODING", "utf-8")
         .env("PYTHONDONTWRITEBYTECODE", "1")
@@ -1673,6 +1677,17 @@ fn run_worker_with_payload_inner(
         }
     };
 
+    let parent_pipe = match child.stdin.take() {
+        Some(pipe) => pipe,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            if let Some(path) = payload_file.as_ref() {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(AppError::Worker("worker stdin pipe is unavailable".into()));
+        }
+    };
     #[cfg(windows)]
     let _worker_job = match crate::process_job::ProcessJob::attach(&child) {
         Ok(job) => job,
@@ -1686,6 +1701,7 @@ fn run_worker_with_payload_inner(
         }
     };
 
+    let _keep_parent_pipe = parent_pipe;
     if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
     let stdout = child
         .stdout
@@ -2055,6 +2071,7 @@ struct WorkerStartResources {
     runtime_file_lease: Option<RuntimeLease>,
     #[cfg(windows)]
     process_job: Option<crate::process_job::ProcessJob>,
+    parent_pipe: Option<std::process::ChildStdin>,
     application_access: Option<Box<dyn Send>>,
     stderr: Option<std::thread::JoinHandle<()>>,
     cancel: Option<ManualCancelWatch>,
@@ -2070,6 +2087,7 @@ impl WorkerStartResources {
         drop(self.runtime_file_lease.take());
         #[cfg(windows)]
         drop(self.process_job.take());
+        drop(self.parent_pipe.take());
         drop(self.application_access.take());
     }
 }
@@ -2225,6 +2243,15 @@ fn spawn_worker_background_inner(
             return Err(error.into());
         }
     };
+    let parent_pipe = match child.stdin.take() {
+        Some(pipe) => pipe,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&payload_file);
+            return Err(AppError::Worker("worker stdin pipe is unavailable".into()));
+        }
+    };
     #[cfg(windows)]
     let process_job = match crate::process_job::ProcessJob::attach(&child) {
         Ok(job) => Some(job),
@@ -2248,6 +2275,7 @@ fn spawn_worker_background_inner(
             audio_scope: audio_scope.take(), runtime_access: runtime_access.take(), runtime_file_lease,
             #[cfg(windows)]
             process_job,
+            parent_pipe: Some(parent_pipe),
             application_access: application_access.take().map(|guard| Box::new(guard) as Box<dyn Send>), stderr: None, cancel: None,
         })),
         cleanup: Some(WorkerStartCleanup { app: app.clone(), ids: registered_task_ids.clone(), payload: payload_file.clone() }),
@@ -2578,6 +2606,7 @@ mod tests {
             resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, runtime_file_lease: None,
         #[cfg(windows)]
         process_job: None,
+        parent_pipe: None,
         stderr: None, cancel: None,
                 reference_mutation: Some(reference_mutation),
                 application_access: Some(Box::new(StartupReleaseProbe { child: child.clone(), root: root.path().into(), reaped: reaped.clone(), slot_held: slot_held.clone() })) })),

@@ -52,8 +52,8 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
                   失败不把旧缓存报告为最新；仅当前原子cache envelope1与versions文档2
 运行时事务        runtime_assets/transaction.rs 持有跨进程锁，隔离解包/自检/标记，
 运行时租约        .runtime-envs/.runtime-lease.lock：worker 持共享租约，安装/激活/删除
-执行器生命周期    Windows worker 绑定 Job Object，App 崩溃/退出时随 Job 关闭杀子树；
-                  Unix 的等价父进程死亡回收仍未做
+执行器生命周期    Windows worker 绑定 Job Object；Studio 启的 worker 另有 stdin 管道
+                  watchdog，Unix 用独立进程组 + killpg 回收 FFmpeg/tool 子树
                   持独占租约；Rust worker、MCP/CLI 的 worker.py 共用该门禁
                   完成后发布目录、原子切换指针；失败恢复目录与指针，保留续传包
 本地打包          只带实际3.12 bootstrap与完整worker/manifest/SDK/tools，资产独立构建；

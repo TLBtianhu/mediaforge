@@ -9,7 +9,9 @@ import argparse
 import json
 import os
 from pathlib import Path
+import signal
 import sys
+import threading
 
 from shared.worker_protocol import debug_log, emit_error, load_payload, protocol_logging
 from shared.worker_proxy import ProxyConfigError
@@ -23,6 +25,28 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("command", nargs="?", default="health")
     parser.add_argument("--payload", help="JSON string or path to a JSON payload file")
     return parser.parse_args(argv[1:])
+
+
+def _watch_parent_pipe() -> None:
+    """Exit when the Studio closes the stdin pipe, including on an app crash.
+
+    The Rust side sets MEDIAFORGE_PARENT_PIPE only for supervised workers; direct
+    CLI/MCP invocations keep the watchdog disabled so a closed terminal stdin does
+    not kill them. On Unix the worker is its own process-group leader, so this also
+    terminates FFmpeg/tool children.
+    """
+    try:
+        stream = getattr(sys.stdin, "buffer", sys.stdin)
+        while stream.read(1):
+            pass
+    except Exception:  # noqa: BLE001 - the parent disappearing is the normal path
+        pass
+    if os.name != "nt":
+        try:
+            os.killpg(os.getpgrp(), signal.SIGTERM)
+        except Exception:  # noqa: BLE001
+            pass
+    os._exit(0)
 
 
 def _check_python_runtime() -> bool:
@@ -55,6 +79,8 @@ def main(argv: list[str]) -> int:
     # CLI startup is process scope, before any lazy pymss import. Inline dispatch
     # must use an already configured registry rather than change another request's env.
     os.environ["PYMSS_USER_MODELS"] = str(worker_paths.user_models_file())
+    if os.environ.get("MEDIAFORGE_PARENT_PIPE") == "1":
+        threading.Thread(target=_watch_parent_pipe, name="parent-pipe-watchdog", daemon=True).start()
     debug_log("worker.start", command=args.command)
     try:
         payload = load_payload(args.payload)
