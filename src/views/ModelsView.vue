@@ -51,6 +51,7 @@ import { MODEL_LIBRARY_PAGE_SIZES } from '@/utils/pagination'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
 import ModelProgressBlock from '@/components/ModelProgressBlock.vue'
 import ModelStorageDrawer from '@/components/models/ModelStorageDrawer.vue'
+import ModelDetailModal from '@/components/models/ModelDetailModal.vue'
 import DownloadDetailModal from '@/components/DownloadDetailModal.vue'
 import CustomModelImportDialog from '@/components/CustomModelImportDialog.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
@@ -376,6 +377,26 @@ function handleDetailDrawerUpdate(value: boolean) {
 
 function handleDetailModalAfterLeave() {
   if (!showDetail.value) selectedInfo.value = null
+}
+
+const modelDetailContext = {
+  isFavorite: (model: ModelEntry) => isFavoriteModel(model),
+  statusType: (model: ModelEntry) => modelStatusType(model),
+  statusLabel: (model: ModelEntry) => modelStatusLabel(model),
+  targetStemLabel: (model: ModelEntry) => targetStemLabel(model),
+  categoryLabel: (model: ModelEntry) => categoryLabel(model),
+  isPartiallyAvailable: (model: ModelEntry) => isPartiallyAvailable(model),
+  isDeletingModel: (name: string) => isDeletingModel(name),
+  deleteMessage: (name: string) => deleteStatusMessage(name),
+  deleteTask: (name: string) => deleteTasks.value[name],
+  downloadMessage: (name: string) => downloadStatusMessage(name),
+  downloadTask: (name: string) => downloadTasks.value[name],
+  downloadColor: (status: string) => downloadProgressColor(status),
+  isModelBusy: (model: ModelEntry) => isModelBusy(model),
+  toggleFavorite: (model: ModelEntry, event: MouseEvent) => toggleFavorite(model, event),
+  downloadModel: (model: ModelEntry, event?: MouseEvent) => downloadModel(model, event),
+  cancelDownload: (model: ModelEntry, event?: MouseEvent) => cancelDownloadModel(model, event),
+  confirmDelete: (model: ModelEntry) => confirmDeleteModel(model),
 }
 
 async function downloadModel(model: ModelEntry, event?: MouseEvent) {
@@ -1041,188 +1062,14 @@ onMounted(() => {
       </n-card>
     </n-modal>
 
-    <!-- Detail Modal -->
-    <n-modal :show="showDetail" @update:show="handleDetailDrawerUpdate" @after-leave="handleDetailModalAfterLeave">
-      <n-card
-        class="model-detail-modal"
-        :title="t('models.detail')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="handleDetailDrawerUpdate(false)"
-      >
-        <template v-if="selectedInfo">
-          <div class="model-detail-modal__body">
-            <div class="detail-content">
-            <div class="detail-title-row">
-              <strong class="detail-name">{{ selectedInfo.name }}</strong>
-              <n-button
-                secondary
-                size="small"
-                :type="isFavoriteModel(selectedInfo) ? 'warning' : 'default'"
-                @click="toggleFavorite(selectedInfo, $event)"
-              >
-                <template #icon>
-                  <n-icon :component="isFavoriteModel(selectedInfo) ? Star : StarOutline" />
-                </template>
-                {{ isFavoriteModel(selectedInfo) ? t('models.favorited') : t('models.favorite') }}
-              </n-button>
-            </div>
-
-            <div class="detail-badges">
-              <n-tag v-if="detailLoading" :bordered="false" size="small" type="info" round>
-                {{ t('common.refreshing') }}
-              </n-tag>
-              <n-tag v-if="selectedInfo.architecture" :bordered="false" size="small" type="info" round>
-                {{ selectedInfo.architecture }}
-              </n-tag>
-              <n-tag
-                :bordered="false"
-                size="small"
-                :type="modelStatusType(selectedInfo)"
-                round
-              >
-                {{ modelStatusLabel(selectedInfo) }}
-              </n-tag>
-            </div>
-
-            <n-divider style="margin:16px 0" />
-
-            <div class="detail-grid">
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.type') }}</span>
-                <span class="detail-val">{{ selectedInfo.modelType || '—' }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.targetStem') }}</span>
-                <span class="detail-val">{{ targetStemLabel(selectedInfo) || '—' }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.size') }}</span>
-                <span class="detail-val">{{ formatBytes(selectedInfo.sizeBytes) }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.category') }}</span>
-                <span class="detail-val">{{ categoryLabel(selectedInfo) || '—' }}</span>
-              </div>
-              <div v-if="selectedInfo.aliases?.length" class="detail-row">
-                <span class="detail-label">{{ t('models.aliases') }}</span>
-                <span class="detail-val">{{ selectedInfo.aliases.join(', ') }}</span>
-              </div>
-            </div>
-
-            <n-divider style="margin:16px 0" />
-
-            <n-collapse class="detail-path-collapse" :default-expanded-names="[]">
-              <n-collapse-item :title="t('models.path')" name="model-path">
-                <div class="detail-path-block">
-                  <code class="detail-path">{{ selectedInfo.modelPath }}</code>
-                </div>
-                <div v-if="isPartiallyAvailable(selectedInfo) && selectedInfo.missingPaths?.length" class="detail-partial-block">
-                  <div class="detail-label" style="margin-bottom:6px">{{ t('models.partialHintTitle') }}</div>
-                  <div class="text-muted">{{ t('models.partialHint') }}</div>
-                  <ul class="detail-missing-list">
-                    <li v-for="path in selectedInfo.missingPaths" :key="path">
-                      <code class="detail-path">{{ path }}</code>
-                    </li>
-                  </ul>
-                </div>
-              </n-collapse-item>
-            </n-collapse>
-
-            </div>
-          </div>
-        </template>
-
-        <template #footer>
-          <div class="drawer-footer" v-if="selectedInfo">
-            <!-- 删除中：进度块 -->
-            <ModelProgressBlock
-              v-if="isDeletingModel(selectedInfo.name)"
-              status="downloading"
-              :message="deleteStatusMessage(selectedInfo.name) || t('models.deleting')"
-              :progress="deleteTasks[selectedInfo.name]?.progress || 0"
-              :files-text="t('models.deleteProgress', { completed: deleteTasks[selectedInfo.name]?.completedFiles || 0, total: deleteTasks[selectedInfo.name]?.totalFiles || 0 })"
-            />
-
-            <!-- 下载中：进度块 + 取消 -->
-            <ModelProgressBlock
-              v-else-if="['preparing', 'downloading'].includes(downloadTasks[selectedInfo.name]?.status || '')"
-              :status="downloadTasks[selectedInfo.name]!.status"
-              :message="downloadStatusMessage(selectedInfo.name)"
-              :progress="downloadTasks[selectedInfo.name]!.progress"
-              :files-text="downloadTasks[selectedInfo.name]!.totalFiles > 1 ? t('models.fileProgress', { completed: downloadTasks[selectedInfo.name]!.completedFiles, total: downloadTasks[selectedInfo.name]!.totalFiles }) : ''"
-              :color="downloadProgressColor(downloadTasks[selectedInfo.name]!.status)"
-            >
-              <template #actions>
-                <n-button block secondary @click="cancelDownloadModel(selectedInfo!, $event)">
-                  {{ t('common.cancel') }}
-                </n-button>
-              </template>
-            </ModelProgressBlock>
-
-            <!-- 暂停/取消/错误/中断：进度块 + 继续 + 删除 -->
-            <template v-else-if="!selectedInfo.downloaded && downloadTasks[selectedInfo.name] && ['paused','cancelled','error','interrupted'].includes(downloadTasks[selectedInfo.name]!.status)">
-              <ModelProgressBlock
-                :status="downloadTasks[selectedInfo.name]!.status"
-                :message="downloadStatusMessage(selectedInfo.name)"
-                :progress="downloadTasks[selectedInfo.name]!.progress"
-                :files-text="downloadTasks[selectedInfo.name]!.totalFiles > 1 ? t('models.fileProgress', { completed: downloadTasks[selectedInfo.name]!.completedFiles, total: downloadTasks[selectedInfo.name]!.totalFiles }) : ''"
-                :color="downloadProgressColor(downloadTasks[selectedInfo.name]!.status)"
-              />
-              <div class="drawer-footer-actions">
-                <n-button
-                  block
-                  type="primary"
-                  :disabled="isModelBusy(selectedInfo)"
-                  @click="downloadModel(selectedInfo!, $event)"
-                >
-                  {{ downloadTasks[selectedInfo.name]?.status === 'interrupted' ? t('models.continueDownload') : t('common.resume') }}
-                </n-button>
-                <n-button
-                  block
-                  type="error"
-                  secondary
-                  @click="confirmDeleteModel(selectedInfo!)"
-                >
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                  {{ t('models.delete') }}
-                </n-button>
-              </div>
-            </template>
-
-            <!-- 已下载：状态 + 删除 -->
-            <template v-else-if="selectedInfo.downloaded">
-              <n-button block secondary disabled>
-                <template #icon><n-icon :component="CheckmarkCircleOutline" /></template>
-                {{ t('models.downloaded') }}
-              </n-button>
-              <n-button
-                block
-                type="error"
-                secondary
-                @click="confirmDeleteModel(selectedInfo!)"
-              >
-                <template #icon><n-icon :component="TrashOutline" /></template>
-                {{ t('models.delete') }}
-              </n-button>
-            </template>
-
-            <!-- 未下载且无任务：下载（含不支持则不显示） -->
-            <n-button
-              v-else-if="selectedInfo.supported && !selectedInfo.downloaded"
-              block
-              type="primary"
-              @click="downloadModel(selectedInfo!, $event)"
-            >
-              <template #icon><n-icon :component="CloudDownloadOutline" /></template>
-              {{ t('common.download') }}
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
+    <ModelDetailModal
+      :show="showDetail"
+      :model="selectedInfo"
+      :detail-loading="detailLoading"
+      :context="modelDetailContext"
+      @update:show="handleDetailDrawerUpdate"
+      @after-leave="handleDetailModalAfterLeave"
+    />
 
     <ModelStorageDrawer
       v-model:show="showStorage"
