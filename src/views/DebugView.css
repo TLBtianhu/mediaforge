@@ -420,7 +420,7 @@
   line-height: 1.5;
 }
 
-.debug-code-editor :deep(textarea) {
+.debug-code-editor textarea {
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.55;
@@ -605,12 +605,12 @@
     color-mix(in srgb, var(--surface-1) 72%, transparent) !important;
 }
 
-.debug-card :deep(.n-card__header) {
+.debug-card .n-card__header {
   padding: 16px 18px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--outline) 42%, transparent);
 }
 
-.debug-card :deep(.n-card__content) {
+.debug-card .n-card__content {
   padding: 14px 18px 18px;
 }
 
