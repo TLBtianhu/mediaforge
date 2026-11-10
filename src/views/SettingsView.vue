@@ -59,6 +59,7 @@ import {
 import SettingsAboutPanel from '@/components/settings/SettingsAboutPanel.vue'
 import SettingsPathsPanel from '@/components/settings/SettingsPathsPanel.vue'
 import SettingsAppearancePanel from '@/components/settings/SettingsAppearancePanel.vue'
+import SettingsDefaultsPanel from '@/components/settings/SettingsDefaultsPanel.vue'
 
 const { t, locale: currentLocale } = useI18n()
 const message = useMessage()
@@ -806,165 +807,27 @@ onMounted(async () => {
         />
 
         <!-- Defaults & Execution -->
-        <section v-else-if="activeSection === 'defaults'" class="settings-section-panel">
-        <n-card class="settings-card" :bordered="true" size="small">
-          <template #header>
-            <div class="section-title">
-              <span class="section-title__icon">
-                <n-icon :component="SettingsOutline" size="18" />
-              </span>
-              <span>{{ t('settings.defaults') }}</span>
-            </div>
-          </template>
-
-          <div class="settings-merged-layout">
-            <section class="settings-group">
-              <div class="setting-field" data-guide="settings-device">
-                <label class="text-muted text-sm">{{ t('settings.defaultDevice') }}</label>
-                <n-select
-                  v-model:value="defaultDevice"
-                  :options="deviceOptions"
-                />
-              </div>
-            </section>
-
-            <section class="settings-group" data-guide="settings-downloads">
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.downloadSource') }}</label>
-                <n-select
-                  v-model:value="downloadSource"
-                  :options="[
-                    { label: 'ModelScope', value: 'modelscope' },
-                    { label: 'Hugging Face', value: 'huggingface' },
-                    { label: 'HF Mirror', value: 'hf-mirror' },
-                  ]"
-                />
-              </div>
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.downloadMethod') }}</label>
-                <n-select
-                  v-model:value="downloadMethod"
-                  :options="downloadMethodOptions"
-                />
-                <p class="text-muted text-sm setting-field__hint">{{ t('settings.downloadMethodHint') }}</p>
-              </div>
-            </section>
-
-            <section class="settings-group">
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.proxyMode') }}</label>
-                <n-select
-                  v-model:value="proxyMode"
-                  :options="proxyModeOptions"
-                  @update:value="resetProxyTest"
-                />
-                <p class="text-muted text-sm setting-field__hint">{{ t('settings.proxyModeHint') }}</p>
-              </div>
-              <div v-if="proxyMode === 'custom'" class="proxy-custom-grid">
-                <div class="setting-field">
-                  <label class="text-muted text-sm">{{ t('settings.proxyUrl') }}</label>
-                  <n-input
-                    v-model:value="proxyUrl"
-                    :placeholder="t('settings.proxyUrlPlaceholder')"
-                    clearable
-                    size="small"
-                    @update:value="resetProxyTest"
-                  />
-                </div>
-                <div class="setting-field">
-                  <label class="text-muted text-sm">{{ t('settings.proxyBypass') }}</label>
-                  <n-input
-                    v-model:value="proxyBypass"
-                    :placeholder="t('settings.proxyBypassPlaceholder')"
-                    size="small"
-                  />
-                </div>
-              </div>
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.proxyTest') }}</label>
-                <div class="proxy-test-row">
-                  <n-button
-                    size="small"
-                    secondary
-                    :loading="proxyTestLoading"
-                    :disabled="proxyMode === 'custom' && !proxyUrl.trim()"
-                    @click="testProxyConnection"
-                  >
-                    {{ t('settings.proxyTest') }}
-                  </n-button>
-                  <span v-if="proxyTestStatus === 'success'" class="proxy-test-info">
-                    <n-icon :component="CheckmarkCircleOutline" size="14" color="var(--success)" />
-                    <span class="proxy-test-info__text">{{ proxyTestMessage }}</span>
-                  </span>
-                  <n-tag
-                    v-else-if="proxyTestStatus === 'error'"
-                    size="small"
-                    type="error"
-                    round
-                    :bordered="false"
-                  >{{ t('settings.proxyTestFailed') }}</n-tag>
-                  <n-tag
-                    v-else-if="proxyTestStatus === 'testing'"
-                    size="small"
-                    :bordered="false"
-                  >{{ t('settings.proxyTesting') }}</n-tag>
-                </div>
-                <div v-if="proxyTestStatus === 'error' && proxyTestMessage" class="proxy-test-error">
-                  <div class="proxy-test-error__head">
-                    <n-icon :component="AlertCircleOutline" size="14" color="var(--danger)" />
-                    <span>{{ proxyTestMessage }}</span>
-                  </div>
-                  <p v-if="proxyTestSuggestion" class="proxy-test-error__tip">{{ proxyTestSuggestion }}</p>
-                </div>
-              </div>
-            </section>
-
-            <section class="settings-group settings-group--soft">
-              <div class="settings-group__head">
-                <span class="settings-group__icon">
-                  <n-icon :component="SpeedometerOutline" size="16" />
-                </span>
-                <span>{{ t('settings.execution') }}</span>
-              </div>
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.maxConcurrentSeparations') }}</label>
-                <n-input-number
-                  v-model:value="maxConcurrentSeparationsInput"
-                  :min="1"
-                  :max="settings.MAX_CONCURRENT_SEPARATIONS"
-                  :precision="0"
-                  :step="1"
-                  clearable
-                  style="width: 100%;"
-                />
-                <p class="text-muted text-sm setting-field__hint">
-                  {{ t('settings.maxConcurrentSeparationsHint') }}
-                </p>
-              </div>
-            </section>
-
-            <section class="settings-group settings-group--soft">
-              <div class="settings-group__head">
-                <span class="settings-group__icon">
-                  <n-icon :component="TerminalOutline" size="16" />
-                </span>
-                <span>{{ t('settings.developerMode') }}</span>
-              </div>
-              <div class="setting-field setting-field--switch">
-                <div class="setting-switch-row">
-                  <div class="setting-switch-row__copy">
-                    <label class="text-muted text-sm">{{ t('settings.developerModeTitle') }}</label>
-                    <p class="text-muted text-sm setting-field__hint">
-                      {{ t('settings.developerModeHint') }}
-                    </p>
-                  </div>
-                  <n-switch v-model:value="developerMode" />
-                </div>
-              </div>
-            </section>
-          </div>
-        </n-card>
-        </section>
+        <SettingsDefaultsPanel
+          v-else-if="activeSection === 'defaults'"
+          v-model:default-device="defaultDevice"
+          v-model:download-source="downloadSource"
+          v-model:download-method="downloadMethod"
+          v-model:proxy-mode="proxyMode"
+          v-model:proxy-url="proxyUrl"
+          v-model:proxy-bypass="proxyBypass"
+          v-model:max-concurrent-separations-input="maxConcurrentSeparationsInput"
+          v-model:developer-mode="developerMode"
+          :device-options="deviceOptions"
+          :download-method-options="downloadMethodOptions"
+          :proxy-mode-options="proxyModeOptions"
+          :max-concurrent-separations="settings.MAX_CONCURRENT_SEPARATIONS"
+          :proxy-test-loading="proxyTestLoading"
+          :proxy-test-status="proxyTestStatus"
+          :proxy-test-message="proxyTestMessage"
+          :proxy-test-suggestion="proxyTestSuggestion"
+          :test-proxy-connection="testProxyConnection"
+          :reset-proxy-test="resetProxyTest"
+        />
       </main>
     </div>
 
