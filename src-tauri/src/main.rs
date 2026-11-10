@@ -18,6 +18,7 @@ mod session_log;
 mod single_instance;
 mod state;
 mod runtime_assets;
+mod runtime_lease;
 #[cfg(windows)]
 mod process_job;
 mod version_check;

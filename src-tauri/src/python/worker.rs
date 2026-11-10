@@ -1,4 +1,5 @@
 use crate::error::{AppError, AppResult};
+use crate::runtime_lease::RuntimeLease;
 use crate::log_record::{legacy_stderr, LogRecord};
 use crate::python::protocol::WorkerEnvelope;
 use crate::python::task_journal::{self, JournalHandle};
@@ -189,6 +190,22 @@ fn acquire_runtime_access<'a>(
         state.users += 1;
     }
     Ok(Some(RuntimeAccessGuard { access, updating }))
+}
+
+/// Cross-process companion to `RuntimeAccess`. Bootstrap-only commands do not
+/// touch runtime-envs and therefore do not take a lease.
+fn acquire_runtime_file_lease(app: &AppHandle, command: &str) -> AppResult<Option<RuntimeLease>> {
+    let envs = match storage::runtime_envs_dir(app) {
+        Ok(path) => path,
+        Err(_) => return Ok(None),
+    };
+    if super::protocol::command_updates_runtime(command) {
+        return RuntimeLease::exclusive(&envs).map(Some);
+    }
+    if requires_bootstrap_python(command) || allows_bootstrap_without_runtime(command) {
+        return Ok(None);
+    }
+    RuntimeLease::shared(&envs).map(Some)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1625,6 +1642,7 @@ fn run_worker_with_payload_inner(
     let mut reference_mutation = storage::model_reference_mutation(command);
     let _application_access = acquire_application_operation()?;
     let _runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
+    let _runtime_file_lease = acquire_runtime_file_lease(app, command)?;
     let payload_file = match payload {
         Some(value) => Some(make_payload_file(command, None, value)?),
         None => None,
@@ -2021,6 +2039,7 @@ struct WorkerStartResources {
     reference_mutation: Option<storage::ModelReferenceMutation>,
     audio_scope: Option<audio_output::AudioOutputScope>,
     runtime_access: Option<RuntimeAccessGuard<'static>>,
+    runtime_file_lease: Option<RuntimeLease>,
     application_access: Option<Box<dyn Send>>,
     stderr: Option<std::thread::JoinHandle<()>>,
     cancel: Option<ManualCancelWatch>,
@@ -2033,6 +2052,7 @@ impl WorkerStartResources {
         if let Some(mut scope) = self.audio_scope.take() { scope.finish(); }
         if let Some(mut mutation) = self.reference_mutation.take() { mutation.reaped(); }
         drop(self.runtime_access.take());
+        drop(self.runtime_file_lease.take());
         drop(self.application_access.take());
     }
 }
@@ -2111,6 +2131,7 @@ fn spawn_worker_background_inner(
     let mut reference_mutation = storage::model_reference_mutation(command);
     let mut application_access = Some(acquire_application_operation()?);
     let mut runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
+    let runtime_file_lease = acquire_runtime_file_lease(&app, command)?;
     let registered_task_ids = task_journal::registered_ids(&task_id, &payload);
     {
         let tasks = state
@@ -2197,7 +2218,7 @@ fn spawn_worker_background_inner(
         child: shared_child.clone(), _journal: journal.clone(), reaped: false, owns_cleanup: true,
         resources: Arc::new(Mutex::new(WorkerStartResources {
             reference_mutation,
-            audio_scope: audio_scope.take(), runtime_access: runtime_access.take(),
+            audio_scope: audio_scope.take(), runtime_access: runtime_access.take(), runtime_file_lease,
             application_access: application_access.take().map(|guard| Box::new(guard) as Box<dyn Send>), stderr: None, cancel: None,
         })),
         cleanup: Some(WorkerStartCleanup { app: app.clone(), ids: registered_task_ids.clone(), payload: payload_file.clone() }),
@@ -2525,7 +2546,7 @@ mod tests {
         let mut reference_mutation = crate::storage::model_reference_mutation("import_custom_model").unwrap();
         reference_mutation.spawned();
         let guard = super::WorkerStartGuard { child: child.clone(), _journal: Some(journal), cleanup: None, reaped: false, owns_cleanup: true,
-            resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, stderr: None, cancel: None,
+            resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, runtime_file_lease: None, stderr: None, cancel: None,
                 reference_mutation: Some(reference_mutation),
                 application_access: Some(Box::new(StartupReleaseProbe { child: child.clone(), root: root.path().into(), reaped: reaped.clone(), slot_held: slot_held.clone() })) })),
         };

@@ -49,6 +49,8 @@ Rust 命令面       commands/app_cmd.rs 已删除，commands/app/ 下 13 个域
 版本检查          每次从发布源刷新并验签；document/signature 单文件原子缓存，
                   失败不把旧缓存报告为最新；仅当前原子cache envelope1与versions文档2
 运行时事务        runtime_assets/transaction.rs 持有跨进程锁，隔离解包/自检/标记，
+运行时租约        .runtime-envs/.runtime-lease.lock：worker 持共享租约，安装/激活/删除
+                  持独占租约；Rust 主进程与第二实例/MCP 经 Rust 启动的 worker 共享该门禁
                   完成后发布目录、原子切换指针；失败恢复目录与指针，保留续传包
 本地打包          只带实际3.12 bootstrap与完整worker/manifest/SDK/tools，资产独立构建；
                   源EXE及Python版本在stage变更前检查，fresh bootstrap不自动删除旧目录

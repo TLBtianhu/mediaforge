@@ -1,17 +1,22 @@
 //! Runtime publication: serialize writers and publish only fully verified directories.
 use super::{marker_matches, RuntimeDescriptor, ASSET_MARKER};
+use crate::runtime_lease::RuntimeLease;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
 pub(super) struct InstallLock {
     _file: File,
+    _lease: RuntimeLease,
 }
 
 impl InstallLock {
     pub(super) fn acquire(envs: &Path) -> Result<Self, String> {
         ensure_plain(envs)?;
         fs::create_dir_all(envs).map_err(|error| error.to_string())?;
+        // Cross-process read/write gate: workers hold the shared side for their
+        // whole lifetime. Acquire this before the installer-only lock.
+        let lease = RuntimeLease::exclusive(envs).map_err(|error| error.to_string())?;
         let path = envs.join(".runtime-asset-install.lock");
         ensure_plain(&path)?;
         let mut options = OpenOptions::new();
@@ -36,7 +41,7 @@ impl InstallLock {
                 return Err("运行时正在安装或激活，请等待当前操作完成后重试".into());
             }
         }
-        Ok(Self { _file: file })
+        Ok(Self { _file: file, _lease: lease })
     }
 }
 
@@ -696,4 +701,13 @@ mod tests {
         assert!(!root.path().join("outside").exists());
         assert_eq!(fs::read_dir(staging).unwrap().count(), 1);
     }
+    #[test]
+    fn installer_is_blocked_by_a_worker_lease() {
+        let root = tempfile::tempdir().unwrap();
+        let worker = RuntimeLease::shared(root.path()).unwrap();
+        assert!(InstallLock::acquire(root.path()).is_err());
+        drop(worker);
+        assert!(InstallLock::acquire(root.path()).is_ok());
+    }
+
 }
