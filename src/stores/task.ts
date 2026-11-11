@@ -374,8 +374,7 @@ const {
   const { createQueuedTask, createQueuedWorkflowTask } = makeTaskQueue({
     useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath,
     inputStemSegment, createRunId, STAGE_META,
-    buildRunConfig, buildWorkflowRunConfig, tasks, rememberSessionTasks,
-    activeTaskId,
+    buildRunConfig, buildWorkflowRunConfig,
   })
 
   const { scheduleQueue, suppressScheduling, resumeScheduling } = makeTaskQueueScheduler({

@@ -2,11 +2,26 @@
  * 单次分离与工作流运行配置：设置快照、运行时设备和工作流模型参数。
  * 所有有状态依赖由 task store 注入。
  */
+import type { Ref } from 'vue'
 import type { WorkflowEntry } from './workflow.ts'
+import type { useSettingsStore } from './settings.ts'
+import type { useAppStore } from './app.ts'
+import type { useModelStore } from './model.ts'
 import type { ModelDefaultInferenceParams, ModelEntry } from './model.ts'
 import type { OutputLayout, OutputNamingConfig, SeparationRunConfig } from './task.ts'
 
-type Deps = Record<string, any>
+type Deps = {
+  useSettingsStore: () => ReturnType<typeof useSettingsStore>
+  useAppStore: () => ReturnType<typeof useAppStore>
+  useModelStore: () => ReturnType<typeof useModelStore>
+  selectedStems: Ref<string[]>
+  useTta: Ref<boolean>
+  normalizeOutputNaming: (value: unknown) => OutputNamingConfig | undefined
+  CURRENT_INFERENCE_PARAMS_VERSION: number
+  detectWorkflowFormat: (definition: Record<string, unknown>) => string
+  resolveWorkflowRuntimeDefaults: (definition: Record<string, unknown>, fallback: { device: string; outputFormat: string; modelDir: string | null }) => { device: string; outputFormat: string; modelDir: string | null }
+  prepareWorkflowDefinitionForRun: (definition: Record<string, unknown>, defaults: { device: string; outputFormat: string; modelInferenceParams: Record<string, Record<string, unknown>> }) => Record<string, unknown>
+}
 
 export function makeTaskRunConfig(deps: Deps) {
   const {

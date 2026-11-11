@@ -2,10 +2,23 @@
  * 队列任务构造：输出路径、单模型任务与工作流任务。
  * 任务 store 提供状态与持久化动作；模块只负责创建请求草稿，写盘确认后才入队。
  */
+import type { Ref } from 'vue'
 import type { WorkflowEntry } from './workflow.ts'
-import type { OutputLayout, OutputNamingConfig, SeparationTask } from './task.ts'
+import type { OutputLayout, OutputNamingConfig, SeparationRunConfig, SeparationTask } from './task.ts'
+import type { TaskStatus } from '../features/tasks/lifecycle.ts'
+import type { useSettingsStore } from './settings.ts'
 
-type Deps = Record<string, any>
+type Deps = {
+  useSettingsStore: () => ReturnType<typeof useSettingsStore>
+  windowsPaths: Ref<boolean>
+  resolveOutputDirectory: (value?: string | null, fallback?: string | null, windows?: boolean) => string
+  joinOutputPath: (base: string, child: string, windows: boolean) => string
+  inputStemSegment: (input: string, fallback: string, windows: boolean) => string
+  createRunId: (prefix: string) => string
+  STAGE_META: Record<TaskStatus, { progress: number; label: string }>
+  buildRunConfig: (inferenceParams: Record<string, unknown>, modelType?: string | null, outputLayout?: OutputLayout, outputNaming?: OutputNamingConfig) => SeparationRunConfig
+  buildWorkflowRunConfig: (workflow: WorkflowEntry, outputLayout?: OutputLayout, outputNaming?: OutputNamingConfig) => SeparationRunConfig
+}
 
 export function makeTaskQueue(deps: Deps) {
   const { useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath, inputStemSegment, createRunId, STAGE_META, buildRunConfig, buildWorkflowRunConfig } = deps
