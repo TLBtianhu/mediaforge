@@ -1,17 +1,15 @@
 import type { Ref } from 'vue'
-import type { ModelEntry } from '@/stores/model'
+import type { DeleteTask, DownloadTask, ModelEntry } from '@/stores/model'
 import { getModelCategoryLabel } from '@/utils/modelCategory'
 import type { DownloadStatus } from '@/features/downloads/lifecycle'
 import { formatBytes, formatSpeedMBps } from '@/utils/format'
 
 type Translate = (key: string, params?: Record<string, unknown>) => string
-type TaskMap = Ref<Record<string, Record<string, any> | undefined>>
-
 type Deps = {
   t: Translate
   locale: Ref<string>
-  downloadTasks: TaskMap
-  deleteTasks: TaskMap
+  downloadTasks: Ref<Record<string, DownloadTask>>
+  deleteTasks: Ref<Record<string, DeleteTask>>
   isActiveDownloadStatus: (status: DownloadStatus) => boolean
 }
 
