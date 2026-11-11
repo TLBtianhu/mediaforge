@@ -3,15 +3,27 @@
  *
  * 收藏本体在 models/sorting.ts（isFavoriteModel），这里管备注与统计。
  */
-type Deps = Record<string, any>
+import type { Ref } from 'vue'
+import type { MessageApi } from 'naive-ui'
+import type { ModelEntry, ModelPreference, useModelStore } from '@/stores/model'
+
+type Deps = {
+  modelPreferences: Ref<Record<string, ModelPreference>>
+  modelStore: ReturnType<typeof useModelStore>
+  noteEditorModel: Ref<ModelEntry | null>
+  noteDraft: Ref<string>
+  showNoteEditor: Ref<boolean>
+  message: MessageApi
+  t: (key: string, named?: Record<string, unknown>) => string
+}
 
 export function makeModelNotes(deps: Deps) {
-  function modelNote(modelOrName: any) {
+  function modelNote(modelOrName: ModelEntry | string) {
     const name = typeof modelOrName === 'string' ? modelOrName : modelOrName?.name
     return name ? deps.modelPreferences.value[name]?.note || '' : ''
   }
 
-  function modelUseCount(modelOrName: any) {
+  function modelUseCount(modelOrName: ModelEntry | string) {
     const name = typeof modelOrName === 'string' ? modelOrName : modelOrName?.name
     return name ? deps.modelStore.getModelUseCount(name) : 0
   }
@@ -20,12 +32,12 @@ export function makeModelNotes(deps: Deps) {
     return name.split(/(?<=[_-])/u)
   }
 
-  function toggleFavorite(model: any, event?: MouseEvent) {
+  function toggleFavorite(model: ModelEntry, event?: MouseEvent) {
     event?.stopPropagation()
-    deps.modelStore.toggleFavorite(model.name)
+    deps.modelStore.toggleModelFavorite(model.name)
   }
 
-  function openModelNoteEditor(model: any) {
+  function openModelNoteEditor(model: ModelEntry) {
     deps.noteEditorModel.value = model
     deps.noteDraft.value = modelNote(model)
     deps.showNoteEditor.value = true

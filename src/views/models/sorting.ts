@@ -3,10 +3,19 @@
  *
  * 预计算排序键（favorite/category/type），避免比较器里重复求值。
  */
-import type { ComputedRef } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
+import type { ModelEntry, ModelPreference } from '@/stores/model'
 
-type Deps = Record<string, any> & {
+type Deps = {
   computed: <T>(source: () => T) => ComputedRef<T>
+  locale: Ref<string>
+  modelPreferences: Ref<Record<string, ModelPreference>>
+  downloadedOnly: Ref<boolean>
+  filteredModels: Ref<ModelEntry[]>
+  modelSort: Ref<string>
+  categoryLabel: (model: ModelEntry) => string
+  page: Ref<number>
+  pageSize: Ref<number>
 }
 
 export function makeModelSorting(deps: Deps) {
@@ -14,28 +23,28 @@ export function makeModelSorting(deps: Deps) {
 
   const collator = computed(() => new Intl.Collator(deps.locale.value === 'zh-CN' ? 'zh-CN' : 'en', { numeric: true, sensitivity: 'base' }))
 
-  function compareModelName(a: any, b: any) {
+  function compareModelName(a: ModelEntry, b: ModelEntry) {
     return collator.value.compare(a.name, b.name)
   }
 
-  function isFavoriteModel(model: any) {
+  function isFavoriteModel(model: ModelEntry) {
     return Boolean(model?.name && deps.modelPreferences.value[model.name]?.favorite)
   }
 
   const sortedModels = computed(() => {
     const list = deps.downloadedOnly.value
-      ? deps.filteredModels.value.filter((m: any) => m.downloaded)
+      ? deps.filteredModels.value.filter((m: ModelEntry) => m.downloaded)
       : deps.filteredModels.value
     const sort = deps.modelSort.value
     // 收藏置顶仅在默认/收藏排序下生效，其余排序纯按维度排列
     const pinFavorite = sort === 'default' || sort === 'favorite'
-    const decorated = list.map((model: any) => ({
+    const decorated = list.map((model: ModelEntry) => ({
       model,
       favorite: isFavoriteModel(model),
       categoryKey: sort === 'category' ? deps.categoryLabel(model) : '',
       typeKey: sort === 'type' ? String(model.modelType || '') : '',
     }))
-    decorated.sort((a: any, b: any) => {
+    decorated.sort((a, b) => {
       if (pinFavorite) {
         const favoriteDelta = Number(b.favorite) - Number(a.favorite)
         if (favoriteDelta) return favoriteDelta
@@ -62,7 +71,7 @@ export function makeModelSorting(deps: Deps) {
           return compareModelName(a.model, b.model)
       }
     })
-    return decorated.map((d: any) => d.model)
+    return decorated.map(d => d.model)
   })
 
   const pagedModels = computed(() => {
