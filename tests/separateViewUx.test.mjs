@@ -362,8 +362,8 @@ test('output stem bulk actions distinguish all stems from an empty selection', (
 })
 
 test('advanced inference settings expose model-scoped save and reset actions', async () => {
-  assert.ok(advancedTemplate.includes('@click="ctx.saveCurrentModelInferenceDefaults"'))
-  assert.ok(advancedTemplate.includes('@click="ctx.resetCurrentModelInferenceDefaults"'))
+  assert.ok(advancedTemplate.includes('@click="props.saveCurrentModelInferenceDefaults"'))
+  assert.ok(advancedTemplate.includes('@click="props.resetCurrentModelInferenceDefaults"'))
   assert.ok(advancedTemplate.includes("t('separate.saveInferenceDefaults')"))
   assert.ok(advancedTemplate.includes("t('separate.resetInferenceDefaults')"))
 

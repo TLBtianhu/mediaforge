@@ -16,10 +16,10 @@ const simpleWorkflowTemplate = simpleWorkflow.template?.content || ''
 test('separation parameters use model-provided sample steps with existing fallbacks', () => {
   assert.ok(separate.scriptSetup?.content.includes('resolveInferenceSampleStep(currentModelInfo.value?.inferenceParamMeta, 1)'))
   assert.ok(separate.scriptSetup?.content.includes('resolveInferenceChunkStep(currentModelInfo.value?.inferenceParamMeta, 1024)'))
-  assert.ok(advancedTemplate.includes(':step="ctx.overlapSizeStep"'))
-  assert.ok(advancedTemplate.includes(':step="ctx.chunkSizeStep"'))
-  assert.ok(advancedTemplate.includes('@update:value="ctx.updateOverlapSize"'))
-  assert.ok(advancedTemplate.includes('@update:value="ctx.updateChunkSize"'))
+  assert.ok(advancedTemplate.includes(':step="props.overlapSizeStep"'))
+  assert.ok(advancedTemplate.includes(':step="props.chunkSizeStep"'))
+  assert.ok(advancedTemplate.includes('props.updateOverlapSize'))
+  assert.ok(advancedTemplate.includes('props.updateChunkSize'))
 })
 
 test('model defaults editor uses the same sample-step metadata', () => {

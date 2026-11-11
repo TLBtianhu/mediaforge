@@ -60,11 +60,11 @@ describe('SeparateView 的高级参数面板', () => {
   })
 
   it('没有接口的模型保留旧控件', () => {
-    assert.ok(advanced.includes('v-if="ctx.slotPanelPlan"'))
+    assert.ok(advanced.includes('v-if="props.slotPanelPlan"'))
     assert.ok(advanced.includes('<template v-else>'), '旧控件应在 v-else 分支里')
   })
 
   it('引导高亮仍然接上', () => {
-    assert.ok(advanced.includes(':active-slot="ctx.guidedParameter?.id"'))
+    assert.ok(advanced.includes(':active-slot="props.guidedParameterId"'))
   })
 })

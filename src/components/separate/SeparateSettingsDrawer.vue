@@ -1,35 +1,58 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { SettingsDrawerContext } from './panelTypes'
+import type { ParameterHelpTopic } from '@/features/inference/parameterHelp'
+import type { ParameterGuide } from '@/features/onboarding/parameters'
+import type { useSettingsStore } from '@/stores/settings'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import ParameterFieldGuide from '@/components/ParameterFieldGuide.vue'
-import SeparateAdvancedPanel from '@/components/separate/SeparateAdvancedPanel.vue'
 import { InformationCircleOutline } from '@vicons/ionicons5'
 
+type SelectOption = { label: string; value: string | number }
+
 const show = defineModel<boolean>('show', { required: true })
-const props = defineProps<{ context: SettingsDrawerContext }>()
-const ctx = reactive(props.context) as SettingsDrawerContext
+const parameterHelpPage = defineModel<number | null>('parameterHelpPage', { required: true })
+const useTta = defineModel<boolean>('useTta', { required: true })
+const normalize = defineModel<boolean>('normalize', { required: true })
+const expandedInferenceSections = defineModel<string[]>('expandedInferenceSections', { required: true })
+const props = defineProps<{
+  helpTopics: ParameterHelpTopic[]
+  onSettingsCardRef: (element: { $el: HTMLElement } | null) => void
+  onFieldGuideRef: (element: { syncPosition: () => void } | null) => void
+  guidedParameter?: ParameterGuide
+  guideTarget: HTMLElement | null
+  beginnerGuide: { parameterStep: boolean }
+  openParameterHelp: () => void
+  effectiveFormat: string
+  formatLabel: string
+  settings: ReturnType<typeof useSettingsStore>
+  wavBitDepthOptions: SelectOption[]
+  flacBitDepthOptions: SelectOption[]
+  mp3BitRateOptions: SelectOption[]
+  bitRateOptions: SelectOption[]
+  m4aCodecOptions: SelectOption[]
+  showNormalizeField: boolean
+  locateGuidedParameter: () => void
+}>()
 const { t } = useI18n()
 </script>
 
 <template>
-  <n-modal v-model:show="show" @after-enter="ctx.locateGuidedParameter">
+  <n-modal v-model:show="show" @after-enter="props.locateGuidedParameter">
     <InferenceParameterLesson
-      v-if="ctx.parameterHelpPage !== null"
-      :topic="ctx.helpTopics[ctx.parameterHelpPage]!"
-      :topics="ctx.helpTopics"
-      :progress="`${ctx.parameterHelpPage + 1} / ${ctx.helpTopics.length}`"
+      v-if="parameterHelpPage !== null"
+      :topic="props.helpTopics[parameterHelpPage]!"
+      :topics="props.helpTopics"
+      :progress="`${parameterHelpPage + 1} / ${props.helpTopics.length}`"
       :close-label="t('parameterHelp.backToParameters')"
-      :next-label="ctx.parameterHelpPage === ctx.helpTopics.length - 1 ? t('parameterHelp.done') : undefined"
-      @select="topic => ctx.parameterHelpPage = ctx.helpTopics.indexOf(topic)"
-      @close="ctx.parameterHelpPage = null"
-      @previous="ctx.parameterHelpPage > 0 ? ctx.parameterHelpPage-- : ctx.parameterHelpPage = null"
-      @next="ctx.parameterHelpPage < ctx.helpTopics.length - 1 ? ctx.parameterHelpPage++ : ctx.parameterHelpPage = null"
+      :next-label="parameterHelpPage === props.helpTopics.length - 1 ? t('parameterHelp.done') : undefined"
+      @select="topic => parameterHelpPage = props.helpTopics.indexOf(topic)"
+      @close="parameterHelpPage = null"
+      @previous="parameterHelpPage > 0 ? parameterHelpPage-- : parameterHelpPage = null"
+      @next="parameterHelpPage < props.helpTopics.length - 1 ? parameterHelpPage++ : parameterHelpPage = null"
     />
     <n-card
       v-else
-      :ref="(element: any) => (ctx.settingsCardRef = element)"
+      :ref="(element: { $el: HTMLElement } | null) => props.onSettingsCardRef(element)"
       class="settings-modal"
       :title="t('separate.settingsDrawerTitle')"
       :bordered="false"
@@ -45,65 +68,65 @@ const { t } = useI18n()
             <span>{{ t('separate.runOptionsHint') }}</span>
           </div>
           <div class="check-list">
-            <n-checkbox v-model:checked="ctx.useTta" data-parameter-guide="tta" :class="{ 'parameter-guide-target--active': ctx.guidedParameter?.id === 'tta' }">{{ t('separate.tta') }}</n-checkbox>
+            <n-checkbox v-model:checked="useTta" data-parameter-guide="tta" :class="{ 'parameter-guide-target--active': props.guidedParameter?.id === 'tta' }">{{ t('separate.tta') }}</n-checkbox>
           </div>
         </div>
 
         <div class="settings-group">
           <div class="settings-group__head">
-            <strong>{{ t('separate.audioQualityTitle') }} · {{ ctx.formatLabel }}</strong>
+            <strong>{{ t('separate.audioQualityTitle') }} · {{ props.formatLabel }}</strong>
             <span>{{ t('separate.audioQualityEditable') }}</span>
           </div>
           <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
-            <n-grid-item v-if="ctx.effectiveFormat === 'wav'">
-              <div class="field-block" data-parameter-guide="wavBitDepth" :class="{ 'parameter-guide-target--active': ctx.guidedParameter?.id === 'wavBitDepth' }">
+            <n-grid-item v-if="props.effectiveFormat === 'wav'">
+              <div class="field-block" data-parameter-guide="wavBitDepth" :class="{ 'parameter-guide-target--active': props.guidedParameter?.id === 'wavBitDepth' }">
                 <label>{{ t('audio.wavBitDepth') }}</label>
-                <n-select v-model:value="ctx.settings.wavBitDepth" :options="ctx.wavBitDepthOptions" />
+                <n-select v-model:value="props.settings.wavBitDepth" :options="props.wavBitDepthOptions" />
               </div>
             </n-grid-item>
-            <n-grid-item v-if="ctx.effectiveFormat === 'flac'">
-              <div class="field-block" data-parameter-guide="flacBitDepth" :class="{ 'parameter-guide-target--active': ctx.guidedParameter?.id === 'flacBitDepth' }">
+            <n-grid-item v-if="props.effectiveFormat === 'flac'">
+              <div class="field-block" data-parameter-guide="flacBitDepth" :class="{ 'parameter-guide-target--active': props.guidedParameter?.id === 'flacBitDepth' }">
                 <label>{{ t('audio.flacBitDepth') }}</label>
-                <n-select v-model:value="ctx.settings.flacBitDepth" :options="ctx.flacBitDepthOptions" />
+                <n-select v-model:value="props.settings.flacBitDepth" :options="props.flacBitDepthOptions" />
               </div>
             </n-grid-item>
-            <n-grid-item v-if="ctx.effectiveFormat === 'mp3'">
-              <div class="field-block" data-parameter-guide="mp3BitRate" :class="{ 'parameter-guide-target--active': ctx.guidedParameter?.id === 'mp3BitRate' }">
+            <n-grid-item v-if="props.effectiveFormat === 'mp3'">
+              <div class="field-block" data-parameter-guide="mp3BitRate" :class="{ 'parameter-guide-target--active': props.guidedParameter?.id === 'mp3BitRate' }">
                 <label>{{ t('audio.mp3BitRate') }}</label>
-                <n-select v-model:value="ctx.settings.mp3BitRate" :options="ctx.mp3BitRateOptions" />
+                <n-select v-model:value="props.settings.mp3BitRate" :options="props.mp3BitRateOptions" />
               </div>
             </n-grid-item>
-            <n-grid-item v-if="ctx.effectiveFormat === 'm4a'">
-              <div class="field-block" data-parameter-guide="m4aBitRate" :class="{ 'parameter-guide-target--active': ctx.guidedParameter?.id === 'm4aBitRate' }">
+            <n-grid-item v-if="props.effectiveFormat === 'm4a'">
+              <div class="field-block" data-parameter-guide="m4aBitRate" :class="{ 'parameter-guide-target--active': props.guidedParameter?.id === 'm4aBitRate' }">
                 <label>{{ t('audio.m4aBitRate') }}</label>
-                <n-select v-model:value="ctx.settings.m4aBitRate" :options="ctx.bitRateOptions" />
+                <n-select v-model:value="props.settings.m4aBitRate" :options="props.bitRateOptions" />
               </div>
             </n-grid-item>
-            <n-grid-item v-if="ctx.effectiveFormat === 'm4a'">
-              <div class="field-block" data-parameter-guide="m4aCodec" :class="{ 'parameter-guide-target--active': ctx.guidedParameter?.id === 'm4aCodec' }">
+            <n-grid-item v-if="props.effectiveFormat === 'm4a'">
+              <div class="field-block" data-parameter-guide="m4aCodec" :class="{ 'parameter-guide-target--active': props.guidedParameter?.id === 'm4aCodec' }">
                 <label>{{ t('audio.m4aCodec') }}</label>
-                <n-select v-model:value="ctx.settings.m4aCodec" :options="ctx.m4aCodecOptions" />
+                <n-select v-model:value="props.settings.m4aCodec" :options="props.m4aCodecOptions" />
               </div>
             </n-grid-item>
-            <n-grid-item v-if="ctx.showNormalizeField">
-              <div class="field-block field-block--inline-check" data-parameter-guide="normalize" :class="{ 'parameter-guide-target--active': ctx.guidedParameter?.id === 'normalize' }">
-                <n-checkbox v-model:checked="ctx.normalize">{{ t('inference.normalize') }}</n-checkbox>
+            <n-grid-item v-if="props.showNormalizeField">
+              <div class="field-block field-block--inline-check" data-parameter-guide="normalize" :class="{ 'parameter-guide-target--active': props.guidedParameter?.id === 'normalize' }">
+                <n-checkbox v-model:checked="normalize">{{ t('inference.normalize') }}</n-checkbox>
               </div>
             </n-grid-item>
           </n-grid>
         </div>
 
         <div class="settings-group">
-          <n-collapse v-model:expanded-names="ctx.expandedInferenceSections">
+          <n-collapse v-model:expanded-names="expandedInferenceSections">
             <n-collapse-item :title="t('inference.advancedParams')" name="inference">
-              <template #header-extra><n-button v-if="!ctx.beginnerGuide.parameterStep" text size="small" :aria-label="t('parameterHelp.label')" @click.stop="ctx.openParameterHelp"><n-icon :component="InformationCircleOutline" size="18" /></n-button></template>
-              <SeparateAdvancedPanel :context="ctx.advancedPanelContext" />
+              <template #header-extra><n-button v-if="!props.beginnerGuide.parameterStep" text size="small" :aria-label="t('parameterHelp.label')" @click.stop="props.openParameterHelp"><n-icon :component="InformationCircleOutline" size="18" /></n-button></template>
+              <slot name="advanced" />
             </n-collapse-item>
           </n-collapse>
         </div>
       </div>
 
-      <ParameterFieldGuide v-if="ctx.guidedParameter" :ref="(element: unknown) => (ctx.fieldGuideRef = element)" :parameter="ctx.guidedParameter" :target="ctx.guideTarget" />
+      <ParameterFieldGuide v-if="props.guidedParameter" :ref="(element: unknown) => props.onFieldGuideRef(element as { syncPosition: () => void } | null)" :parameter="props.guidedParameter" :target="props.guideTarget" />
 
       <template #footer>
         <div class="drawer-footer">
