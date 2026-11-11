@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import SeparateResultPreview from './SeparateResultPreview.vue'
+import SeparateTaskRunningActions from './SeparateTaskRunningActions.vue'
+import SeparateTaskTerminalActions from './SeparateTaskTerminalActions.vue'
 import type { DropdownOption } from 'naive-ui'
 import type { SeparationJob, SeparationTask, StemOutput } from '@/stores/task'
 import {
   CheckmarkCircle,
-  ChevronDownOutline,
   CloseOutline,
   FolderOutline,
   OpenOutline,
   PauseOutline,
-  PlayOutline,
   TerminalOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
@@ -104,23 +104,12 @@ const running = () => props.taskPanelState === 'running'
           </div>
         </div>
       </div>
-      <div class="stage-actions">
-        <n-button secondary strong size="large" @click="props.beginNextSeparation">
-          {{ t('separate.addNextBatch') }}
-        </n-button>
-        <n-button
-          strong
-          size="large"
-          type="error"
-          secondary
-          class="stage-actions__primary"
-          :loading="props.cancellingTaskId === props.currentTask.id || props.cancellingTaskId === 'batch'"
-          :disabled="props.cancellingTaskId === props.currentTask.id || props.cancellingTaskId === 'batch'"
-          @click="props.handleCancelCurrentTask"
-        >
-          {{ t('tasks.cancelAction') }}
-        </n-button>
-      </div>
+      <SeparateTaskRunningActions
+        :current-task-id="props.currentTask.id"
+        :cancelling-task-id="props.cancellingTaskId"
+        :begin-next-separation="props.beginNextSeparation"
+        :handle-cancel-current-task="props.handleCancelCurrentTask"
+      />
     </template>
 
     <template v-else>
@@ -174,40 +163,14 @@ const running = () => props.taskPanelState === 'running'
           :format-playback-time="props.formatPlaybackTime"
         />
       </div>
-      <div class="stage-actions">
-        <template v-if="props.taskPanelState === 'done'">
-          <n-dropdown :options="props.completedActionOptions" placement="top-end" @select="props.handleCompletedAction">
-            <n-button secondary size="large">
-              {{ t('separate.moreActions') }}
-              <n-icon :component="ChevronDownOutline" />
-            </n-button>
-          </n-dropdown>
-          <n-button secondary size="large" @click="props.goToResults">
-            {{ t('separate.viewResults') }}
-          </n-button>
-          <n-button type="primary" size="large" class="stage-actions__primary" @click="props.beginNextSeparation">
-            {{ t('separate.newSeparation') }}
-          </n-button>
-        </template>
-        <template v-else-if="props.taskPanelState === 'failed'">
-          <n-button secondary size="large" @click="props.beginNextSeparation">
-            {{ t('separate.newSeparation') }}
-          </n-button>
-          <n-button type="primary" size="large" class="stage-actions__primary" @click="props.retryCurrentTask">
-            <template #icon><n-icon :component="PlayOutline" /></template>
-            {{ t('common.retry') }}
-          </n-button>
-        </template>
-        <template v-else>
-          <n-button secondary size="large" @click="props.retryCurrentTask">
-            <template #icon><n-icon :component="PlayOutline" /></template>
-            {{ t('separate.runAgain') }}
-          </n-button>
-          <n-button type="primary" size="large" class="stage-actions__primary" @click="props.beginNextSeparation">
-            {{ t('separate.newSeparation') }}
-          </n-button>
-        </template>
-      </div>
+      <SeparateTaskTerminalActions
+        :task-panel-state="props.taskPanelState"
+        :completed-action-options="props.completedActionOptions"
+        :handle-completed-action="props.handleCompletedAction"
+        :go-to-results="props.goToResults"
+        :begin-next-separation="props.beginNextSeparation"
+        :retry-current-task="props.retryCurrentTask"
+      />
     </template>
   </section>
 </template>
@@ -468,18 +431,4 @@ const running = () => props.taskPanelState === 'running'
   background: color-mix(in srgb, var(--surface-2) 34%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 76%, transparent);
 }
-/* stage action bar */
-.stage-actions
-{
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding-top: 4px;
-}
-.stage-actions__primary
-{ min-width: 150px; font-weight: 600; }
-.stage-view--running .stage-actions
-{ justify-content: flex-end; }</style>
+</style>

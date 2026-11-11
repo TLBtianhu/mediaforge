@@ -18,6 +18,8 @@ const readyPath = new URL('../src/components/separate/SeparateLaunchBar.vue', im
 const readyTemplate = parse(readFileSync(readyPath, 'utf8')).descriptor.template?.content || ''
 const taskPath = new URL('../src/components/separate/SeparateTaskStage.vue', import.meta.url)
 const taskTemplate = parse(readFileSync(taskPath, 'utf8')).descriptor.template?.content || ''
+const runningActionsTemplate = parse(readFileSync(new URL('../src/components/separate/SeparateTaskRunningActions.vue', import.meta.url), 'utf8')).descriptor.template?.content || ''
+const terminalActionsTemplate = parse(readFileSync(new URL('../src/components/separate/SeparateTaskTerminalActions.vue', import.meta.url), 'utf8')).descriptor.template?.content || ''
 const railPath = new URL('../src/components/separate/SeparateConsoleRail.vue', import.meta.url)
 const railTemplate = parse(readFileSync(railPath, 'utf8')).descriptor.template?.content || ''
 const stageState = readFileSync(new URL('../src/views/separate/stageState.ts', import.meta.url), 'utf8')
@@ -251,7 +253,7 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(queueModuleSource.includes('const recentFailedJobs'))
   assert.ok(actionsSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
   assert.ok(queueModuleSource.includes('clearFinishedSessionJobs(separationSessionJobs.value.map'))
-  assert.ok(taskTemplate.includes("t('separate.addNextBatch')"))
+  assert.ok(runningActionsTemplate.includes("t('separate.addNextBatch')"))
   assert.ok(taskTemplate.includes('v-if="props.hasQueueEntries"'))
   assert.ok(template.includes('v-model:show="showQueueModal"'))
   assert.ok(queueTemplate.includes('v-for="job in props.jobs"'))
@@ -301,9 +303,9 @@ test('separation task views and queue actions exclude editor workflows while ret
 test('terminal task actions use state-specific hierarchy', () => {
   assert.ok(stageState.includes('const completedActionOptions = computed('))
   assert.ok(taskTemplate.includes('v-if="props.taskPanelState === \'done\'"'))
-  assert.ok(taskTemplate.includes("t('separate.moreActions')"))
-  assert.ok(taskTemplate.includes("t('separate.viewResults')"))
-  assert.ok(taskTemplate.includes("t('separate.runAgain')"))
+  assert.ok(terminalActionsTemplate.includes("t('separate.moreActions')"))
+  assert.ok(terminalActionsTemplate.includes("t('separate.viewResults')"))
+  assert.ok(terminalActionsTemplate.includes("t('separate.runAgain')"))
   assert.ok(taskTemplate.includes('class="result-path"'))
   assert.ok(taskTemplate.includes('@click.stop="props.revealOutput"'))
 })
