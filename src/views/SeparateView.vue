@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { createLogger } from '@/utils/logger'
 
-import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -245,7 +245,7 @@ function hasInferenceField(key: string) {
   return Object.prototype.hasOwnProperty.call(currentModelDefaults.value, key)
 }
 
-const advancedPanelContext = { slotPanelPlan, slotPanelValues, updateSlotPanel, advancedParamsLoading, guidedParameter, hasInferenceField, hasVisibleAdvancedFields, batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression, post_process_threshold, standardize, enable_post_process, high_end_process, overlapSizeStep, currentInferenceSampleStep, chunkSizeStep, currentChunkConstraint, currentChunkIssue, updateOverlapSize, updateChunkSize, showStandardizeField, currentModelInfo, currentModelDefaultsResolved, resetCurrentModelInferenceDefaults, saveCurrentModelInferenceDefaults, restoreInferenceNumberFallback: (key: string) => task.restoreInferenceNumberFallback(key as never) }
+const advancedPanelContext = reactive({ slotPanelPlan, slotPanelValues, updateSlotPanel, advancedParamsLoading, guidedParameter, hasInferenceField, hasVisibleAdvancedFields, batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression, post_process_threshold, standardize, enable_post_process, high_end_process, overlapSizeStep, currentInferenceSampleStep, chunkSizeStep, currentChunkConstraint, currentChunkIssue, updateOverlapSize, updateChunkSize, showStandardizeField, currentModelInfo, currentModelDefaultsResolved, resetCurrentModelInferenceDefaults, saveCurrentModelInferenceDefaults, restoreInferenceNumberFallback: (key: string) => task.restoreInferenceNumberFallback(key as never) })
 
 watch(() => beginnerGuide.parameterStep, active => {
   if (beginnerGuide.demoActive && !isTutorialFrame()) return
@@ -904,7 +904,7 @@ const {
   isTerminalTaskStatus, getFileName,
 })
 
-const settingsDrawerContext = { parameterHelpPage, helpTopics, settingsCardRef, fieldGuideRef, guidedParameter, guideTarget, beginnerGuide, openParameterHelp, useTta, expandedInferenceSections, advancedPanelContext, effectiveFormat, formatLabel, settings, wavBitDepthOptions, flacBitDepthOptions, mp3BitRateOptions, bitRateOptions, m4aCodecOptions, showNormalizeField, normalize, locateGuidedParameter }
+const settingsDrawerContext = reactive({ parameterHelpPage, helpTopics, settingsCardRef, fieldGuideRef, guidedParameter, guideTarget, beginnerGuide, openParameterHelp, useTta, expandedInferenceSections, advancedPanelContext, effectiveFormat, formatLabel, settings, wavBitDepthOptions, flacBitDepthOptions, mp3BitRateOptions, bitRateOptions, m4aCodecOptions, showNormalizeField, normalize, locateGuidedParameter })
 
 function updateEnsembleModelStem(name: string, value: string) {
   ensembleModelStems.value = { ...ensembleModelStems.value, [name]: value }

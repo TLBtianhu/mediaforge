@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { SettingsDrawerContext } from './panelTypes'
 import InferenceParameterLesson from '@/components/InferenceParameterLesson.vue'
 import ParameterFieldGuide from '@/components/ParameterFieldGuide.vue'
 import SeparateAdvancedPanel from '@/components/separate/SeparateAdvancedPanel.vue'
 import { InformationCircleOutline } from '@vicons/ionicons5'
 
 const show = defineModel<boolean>('show', { required: true })
-const props = defineProps<{ context: Record<string, any> }>()
-const ctx = reactive(props.context) as any
+const props = defineProps<{ context: SettingsDrawerContext }>()
+const ctx = reactive(props.context) as SettingsDrawerContext
 const { t } = useI18n()
 </script>
 
@@ -102,7 +103,7 @@ const { t } = useI18n()
         </div>
       </div>
 
-      <ParameterFieldGuide v-if="ctx.guidedParameter" :ref="(element: any) => (ctx.fieldGuideRef = element)" :parameter="ctx.guidedParameter" :target="ctx.guideTarget" />
+      <ParameterFieldGuide v-if="ctx.guidedParameter" :ref="(element: unknown) => (ctx.fieldGuideRef = element)" :parameter="ctx.guidedParameter" :target="ctx.guideTarget" />
 
       <template #footer>
         <div class="drawer-footer">

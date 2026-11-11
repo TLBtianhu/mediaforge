@@ -4,9 +4,10 @@ import { useI18n } from 'vue-i18n'
 import ModelSlotFields from '@/components/ModelSlotFields.vue'
 import ModelParameterField from '@/components/ModelParameterField.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
+import type { AdvancedPanelContext } from './panelTypes'
 
-const props = defineProps<{ context: Record<string, any> }>()
-const ctx = reactive(props.context) as any
+const props = defineProps<{ context: AdvancedPanelContext }>()
+const ctx = reactive(props.context) as AdvancedPanelContext
 const { t } = useI18n()
 </script>
 
@@ -22,7 +23,7 @@ const { t } = useI18n()
     :plan="ctx.slotPanelPlan"
     :model-value="ctx.slotPanelValues"
     :active-slot="ctx.guidedParameter?.id"
-    @update:model-value="ctx.updateSlotPanel"
+    @update:model-value="(value: Record<string, unknown>) => ctx.updateSlotPanel(value)"
   />
   <template v-else>
     <n-grid :cols="2" :x-gap="12" :y-gap="12" responsive="screen">
