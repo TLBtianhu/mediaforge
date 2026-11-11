@@ -27,6 +27,7 @@ const { makeAudioOptions } = await vite.ssrLoadModule('/src/views/separate/audio
 const { makeTaskCancelActions } = await vite.ssrLoadModule('/src/stores/taskCancelActions.ts')
 const { makeTaskResultHelpers } = await vite.ssrLoadModule('/src/stores/taskResultHelpers.ts')
 const { makeEditorSourceActions } = await vite.ssrLoadModule('/src/stores/editorSourceActions.ts')
+const { makeSlotPanel } = await vite.ssrLoadModule('/src/views/separate/slotPanel.ts')
 
 function stageHarness(tasks = null) {
   const currentJob = ref(tasks ? { id: 'job', output: '/out', tasks, primary: tasks[0] } : null)
@@ -412,4 +413,30 @@ test('editor source actions derive used/missing sources and pick relink files', 
   assert.throws(() => actions.assertNoMissingSourcesInUse('missing'), /missing/)
   assert.equal(await actions.pickRelinkFile(), '/picked.wav')
   assert.equal(calls[0].command, 'pick_single_audio_file')
+})
+
+test('slot panel derives values from bindings and writes back to native refs', () => {
+  const batch_size = ref(2)
+  const chunk_size = ref(8192)
+  const currentModelInfo = ref({
+    name: 'model-a', slotTask: 'separation',
+    slots: {
+      batch_size: { bind: 'batch_size', kind: 'integer' },
+      chunk_size: { bind: 'chunk_size', kind: 'integer' },
+    },
+  })
+  const currentChunkConstraint = ref({ step: 1024, offset: 0, min: 1024 })
+  const panel = makeSlotPanel({
+    computed, currentModelInfo, currentChunkConstraint,
+    slotRefs: { batch_size, chunk_size },
+  })
+
+  assert.ok(panel.slotPanelInterface.value)
+  assert.ok(panel.slotPanelPlan.value)
+  assert.deepEqual(panel.slotPanelValues.value, { batch_size: 2, chunk_size: 8192 })
+  assert.deepEqual(panel.slotPanelInterface.value.slots.chunk_size.align, { step: 1024, offset: 0, min: 1024 })
+
+  panel.updateSlotPanel({ batch_size: 4, chunk_size: 4096 })
+  assert.equal(batch_size.value, 4)
+  assert.equal(chunk_size.value, 4096)
 })
