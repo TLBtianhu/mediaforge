@@ -95,7 +95,7 @@ DEBT: dict[str, tuple[int, str]] = {
     "src/views/PluginsView.vue": (3, "状态色回退值仍为字面量"),
     "src/views/QueueView.vue": (2, "状态色回退值仍为字面量"),
     "src/views/results/results-view.css": (3, "var() 回退值与内阴影仍为字面量"),
-    "src/views/SeparateView.css": (2, "阴影与强调色仍为字面量"),
+    "src/views/SeparateView.css": (1, "阴影与强调色仍为字面量"),
     "src/views/settings/settings-view.css": (3, "危险色回退值与内阴影仍为字面量"),
     "src/components/separate/SeparateNamingModal.vue": (10, "命名预览 token 身份色，跟随固定语义色"),
     "src/components/separate/SeparateReadyStage.vue": (4, "开始面板阴影/渐变仍为字面量"),
