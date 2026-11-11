@@ -18,6 +18,8 @@ const readyPath = new URL('../src/components/separate/SeparateReadyStage.vue', i
 const readyTemplate = parse(readFileSync(readyPath, 'utf8')).descriptor.template?.content || ''
 const taskPath = new URL('../src/components/separate/SeparateTaskStage.vue', import.meta.url)
 const taskTemplate = parse(readFileSync(taskPath, 'utf8')).descriptor.template?.content || ''
+const railPath = new URL('../src/components/separate/SeparateConsoleRail.vue', import.meta.url)
+const railTemplate = parse(readFileSync(railPath, 'utf8')).descriptor.template?.content || ''
 const stageState = readFileSync(new URL('../src/views/separate/stageState.ts', import.meta.url), 'utf8')
 const actionsSource = readFileSync(new URL('../src/views/separate/separateActions.ts', import.meta.url), 'utf8')
 const queueTemplate = parse(readFileSync(queuePath, 'utf8')).descriptor.template?.content || ''
@@ -314,11 +316,11 @@ test('output stem picker uses the app scrollbar instead of native browser contro
 })
 
 test('large output stem lists expose compact bulk selection actions', () => {
-  assert.ok(template.includes('availableStemNames.length > 3'))
-  assert.ok(template.includes('@click="selectAllOutputStems"'))
-  assert.ok(template.includes('@click="clearOutputStems"'))
-  assert.ok(template.includes("t('separate.selectAllStems')"))
-  assert.ok(template.includes("t('separate.clearStemSelection')"))
+  assert.ok(railTemplate.includes('props.availableStemNames.length > 3'))
+  assert.ok(railTemplate.includes("emit('selectAllStems')"))
+  assert.ok(railTemplate.includes("emit('clearStems')"))
+  assert.ok(railTemplate.includes("t('separate.selectAllStems')"))
+  assert.ok(railTemplate.includes("t('separate.clearStemSelection')"))
   assert.ok(readFileSync(new URL('../src/views/separate/stemSelection.ts', import.meta.url), 'utf8').includes('outputStemSelectionCleared.value = true'))
   assert.ok(outputDirectorySource.includes('&& deps.hasOutputStemSelection.value'))
 })

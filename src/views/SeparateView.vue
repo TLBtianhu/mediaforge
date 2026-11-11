@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { createLogger } from '@/utils/logger'
-import TaskOutputSettings from '@/components/TaskOutputSettings.vue'
-import TaskInputFiles from '@/components/TaskInputFiles.vue'
 
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -12,11 +10,6 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
-import {
-  MusicalNotesOutline,
-  CloudUploadOutline,
-  SettingsOutline,
-} from '@vicons/ionicons5'
 import {
   WINDOWS_RESERVED_FILENAMES,
   formatPlaybackTime, getFileName, padNumber,
@@ -45,13 +38,13 @@ import { useSettingsStore } from '@/stores/settings'
 import { useModelStore, type ModelEntry } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import { retainAvailableModelNames } from '@/utils/modelSource'
-import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
-import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import SeparateNamingModal from '@/components/separate/SeparateNamingModal.vue'
 import SeparateQueueModal from '@/components/separate/SeparateQueueModal.vue'
 import SeparateSettingsDrawer from '@/components/separate/SeparateSettingsDrawer.vue'
 import SeparateEnsembleModal from '@/components/separate/SeparateEnsembleModal.vue'
+import SeparateConsoleRail from '@/components/separate/SeparateConsoleRail.vue'
+import SeparatePageHeader from '@/components/separate/SeparatePageHeader.vue'
 import SeparateNoteModal from '@/components/separate/SeparateNoteModal.vue'
 import SeparateLogModal from '@/components/separate/SeparateLogModal.vue'
 import SeparateReadyStage from '@/components/separate/SeparateReadyStage.vue'
@@ -252,17 +245,7 @@ function hasInferenceField(key: string) {
   return Object.prototype.hasOwnProperty.call(currentModelDefaults.value, key)
 }
 
-const advancedPanelContext = {
-  slotPanelPlan, slotPanelValues, updateSlotPanel, advancedParamsLoading,
-  guidedParameter, hasInferenceField, hasVisibleAdvancedFields,
-  batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
-  post_process_threshold, standardize, enable_post_process, high_end_process,
-  overlapSizeStep, currentInferenceSampleStep, chunkSizeStep,
-  currentChunkConstraint, currentChunkIssue, updateOverlapSize, updateChunkSize,
-  showStandardizeField, currentModelInfo, currentModelDefaultsResolved,
-  resetCurrentModelInferenceDefaults, saveCurrentModelInferenceDefaults,
-  restoreInferenceNumberFallback: (key: string) => task.restoreInferenceNumberFallback(key as never),
-}
+const advancedPanelContext = { slotPanelPlan, slotPanelValues, updateSlotPanel, advancedParamsLoading, guidedParameter, hasInferenceField, hasVisibleAdvancedFields, batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression, post_process_threshold, standardize, enable_post_process, high_end_process, overlapSizeStep, currentInferenceSampleStep, chunkSizeStep, currentChunkConstraint, currentChunkIssue, updateOverlapSize, updateChunkSize, showStandardizeField, currentModelInfo, currentModelDefaultsResolved, resetCurrentModelInferenceDefaults, saveCurrentModelInferenceDefaults, restoreInferenceNumberFallback: (key: string) => task.restoreInferenceNumberFallback(key as never) }
 
 watch(() => beginnerGuide.parameterStep, active => {
   if (beginnerGuide.demoActive && !isTutorialFrame()) return
@@ -921,13 +904,7 @@ const {
   isTerminalTaskStatus, getFileName,
 })
 
-const settingsDrawerContext = {
-  parameterHelpPage, helpTopics, settingsCardRef, fieldGuideRef, guidedParameter, guideTarget,
-  beginnerGuide, openParameterHelp, useTta, expandedInferenceSections, advancedPanelContext,
-  effectiveFormat, formatLabel, settings, wavBitDepthOptions, flacBitDepthOptions,
-  mp3BitRateOptions, bitRateOptions, m4aCodecOptions, showNormalizeField, normalize,
-  locateGuidedParameter,
-}
+const settingsDrawerContext = { parameterHelpPage, helpTopics, settingsCardRef, fieldGuideRef, guidedParameter, guideTarget, beginnerGuide, openParameterHelp, useTta, expandedInferenceSections, advancedPanelContext, effectiveFormat, formatLabel, settings, wavBitDepthOptions, flacBitDepthOptions, mp3BitRateOptions, bitRateOptions, m4aCodecOptions, showNormalizeField, normalize, locateGuidedParameter }
 
 function updateEnsembleModelStem(name: string, value: string) {
   ensembleModelStems.value = { ...ensembleModelStems.value, [name]: value }
@@ -964,127 +941,12 @@ const taskStageContext = {
 
 <template>
   <div class="page separate-page mf-page" data-tone="blue">
-    <MediaPageHeader
-      :title="t('separate.title')"
-      :subtitle="t('separate.subtitle')"
-      :icon="MusicalNotesOutline"
-      eyebrow="AUDIO WORKSPACE"
-      tone="blue"
-    >
-      <div class="console-topbar__controls" data-guide="separation-modes">
-        <n-tag size="small" :bordered="false">{{ t('separate.runModeModel') }}</n-tag>
-        <n-button text class="console-topbar__manage" @click="router.push('/workflows')">
-          {{ t('separate.manageWorkflowsInline') }}
-        </n-button>
-        <n-button text class="console-topbar__manage" @click="router.push('/models')">
-          {{ t('separate.manageModelsInline') }}
-        </n-button>
-      </div>
-    </MediaPageHeader>
+    <SeparatePageHeader @open-workflows="router.push('/workflows')" @open-models="router.push('/models')" />
 
     <WorkbenchSteps :steps="audioSteps" class="separate-step-strip" />
 
     <div class="console" :class="[`console--${taskPanelState}`, { 'console--busy': isConfigCompact }]">
-      <aside class="console__rail">
-        <WorkbenchCard class="rail-card--input" data-guide="input" index="01" :title="t('separate.input')" :subtitle="t('separate.candidateCount', { count: inputFiles.length })">
-          <template #actions>
-            <div class="rail-card__actions rail-card__actions--input">
-              <label class="input-retention-toggle input-retention-toggle--head">
-                <span>{{ t('separate.clearInputAfterSubmit') }}</span>
-                <n-switch v-model:value="settings.clearInputAfterSubmit" size="small" :disabled="isRunModeLocked" />
-              </label>
-              <n-button v-if="inputFiles.length" text size="tiny" class="rail-card__clear" :disabled="isRunModeLocked" @click="task.clearInputFiles()">{{ t('separate.clearAll') }}</n-button>
-            </div>
-          </template>
-
-            <div
-              class="dropzone"
-              :class="{ 'dropzone--dragging': isDragging, 'dropzone--filled': inputFiles.length, 'dropzone--clickable': !inputFiles.length && !isRunModeLocked }"
-              @click="(!inputFiles.length && !isRunModeLocked) ? handlePickFiles() : undefined"
-            >
-              <TaskInputFiles
-                v-if="inputFiles.length"
-                :files="inputFiles"
-                :busy="isRunModeLocked"
-                reorderable
-                :dragged-index="draggedInputIndex"
-                :drag-handlers="{ down: onInputPointerDown, move: onInputPointerMove, up: finishInputPointerDrag, cancel: finishInputPointerDrag }"
-                :kind-for="getFileKindLabel"
-                :shorten-for="value => shortenMiddle(value, 60)"
-                @add="handlePickFiles"
-                @folder="handlePickFolder"
-                @remove="task.removeInputFile"
-                @clear="task.clearInputFiles"
-              />
-              <div v-else class="dropzone__empty">
-                <div class="dropzone__glyph"><n-icon :component="CloudUploadOutline" /></div>
-                <strong>{{ isDragging ? t('separate.dropHere') : t('separate.candidateEmpty') }}</strong>
-              </div>
-            </div>
-        </WorkbenchCard>
-
-        <WorkbenchCard class="rail-card--output" data-guide="output" index="02" :title="t('separate.output')" :subtitle="t('separate.outputSummaryHint')">
-          <template #actions>
-            <n-button text size="tiny" class="rail-card__more" :disabled="isRunModeLocked" @click="showSettingsDrawer = true">
-              <template #icon><n-icon :component="SettingsOutline" /></template>
-              {{ t('separate.configParams') }}
-            </n-button>
-          </template>
-
-            <TaskOutputSettings
-              v-model:model-value="outputDirectoryInput"
-              v-model:layout="outputLayout"
-              :error="outputDirectoryError"
-              :preview="outputPreview"
-              :disabled="isRunModeLocked"
-              @browse="pickTemporaryOutputDir"
-            />
-
-            <label class="ofield" data-guide="output-format">
-              <span class="ofield__label">{{ t('settings.defaultFormat') }}</span>
-              <n-select v-model:value="settings.defaultFormat" size="small" :options="formatOptions" :disabled="isRunModeLocked" />
-            </label>
-
-            <div class="ofield naming-field" data-guide="output-naming">
-              <span class="ofield__label">{{ t('separate.namingRule') }}</span>
-              <button type="button" class="naming-summary" :disabled="isRunModeLocked" @click="showNamingModal = true">
-                <span>{{ outputNamingSummary }}</span>
-                <small>{{ t('separate.namingRuleAction') }}</small>
-              </button>
-            </div>
-
-            <div class="ofield ofield--stems" data-guide="output-stems">
-              <div class="ofield__heading">
-                <span class="ofield__label">{{ t('separate.outputStems') }}</span>
-                <div v-if="!ensembleEnabled && availableStemNames.length > 3" class="stem-selection-actions">
-                  <button
-                    type="button"
-                    :disabled="isRunModeLocked || selectedOutputStemCount === availableStemNames.length"
-                    @click="selectAllOutputStems"
-                  >{{ t('separate.selectAllStems') }}</button>
-                  <span aria-hidden="true">·</span>
-                  <button
-                    type="button"
-                    :disabled="isRunModeLocked || selectedOutputStemCount === 0"
-                    @click="clearOutputStems"
-                  >{{ t('separate.clearStemSelection') }}</button>
-                </div>
-              </div>
-              <div v-if="ensembleEnabled" class="ofield__static">{{ ensembleStem || '—' }}</div>
-              <div v-else-if="availableStemNames.length" class="stem-chips">
-                <n-checkbox-group v-model:value="checkedOutputStems" :disabled="isRunModeLocked">
-                  <n-checkbox
-                    v-for="stem in availableStemNames"
-                    :key="stem"
-                    :value="stem"
-                    :label="stem"
-                  />
-                </n-checkbox-group>
-              </div>
-              <div v-else class="ofield__static ofield__static--muted">{{ t('separate.allStems') }}</div>
-            </div>
-        </WorkbenchCard>
-      </aside>
+      <SeparateConsoleRail v-model:output-directory-input="outputDirectoryInput" v-model:layout="outputLayout" v-model:checked-output-stems="checkedOutputStems" :input-files="inputFiles" :is-dragging="isDragging" :dragged-input-index="draggedInputIndex" :is-run-mode-locked="isRunModeLocked" :output-directory-error="outputDirectoryError" :output-preview="outputPreview" :format-options="formatOptions" :output-naming-summary="outputNamingSummary" :available-stem-names="availableStemNames" :ensemble-enabled="ensembleEnabled" :ensemble-stem="ensembleStem" :selected-output-stem-count="selectedOutputStemCount" :settings="settings" :get-file-kind-label="getFileKindLabel" :shorten-middle="shortenMiddle" @pick-files="handlePickFiles" @pick-folder="handlePickFolder" @remove-input="task.removeInputFile" @clear-input="task.clearInputFiles" @input-pointer-down="onInputPointerDown" @input-pointer-move="onInputPointerMove" @input-pointer-end="finishInputPointerDrag" @open-settings="showSettingsDrawer = true" @browse-output="pickTemporaryOutputDir" @open-naming="showNamingModal = true" @select-all-stems="selectAllOutputStems" @clear-stems="clearOutputStems" />
 
       <main class="console__stage">
         <transition name="stage-swap" mode="out-in">
