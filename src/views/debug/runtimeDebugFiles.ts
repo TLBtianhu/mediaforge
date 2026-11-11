@@ -1,7 +1,24 @@
 // DebugView 的运行时文件编辑/恢复/覆盖写：每条路径先过平台能力闸门，再落状态。
+import type { Ref } from 'vue'
+import type { MessageApi } from 'naive-ui'
+import type { useAppStore } from '@/stores/app'
 import type { DebugRuntimeFileInfo, DebugRuntimePointers } from '../debug_types'
 
-type Deps = Record<string, any>
+type Deps = {
+  app: ReturnType<typeof useAppStore>
+  developerMode: Ref<boolean>
+  t: (key: string, named?: Record<string, unknown>) => string
+  message: MessageApi
+  runtimeDebugEditingPath: Ref<string>
+  runtimeDebugEditingContent: Ref<string>
+  runtimeDebugEditorVisible: Ref<boolean>
+  runtimeDebugSaving: Ref<string>
+  runtimeOverrideBackend: Ref<string | null>
+  runtimeOverridePythonPath: Ref<string>
+  runtimeOverrideDirty: Ref<boolean>
+  setRuntimeDebugInfo: (info: DebugRuntimePointers) => void
+  syncRuntimeOverrideFromCurrent: (force: boolean) => void
+}
 
 export function makeRuntimeDebugFiles(deps: Deps) {
   function openRuntimeDebugEditor(file: DebugRuntimeFileInfo) {
