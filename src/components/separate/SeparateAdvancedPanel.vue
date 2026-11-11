@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import ModelSlotFields from '@/components/ModelSlotFields.vue'
 import ModelParameterField from '@/components/ModelParameterField.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
-import { InformationCircleOutline } from '@vicons/ionicons5'
 
 const props = defineProps<{ context: Record<string, any> }>()
 const ctx = reactive(props.context) as any

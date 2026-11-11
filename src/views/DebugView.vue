@@ -32,7 +32,7 @@ import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import DebugLogsPanel from '@/components/debug/DebugLogsPanel.vue'
 import DebugEventsPanel from '@/components/debug/DebugEventsPanel.vue'
 import { formatBytes } from '@/utils/format'
-import { normalizeLogRecord, formatLogRecord, logMessagePreview, type LogRecord } from '@/utils/logRecord'
+import { normalizeLogRecord, formatLogRecord } from '@/utils/logRecord'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -51,21 +51,15 @@ const { downloadTasks } = storeToRefs(modelStore)
 const logs = useDebugLogs({ t, message, developerMode, revealPath })
 const {
   debugLogLoading, debugLogClearing, debugLogReportLoading,
-  debugLogInfo, debugLogContent, debugLogScroller,
-  debugLogQuery, debugLogLevel, debugLogSource, debugLogCategory, debugLogTask,
-  expandedDebugLogLines, debugLogError,
-  debugLogRows, parsedDebugLogLines, debugLogLevelOptions, debugLogSourceOptions,
-  debugLogCategoryOptions, debugLogTaskOptions, filteredDebugLogLines, debugLogIssueCounts,
-  loadDebugLog, clearDebugLog, copyDebugLog, createDebugLogReport,
-  toggleDebugLogLine, canExpandDebugLogLine, logSourceLabel, logCategoryLabel,
+  debugLogInfo, debugLogContent, debugLogTask,
+  loadDebugLog, createDebugLogReport,
   clearDebugLogFilters, scrollDebugLogToLatest,
 } = logs
 
 import type {
-  CatalogEditMode, DebugCatalogInfo, DebugLogContent, DebugLogInfo,
   DebugModelConfig, DebugRuntimePointers,
   DebugTab, DebugWorkerEvent, DebugWorkerEventGroup, RuntimeDebugEnvironmentRow,
-  RuntimeTreeChild, RuntimeTreeNode,
+  RuntimeTreeNode,
 } from './debug_types'
 const {
   updateEndpointEditing, updateEndpointDraft, effectiveUpdateEndpoint, updateEndpointMode,
@@ -76,7 +70,7 @@ import { makeExecutionLog } from './debug/executionLog'
 import { makeRuntimeDebugFiles } from './debug/runtimeDebugFiles'
 import { useDebugLogs } from './debug/useDebugLogs'
 import { useUpdateEndpoint } from './debug/useUpdateEndpoint'
-import { groupWorkerEvents, isNewerTimestamp } from './debug/workerEvents'
+import { groupWorkerEvents } from './debug/workerEvents'
 
 const {
   debugCatalogLoading,
@@ -141,8 +135,8 @@ const diagnostics = computed(() => buildDiagnosticChecks({
   optionalPackage: funAsr.status.value, optionalError: funAsr.error.value, isMac: isMac.value,
 }))
 const {
-  diagnosticDetailsOpen, executionLogVisible, executionLogTaskId, executionDownloadSnapshot,
-  executionLogTask, liveExecutionDownload, executionLogDownload, executionLogName, executionLogs,
+  diagnosticDetailsOpen, executionLogVisible, executionLogTaskId,
+  executionLogTask, executionLogDownload, executionLogName, executionLogs,
   executionNodeLogs, executionLogError, canReturnToTask, diagnosticSummary, showExecutionLogs,
 } = makeExecutionLog({
   task, downloadTasks, modelStore, developerMode, diagnostics, computed, ref, watch, normalizeLogRecord, summarizeDiagnosticChecks,

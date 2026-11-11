@@ -21,7 +21,6 @@ import {
   getModelStorageSummary,
   inspectCustomModel as inspectCustomModelRequest,
   relinkCustomModel as relinkCustomModelRequest,
-  startCustomModelImport,
   startModelDelete,
   startModelResidualCleanup,
   unregisterCustomModel,
@@ -1041,7 +1040,7 @@ export const useModelStore = defineStore('model', () => {
     }
   }
 
-  async function downloadModel(name: string, force = false): Promise<boolean> {
+  async function downloadModel(name: string): Promise<boolean> {
     const app = useAppStore()
     const settings = useSettingsStore()
     const existingTask = downloadTasks.value[name]

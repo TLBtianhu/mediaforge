@@ -14,7 +14,7 @@ import {
   TrashOutline,
   RefreshOutline,
 } from '@vicons/ionicons5'
-import { useTaskStore, type SeparationJob, type SeparationTask } from '@/stores/task'
+import { useTaskStore, type SeparationTask } from '@/stores/task'
 import { useEditorStore, type OrphanedEditorProject } from '@/stores/editor'
 import { usePagedSelection } from '@/composables/usePagedSelection'
 import { resultType, RESULT_TYPE_KEYS, type ResultType } from '@/utils/resultType'

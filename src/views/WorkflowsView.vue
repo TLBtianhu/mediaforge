@@ -11,7 +11,6 @@ import {
   ListOutline,
   MusicalNotesOutline,
   OpenOutline,
-  PlayOutline,
   SearchOutline,
   SettingsOutline,
 } from '@vicons/ionicons5'
@@ -93,9 +92,9 @@ const normalizeOptions = computed(() => [
 ])
 
 const {
-  normalizeMode, workflowKind, workflowTypeCounts, workflowTypeFilterOptions,
-  filteredWorkflows, workflowGroups, workflowListMetaMap, workflowListMeta,
-  workflowTypeLabel, workflowDefinitionError, workflowRunBlocked, workflowStatusMap,
+  normalizeMode, workflowKind, workflowTypeFilterOptions,
+  filteredWorkflows, workflowGroups, workflowListMeta,
+  workflowTypeLabel, workflowDefinitionError,
   isWorkflowBlocked, isNodeEditorOpen, isAnyEditorOpen, setWorkflowTypeFilter,
 } = makeWorkflowListing({
   computed, t, workflows, query, typeFilter, workflow, selectedWorkflowId,
@@ -106,7 +105,6 @@ function workflowMenuOptionsFor(current: WorkflowEntry | null): DropdownOption[]
   if (!current) return []
   const isSimpleDefinition = isSimpleWorkflowDefinition(current.definition)
   const canEditSimple = isSimpleDefinition && analyzeSimpleWorkflow(current.definition).editable
-  const definitionError = workflowDefinitionError(current.definition)
   const locked = Boolean(workflow.editorFor(current.id))
   const options: DropdownOption[] = [
     {
@@ -506,17 +504,6 @@ function deleteWorkflow(item: WorkflowEntry) {
       }
     },
   })
-}
-
-function runSelected() {
-  const current = selectedWorkflow.value
-  if (!current) return
-  if (selectedError.value) {
-    message.warning(selectedError.value)
-    return
-  }
-  workflow.selectWorkflow(current.id)
-  openWorkflowEditor(current)
 }
 
 // ---- comfy-mss import / export ----

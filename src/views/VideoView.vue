@@ -9,7 +9,6 @@ import { useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import {
   CloseCircleOutline,
-  DocumentOutline,
   FolderOpenOutline,
   VideocamOutline,
   CubeOutline,

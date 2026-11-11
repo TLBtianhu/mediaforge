@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n'
 
 withDefaults(defineProps<{
   label: string
@@ -23,7 +22,6 @@ const emit = defineEmits<{
   'update:value': [value: unknown]
   blur: []
 }>()
-const { t } = useI18n()
 </script>
 
 <template>

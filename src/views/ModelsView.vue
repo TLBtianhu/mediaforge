@@ -5,11 +5,7 @@ import { makeModelCardStatus } from './models/cardStatus'
 import { makeModelSorting } from './models/sorting'
 import { makeModelNotes } from './models/notes'
 import { makeInferenceEditor } from './models/inferenceEditor'
-import { fromWireParams, paramsFromInterface, toWireParams } from '../litegraph/inferenceParams.ts'
-import { layoutFor } from '../litegraph/layouts.ts'
-import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
 import { createLogger } from '@/utils/logger'
-import { isTutorialFrame } from '@/features/onboarding/demoContext'
 import { isActiveDownloadStatus } from '@/features/downloads/lifecycle'
 
 import { computed, onMounted, ref, watch } from 'vue'
@@ -19,19 +15,10 @@ import { useMessage, useDialog, type DropdownOption } from 'naive-ui'
 import { invoke } from '@tauri-apps/api/core'
 import {
   SearchOutline,
-  DownloadOutline,
-  CheckmarkCircleOutline,
-  CloudDownloadOutline,
   RefreshOutline,
   CubeOutline,
-  TrashOutline,
-  FolderOpenOutline,
   ServerOutline,
-  Star,
-  StarOutline,
   AddCircleOutline,
-  EllipsisHorizontalOutline,
-  LinkOutline,
   GridOutline,
   ListOutline,
 } from '@vicons/ionicons5'
@@ -39,8 +26,6 @@ import {
   useModelStore,
   type ModelDefaultInferenceParams,
   type ModelEntry,
-  type ModelStorageDeleteTarget,
-  type ToolModelStorageItem,
 } from '@/stores/model'
 import { useSettingsStore } from '@/stores/settings'
 import { useTaskStore } from '@/stores/task'
@@ -48,8 +33,6 @@ import { useAppStore } from '@/stores/app'
 import { formatBytes } from '@/utils/format'
 import { buildModelCategoryOptionsFromPairs } from '@/utils/modelCategory'
 import { MODEL_LIBRARY_PAGE_SIZES } from '@/utils/pagination'
-import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
-import ModelProgressBlock from '@/components/ModelProgressBlock.vue'
 import ModelStorageDrawer from '@/components/models/ModelStorageDrawer.vue'
 import ModelDetailModal from '@/components/models/ModelDetailModal.vue'
 import DownloadDetailModal from '@/components/DownloadDetailModal.vue'
@@ -121,11 +104,10 @@ const showInferenceEditor = ref(false)
 const inferenceEditorModel = ref<ModelEntry | null>(null)
 const inferenceEditorParams = ref<Record<string, unknown>>({})
 const {
-  inferenceEditorMeta, inferenceEditorInterface, inferenceEditorPlan,
+  inferenceEditorPlan,
   inferenceEditorSampleStep, inferenceEditorOverlapStep, inferenceEditorChunkStep,
   inferenceEditorChunkConstraint, inferenceEditorChunkIssue,
-  updateInferenceDraftSize, inferenceValue, resolveInferenceDraft, syncInferenceDraft,
-  hasInferenceOverride, slotParamsChanged, hasInferenceDraftChanges, canResetInferenceDefaults,
+  updateInferenceDraftSize, canResetInferenceDefaults,
   saveInferenceDefaults, resetInferenceDefaults,
   openInferenceEditor, closeInferenceEditor, handleInferenceEditorUpdate,
 } = makeInferenceEditor({
@@ -180,7 +162,7 @@ const {
 })
 
 const {
-  collator, compareModelName, isFavoriteModel, sortedModels, pagedModels,
+  collator, isFavoriteModel, sortedModels, pagedModels,
 } = makeModelSorting({
   computed, locale, filteredModels, downloadedOnly, modelSort, page, pageSize,
   modelPreferences, categoryLabel,
@@ -194,7 +176,7 @@ const {
 })
 
 const {
-  allStorageModels, storageModels, allStorageModelsByKey, selectedStorageBytes,
+  storageModels, allStorageModelsByKey, selectedStorageBytes,
   hasDeletingSelectedStorageModels, batchDeleteProgress, setStorageSelected,
 } = makeModelStorage({
   computed, modelStorageSummary, storageSearch, storageSort, storageDownloadedOnly,

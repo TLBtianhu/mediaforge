@@ -19,7 +19,7 @@ import {
 } from '@vicons/ionicons5'
 import {
   WINDOWS_RESERVED_FILENAMES,
-  compareModelNames, formatPlaybackTime, getFileName, padNumber,
+  formatPlaybackTime, getFileName, padNumber,
 } from './separate/format'
 import { useModelList } from './separate/useModelList'
 import { makeInferenceDefaults } from './separate/inferenceDefaults'
@@ -66,7 +66,7 @@ const studioLog = createLogger('ui.views.SeparateView')
 
 const { t, locale } = useI18n()
 const {
-  shortenMiddle, statusLabel, statusType, progressStatus, normalizeProgressMessage,
+  shortenMiddle, statusLabel,
   progressTitle, progressDetail, taskSubMessage, taskDuration,
 } = makeTaskPresentation(t)
 const message = useMessage()
@@ -150,9 +150,9 @@ const submittingJob = ref(false)
 const cancellingTaskId = ref<string | null>(null)
 const cancellingQueueJobId = ref<string | null>(null)
 const {
-  isSeparationJob, isNoResultSeparationJob, separationJobs, separationSessionJobs,
-  noResultSeparationJobs, newestRunningJob, backgroundRunningJobs, backgroundQueuedJobs,
-  completedSessionJobs, recentFailedJobs, cancelledSessionJobs, queueJobs, focusedJob, currentJob,
+  isSeparationJob, isNoResultSeparationJob,
+  noResultSeparationJobs, newestRunningJob,
+  completedSessionJobs, recentFailedJobs, cancelledSessionJobs, queueJobs, currentJob,
   focusQueueJob, dismissQueueJob, clearFinishedQueueJobs, cancelQueueJob,
 } = makeQueue({ task, focusedSeparationJobId, composingNewJob, showQueueModal, queueScope, cancellingQueueJobId, computed })
 const audioElements = new Map<string, HTMLAudioElement>()
@@ -161,8 +161,8 @@ const playingOutputPath = ref('')
 const outputPlayback = ref<Record<string, { currentTime: number; duration: number }>>({})
 const PREVIEW_AUDIO_CACHE_LIMIT = 8
 const {
-  getOutputPlayback, setOutputPlayback, touchPreviewAudio, releasePreviewAudio,
-  trimPreviewAudioCache, getAudio, syncOutputPreviewAudio,
+  getOutputPlayback, setOutputPlayback, releasePreviewAudio,
+  getAudio, syncOutputPreviewAudio,
 } = makePlayback({ outputPlayback, playingOutputPath, audioAccessOrder, audioElements, PREVIEW_AUDIO_CACHE_LIMIT, Audio, convertFileSrc })
 let unlistenDragDrop: UnlistenFn | null = null
 
@@ -192,14 +192,7 @@ const ensembleTypeOptions = [
   'avg_wave', 'median_wave', 'min_wave', 'max_wave',
   'avg_fft', 'median_fft', 'min_fft', 'max_fft',
 ].map(value => ({ label: value, value }))
-const saveAsFolder = computed({
-  get: () => outputLayout.value === 'folders',
-  set: (value: boolean) => {
-    outputLayout.value = value ? 'folders' : 'flat'
-  },
-})
 const effectiveOutputLayout = computed<OutputLayout>(() => outputLayout.value)
-const compareModelName = (a: string, b: string) => compareModelNames(a, b, locale.value)
 
 const currentModelInfo = computed(() => {
   if (model.selectedInfo?.name === selectedModelName.value) return model.selectedInfo
@@ -238,7 +231,6 @@ const isApolloModel = computed(() => currentModelType.value === 'apollo')
 const showStandardizeField = computed(() => Boolean(currentModelInfo.value) && !isVrModel.value)
 const showNormalizeField = computed(() => Boolean(currentModelInfo.value))
 const {
-  collectCurrentModelInferenceDefaults, applyCurrentModelInferenceDefaults,
   saveCurrentModelInferenceDefaults, resetCurrentModelInferenceDefaults,
 } = makeInferenceDefaults({
   currentModelDefaults, batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
@@ -364,21 +356,6 @@ const {
   outputStemSelectionCleared, checkedOutputStems, selectedOutputStemCount,
   hasOutputStemSelection, selectAllOutputStems, clearOutputStems,
 } = makeStemSelection({ selectedStems, persistedOutputStemSelectionCleared, availableStemNames, computed, ref })
-const selectedStemSummary = computed(() => {
-  if (outputStemSelectionCleared.value) return t('separate.noStemsSelected')
-  if (!selectedStems.value.length) return t('separate.allStems')
-  return selectedStems.value.join(', ')
-})
-const selectedStemDetail = computed(() => {
-  if (selectedStems.value.length > 6) {
-    return t('separate.selectedStemCount', {
-      count: selectedOutputStemCount.value,
-      total: availableStemNames.value.length,
-    })
-  }
-  return selectedStemSummary.value
-})
-
 function normalizeStemOrder(order: string[], stems: string[]) {
   const byKey = new Map(stems.map(stem => [stem.toLowerCase(), stem]))
   const used = new Set<string>()
@@ -490,7 +467,7 @@ const outputSummaryPath = computed(() => outputPreview.value)
 const finishedSessionJobCount = computed(() => recentFailedJobs.value.length + completedSessionJobs.value.length + cancelledSessionJobs.value.length)
 const hasQueueEntries = computed(() => queueJobs.value.length > 0 || noResultSeparationJobs.value.length > 0)
 const {
-  categoryLabel, modelTargetLabel, modelArchitectureLabel, modelUseCount,
+  categoryLabel, modelUseCount,
   modelMetaLine, handleSelectModel, prefetchSelectedModelAdvancedParams,
 } = makeModelPanel({
   t, locale, model, listedDownloadedModels, selectedModelName,
@@ -498,13 +475,11 @@ const {
 })
 
 const {
-  focusedBatchTasks, activeFocusedBatchTask, currentTask, completedActionOptions,
-  currentBatchTasks, currentBatchTotal, currentBatchDoneCount, currentBatchFailedCount,
-  currentBatchCancelledCount, currentBatchFinishedCount, currentBatchIsMulti, currentBatchIsQueued,
-  taskPanelState, isConfigCompact, isTerminalState, isRunModeLocked, inputCompactLine,
-  modelCompactLine, currentTaskFileName, currentTaskOutputPath, currentTaskOutputSummary,
-  configuredStemOrder, playableOutputGroups, playableOutputs, currentBatchProgress,
-  currentBatchActiveIndex, currentBatchTitle, currentBatchLine, currentBatchOutputSummary,
+  currentTask, completedActionOptions, currentBatchTasks, currentBatchIsMulti,
+  taskPanelState, isConfigCompact, isTerminalState, isRunModeLocked,
+  currentTaskFileName, currentTaskOutputPath, currentTaskOutputSummary,
+  playableOutputGroups, playableOutputs, currentBatchProgress,
+  currentBatchTitle, currentBatchLine, currentBatchOutputSummary,
 } = makeStageState({
   computed, t, currentJob, inputFiles, selectedModelName, currentModelInfo,
   normalizedOutputDir, modelEntries, categoryLabel, parseModelInstruments, statusLabel, shortenMiddle,
@@ -838,10 +813,6 @@ async function pickTemporaryOutputDir() {
   if (folder) temporaryOutputDir.value = folder
 }
 
-function positiveInferenceNumber(value: number | null | undefined) {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
-}
-
 function buildEnsembleWorkflow(): WorkflowEntry {
   const outputStem = ensembleStem.value.trim()
   const runtimeDevice = settings.getRuntimeDeviceConfig(app.envInfo)
@@ -867,7 +838,6 @@ function buildEnsembleWorkflow(): WorkflowEntry {
   const separateIds: number[] = []
   const separateStemOutSlots: number[] = [] // the AUDIO slot for the chosen stem
   models.forEach((modelName, index) => {
-    const entry = ensembleModelEntries.value.find(item => item.name === modelName) || null
     const stem = String(ensembleModelStems.value[modelName] || '').trim() || 'vocals'
     const paramsId = nextId()
     nodes.push({ id: paramsId, type: 'pymss_mss_params', pos: [300, 100 + index * 160], size: [220, 120], flags: {}, order: nodes.length, mode: 0, properties: {}, widgets_values: [1, 'Default', 'Default', false, false, false], inputs: [], outputs: [{ name: 'mss_params', type: 'PYMSS_MSS_PARAMS', links: [] }] })
@@ -932,8 +902,8 @@ function buildEnsembleWorkflow(): WorkflowEntry {
 }
 
 const {
-  outputDirectoryInput, outputDirectoryPlatform, outputDirectoryError, outputPreview,
-  validateOutputDirectory, canStart, start,
+  outputDirectoryInput, outputDirectoryError, outputPreview,
+  canStart, start,
 } = makeOutputDirectory({
   temporaryOutputDir, normalizedOutputDir, app, settings, outputNamingPreviewFiles, effectiveOutputLayout, t,
   submittingJob, ensembleEnabled, ensembleReady, modelDownloaded, inputFiles, hasOutputStemSelection,

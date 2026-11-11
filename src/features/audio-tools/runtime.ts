@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import type {
-  AudioToolActivityState, AudioToolKey, AudioToolLogEntry, AudioToolPhase,
+  AudioToolActivityState, AudioToolKey, AudioToolPhase,
   AudioToolProgress, AudioToolRecovery, AudioToolResult, AudioToolViewState, AudioToolWarning,
 } from './types'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'

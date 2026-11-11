@@ -52,7 +52,7 @@ const formatOptions = [
 const crfOptions = [18, 20, 23, 26, 30].map(value => ({ label: String(value), value }))
 const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
 const isVideoFormat = computed(() => ['mp4', 'mkv', 'mov', 'webm', 'avi'].includes(format.value))
-const { job, busy, progress, status, outputs, failedCount, start: startJob } = useMediaJob<OutputFile>(
+const { job, busy, progress, status, outputs, start: startJob } = useMediaJob<OutputFile>(
   'media_convert', {
     queued: () => t('tasks.waitingForResources'), running: () => t('factory.processing'), completed: () => t('factory.completed'),
     failed: () => t('factory.failed'), cancelled: () => t('tasks.cancelSuccess'),

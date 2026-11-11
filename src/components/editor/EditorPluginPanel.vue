@@ -86,7 +86,7 @@ const chain = computed(() => targetTrackId.value === null
   ? props.session.pluginChain || []
   : props.session.tracks.find(track => track.id === targetTrackId.value)?.pluginChain || [])
 const parameterSlot = computed(() => chain.value.find(slot => slot.id === parameterSlotId.value))
-const { managerBody, managerChain, managerStyle, libraryWidth, libraryMin, libraryMax,
+const { managerStyle, libraryWidth, libraryMin, libraryMax,
   parameterHeight, parameterMin, parameterMax, resizing, stacked, startResize, resizeWithKeyboard, resetSize,
 } = usePluginManagerLayout(managerOpen, computed(() => Boolean(parameterSlot.value)))
 const resizeCorners = ['nw', 'ne', 'sw', 'se'] as const

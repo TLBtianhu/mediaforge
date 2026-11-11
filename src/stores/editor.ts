@@ -27,7 +27,6 @@ import type {
   EditorProjectSummary,
   EditorSession,
   EditorSource,
-  EditorSourceRole,
   EditorTrack,
   EditorAssetTreeNode,
 } from '@/types/editor'
@@ -48,16 +47,16 @@ export type {
 import { EditorExportCancelledError } from '@/stores/editorSupport'
 import type {
   ExportResult, PendingEditorExport, ImportEditorAssetsResult, ScanAudioPathsResult,
-  RelinkEditorSourcesResult, EditorExportWorkerEvent, EditorExportProgress,
+  EditorExportWorkerEvent, EditorExportProgress,
   EditorProjectCleanupResult, OrphanedEditorProject, PersistedSession, AudioMetadata,
-  WaveformPeaks, LoadedWaveformPeaks, HistorySnapshot,
+  HistorySnapshot,
 } from '@/stores/editorSupport'
 import {
   AUTO_SAVE_DELAY, HISTORY_LIMIT, NATIVE_RENDER_PROGRESS_WEIGHT, WAVEFORM_FULL_RESOLUTION,
   blankProjectName, localizedAutoTrackName, normalizePathKey,
   sourceDisplayGroup, loadPeaksFromCache, hasPeaks,
   hasRenderablePeaks, cachedPeaksMatchSource, sourceToExportAsset, runLimited,
-  trackToExportTrack, isDefaultBlankProjectName,
+  trackToExportTrack,
 } from '@/stores/editorSupport'
 export type {
   OrphanedEditorProject, EditorExportProgress, PersistedSession,
@@ -768,16 +767,6 @@ export const useEditorStore = defineStore('editor', () => {
       .catch(() => {})
   }
 
-  async function ensurePeaksForAllSources(projectId = session.value?.id || '') {
-    if (!session.value || !projectId || session.value.id !== projectId) return
-    const sources = [...session.value.sources]
-    await runLimited(sources, 2, async (source) => {
-      if (!session.value || session.value.id !== projectId) return
-      if (hasPeaks(source.peaks)) return
-      await ensurePeaks(source.id)
-    })
-  }
-
   function hydrateSessionSourcesInBackground(projectId: string) {
     void hydrateSessionSources(projectId)
       .then((changed) => {
@@ -1129,7 +1118,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   const {
-    sourcesInUse, missingSources, missingSourcesInUse, assertNoMissingSourcesInUse,
+    missingSources, missingSourcesInUse, assertNoMissingSourcesInUse,
     pickRelinkFile, relinkSource, relinkMissingSources,
   } = makeEditorSourceActions({
     session, invoke, hydratePeaksFromCache, hydrateSessionSourcesInBackground,

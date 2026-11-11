@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
-import RuntimePreparationProgress from '@/components/RuntimePreparationProgress.vue'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
@@ -12,21 +11,19 @@ import { useDialog, useMessage } from 'naive-ui'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import packageMeta from '../../package.json'
-import { SYSTEM_LOCALE, setLocale, type LocaleSetting } from '@/i18n'
+import { SYSTEM_LOCALE, setLocale } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { isTauriRuntime } from '@/utils/appStore'
-import { useAppStore, type RuntimeBackend } from '@/stores/app'
-import { runtimeAcceleratorReady } from '@/utils/runtime'
+import { useAppStore } from '@/stores/app'
 import { makeRuntimeState } from './settings/runtimeState'
 import { makeRuntimeActions } from './settings/runtimeActions'
 import { makeProxyTest } from './settings/proxyTest'
-import { makeAppearance, dirName } from './settings/appearance'
+import { makeAppearance } from './settings/appearance'
 import { makeModelDirMigration } from './settings/modelDirMigration'
 import { useModelStore } from '@/stores/model'
 import { useTaskStore } from '@/stores/task'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { formatBytes } from '@/utils/format'
-import { formatDateTime } from '@/utils/time'
 import { DEFAULT_SCALE_FACTOR, normalizeScaleFactor } from '@/utils/appZoom'
 import {
   applyTheme,
@@ -34,27 +31,16 @@ import {
   resolvedIsDark,
   runRippleViewTransition,
   THEME_ACCENTS,
-  type ThemeAccent,
-  type ThemeMode,
 } from '@/utils/theme'
 import {
   ColorPaletteOutline,
   FolderOpenOutline,
   TerminalOutline,
   SettingsOutline,
-  SpeedometerOutline,
-  SwapHorizontalOutline,
   LogoGithub,
   InformationCircleOutline,
   DocumentTextOutline,
   LinkOutline,
-  DownloadOutline,
-  AlertCircleOutline,
-  CheckmarkCircleOutline,
-  TrashOutline,
-  PlayOutline,
-  HardwareChipOutline,
-  CloudDownloadOutline,
 } from '@vicons/ionicons5'
 import SettingsAboutPanel from '@/components/settings/SettingsAboutPanel.vue'
 import SettingsPathsPanel from '@/components/settings/SettingsPathsPanel.vue'
@@ -176,8 +162,8 @@ watch(() => app.runtimeInstallLogs.at(-1), () => {
 })
 const {
   runtimeInstalling, runtimeDetecting, runtimeBusy, runtimeCurrentError, runtimeCurrentBackend,
-  runtimeCurrentLabel, installedRuntimes, runtimePlatform, runtimeRecommendedBackend,
-  runtimeBackendDescription, runtimeBackendCatalog, runtimeBackendCards, runtimeCoreVersionLabel,
+  runtimeCurrentLabel, installedRuntimes,
+  runtimeBackendCatalog, runtimeBackendCards, runtimeCoreVersionLabel,
   runtimeBackendLabel, runtimeDiskTotalLabel, runtimeDiskMeasuring,
 } = makeRuntimeState({
   computed, t, app, runtimeManualChecking, runtimeActivating, runtimeDeleting,
@@ -202,7 +188,7 @@ watch([() => route.query.backend, activeSection, () => app.runtimeInfoLoading], 
 }, { immediate: true, flush: 'post' })
 
 const {
-  confirmRuntimeAction, installBackend, retryRuntimeInstall, refreshRuntimeStatus,
+  installBackend, retryRuntimeInstall, refreshRuntimeStatus,
   refreshRuntimeCoreVersions, cancelRuntimeInstall, deleteRuntime, activateInstalledRuntime,
   detectRuntime,
 } = makeRuntimeActions({
@@ -248,7 +234,7 @@ const downloadMethodOptions = computed(() => [
   { value: 'urllib' as const, label: t('settings.downloadMethodUrllib') },
 ])
 
-const { buildProxyTestSuggestion, testProxyConnection, formatConnectionInfo, resetProxyTest } = makeProxyTest({
+const { testProxyConnection, resetProxyTest } = makeProxyTest({
   t, invoke, proxyMode, proxyUrl, proxyBypass, downloadSource,
   proxyTestStatus, proxyTestMessage, proxyTestSuggestion, proxyTestElapsed,
 })
@@ -356,8 +342,8 @@ function setAnimationsEnabled(enabled: boolean) {
 const {
   scaleFactorPercent, scaleSliderIndex, scaleSliderMarks, isDefaultScaleFactor,
   currentResolvedLanguageLabel, appearanceThemeAccentLabel,
-  formatScaleFactorLabel, isSameScaleFactor, updateScaleFactor, resetScaleFactorToDefault,
-  getEventOrigin, getElementOrigin, selectThemeMode, selectThemeAccent, selectLocale,
+  resetScaleFactorToDefault,
+  selectThemeMode, selectThemeAccent, selectLocale,
 } = makeAppearance({
   computed, t, scaleFactor, themeMode, themeAccent, locale, currentLocale, animationsEnabled,
   languageSelectWrap, normalizeScaleFactor, DEFAULT_SCALE_FACTOR,

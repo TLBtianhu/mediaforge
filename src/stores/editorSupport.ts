@@ -7,9 +7,8 @@ import {
 } from '@/stores/editorStems'
 import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 import type {
-  EditorMasterLimiter, EditorPluginSlot, EditorExportFormat, EditorExportOptions,
-  EditorProjectSummary, EditorSession, EditorSource, EditorSourceRole,
-  EditorClip, EditorTrack, EditorAssetTreeNode,
+  EditorMasterLimiter, EditorPluginSlot, EditorSession, EditorSource, EditorSourceRole,
+  EditorTrack,
 } from '@/types/editor'
 
 export type HistorySnapshot = {

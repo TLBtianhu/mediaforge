@@ -17,9 +17,7 @@ import {
   isTerminalTaskStatus,
   selectQueuedJobGroups,
   taskJobId,
-  type TaskStatus,
 } from '@/features/tasks/lifecycle'
-import type { StemOutput } from '@/utils/stemOutputs'
 import { resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
 import { CURRENT_INFERENCE_PARAMS_VERSION, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming } from '@/stores/taskNormalize'
 import { JOURNAL_POLL_INTERVAL_MS, useMediaJobsStore } from '@/stores/mediaJobs'
@@ -47,7 +45,7 @@ const studioLog = createLogger('ui.stores.task')
 
 import {
   type OutputLayout, type ModelListSortMode, type OutputNamingConfig,
-  type SeparationRunConfig, type SeparationTask, type SeparationJob,
+  type SeparationTask,
   type PersistedSeparateModelState, type PersistedSeparateState,
   type ModelInferenceUiDefaults,
 } from '@/stores/taskTypes'
@@ -94,7 +92,7 @@ export const useTaskStore = defineStore('task', () => {
   const inputFiles = ref<string[]>([])
 const {
   addInputFiles, removeInputFile, clearInputFiles, moveInputFile,
-  pickFiles, scanAndAddPaths, pickInputFolder, addPaths, revealPath, trashPaths,
+  pickFiles, pickInputFolder, addPaths, revealPath, trashPaths,
 } = makeTaskInputActions({ inputFiles, invoke })
   const separateRunMode = ref<'model' | 'workflow'>('model')
   const ensembleEnabled = ref(false)
@@ -465,12 +463,12 @@ const {
     restoreInferenceNumberFallback('window_size')
   }
 
-  const { buildRunConfig, workflowModelInferenceParams, buildWorkflowRunConfig } = makeTaskRunConfig({
+  const { buildRunConfig, buildWorkflowRunConfig } = makeTaskRunConfig({
     useSettingsStore, useAppStore, useModelStore, selectedStems, useTta,
     normalizeOutputNaming, CURRENT_INFERENCE_PARAMS_VERSION,
     detectWorkflowFormat, resolveWorkflowRuntimeDefaults, prepareWorkflowDefinitionForRun,
   })
-  const { resolveTaskOutputPath, createQueuedTask, createQueuedWorkflowTask } = makeTaskQueue({
+  const { createQueuedTask, createQueuedWorkflowTask } = makeTaskQueue({
     useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath,
     inputStemSegment, createRunId, STAGE_META,
     buildRunConfig, buildWorkflowRunConfig, tasks, rememberSessionTasks,
@@ -611,7 +609,7 @@ const {
     resumeScheduling: () => { schedulingSuppressed-- },
   })
 
-  const { buildInferenceParams, modelInferenceParamsFromState } = makeTaskInferenceParams({
+  const { buildInferenceParams } = makeTaskInferenceParams({
     selectedModelDefaults, selectedModelOverrides, inferenceParamsDirty,
     batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
     enable_post_process, post_process_threshold, high_end_process, standardize, normalize,

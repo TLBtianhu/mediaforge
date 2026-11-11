@@ -47,10 +47,6 @@ const { busy, progress, status, outputs, start: startJob } = useMediaJob<Workflo
     if (typeof payload.maskPath === 'string') maskPath.value = payload.maskPath
   })
 
-const stepsSummary = computed(() => steps.value.map((step, index) => ({
-  title: `${index + 1}. ${t(`plan.capabilities.${step.capability}`)}`,
-  text: step.bindings[Object.keys(step.bindings)[0]] || step.capability,
-})))
 const workflowSteps = computed(() => [
   { title: t('mediaWorkflow.input'), text: t('mediaWorkflow.inputHint') },
   { title: t('plan.title'), text: t('mediaWorkflow.stepHint') },

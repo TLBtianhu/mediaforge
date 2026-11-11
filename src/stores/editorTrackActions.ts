@@ -1,11 +1,10 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
-import { clamp, makeId, normalizeClip } from '@/stores/editorNormalize'
-import { duplicatedTrackColor, recordingTrackIndex, stripExt } from '@/stores/editorStems'
+import { clamp } from '@/stores/editorNormalize'
 import { syncSingleClipFadeCompatibility } from '@/utils/editorClips'
 import { normalizeMasterLimiter } from '@/utils/masterLimiter'
 import { clonePluginChain } from '@/utils/editorPlugins'
-import { localizedAutoTrackName, localizedStemName } from '@/stores/editorSupport'
-import type { EditorClip, EditorMasterLimiter, EditorPluginSlot, EditorSession, EditorSource, EditorTrack } from '@/types/editor'
+import { localizedAutoTrackName } from '@/stores/editorSupport'
+import type { EditorClip, EditorMasterLimiter, EditorPluginSlot, EditorSession, EditorSource } from '@/types/editor'
 
 type Deps = {
   session: Ref<EditorSession | null>
