@@ -1,7 +1,9 @@
 import type { Ref } from 'vue'
+import type { ModelDefaultInferenceParams, ModelEntry, useModelStore } from './model.ts'
+import type { InferenceUiValues } from './taskInferenceParams.ts'
 
 type Deps = {
-  selectedModelDefaults: Ref<Record<string, unknown>>
+  selectedModelDefaults: Ref<ModelDefaultInferenceParams>
   selectedModelOverrides: Ref<Record<string, unknown>>
   inferenceParamsDirty: Ref<boolean>
   batch_size: Ref<number | null>
@@ -16,9 +18,9 @@ type Deps = {
   standardize: Ref<boolean>
   normalize: Ref<boolean>
   getSavedModelState: (modelName: string) => Record<string, unknown> | null
-  useModelStore: () => any
-  buildInferenceParamsFromValues: (input: any) => Record<string, unknown>
-  modelInferenceParamsFromValues: (input: any) => Record<string, unknown>
+  useModelStore: () => ReturnType<typeof useModelStore>
+  buildInferenceParamsFromValues: (input: { modelType?: string | null; defaults: ModelDefaultInferenceParams; modelOverrides: Record<string, unknown>; dirty: boolean; values: InferenceUiValues }) => Record<string, unknown>
+  modelInferenceParamsFromValues: (input: { modelType?: string | null; defaults: ModelDefaultInferenceParams; overrides: Record<string, unknown>; saved: Record<string, unknown> }) => Record<string, unknown>
 }
 
 export function makeTaskInferenceParams({
@@ -52,7 +54,7 @@ export function makeTaskInferenceParams({
   function modelInferenceParamsFromState(modelName: string, modelType?: string | null): Record<string, unknown> {
     const modelStore = useModelStore()
     if (modelStore.selectedModel === modelName) return buildInferenceParams(modelType)
-    const entry = modelStore.models.find((item: any) => item.name === modelName) || null
+    const entry = modelStore.models.find((item: ModelEntry) => item.name === modelName) || null
     const defaults = modelStore.hasKnownModelInferenceBase(modelName)
       ? (modelStore.getModelBaseInferenceDefaults(modelName) || {})
       : (entry?.defaultInferenceParams || {})
