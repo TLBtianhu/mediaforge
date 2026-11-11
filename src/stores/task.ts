@@ -1,9 +1,9 @@
 import { createLogger } from '@/utils/logger'
 import { defineStore } from 'pinia'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import i18n from '@/i18n'
-import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
+import { loadAppStore, saveAppStore } from '@/utils/appStore'
 import { useSettingsStore } from '@/stores/settings'
 import { useModelStore, type ModelDefaultInferenceParams } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
@@ -15,12 +15,11 @@ import {
 } from '@/workflows/runtimeDefinition'
 import {
   isTerminalTaskStatus,
-  selectQueuedJobGroups,
   taskJobId,
 } from '@/features/tasks/lifecycle'
 import { resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
 import { CURRENT_INFERENCE_PARAMS_VERSION, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming } from '@/stores/taskNormalize'
-import { JOURNAL_POLL_INTERVAL_MS, useMediaJobsStore } from '@/stores/mediaJobs'
+import { useMediaJobsStore } from '@/stores/mediaJobs'
 import { audioTasksFromJobs, audioEnqueueFromTasks } from '@/features/tasks/audioJobs'
 import { enqueueAudioJobs, removeAudioJobs, type ResultRemovalResponse } from '@/features/tasks/journal'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
@@ -31,12 +30,13 @@ import { resolveRetryOutput } from '@/stores/taskRetry'
 import { buildInferenceParams as buildInferenceParamsFromValues, modelInferenceParamsFromState as modelInferenceParamsFromValues } from '@/stores/taskInferenceParams'
 import { buildJobs, findJobById } from '@/stores/taskJobs'
 import { makeTaskInputActions } from '@/stores/taskInputActions'
+import { makeTaskQueueScheduler } from '@/stores/taskQueueScheduler'
+import { makeTaskInferenceDefaults } from '@/stores/taskInferenceDefaults'
 import { makeTaskCancelActions } from '@/stores/taskCancelActions'
 import { makeTaskInferenceParams } from '@/stores/taskInferenceActions'
 import { makeTaskResultHelpers } from '@/stores/taskResultHelpers'
 import { normalizePersistedModelState, resolveTaskErrorMessage } from '@/stores/taskHelpers'
 import { getRemovalTasks as getRemovalTasksFromState, primaryRevealPath } from '@/stores/taskResultCleanup'
-import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, applyModelDefaultsToUi, type InferenceNumberField } from '@/stores/taskInference'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, type WorkflowRuntimeBindings } from '@/workflows/workbench'
 import { SEPARATE_MODEL_PAGE_SIZES, normalizePageSize } from '@/utils/pagination'
@@ -155,7 +155,6 @@ const {
   const sessionJobs = computed(() => buildJobs(tasks.value.filter(task => sessionTaskIds.value.has(task.id))))
 
   let separateStateSaveTimer: ReturnType<typeof setTimeout> | null = null
-  let applyingModelDefaults = false
 
   function separateStateSnapshot(): PersistedSeparateState {
     return {
@@ -325,7 +324,7 @@ const {
     [separateRunMode, ensembleEnabled, ensembleModels, ensembleStem, ensembleModelStems, ensembleType, ensembleWeights,
       separateOutputLayout, separateOutputNamingTemplate, separateCustomStemOrder, modelListViewMode, modelListSortMode, modelListPageSize, useTta],
     () => {
-      if (applyingModelDefaults) return
+      if (isApplyingModelDefaults()) return
       queueSeparateStatePersist()
     },
     { deep: true },
@@ -335,7 +334,7 @@ const {
     [batch_size, overlap_size, num_overlap, chunk_size, standardize, normalize, window_size, aggression, enable_post_process,
       post_process_threshold, high_end_process],
     () => {
-      if (applyingModelDefaults) return
+      if (isApplyingModelDefaults()) return
       inferenceParamsDirty.value = true
       const modelStore = useModelStore()
       if (modelStore.selectedModel) saveCurrentModelState(modelStore.selectedModel)
@@ -345,7 +344,7 @@ const {
   watch(
     [selectedStems, selectedStemsCleared],
     () => {
-      if (applyingModelDefaults) return
+      if (isApplyingModelDefaults()) return
       const modelStore = useModelStore()
       if (modelStore.selectedModel) saveCurrentModelState(modelStore.selectedModel)
       else queueSeparateStatePersist()
@@ -357,111 +356,15 @@ const {
     scheduleQueue()
   })
 
-  function applySelectedModelDefaults(
-    baseDefaults: ModelDefaultInferenceParams | undefined,
-    modelType?: string | null,
-    saved?: PersistedSeparateModelState,
-    modelOverrides?: ModelDefaultInferenceParams,
-    options: { force?: boolean } = {},
-  ) {
-    selectedModelDefaults.value = baseDefaults ? { ...baseDefaults } : {}
-    selectedModelOverrides.value = modelOverrides ? { ...modelOverrides } : {}
-    selectedModelType.value = modelType ?? null
-    const next = applyModelDefaultsToUi(baseDefaults, modelType)
-    const modelOverrideValue = <K extends keyof ModelDefaultInferenceParams>(key: K) => (
-      modelOverrides && Object.prototype.hasOwnProperty.call(modelOverrides, key) ? modelOverrides[key] : undefined
-    )
-    const modelDefaultValue = <K extends keyof ModelDefaultInferenceParams>(key: K) => (
-      baseDefaults && Object.prototype.hasOwnProperty.call(baseDefaults, key) ? baseDefaults[key] : undefined
-    )
-    const savedValue = <K extends keyof ModelDefaultInferenceParams & keyof PersistedSeparateModelState>(key: K, fallback: PersistedSeparateModelState[K]) => (
-      saved && Object.prototype.hasOwnProperty.call(saved, key) ? saved[key] : fallback
-    )
-    const modelOrSavedValue = <K extends keyof ModelDefaultInferenceParams & keyof PersistedSeparateModelState>(key: K) => {
-      const override = modelOverrideValue(key)
-      if (override !== undefined) return override
-      const modelDefault = modelDefaultValue(key)
-      if (modelDefault !== undefined) return modelDefault
-      return savedValue(key, next[key])
-    }
-    const valueOrDefault = <T>(value: T | undefined, fallback: T): T => value === undefined ? fallback : value
-    const resolvedDefaults = {
-      batch_size: valueOrDefault(modelOrSavedValue('batch_size'), 1),
-      overlap_size: valueOrDefault(modelOrSavedValue('overlap_size'), 0),
-      num_overlap: valueOrDefault(modelOrSavedValue('num_overlap'), 0),
-      chunk_size: valueOrDefault(modelOrSavedValue('chunk_size'), 0),
-      standardize: valueOrDefault(modelOrSavedValue('standardize'), false),
-      normalize: valueOrDefault(modelOrSavedValue('normalize'), false),
-      window_size: valueOrDefault(modelOrSavedValue('window_size'), 0),
-      aggression: valueOrDefault(modelOrSavedValue('aggression'), 0),
-      enable_post_process: valueOrDefault(modelOrSavedValue('enable_post_process'), false),
-      post_process_threshold: valueOrDefault(modelOrSavedValue('post_process_threshold'), 0),
-      high_end_process: valueOrDefault(modelOrSavedValue('high_end_process'), false),
-    }
-    selectedModelUiDefaults.value = { ...resolvedDefaults }
-    if (inferenceParamsDirty.value && !options.force) return
-
-    applyingModelDefaults = true
-    batch_size.value = resolvedDefaults.batch_size
-    overlap_size.value = resolvedDefaults.overlap_size
-    num_overlap.value = resolvedDefaults.num_overlap
-    chunk_size.value = resolvedDefaults.chunk_size
-    standardize.value = resolvedDefaults.standardize
-    normalize.value = resolvedDefaults.normalize
-    window_size.value = resolvedDefaults.window_size
-    aggression.value = resolvedDefaults.aggression
-    enable_post_process.value = resolvedDefaults.enable_post_process
-    post_process_threshold.value = resolvedDefaults.post_process_threshold
-    high_end_process.value = resolvedDefaults.high_end_process
-    selectedStems.value = Array.isArray(saved?.selectedStems) ? [...saved.selectedStems] : []
-    selectedStemsCleared.value = saved?.selectedStemsCleared === true
-    inferenceParamsDirty.value = false
-    void nextTick(() => {
-      applyingModelDefaults = false
-    })
-  }
-
-  function getCurrentUiInferenceDefaults() {
-    const defaults = Object.fromEntries(
-      Object.entries(selectedModelUiDefaults.value).map(([key, value]) => [key, value === null ? undefined : value]),
-    ) as ModelDefaultInferenceParams
-    return applyModelDefaultsToUi(defaults, selectedModelType.value)
-  }
-
-  function restoreInferenceNumberFallback(field: InferenceNumberField) {
-    if (!ZERO_AS_UNSET_FIELDS.has(field)) return
-    const defaults = getCurrentUiInferenceDefaults()
-    const nextValue = defaults[field]
-    if (typeof nextValue !== 'number' || !Number.isFinite(nextValue)) return
-    switch (field) {
-      case 'batch_size':
-        if (normalizeEditableNumberValue(batch_size.value, { zeroMeansUnset: true }) === null) batch_size.value = nextValue
-        break
-      case 'overlap_size':
-        if (normalizeEditableNumberValue(overlap_size.value, { zeroMeansUnset: true }) === null) overlap_size.value = nextValue
-        break
-      case 'num_overlap':
-        if (normalizeEditableNumberValue(num_overlap.value, { zeroMeansUnset: true }) === null) num_overlap.value = nextValue
-        break
-      case 'chunk_size':
-        if (normalizeEditableNumberValue(chunk_size.value, { zeroMeansUnset: true }) === null) chunk_size.value = nextValue
-        break
-      case 'window_size':
-        if (normalizeEditableNumberValue(window_size.value, { zeroMeansUnset: true }) === null) window_size.value = nextValue
-        break
-      case 'aggression':
-      case 'post_process_threshold':
-        break
-    }
-  }
-
-  function normalizeInferenceInputsBeforeSubmit() {
-    restoreInferenceNumberFallback('batch_size')
-    restoreInferenceNumberFallback('overlap_size')
-    restoreInferenceNumberFallback('num_overlap')
-    restoreInferenceNumberFallback('chunk_size')
-    restoreInferenceNumberFallback('window_size')
-  }
+  const {
+    applySelectedModelDefaults, restoreInferenceNumberFallback,
+    normalizeInferenceInputsBeforeSubmit, isApplyingModelDefaults,
+  } = makeTaskInferenceDefaults({
+    selectedModelDefaults, selectedModelOverrides, selectedModelType, selectedModelUiDefaults,
+    inferenceParamsDirty, batch_size, overlap_size, num_overlap, chunk_size, standardize,
+    normalize, window_size, aggression, enable_post_process, post_process_threshold,
+    high_end_process, selectedStems, selectedStemsCleared,
+  })
 
   const { buildRunConfig, buildWorkflowRunConfig } = makeTaskRunConfig({
     useSettingsStore, useAppStore, useModelStore, selectedStems, useTta,
@@ -474,84 +377,11 @@ const {
     buildRunConfig, buildWorkflowRunConfig, tasks, rememberSessionTasks,
     activeTaskId,
   })
-  async function startQueuedTask(taskId: string) {
-    const task = tasks.value.find(item => item.id === taskId)
-    if (!task || task.status !== 'queued') return false
-    return startQueuedGroup([task])
-  }
 
-  async function startQueuedGroup(group: SeparationTask[]) {
-    if (!group.length) return false
-    const groupId = taskJobId(group[0])
-    if (acceptedGroupIds.has(groupId) || inFlightGroupIds.has(groupId) || (retryDispatchAfter.get(groupId) || 0) > Date.now()) return false
-    inFlightGroupIds.add(groupId)
-    const primary = group[0].id
-    try {
-      await invoke(group[0].runConfig?.runMode === 'workflow' ? 'start_workflow_inference' : 'start_separation', { payload: { jobId: primary } })
-      // A queued ACK means the backend owns the waiter, not that a worker started.
-      acceptedGroupIds.add(groupId)
-      retryDispatchAfter.delete(groupId)
-      await journal.refresh()
-      if (journal.error) throw new Error(journal.error)
-      syncJournalTasks()
-      return true
-    } catch (error) {
-      // A queued record predates start, so a lost ACK is ambiguous. Retrying the
-      // idempotent start is safe, but only after the resident polling interval.
-      retryDispatchAfter.set(groupId, Date.now() + JOURNAL_POLL_INTERVAL_MS)
-      studioLog.warn('Failed to start an enqueued audio job', error)
-      await journal.refresh()
-      syncJournalTasks()
-      if (tasks.value.some(task => taskJobId(task) === groupId && task.status !== 'queued' && !isTerminalTaskStatus(task.status))) acceptedGroupIds.add(groupId)
-      return false
-    } finally {
-      inFlightGroupIds.delete(groupId)
-    }
-  }
-
-  const startBatchWorker = startQueuedGroup
-  const startWorkflowBatchWorker = startQueuedGroup
-
-  let schedulingSuppressed = 0
-  let schedulingQueue = false
-  let queueScheduleRequested = false
-
-  function scheduleQueue() {
-    // Browser-only previews cannot start a Rust worker. Keep restored queue items
-    // intact until the desktop runtime is available instead of failing them on boot.
-    if (!isTauriRuntime() || !initialized.value || loadError.value || journal.error || schedulingSuppressed) return
-    if (!isMainTaskOwner()) return
-    if (schedulingQueue) {
-      queueScheduleRequested = true
-      return
-    }
-    schedulingQueue = true
-    try {
-      do {
-        queueScheduleRequested = false
-        // Admission and the shared UI/MCP/media cap belong to the backend. Submit
-        // every unaccepted group once; a batch still maps to one backend waiter.
-        const eligible = tasks.value.filter(task => task.status !== 'queued' || !acceptedGroupIds.has(taskJobId(task))
-          && !inFlightGroupIds.has(taskJobId(task)) && (retryDispatchAfter.get(taskJobId(task)) || 0) <= Date.now())
-        const nextJobs = selectQueuedJobGroups(eligible, Math.max(1, tasks.value.length))
-        nextJobs.forEach((jobTasks) => {
-          if (jobTasks.length === 1) {
-            void startQueuedTask(jobTasks[0].id)
-            return
-          }
-          if (jobTasks[0].runConfig?.runMode === 'workflow') {
-            void startWorkflowBatchWorker(jobTasks)
-          } else {
-            void startBatchWorker(jobTasks)
-          }
-        })
-        // Synchronous validation failures request another pass after the current selection is consumed.
-      } while (queueScheduleRequested)
-    } finally {
-      schedulingQueue = false
-    }
-  }
-
+  const { scheduleQueue, suppressScheduling, resumeScheduling } = makeTaskQueueScheduler({
+    tasks, initialized, loadError, journal, acceptedGroupIds, inFlightGroupIds,
+    retryDispatchAfter, invoke, syncJournalTasks, studioLog,
+  })
   const {
     getTaskById, focusResultTask, focusTask, hasResultPresence, getRemovalTasks, checkRemoval, removeResult,
   } = makeTaskResultHelpers({
@@ -605,8 +435,7 @@ const {
     cancelAllTasks, cancelTask, cancelWorkbenchJob,
   } = makeTaskCancelActions({
     tasks, runningTasks, journal, invoke, syncJournalTasks, scheduleQueue,
-    suppressScheduling: () => { schedulingSuppressed++ },
-    resumeScheduling: () => { schedulingSuppressed-- },
+    suppressScheduling, resumeScheduling,
   })
 
   const { buildInferenceParams } = makeTaskInferenceParams({
