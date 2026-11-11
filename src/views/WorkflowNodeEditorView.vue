@@ -90,7 +90,7 @@ const formError = computed(() => {
   if (formatError.value) return formatError.value
   if (canvasError.value) return canvasError.value
   if (!name.value.trim()) return t('workflows.nameRequired')
-  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as any[] : []
+  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as Record<string, unknown>[] : []
   if (!nodes.length) return t('workflows.stepsRequired')
   // Deep validation belongs to pymss. Incomplete graphs can still be saved
   // as drafts; these checks only prevent submitting an incomplete workflow.
@@ -105,12 +105,12 @@ const formError = computed(() => {
  * comfy-mss serializes model widgets as ``[category] filename`` — strip the
  * annotation prefix before matching (mirrors pymss' runtime behaviour). */
 const missingModelNodes = computed(() => {
-  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as any[] : []
+  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as Record<string, unknown>[] : []
   const downloaded = new Set(downloadedModels.value.map(item => item.name))
   const missing: string[] = []
   for (const n of nodes) {
     if (isWorkflowSeparationNodeType(n.type)) {
-      const raw = String(firstWidgetValue(n as any) || '').trim()
+      const raw = String(firstWidgetValue(n as { widgets_values?: unknown[] }) || '').trim()
       const model = raw.replace(/^\[[^\]]*\]\s*/, '').trim()
       if (model && !downloaded.has(model)) missing.push(String(n.id))
     }

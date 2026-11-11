@@ -10,6 +10,7 @@ import type {
 import type {
   EditorProjectCleanupResult, OrphanedEditorProject, PersistedSession,
 } from '@/stores/editorSupport'
+import type { EditorSourceRole } from '@/types/editor'
 
 type Deps = {
   session: Ref<EditorSession | null>
@@ -21,7 +22,7 @@ type Deps = {
   invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
   clearHistory: () => void
   selectTrack: (trackId: string | null) => void
-  localizedAutoTrackName: (name: string, role: any, stemKey?: string | null) => string
+  localizedAutoTrackName: (name: string, role: EditorSourceRole, stemKey?: string | null) => string
   hydratePeaksFromCache: (projectId?: string) => Promise<void>
   hydrateSourceMetadataState: (projectId?: string) => Promise<boolean>
   hydrateSessionSourcesInBackground: (projectId: string) => void

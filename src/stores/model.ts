@@ -344,10 +344,29 @@ type NormalizeModelEntryOptions = {
  * 后端 worker 事件信封。payload 字段随 type 高度多变（下载/删除/清理各阶段），
  * 故保持宽松结构，仅收敛顶层信封以移除隐式 any。
  */
+type ModelWorkerPayload = {
+  aggregateDownloadedBytes?: number
+  aggregateTotalBytes?: number
+  completedFiles?: number
+  downloaded?: string[]
+  file?: string
+  fileIndex?: number
+  message?: string
+  model?: string
+  modelDir?: string
+  modelInfo?: ModelEntry | null
+  modelStorageSummary?: ModelStorageSummary
+  progress?: number
+  skipped?: string[]
+  speedBytesPerSecond?: number
+  stage?: string
+  totalFiles?: number
+}
+
 export type WorkerEvent = {
   type?: string
   taskId?: string
-  payload?: Record<string, any>
+  payload?: ModelWorkerPayload
 }
 
 export const useModelStore = defineStore('model', () => {
@@ -854,7 +873,7 @@ export const useModelStore = defineStore('model', () => {
         next.progress = 100
         next.speedBytesPerSecond = 0
         next.message = 'Done'
-        next.completedFiles = payload.downloaded?.length + payload.skipped?.length || next.completedFiles
+        next.completedFiles = (payload.downloaded?.length || 0) + (payload.skipped?.length || 0) || next.completedFiles
         next.totalFiles = Math.max(next.totalFiles, next.completedFiles || 1)
         if (payload.modelInfo) upsertModel(payload.modelInfo)
         // 事件里的 modelInfo 形状可能和列表条目不完全一致；重拉一次保证权威。
