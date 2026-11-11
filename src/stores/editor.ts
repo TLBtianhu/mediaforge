@@ -3,22 +3,21 @@ import { makeEditorTrackActions } from '@/stores/editorTrackActions'
 import { makeEditorSourceActions } from '@/stores/editorSourceActions'
 import { makeEditorExportActions } from '@/stores/editorExport'
 import { makeEditorHydration } from '@/stores/editorHydration'
+import { makeEditorProjects } from '@/stores/editorProjects'
 import { trackColor, duplicatedTrackColor, fileName, stripExt } from '@/stores/editorStems'
-import { makeId, clamp, cloneTracks, normalizeClip, normalizeSession, toPersistedSession } from '@/stores/editorNormalize'
+import { makeId, clamp, cloneTracks, normalizeClip, toPersistedSession } from '@/stores/editorNormalize'
 import { createLogger } from '@/utils/logger'
 import { clonePluginChain, hasEditorPlugins, projectPluginSlots } from '@/utils/editorPlugins'
 import { currentPluginSession, discardUnavailablePluginSession, observePluginSession, PluginHostDialogPendingError, reloadPluginSession, snapshotPluginStates, unloadPluginSession, type PluginSessionState } from '@/utils/pluginHost'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import i18n, { getCurrentLocale } from '@/i18n'
+import i18n from '@/i18n'
 import {
   overwriteClipsInRange,
   syncSingleClipFadeCompatibility,
   timelineDuration,
 } from '@/utils/editorClips'
 import { registerWindowCloseGuard, WindowClosePersistenceError } from '@/utils/windowCloseGuards'
-import { isTauriRuntime } from '@/utils/appStore'
-import type { SeparationTask, StemOutput } from '@/stores/task'
 import type {
   EditorPluginSlot,
   EditorExportFormat,
@@ -44,12 +43,12 @@ export type {
 import type {
   ExportResult, ImportEditorAssetsResult, ScanAudioPathsResult,
   EditorExportProgress,
-  EditorProjectCleanupResult, OrphanedEditorProject, PersistedSession, AudioMetadata,
+  PersistedSession, AudioMetadata,
   HistorySnapshot,
 } from '@/stores/editorSupport'
 import {
   AUTO_SAVE_DELAY, HISTORY_LIMIT,
-  blankProjectName, localizedAutoTrackName, normalizePathKey,
+  localizedAutoTrackName, normalizePathKey,
   sourceDisplayGroup,
 } from '@/stores/editorSupport'
 export type {
@@ -463,225 +462,6 @@ export const useEditorStore = defineStore('editor', () => {
     session, selectedTrackId, selectedClipId, pushHistory, scheduleSave, interactionDepth, sourceMap,
   })
 
-  async function requestProjectFromTask(task: SeparationTask) {
-    return invoke<PersistedSession>('create_editor_project_from_task', {
-      payload: {
-        taskId: task.id,
-        input: task.input,
-        outputDir: task.output,
-        outputs: task.outputs as StemOutput[],
-      },
-    })
-  }
-
-  async function createFromTask(task: SeparationTask) {
-    loading.value = true
-    lastError.value = null
-    try {
-      const result = await requestProjectFromTask(task)
-      session.value = normalizeSession(result, localizedAutoTrackName)
-      selectTrack(session.value.tracks[0]?.id || null)
-      await hydratePeaksFromCache(session.value.id)
-      const metadataChanged = await hydrateSourceMetadataState(session.value.id)
-      clearHistory()
-      const currentProjectId = session.value.id
-      if (metadataChanged) await saveProject()
-      hydrateSessionSourcesInBackground(currentProjectId)
-      return session.value
-    } catch (error) {
-      lastError.value = error instanceof Error ? error.message : String(error)
-      throw error
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function openProjectWindow(projectId: string) {
-    return invoke('open_editor_window', { payload: { projectId } })
-  }
-
-  async function ensureProjectForTask(task: SeparationTask, options?: { loadIntoSession?: boolean }) {
-    if (options?.loadIntoSession !== false) return createFromTask(task)
-    const result = await requestProjectFromTask(task)
-    const normalized = normalizeSession(result, localizedAutoTrackName)
-    return { id: normalized.id }
-  }
-
-  async function listProjects() {
-    const result = await invoke<EditorProjectSummary[]>('list_editor_projects')
-    projectSummaries.value = [...(result || [])].sort((a, b) => b.updatedAt - a.updatedAt)
-    return projectSummaries.value
-  }
-
-  async function refreshProjects() {
-    return listProjects()
-  }
-
-  // Keep this interface for the future import-first editor flow. The visible
-  // blank-project entry is hidden until external audio import has clear UI.
-  async function createBlankProject(name?: string) {
-    const locale = getCurrentLocale()
-    const result = await invoke<PersistedSession>('create_blank_editor_project', {
-      payload: {
-        name: name?.trim() || blankProjectName(),
-        locale,
-      },
-    })
-    const normalized = normalizeSession(result, localizedAutoTrackName)
-    const summary: EditorProjectSummary = {
-      id: normalized.id,
-      name: normalized.name,
-      sourceTaskId: normalized.sourceTaskId,
-      sourceResultDir: normalized.sourceResultDir,
-      createdAt: normalized.createdAt,
-      updatedAt: normalized.updatedAt,
-      type: normalized.sourceTaskId ? 'task' : 'blank',
-    }
-    projectSummaries.value = [summary, ...projectSummaries.value.filter((item) => item.id !== summary.id)]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-    return normalized
-  }
-
-  async function deleteProject(projectId: string) {
-    // Serialize deletion after queued writes so a delayed autosave cannot
-    // recreate the project after the backend removes it.
-    await drainPendingSaves()
-    suspendedProjectSaves.add(projectId)
-    pendingProjectSaves.delete(projectId)
-    let result: boolean
-    try {
-      result = await invoke<boolean>('delete_editor_project', { projectId })
-    } catch (error) {
-      suspendedProjectSaves.delete(projectId)
-      if (session.value?.id === projectId) scheduleSave()
-      throw error
-    }
-    projectSummaries.value = projectSummaries.value.filter((item) => item.id !== projectId)
-    if (session.value?.id === projectId) {
-      session.value = null
-      selectedTrackId.value = null
-      selectedClipId.value = null
-      clearHistory()
-    }
-    suspendedProjectSaves.delete(projectId)
-    return result
-  }
-
-  async function deleteProjectsForTasks(taskIds: string[]) {
-    const uniqueTaskIds = [...new Set(taskIds.map(id => id.trim()).filter(Boolean))]
-    const emptyResult = (): EditorProjectCleanupResult => ({
-      deletedProjectIds: [],
-      missingProjectIds: [],
-      blockedProjectIds: [],
-      failedProjectIds: [],
-    })
-    if (!uniqueTaskIds.length || !isTauriRuntime()) return emptyResult()
-    const projectIds = await invoke<string[]>('editor_project_ids_for_tasks', { taskIds: uniqueTaskIds })
-
-    await drainPendingSaves()
-    projectIds.forEach((projectId) => {
-      suspendedProjectSaves.add(projectId)
-      pendingProjectSaves.delete(projectId)
-    })
-    try {
-      const result = await invoke<EditorProjectCleanupResult>('delete_editor_projects_for_tasks', {
-        taskIds: uniqueTaskIds,
-      })
-      const removedProjectIds = new Set([
-        ...(result.deletedProjectIds || []),
-        ...(result.missingProjectIds || []),
-      ])
-      projectSummaries.value = projectSummaries.value.filter(item => !removedProjectIds.has(item.id))
-      if (session.value && removedProjectIds.has(session.value.id)) clearSession()
-      return {
-        deletedProjectIds: result.deletedProjectIds || [],
-        missingProjectIds: result.missingProjectIds || [],
-        blockedProjectIds: result.blockedProjectIds || [],
-        failedProjectIds: result.failedProjectIds || [],
-      }
-    } finally {
-      projectIds.forEach(projectId => suspendedProjectSaves.delete(projectId))
-    }
-  }
-
-  async function listOpenProjectsForTasks(taskIds: string[]) {
-    const uniqueTaskIds = [...new Set(taskIds.map(id => id.trim()).filter(Boolean))]
-    if (!uniqueTaskIds.length || !isTauriRuntime()) return []
-    const backendOpenProjectIds = await invoke<string[]>('list_open_editor_projects_for_tasks', {
-      taskIds: uniqueTaskIds,
-    })
-    return [...new Set(backendOpenProjectIds || [])]
-  }
-
-  async function listOrphanedProjects() {
-    if (!isTauriRuntime()) return [] as OrphanedEditorProject[]
-    return invoke<OrphanedEditorProject[]>('list_orphaned_editor_projects')
-  }
-
-  async function deleteOrphanedProjects() {
-    const emptyResult = (): EditorProjectCleanupResult => ({
-      deletedProjectIds: [],
-      missingProjectIds: [],
-      blockedProjectIds: [],
-      failedProjectIds: [],
-    })
-    if (!isTauriRuntime()) return emptyResult()
-    const orphanedProjects = await listOrphanedProjects()
-    const projectIds = orphanedProjects.map(project => project.projectId)
-    if (!projectIds.length) return emptyResult()
-    await drainPendingSaves()
-    projectIds.forEach((projectId) => {
-      suspendedProjectSaves.add(projectId)
-      pendingProjectSaves.delete(projectId)
-    })
-    try {
-      const result = await invoke<EditorProjectCleanupResult>('delete_orphaned_editor_projects', { projectIds })
-      const removedProjectIds = new Set([
-        ...(result.deletedProjectIds || []),
-        ...(result.missingProjectIds || []),
-      ])
-      projectSummaries.value = projectSummaries.value.filter(item => !removedProjectIds.has(item.id))
-      if (session.value && removedProjectIds.has(session.value.id)) clearSession()
-      return {
-        deletedProjectIds: result.deletedProjectIds || [],
-        missingProjectIds: result.missingProjectIds || [],
-        blockedProjectIds: result.blockedProjectIds || [],
-        failedProjectIds: result.failedProjectIds || [],
-      }
-    } finally {
-      projectIds.forEach(projectId => suspendedProjectSaves.delete(projectId))
-    }
-  }
-
-  function clearSession() {
-    session.value = null
-    selectedTrackId.value = null
-    selectedClipId.value = null
-    clearHistory()
-  }
-
-  async function loadProject(projectId: string) {
-    loading.value = true
-    lastError.value = null
-    try {
-      const result = await invoke<PersistedSession>('load_editor_project', { projectId })
-      session.value = normalizeSession(result, localizedAutoTrackName)
-      await hydratePeaksFromCache(session.value.id)
-      const metadataChanged = await hydrateSourceMetadataState(session.value.id)
-      selectTrack(session.value.tracks[0]?.id || null)
-      clearHistory()
-      const currentProjectId = session.value.id
-      if (metadataChanged) await saveProject()
-      hydrateSessionSourcesInBackground(currentProjectId)
-      return session.value
-    } catch (error) {
-      lastError.value = error instanceof Error ? error.message : String(error)
-      throw error
-    } finally {
-      loading.value = false
-    }
-  }
-
   async function saveProject() {
     if (!queueSessionSave() && !pendingProjectSaves.size) return null
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
@@ -697,6 +477,23 @@ export const useEditorStore = defineStore('editor', () => {
     hydrateSessionSourcesInBackground, hydrateSourceMetadataState, hydrateSessionSources,
     hydratePeaksFromCache,
   } = makeEditorHydration({ session, scheduleSave, saveProject })
+
+  const {
+    clearSession, createFromTask, openProjectWindow,
+    ensureProjectForTask, listProjects, refreshProjects, createBlankProject,
+    deleteProject, deleteProjectsForTasks, listOpenProjectsForTasks,
+    listOrphanedProjects, deleteOrphanedProjects, loadProject,
+  } = makeEditorProjects({
+    session, loading, lastError, projectSummaries, selectedTrackId, selectedClipId,
+    invoke, clearHistory, selectTrack, localizedAutoTrackName,
+    hydratePeaksFromCache, hydrateSourceMetadataState, hydrateSessionSourcesInBackground,
+    saveProject, drainPendingSaves, scheduleSave,
+    suspendProjectSave: (projectId) => {
+      suspendedProjectSaves.add(projectId)
+      pendingProjectSaves.delete(projectId)
+    },
+    resumeProjectSave: (projectId) => { suspendedProjectSaves.delete(projectId) },
+  })
 
   async function addReferenceSourceByPath(path: string) {
     if (!session.value) throw new Error('Editor session is not loaded')
