@@ -152,7 +152,7 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
 
 ```
 巨文件（行数）   SettingsView.vue 791 / ModelsView.vue 984 / SeparateView.vue 1167 /
-                 DebugView.vue 1395 / stores/task.ts 849 / stores/editor.ts 1268
+                 DebugView.vue 1395 / stores/task.ts 849 / stores/editor.ts 1094
                  SeparateView 与 DebugView 已按工厂拆过一轮，剩下的先把有测试契约的簇外移。
 门面间接         已移除：worker_bootstrap.py 合并为普通模块，bootstrap_parts 分包已删除。
 测试稳定性       editorParameterSlider.test.mjs 已统一焦点、active 状态和生命周期拖拽准备；
