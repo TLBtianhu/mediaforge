@@ -1,11 +1,12 @@
 import type { Ref } from 'vue'
 import { getModelCategoryLabel } from '@/utils/modelCategory'
+import type { ModelEntry, useModelStore } from '@/stores/model'
 
 type Deps = {
   t: (key: string, params?: Record<string, unknown>) => string
   locale: Ref<string>
-  model: any
-  listedDownloadedModels: Ref<any[]>
+  model: ReturnType<typeof useModelStore>
+  listedDownloadedModels: Ref<ModelEntry[]>
   selectedModelName: Ref<string>
   ensembleEnabled: Ref<boolean>
   ensembleModels: Ref<string[]>

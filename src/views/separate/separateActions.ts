@@ -1,5 +1,8 @@
 import { nextTick, type Ref } from 'vue'
-import type { SeparationJob } from '@/stores/task'
+import type { DialogApi } from 'naive-ui'
+import type { Router } from 'vue-router'
+import type { SeparationJob, SeparationTask } from '@/stores/task'
+import type { useTaskStore } from '@/stores/task'
 
 function isSeparationJob(job: SeparationJob) {
   return !job.primary.runConfig?.workbench
@@ -8,11 +11,11 @@ function isSeparationJob(job: SeparationJob) {
 type Deps = {
   t: (key: string, params?: Record<string, unknown>) => string
   message: { success: (text: string) => void; error: (text: string) => void }
-  dialog: any
-  task: any
-  router: any
-  currentTask: Ref<any>
-  currentBatchTasks: Ref<any[]>
+  dialog: DialogApi
+  task: ReturnType<typeof useTaskStore>
+  router: Router
+  currentTask: Ref<SeparationTask | null>
+  currentBatchTasks: Ref<SeparationTask[]>
   cancellingTaskId: Ref<string | null>
   removingRunRecords: Ref<boolean>
   showLogModal: Ref<boolean>
@@ -22,7 +25,7 @@ type Deps = {
   focusQueueJob: (job: SeparationJob) => boolean
   cancelQueueJob: (job: SeparationJob) => void
   isNoResultSeparationJob: (job: SeparationJob) => boolean
-  isTerminalTaskStatus: (status: any) => boolean
+  isTerminalTaskStatus: (status: SeparationTask['status']) => boolean
   getFileName: (path: string) => string
 }
 

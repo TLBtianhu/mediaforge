@@ -3,6 +3,7 @@ import type { SeparationJob, SeparationTask, StemOutput } from '@/stores/task'
 import { isTerminalTaskStatus, resolveJobStatus } from '@/features/tasks/lifecycle'
 import { getFileName } from './format'
 import { sortStemOutputsByOrder } from '@/utils/stemOrder'
+import type { ModelEntry } from '@/stores/model'
 
 type Deps = {
   computed: <T>(source: () => T) => ComputedRef<T>
@@ -10,10 +11,10 @@ type Deps = {
   currentJob: Ref<SeparationJob | null>
   inputFiles: Ref<string[]>
   selectedModelName: Ref<string>
-  currentModelInfo: Ref<any>
+  currentModelInfo: Ref<ModelEntry | null>
   normalizedOutputDir: Ref<string>
-  modelEntries: Ref<any[]>
-  categoryLabel: (item: any) => string
+  modelEntries: Ref<ModelEntry[]>
+  categoryLabel: (item: ModelEntry) => string
   parseModelInstruments: (value: unknown) => string[]
   statusLabel: (status: string) => string
   shortenMiddle: (value: string, max: number) => string
