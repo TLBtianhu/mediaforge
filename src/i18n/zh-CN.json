@@ -1647,7 +1647,7 @@
     "proxySuggestionRefusedCustom": "连接被拒绝。代理软件可能未启动，或端口填错了。",
     "proxySuggestionRefused": "服务器拒绝连接。服务可能不可用，或被防火墙拦截。",
     "proxySuggestionBadScheme": "代理协议无效。请使用 http://、https://、socks5:// 或 socks5h:// 开头。",
-    "proxySuggestionPySocks": "SOCKS5 代理需要 PySocks 包，发布版已内置。若从源码运行，请执行：pip install pysocks",
+    "proxySuggestionPySocks": "SOCKS5 代理需要 PySocks 包，发布版已内置。若从源码运行，请在项目 Python 环境中安装 PySocks。",
     "runtimeInstalling": "安装中…",
     "runtimeCurrentLabel": "当前后端",
     "runtimeCurrentMeta": "当前正在使用的推理后端",

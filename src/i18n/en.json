@@ -1647,7 +1647,7 @@
     "proxySuggestionRefusedCustom": "Connection refused. The proxy software may not be running, or the port is wrong.",
     "proxySuggestionRefused": "Connection refused by the server. The service may be unavailable, or a firewall is blocking the connection.",
     "proxySuggestionBadScheme": "Invalid proxy protocol. Use http://, https://, socks5://, or socks5h:// prefix.",
-    "proxySuggestionPySocks": "SOCKS5 proxy requires the PySocks package, which is bundled in the release build. If you are running from source, install it with: pip install pysocks",
+    "proxySuggestionPySocks": "SOCKS5 proxy requires the PySocks package, which is bundled in the release build. If you are running from source, install PySocks in the project Python environment.",
     "runtimeInstalling": "Installing...",
     "runtimeCurrentLabel": "Current Backend",
     "runtimeCurrentMeta": "The backend currently used for inference",

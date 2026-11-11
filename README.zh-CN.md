@@ -212,8 +212,7 @@ MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Ag
 
 ```bash
 python download_models.py
-# 国内网络
-python download_models.py --proxy http://127.0.0.1:7897
+# 下载器会读取 HTTP_PROXY / HTTPS_PROXY（本机已注入）
 ```
 
 下载到 `models/`。也可以在图像页选择其他模型目录。权重不随仓库分发，请遵守各自许可证。
