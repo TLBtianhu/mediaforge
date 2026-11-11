@@ -892,7 +892,7 @@ const {
   temporaryOutputDir, normalizedOutputDir, app, settings, outputNamingPreviewFiles, effectiveOutputLayout, t,
   submittingJob, ensembleEnabled, ensembleReady, modelDownloaded, inputFiles, hasOutputStemSelection,
   currentChunkIssue, task, focusedSeparationJobId, newestRunningJob, composingNewJob, ensembleModels, model,
-  buildEnsembleWorkflow, outputNamingConfig, WINDOWS_RESERVED_FILENAMES, computed, launchTask,
+  buildEnsembleWorkflow, outputNamingConfig, WINDOWS_RESERVED_FILENAMES, computed, launchTask, message,
 })
 const {
   beginNextSeparation, viewQueueJobLogs, removeSeparationRunRecords, queueJobInputSummary,

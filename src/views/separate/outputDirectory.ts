@@ -1,9 +1,42 @@
 // SeparateView 的输出目录：默认值、平台校验、预览、提交入口。
 
-import { computed } from 'vue'
+import { computed, type Ref } from 'vue'
+import type { MessageApi } from 'naive-ui'
 import type { launchTask } from '@/features/tasks/launch'
+import type { WorkflowEntry } from '@/stores/workflow'
+import type { useAppStore } from '@/stores/app'
+import type { useModelStore } from '@/stores/model'
+import type { useSettingsStore } from '@/stores/settings'
+import type { useTaskStore, OutputLayout, SeparationJob } from '@/stores/task'
 
-type OutputDirectoryDeps = Record<string, any> & { computed: typeof computed; launchTask: typeof launchTask }
+type OutputDirectoryDeps = {
+  computed: typeof computed
+  launchTask: typeof launchTask
+  temporaryOutputDir: Ref<string>
+  normalizedOutputDir: Ref<string>
+  app: ReturnType<typeof useAppStore>
+  settings: ReturnType<typeof useSettingsStore>
+  task: ReturnType<typeof useTaskStore>
+  model: ReturnType<typeof useModelStore>
+  message: MessageApi
+  t: (key: string, named?: Record<string, unknown>) => string
+  outputNamingPreviewFiles: Ref<string[]>
+  outputNamingConfig: Ref<{ enabled: boolean; template: string; stemOrder: string[] }>
+  effectiveOutputLayout: Ref<OutputLayout>
+  submittingJob: Ref<boolean>
+  ensembleEnabled: Ref<boolean>
+  ensembleReady: Ref<boolean>
+  modelDownloaded: Ref<boolean>
+  inputFiles: Ref<string[]>
+  hasOutputStemSelection: Ref<boolean>
+  currentChunkIssue: Ref<Record<string, unknown> | null | undefined>
+  focusedSeparationJobId: Ref<string | null>
+  newestRunningJob: Ref<SeparationJob | null>
+  composingNewJob: Ref<boolean>
+  ensembleModels: Ref<string[]>
+  buildEnsembleWorkflow: () => WorkflowEntry
+  WINDOWS_RESERVED_FILENAMES: Set<string>
+}
 
 export function makeOutputDirectory(deps: OutputDirectoryDeps) {
   const outputDirectoryInput = deps.computed({
