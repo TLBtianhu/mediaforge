@@ -1,11 +1,30 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDownOutline, ChevronUpOutline, ReorderFourOutline } from '@vicons/ionicons5'
 
+type PreviewPart = { text: string; token: string }
+type PreviewRow = { key: string; parts: PreviewPart[] }
+type NamingToken = { value: string; label: string }
+
 const show = defineModel<boolean>('show', { required: true })
-const props = defineProps<{ context: Record<string, any> }>()
-const ctx = reactive(props.context) as any
+const template = defineModel<string>('template', { required: true })
+const props = defineProps<{
+  previewParts: PreviewRow[]
+  tokens: NamingToken[]
+  usesIndexToken: boolean
+  stems: string[]
+  draggedIndex: number | null
+  padNumber: (value: number) => string
+}>()
+const emit = defineEmits<{
+  'input-ref': [element: unknown]
+  'insert-token': [token: string]
+  'move-stem': [from: number, to: number]
+  reset: []
+  'stem-pointer-down': [event: PointerEvent, index: number]
+  'stem-pointer-move': [event: PointerEvent]
+  'stem-pointer-end': []
+}>()
 const { t } = useI18n()
 </script>
 
@@ -27,13 +46,13 @@ const { t } = useI18n()
             <span>{{ t('separate.namingTemplateHint') }}</span>
           </div>
           <n-input
-            :ref="(element: any) => (ctx.namingTemplateInputRef = element)"
-            v-model:value="ctx.outputNamingTemplate"
+            :ref="(element: unknown) => emit('input-ref', element)"
+            v-model:value="template"
             placeholder="%index%_%filename%_%stem%"
           />
           <div class="naming-preview-inline">
             <span>{{ t('separate.namingPreview') }}</span>
-            <div v-for="row in ctx.outputNamingPreviewParts" :key="row.key" class="naming-preview-file">
+            <div v-for="row in props.previewParts" :key="row.key" class="naming-preview-file">
               <span
                 v-for="(part, partIndex) in row.parts"
                 :key="`${row.key}-${partIndex}`"
@@ -51,12 +70,12 @@ const { t } = useI18n()
           </div>
           <div class="token-grid">
             <button
-              v-for="token in ctx.namingTokens"
+              v-for="token in props.tokens"
               :key="token.value"
               type="button"
               class="token-chip"
               :title="token.value"
-              @click="ctx.insertNamingToken(token.value)"
+              @click="emit('insert-token', token.value)"
             >
               <span>{{ token.label }}</span>
               <code>{{ token.value }}</code>
@@ -64,30 +83,30 @@ const { t } = useI18n()
           </div>
         </div>
 
-        <div v-if="ctx.usesIndexToken" class="naming-section">
+        <div v-if="props.usesIndexToken" class="naming-section">
           <div class="naming-section__head">
             <strong>{{ t('separate.namingNumberOrder') }}</strong>
             <span>{{ t('separate.namingNumberOrderHint') }}</span>
           </div>
-          <div v-if="ctx.orderedOutputStems.length" class="stem-order-list">
+          <div v-if="props.stems.length" class="stem-order-list">
             <div
-              v-for="(stem, index) in ctx.orderedOutputStems"
+              v-for="(stem, index) in props.stems"
               :key="stem"
               class="stem-order-row"
-              :class="{ 'stem-order-row--dragging': ctx.draggedStemIndex === index }"
-              @pointerdown="ctx.onStemPointerDown($event, index)"
-              @pointermove="ctx.onStemPointerMove"
-              @pointerup="ctx.finishStemPointerDrag"
-              @pointercancel="ctx.finishStemPointerDrag"
+              :class="{ 'stem-order-row--dragging': props.draggedIndex === index }"
+              @pointerdown="emit('stem-pointer-down', $event, Number(index))"
+              @pointermove="emit('stem-pointer-move', $event)"
+              @pointerup="emit('stem-pointer-end')"
+              @pointercancel="emit('stem-pointer-end')"
             >
               <n-icon :component="ReorderFourOutline" />
-              <span>{{ ctx.padNumber(Number(index) + 1) }}</span>
+              <span>{{ props.padNumber(Number(index) + 1) }}</span>
               <strong>{{ stem }}</strong>
               <div class="stem-order-row__actions">
-                <n-button quaternary circle size="tiny" :disabled="index === 0" :title="t('separate.moveUp')" @click="ctx.moveStem(Number(index), Number(index) - 1)">
+                <n-button quaternary circle size="tiny" :disabled="index === 0" :title="t('separate.moveUp')" @click="emit('move-stem', Number(index), Number(index) - 1)">
                   <template #icon><n-icon :component="ChevronUpOutline" /></template>
                 </n-button>
-                <n-button quaternary circle size="tiny" :disabled="index === ctx.orderedOutputStems.length - 1" :title="t('separate.moveDown')" @click="ctx.moveStem(Number(index), Number(index) + 1)">
+                <n-button quaternary circle size="tiny" :disabled="index === props.stems.length - 1" :title="t('separate.moveDown')" @click="emit('move-stem', Number(index), Number(index) + 1)">
                   <template #icon><n-icon :component="ChevronDownOutline" /></template>
                 </n-button>
               </div>
@@ -102,7 +121,7 @@ const { t } = useI18n()
 
       <template #footer>
         <div class="drawer-footer">
-          <n-button secondary @click="ctx.resetOutputNaming">{{ t('separate.namingReset') }}</n-button>
+          <n-button secondary @click="emit('reset')">{{ t('separate.namingReset') }}</n-button>
           <n-button type="primary" @click="show = false">{{ t('common.close') }}</n-button>
         </div>
       </template>

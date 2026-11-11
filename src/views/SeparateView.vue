@@ -921,13 +921,6 @@ const {
   isTerminalTaskStatus, getFileName,
 })
 
-const namingModalContext = {
-  namingTemplateInputRef, outputNamingTemplate, outputNamingPreviewParts, namingTokens,
-  insertNamingToken, usesIndexToken, orderedOutputStems, draggedStemIndex,
-  onStemPointerDown, onStemPointerMove, finishStemPointerDrag, padNumber,
-  moveStem, resetOutputNaming,
-}
-
 const settingsDrawerContext = {
   parameterHelpPage, helpTopics, settingsCardRef, fieldGuideRef, guidedParameter, guideTarget,
   beginnerGuide, openParameterHelp, useTta, expandedInferenceSections, advancedPanelContext,
@@ -1118,7 +1111,7 @@ const taskStageContext = {
     <SeparateNoteModal :show="showModelNoteEditor" v-model:draft="noteDraft" :model="noteEditorModel" @update:show="handleModelNoteEditorUpdate" @close="closeModelNoteEditor" @save="saveModelNote" />
     <SeparateEnsembleModal v-model:show="showEnsembleModal" v-model:stem="ensembleStem" v-model:type="ensembleType" :models="ensembleModels" :model-stems="ensembleModelStems" :stem-options-by-model="ensembleStemOptionsByModel" :weights="ensembleWeights" :type-options="ensembleTypeOptions" @update:model-stem="updateEnsembleModelStem" @update:weight="updateEnsembleWeight" />
     <SeparateSettingsDrawer v-model:show="showSettingsDrawer" :context="settingsDrawerContext" />
-    <SeparateNamingModal v-model:show="showNamingModal" :context="namingModalContext" />
+    <SeparateNamingModal v-model:show="showNamingModal" v-model:template="outputNamingTemplate" :preview-parts="outputNamingPreviewParts" :tokens="namingTokens" :uses-index-token="usesIndexToken" :stems="orderedOutputStems" :dragged-index="draggedStemIndex" :pad-number="padNumber" @input-ref="element => (namingTemplateInputRef = element)" @insert-token="insertNamingToken" @move-stem="moveStem" @reset="resetOutputNaming" @stem-pointer-down="onStemPointerDown" @stem-pointer-move="onStemPointerMove" @stem-pointer-end="finishStemPointerDrag" />
     <SeparateQueueModal v-model:show="showQueueModal" v-model:scope="queueScope" :jobs="queueJobs" :no-result-jobs="noResultSeparationJobs" :finished-session-job-count="finishedSessionJobCount" :removing-run-records="removingRunRecords" :cancelling-queue-job-id="cancellingQueueJobId" :status-label="statusLabel" :queue-job-input-summary="queueJobInputSummary" :is-no-result-separation-job="isNoResultSeparationJob" @open-queue-page="router.push('/queue')" @clear-finished-queue-jobs="clearFinishedQueueJobs" @remove-separation-run-records="removeSeparationRunRecords" @focus-queue-job="focusQueueJob" @view-queue-job-logs="viewQueueJobLogs" @dismiss-queue-job="dismissQueueJob" @request-cancel-queue-job="requestCancelQueueJob" />
     <SeparateLogModal v-model:show="showLogModal" :current-task="currentTask" :current-task-file-name="currentTaskFileName" />
   </div>
