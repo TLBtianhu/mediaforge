@@ -20,7 +20,7 @@ export function makeTaskInputActions({ inputFiles, invoke }: Deps) {
     const valid = paths.filter((p) => p?.trim() && isSupportedInputPath(p))
     if (!valid.length) return 0
     const existing = new Set(inputFiles.value)
-    const additions = valid.filter((p) => !existing.has(p))
+    const additions = [...new Set(valid.filter((p) => !existing.has(p)))]
     if (additions.length) inputFiles.value = [...inputFiles.value, ...additions]
     return additions.length
   }
