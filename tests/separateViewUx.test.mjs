@@ -14,7 +14,7 @@ const style = descriptor.styles.map(item => item.content
   || (item.src ? readFileSync(new URL(item.src, path), 'utf8') : '')).join('\n')
 const advancedPath = new URL('../src/components/separate/SeparateAdvancedPanel.vue', import.meta.url)
 const queuePath = new URL('../src/components/separate/SeparateQueueModal.vue', import.meta.url)
-const readyPath = new URL('../src/components/separate/SeparateReadyStage.vue', import.meta.url)
+const readyPath = new URL('../src/components/separate/SeparateLaunchBar.vue', import.meta.url)
 const readyTemplate = parse(readFileSync(readyPath, 'utf8')).descriptor.template?.content || ''
 const taskPath = new URL('../src/components/separate/SeparateTaskStage.vue', import.meta.url)
 const taskTemplate = parse(readFileSync(taskPath, 'utf8')).descriptor.template?.content || ''
