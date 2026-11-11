@@ -129,6 +129,42 @@ export type DiagnosticItem = {
   detail?: string
 }
 
+
+type EnvWorkerEventPayload = {
+  code?: string
+  message?: string
+  logPath?: string
+  backend?: RuntimeBackend
+  [key: string]: unknown
+}
+type AppWorkerEvent = {
+  type?: string
+  taskId?: string
+  requestId?: string
+  payload?: EnvWorkerEventPayload
+}
+type RuntimeEventPayload = {
+  mode?: string
+  backend?: RuntimeBackend
+  stage?: string
+  message?: string
+  logPath?: string
+  state?: NonNullable<RuntimeInfo['installState']>
+  rollbackAvailable?: boolean
+  [key: string]: unknown
+}
+type RuntimeWorkerEvent = {
+  type?: string
+  taskId?: string
+  payload?: RuntimeEventPayload
+}
+type WorkerEventEnvelope = {
+  type?: string
+  taskId?: string
+  requestId?: string
+  payload?: Record<string, unknown>
+}
+
 export type WorkerEventConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error'
 
 export const useAppStore = defineStore('app', () => {
@@ -138,7 +174,7 @@ export const useAppStore = defineStore('app', () => {
   const envError = ref<string | null>(null)
   const envCheckedOnce = ref(false)
   let envRequestId: string | null = null
-  const workerEvents = ref<any[]>([])
+  const workerEvents = ref<WorkerEventEnvelope[]>([])
   const workerEventConnectionStatus = ref<WorkerEventConnectionStatus>('idle')
   const workerEventConnectionError = ref('')
   const lastError = ref<string | null>(null)
@@ -244,16 +280,16 @@ export const useAppStore = defineStore('app', () => {
     return true
   }
 
-  function recordWorkerEvent(event: any) {
+  function recordWorkerEvent(event: WorkerEventEnvelope) {
     workerEvents.value.unshift(event)
     workerEvents.value = workerEvents.value.slice(0, 100)
   }
 
-  function handleWorkerEvent(event: any) {
+  function handleWorkerEvent(event: AppWorkerEvent) {
     const envCheckFailed = event?.type === 'error' && event?.payload?.code === 'ENV_CHECK_FAILED'
     if ((event?.type === 'env_info' || envCheckFailed) && (!envRequestId || event.requestId !== envRequestId)) return
     if (event?.type === 'env_info') {
-      envInfo.value = event.payload
+      envInfo.value = event.payload as unknown as EnvInfo
       envError.value = null
       envLoading.value = false
       envCheckedOnce.value = true
@@ -739,8 +775,9 @@ export const useAppStore = defineStore('app', () => {
     await checkRuntimeInfo()
   }
 
-  function handleRuntimeEvent(event: any) {
+  function handleRuntimeEvent(event: RuntimeWorkerEvent) {
     const taskId = event?.taskId
+    if (!taskId) return
     const operation = runtimeBackgroundOperations.get(taskId)
     if (operation && (
       event?.type === operation.finishedEvent || event?.type === 'error'
@@ -752,13 +789,13 @@ export const useAppStore = defineStore('app', () => {
     if (runtimeCoreUpdateTaskId.value && taskId === runtimeCoreUpdateTaskId.value) {
       const waiter = corePlanWaiters.get(taskId)
       if (event?.type === 'runtime_core_update_plan') {
-        preparedRuntimeCorePlanId = (event.payload as RuntimeCorePlan).id
+        preparedRuntimeCorePlanId = (event.payload as unknown as RuntimeCorePlan).id
         runtimeCoreUpdateStatus.value = 'prepared'
         runtimeCoreUpdateTaskId.value = null
         runtimeCoreUpdateMessage.value = ''
         runtimeCoreUpdateStage.value = ''
         corePlanWaiters.delete(taskId)
-        waiter?.resolve(event.payload as RuntimeCorePlan)
+        waiter?.resolve(event.payload as unknown as RuntimeCorePlan)
       } else if (event?.type === 'runtime_core_update_finished') {
         invalidateRuntimeReads()
         runtimeCoreVersions.value = null
@@ -792,7 +829,7 @@ export const useAppStore = defineStore('app', () => {
         })
       } else if (event?.type === 'runtime_core_update_started') {
         if (runtimeCoreUpdateStatus.value !== 'preparing') runtimeCoreUpdateStatus.value = 'updating'
-        runtimeCoreUpdateMode.value = event.payload?.mode || 'update'
+        runtimeCoreUpdateMode.value = (event.payload?.mode as RuntimeCoreMode | undefined) || 'update'
         runtimeCoreUpdateMessage.value = event.payload?.backend || ''
         if (event.payload?.logPath) runtimeInfo.value = { ...(runtimeInfo.value || {}), logPath: event.payload.logPath }
       } else if (event?.type === 'runtime_core_update_stage' || event?.type === 'runtime_core_update_log') {

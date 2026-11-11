@@ -699,7 +699,25 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function finalizeModelDirSwitch(taskId: string, payload: any) {
+  type ModelDirMigrationEventPayload = {
+    sourceModelDir?: string
+    targetModelDir?: string
+    currentModelDir?: string
+    totalFiles?: number
+    completedFiles?: number
+    totalBytes?: number
+    copiedBytes?: number
+    currentPath?: string
+    message?: string
+    conflict?: ModelDirMigrationConflict | null
+    skippedFiles?: string[]
+    overwrittenFiles?: string[]
+    cleanupFailedFiles?: string[]
+    fileCount?: number
+    sameAsCurrent?: boolean
+  }
+
+  async function finalizeModelDirSwitch(taskId: string, payload: ModelDirMigrationEventPayload) {
     const previousModelDir = modelDirMigrationState.value.previousModelDir || modelDir.value
     const targetModelDir = displayModelDirPath(payload.targetModelDir || modelDirMigrationState.value.targetModelDir || '')
     modelDirMigrationState.value = {
@@ -735,7 +753,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function handleWorkerEvent(event: any) {
+  async function handleWorkerEvent(event: { type?: string; taskId?: string; payload?: ModelDirMigrationEventPayload }) {
     const type = event?.type as string | undefined
     if (!type?.startsWith('model_dir_migration_')) return
     const payload = event?.payload || {}
