@@ -1,13 +1,14 @@
 import type { ComputedRef, Ref } from 'vue'
 import { buildRenderPlan, type ModelInterface } from '@/litegraph/renderPlan'
 import { layoutFor } from '@/litegraph/layouts'
+import type { ModelEntry } from '@/stores/model'
 
 type Deps = {
   computed: {
     <T>(source: () => T): ComputedRef<T>
   }
-  currentModelInfo: Ref<any>
-  currentChunkConstraint: Ref<any>
+  currentModelInfo: Ref<ModelEntry | null>
+  currentChunkConstraint: Ref<{ step: number; offset: number; min: number } | null | undefined>
   slotRefs: Record<string, Ref<unknown>>
 }
 
