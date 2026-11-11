@@ -2,7 +2,7 @@
 import { createLogger } from '@/utils/logger'
 
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { darkTheme } from 'naive-ui'
 import TitleBar from '@/components/TitleBar.vue'
 import SideNav from '@/components/SideNav.vue'
@@ -20,7 +20,7 @@ import { useToastStore } from '@/stores/toast'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { WorkflowRuntimeBindings } from '@/workflows/workbench'
 import { launchTask } from '@/features/tasks/launch'
-import { activeRuntimeEnvironment, runtimeBackendLabel, runtimeCoreSyncAvailable, runtimeCoreUpdateAvailable as hasRuntimeCoreUpdate } from '@/utils/runtime'
+import { activeRuntimeEnvironment, runtimeCoreSyncAvailable, runtimeCoreUpdateAvailable as hasRuntimeCoreUpdate } from '@/utils/runtime'
 import { connectWorkerEvents } from '@/utils/events'
 
 const studioLog = createLogger('ui.App')
@@ -32,7 +32,6 @@ watch([() => settings.initialized, () => app.envInfo], ([initialized, env]) => {
 }, { immediate: true })
 const workflow = useWorkflowStore()
 const route = useRoute()
-const router = useRouter()
 const { t } = useI18n()
 const bootReady = ref(false)
 const backgroundWarmupsStarted = ref(false)
@@ -65,18 +64,7 @@ const runtimeManifestSyncRequired = computed(() => runtimeCoreSyncAvailable(
 const runtimeCoreUpdateAvailable = computed(() => false && app.runtimeCoreUpdateSupported && (runtimeVersionUpdateAvailable.value || runtimeManifestSyncRequired.value))
 const runtimeCorePromptBlocked = computed(() => app.runtimeInfoLoading || app.runtimeCoreVersionsLoading
   || ['preparing', 'prepared', 'updating'].includes(app.runtimeCoreUpdateStatus))
-const runtimeCorePromptContent = computed(() => t(
-  runtimeManifestSyncRequired.value
-    ? 'settings.runtimeCoreStartupSyncPrompt'
-    : 'settings.runtimeCoreStartupPrompt',
-  {
-    backend: runtimeBackendLabel(activeRuntime.value?.backend || t('settings.envNotChecked')),
-    pymss: activeRuntime.value?.pymssVersion || activeRuntime.value?.packageVersions?.pymss || t('settings.runtimeCoreVersionUnknown'),
-    core: activeRuntime.value?.pymssCoreVersion || activeRuntime.value?.packageVersions?.['pymss-core'] || t('settings.runtimeCoreVersionUnknown'),
-    latest: app.runtimeCoreVersions?.packages?.pymss?.latestVersion || t('settings.runtimeCoreVersionUnknown'),
-    coreLatest: app.runtimeCoreVersions?.packages?.['pymss-core']?.latestVersion || t('settings.runtimeCoreVersionUnknown'),
-  },
-))
+
 
 const routeWarmupLoaders = [
   () => import('@/views/SeparateView.vue'),
@@ -126,11 +114,6 @@ function showRuntimeCorePrompt() {
   if (runtimeCorePromptShown.value || !bootReady.value) return
   runtimeCorePromptShown.value = true
   runtimeCorePromptVisible.value = true
-}
-
-function openRuntimeSettings() {
-  runtimeCorePromptVisible.value = false
-  void router.push({ path: '/settings', query: { section: 'runtime' } })
 }
 
 async function listenForMainWorkflowEvent<T>(event: string, handler: EventCallback<T>) {

@@ -107,21 +107,6 @@ export function firstWidgetValue(info: { widgets_values?: unknown[] } | null | u
   return Array.isArray(list) && list.length > 0 ? list[0] : undefined
 }
 
-/**
- * 读第 N 个控件值（**兼容旧图**用）。
- *
- * 只应在"节点没有静态 spec"或"旧数据没有名字"时使用；新代码请用 `widgetValue`。
- * 位置化知识集中在本文件，调用方不再各自写 `widgets_values[2]`。
- */
-export function widgetValueAt(
-  info: { widgets_values?: unknown[] } | null | undefined,
-  index: number,
-): unknown {
-  const list = info?.widgets_values
-  if (!Array.isArray(list) || index < 0 || index >= list.length) return undefined
-  return list[index]
-}
-
 /** 按名字写一个值，返回新的节点信息（不修改入参）。 */export function withWidgetValue<T extends { widgets_values?: unknown[] }>(
   spec: NodeSpec | undefined,
   info: T,

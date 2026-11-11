@@ -353,7 +353,6 @@ export function refreshNodeModelOptions(node: any, values: string[]) {
 }
 
 const PLUGIN_NODE_SPECS: Record<string, NodeSpec> = {}
-let pluginSpecsLoaded = false
 
 /** Reconcile the current runtime's plugin declarations without replacing built-ins. */
 export function registerPluginNodeSpecs(specs: NodeSpec[]) {
@@ -381,11 +380,6 @@ export function registerPluginNodeSpecs(specs: NodeSpec[]) {
       registeredNodeClasses.push({ cls, spec })
     }
   }
-  pluginSpecsLoaded = true
-}
-
-export function pluginNodeSpecsLoaded() {
-  return pluginSpecsLoaded
 }
 
 function specForNode(node: AnyNode): NodeSpec | undefined {

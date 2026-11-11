@@ -50,10 +50,6 @@ export function formatProgressTime(seconds: number) {
   return `${padNumber(hours)}:${padNumber(minutes)}:${padNumber(rest)}`
 }
 
-export function compareModelNames(a: string, b: string, locale: string) {
-  return a.localeCompare(b, locale === 'zh-CN' ? 'zh-CN' : 'en')
-}
-
 export const WINDOWS_RESERVED_FILENAMES = new Set([
   'CON',
   'PRN',

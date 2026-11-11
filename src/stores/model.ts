@@ -42,10 +42,6 @@ export type ModelEntry = Omit<ModelEntryContract, 'slots' | 'defaultInferencePar
   inferenceParamMeta?: InferenceParamMeta
 }
 
-/** One architecture the worker thinks a weights file might be, with why it thinks so. */
-type CustomSuggestionContract = NonNullable<WorkerCommandResult<'inspect_custom_model'>['suggestions']>[number]
-
-export type CustomModelSuggestion = KnownObject<CustomSuggestionContract>
 export type CustomModelInspection = KnownObject<WorkerCommandResult<'inspect_custom_model'>>
 
 export type CustomModelImportRequest = {
@@ -68,8 +64,6 @@ export type CustomModelImportState = {
   progress: number
   message: string
 }
-
-export type CustomModelRemoval = KnownObject<WorkerCommandResult<'unregister_custom_model'>>
 
 export type ModelDefaultInferenceParams = {
   batch_size?: number

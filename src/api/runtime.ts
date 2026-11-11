@@ -6,7 +6,6 @@ export type RuntimeCoreVersionsRequest = WorkerCommandPayload<'runtime_core_vers
 export type RuntimeCoreVersionsResponse = WorkerCommandResult<'runtime_core_versions'>
 export type RuntimeEnvSizesResponse = WorkerCommandResult<'runtime_env_sizes'>
 export type RuntimeInfoResponse = WorkerCommandResult<'runtime_info'>
-export type RuntimeMutationResponse = WorkerCommandResult<'activate_runtime'>
 
 /** Typed wrappers for the runtime read commands used by the app store. */
 export function runtimeCoreVersions(payload: RuntimeCoreVersionsRequest): Promise<RuntimeCoreVersionsResponse> {

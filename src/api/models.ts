@@ -32,13 +32,6 @@ export function inspectCustomModel(
   return invoke<CustomModelInspectionResponse>('inspect_custom_model', { payload })
 }
 
-/** Start the background import command; the worker finishes via custom_model_import_* events. */
-export function startCustomModelImport(
-  payload: WorkerCommandPayload<'import_custom_model'>,
-): Promise<unknown> {
-  return invoke('start_custom_model_import', { payload })
-}
-
 /** Typed wrapper around the Rust `unregister_custom_model` command. */
 export function unregisterCustomModel(
   payload: WorkerCommandPayload<'unregister_custom_model'>,

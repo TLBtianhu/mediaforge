@@ -1,7 +1,6 @@
 import { createI18n } from 'vue-i18n'
 import zhCN from './zh-CN.json'
 import en from './en.json'
-import { runRippleViewTransition } from '@/utils/theme'
 
 export const SYSTEM_LOCALE = 'system' as const
 export const SUPPORTED_LOCALES = [
@@ -26,10 +25,6 @@ export function normalizeLocaleSetting(
 export function detectSystemLocale(): SupportedLocale {
   const nav = navigator.language || 'zh-CN'
   return nav.startsWith('zh') ? 'zh-CN' : 'en'
-}
-
-export function detectLocale(): SupportedLocale {
-  return detectSystemLocale()
 }
 
 export function resolveLocaleSetting(locale: LocaleSetting): SupportedLocale {
@@ -64,15 +59,6 @@ if (typeof window !== 'undefined') {
 export function setLocale(locale: LocaleSetting) {
   currentLocaleSetting = normalizeLocaleSetting(locale)
   applyResolvedLocale(resolveLocaleSetting(currentLocaleSetting))
-}
-
-export async function setLocaleWithTransition(
-  locale: LocaleSetting,
-  origin?: { x: number; y: number },
-) {
-  await runRippleViewTransition(() => {
-    setLocale(locale)
-  }, origin)
 }
 
 export function getCurrentLocale(): SupportedLocale {

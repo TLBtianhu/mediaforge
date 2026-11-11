@@ -208,14 +208,6 @@ function browserAppPaths(): AppPathsPayload {
   }
 }
 
-export type AudioParams = {
-  wavBitDepth: string
-  flacBitDepth: string
-  mp3BitRate: string
-  m4aBitRate: string
-  m4aCodec: string
-}
-
 /**
  * What the worker is told to run on. ROCm is deliberately absent: a ROCm torch build exposes
  * its GPUs through the same `cuda` device API, so it resolves to 'cuda' — sending 'rocm' would

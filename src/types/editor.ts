@@ -97,7 +97,6 @@ export type EditorProjectSummary = {
 }
 
 export type EditorAsset = EditorSource
-export type EditorProject = EditorSession & { assets?: EditorSource[] }
 export type EditorAssetTreeNode = {
   key: string
   name: string
