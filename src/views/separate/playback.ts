@@ -1,10 +1,16 @@
 // SeparateView 的播放与预览缓存：播放状态、LRU 缓存、预加载同步。
 // 依赖通过 deps 注入（Audio 构造器与 convertFileSrc 也由调用方提供，方便 VM 测试）。
+import type { Ref } from 'vue'
 import type { StemOutput } from '@/stores/task'
 
-type PlaybackDeps = Record<string, any> & {
+type PlaybackDeps = {
   Audio: new () => HTMLAudioElement
   convertFileSrc: (path: string) => string
+  outputPlayback: Ref<Record<string, { currentTime: number; duration: number }>>
+  audioAccessOrder: string[]
+  audioElements: Map<string, HTMLAudioElement>
+  playingOutputPath: Ref<string>
+  PREVIEW_AUDIO_CACHE_LIMIT: number
 }
 
 export function makePlayback(deps: PlaybackDeps) {
