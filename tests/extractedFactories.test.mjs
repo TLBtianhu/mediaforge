@@ -20,6 +20,10 @@ const { makeTaskInputActions } = await vite.ssrLoadModule('/src/stores/taskInput
 const { makeEditorTrackActions } = await vite.ssrLoadModule('/src/stores/editorTrackActions.ts')
 const { normalizePathKey, hasPeaks, runLimited, trackToExportTrack } = await vite.ssrLoadModule('/src/stores/editorSupport.ts')
 const { normalizePersistedModelState } = await vite.ssrLoadModule('/src/stores/taskHelpers.ts')
+const { makeTaskInferenceParams } = await vite.ssrLoadModule('/src/stores/taskInferenceActions.ts')
+const { buildInferenceParams: buildInferenceParamsFromValues, modelInferenceParamsFromState: modelInferenceParamsFromValues } = await vite.ssrLoadModule('/src/stores/taskInferenceParams.ts')
+const { makeSeparateActions } = await vite.ssrLoadModule('/src/views/separate/separateActions.ts')
+const { makeAudioOptions } = await vite.ssrLoadModule('/src/views/separate/audioOptions.ts')
 
 function stageHarness(tasks = null) {
   const currentJob = ref(tasks ? { id: 'job', output: '/out', tasks, primary: tasks[0] } : null)
@@ -193,4 +197,112 @@ test('persisted model state normalization rejects unknown shapes and trims stems
   }), {
     batch_size: 2, standardize: true, selectedStems: ['vocals', '3'], selectedStemsCleared: true,
   })
+})
+
+test('task inference actions wire current refs into the shared builders', () => {
+  const inference = makeTaskInferenceParams({
+    selectedModelDefaults: ref({ batch_size: 4 }),
+    selectedModelOverrides: ref({}),
+    inferenceParamsDirty: ref(true),
+    batch_size: ref(2), overlap_size: ref(1024), num_overlap: ref(2), chunk_size: ref(8192),
+    window_size: ref(512), aggression: ref(5), enable_post_process: ref(true),
+    post_process_threshold: ref(0.5), high_end_process: ref(false),
+    standardize: ref(true), normalize: ref(true),
+    getSavedModelState: () => ({ overlap_size: 3 }),
+    useModelStore: () => ({
+      selectedModel: 'other-model', models: [], hasKnownModelInferenceBase: () => false,
+      getModelBaseInferenceDefaults: () => ({}), getModelInferenceOverrides: () => ({}),
+    }),
+    buildInferenceParamsFromValues, modelInferenceParamsFromValues,
+  })
+  const normal = inference.buildInferenceParams(null)
+  assert.equal(normal.batch_size, 2)
+  assert.equal(normal.overlap_size, 1024)
+  assert.equal(normal.chunk_size, 8192)
+  assert.equal(normal.window_size, undefined)
+
+  const vr = inference.buildInferenceParams('vr')
+  assert.equal(vr.window_size, 512)
+  assert.equal(vr.aggression, 5)
+  assert.equal(vr.enable_post_process, true)
+  assert.equal(vr.overlap_size, undefined)
+
+  const saved = inference.modelInferenceParamsFromState('saved-model')
+  assert.equal(saved.overlap_size, 3)
+})
+
+test('separate actions own queue/log/cancel transitions', async () => {
+  const currentTask = ref({ id: 'task-1', status: 'done', logs: ['line'] })
+  const currentBatchTasks = ref([{ id: 'task-1', status: 'done' }])
+  const cancellingTaskId = ref(null)
+  const removingRunRecords = ref(false)
+  const showLogModal = ref(false)
+  const focusedSeparationJobId = ref('job-1')
+  const composingNewJob = ref(false)
+  let stopped = 0
+  const warnings = []
+  const cancelled = []
+  const removed = []
+  let retried = 0
+  const job = {
+    id: 'job-1', model: 'model-a', inputCount: 2,
+    primary: { input: '/in/a.wav', runConfig: { runMode: 'model' } },
+  }
+  const actions = makeSeparateActions({
+    t: key => key,
+    message: { success() {}, error() {} },
+    dialog: { warning: options => warnings.push(options) },
+    task: {
+      removeSeparationRuns: async ids => { removed.push(...ids); return ids.length },
+      cancelTask: async id => { cancelled.push(id); return true },
+      retryTask: async () => { retried += 1; return { jobId: 'job-2' } },
+    },
+    router: { push() {} },
+    currentTask, currentBatchTasks, cancellingTaskId, removingRunRecords,
+    showLogModal, focusedSeparationJobId, composingNewJob,
+    stopAllPreviewAudio: () => { stopped += 1 },
+    focusQueueJob: target => target.id === 'job-1',
+    cancelQueueJob: target => cancelled.push(target.id),
+    isNoResultSeparationJob: () => true,
+    isTerminalTaskStatus: status => ['done', 'failed', 'cancelled'].includes(status),
+    getFileName: path => path.split('/').pop(),
+  })
+
+  assert.equal(actions.queueJobInputSummary(job), 'separate.queueBatchInputs')
+  actions.beginNextSeparation()
+  assert.equal(stopped, 1)
+  assert.equal(showLogModal.value, false)
+  assert.equal(focusedSeparationJobId.value, null)
+  assert.equal(composingNewJob.value, true)
+
+  actions.viewQueueJobLogs(job)
+  await Promise.resolve()
+  assert.equal(showLogModal.value, true)
+
+  actions.requestCancelQueueJob(job)
+  assert.equal(warnings.length, 1)
+  warnings[0].onPositiveClick()
+  assert.deepEqual(cancelled, ['job-1'])
+
+  actions.removeSeparationRunRecords([job])
+  assert.equal(warnings.length, 2)
+  await warnings[1].onPositiveClick()
+  assert.deepEqual(removed, ['job-1'])
+  assert.equal(removingRunRecords.value, false)
+
+  actions.handleCompletedAction('retry')
+  assert.equal(warnings.length, 3)
+  await warnings[2].onPositiveClick()
+  assert.equal(retried, 1)
+  assert.equal(focusedSeparationJobId.value, 'job-2')
+})
+
+test('audio options stay aligned with the format contract', () => {
+  const options = makeAudioOptions({ t: key => key, computed })
+  assert.deepEqual(options.formatOptions.map(item => item.value), ['wav', 'flac', 'mp3', 'm4a'])
+  assert.equal(options.wavBitDepthOptions.value.length, 3)
+  assert.deepEqual(options.mp3BitRateOptions.value.map(item => item.value), ['128k', '192k', '256k', '320k'])
+  assert.equal(options.audioSteps.value.length, 3)
+  assert.equal(options.getFileKindLabel('/tmp/movie.mp4'), 'separate.videoFile')
+  assert.equal(options.getFileKindLabel('/tmp/song.wav'), 'separate.audioFile')
 })
