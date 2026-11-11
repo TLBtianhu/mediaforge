@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { ModelEntry } from '@/stores/model'
 
 const show = defineModel<boolean>('show', { required: true })
-const props = defineProps<{ context: Record<string, any> }>()
-const ctx = reactive(props.context) as any
+const draft = defineModel<string>('draft', { required: true })
+const props = defineProps<{ model: ModelEntry | null }>()
+const emit = defineEmits<{ close: []; save: [] }>()
 const { t } = useI18n()
 </script>
 
 <template>
-  <n-modal :show="show" @update:show="ctx.handleModelNoteEditorUpdate">
+  <n-modal :show="show" @update:show="show = $event">
     <n-card
       class="separate-note-modal"
       :title="t('models.editNote')"
@@ -17,12 +18,12 @@ const { t } = useI18n()
       closable
       role="dialog"
       aria-modal="true"
-      @close="ctx.closeModelNoteEditor"
+      @close="emit('close')"
     >
-      <div v-if="ctx.noteEditorModel" class="separate-note-modal__body">
-        <strong class="separate-note-modal__name">{{ ctx.noteEditorModel.name }}</strong>
+      <div v-if="props.model" class="separate-note-modal__body">
+        <strong class="separate-note-modal__name">{{ props.model.name }}</strong>
         <n-input
-          v-model:value="ctx.noteDraft"
+          v-model:value="draft"
           type="textarea"
           :autosize="{ minRows: 4, maxRows: 8 }"
           clearable
@@ -33,8 +34,8 @@ const { t } = useI18n()
       </div>
       <template #footer>
         <div class="separate-note-modal__footer">
-          <n-button secondary @click="ctx.closeModelNoteEditor">{{ t('common.cancel') }}</n-button>
-          <n-button type="primary" :disabled="!ctx.noteEditorModel" @click="ctx.saveModelNote">{{ t('common.save') }}</n-button>
+          <n-button secondary @click="emit('close')">{{ t('common.cancel') }}</n-button>
+          <n-button type="primary" :disabled="!props.model" @click="emit('save')">{{ t('common.save') }}</n-button>
         </div>
       </template>
     </n-card>

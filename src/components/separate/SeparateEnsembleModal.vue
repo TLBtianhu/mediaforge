@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+type StemOption = { label: string; value: string }
+
 const show = defineModel<boolean>('show', { required: true })
-const props = defineProps<{ context: Record<string, any> }>()
-const ctx = reactive(props.context) as any
+const stem = defineModel<string>('stem', { required: true })
+const type = defineModel<string>('type', { required: true })
+const props = defineProps<{
+  models: string[]
+  modelStems: Record<string, string>
+  stemOptionsByModel: Record<string, StemOption[]>
+  weights: Record<string, number>
+  typeOptions: StemOption[]
+}>()
+const emit = defineEmits<{
+  'update:model-stem': [name: string, value: string]
+  'update:weight': [name: string, value: number]
+}>()
 const { t } = useI18n()
 </script>
 
@@ -21,31 +33,46 @@ const { t } = useI18n()
     >
       <div class="ensemble-modal__intro">
         <span>{{ t('separate.ensembleHint') }}</span>
-        <strong>{{ t('separate.ensembleSelectedCount', { count: ctx.ensembleModels.length }) }}</strong>
+        <strong>{{ t('separate.ensembleSelectedCount', { count: props.models.length }) }}</strong>
       </div>
       <div class="ensemble-config__fields">
         <label>
           <span>{{ t('separate.ensembleStem') }}</span>
-          <n-input v-model:value="ctx.ensembleStem" :placeholder="t('separate.ensembleStemPlaceholder')" />
+          <n-input v-model:value="stem" :placeholder="t('separate.ensembleStemPlaceholder')" />
         </label>
         <label>
           <span>{{ t('separate.ensembleType') }}</span>
-          <n-select v-model:value="ctx.ensembleType" :options="ctx.ensembleTypeOptions" />
+          <n-select v-model:value="type" :options="props.typeOptions" />
         </label>
       </div>
       <n-divider title-placement="left">{{ t('separate.ensembleWeights') }}</n-divider>
       <div class="ensemble-modal__weights">
-        <div v-for="name in ctx.ensembleModels" :key="name" class="ensemble-modal__weight">
+        <div v-for="name in props.models" :key="name" class="ensemble-modal__weight">
           <span class="ensemble-modal__model-name" :title="name">{{ name }}</span>
           <n-select
-            v-model:value="ctx.ensembleModelStems[name]"
+            :value="props.modelStems[name]"
             size="small"
-            :options="ctx.ensembleStemOptionsByModel[name] || []"
+            :options="props.stemOptionsByModel[name] || []"
             :placeholder="t('separate.ensembleModelStemPlaceholder')"
-            :disabled="!(ctx.ensembleStemOptionsByModel[name] || []).length"
+            :disabled="!(props.stemOptionsByModel[name] || []).length"
+            @update:value="(value: string) => emit('update:model-stem', name, value)"
           />
-          <n-slider v-model:value="ctx.ensembleWeights[name]" :min="0" :max="1" :step="0.05" />
-          <n-input-number v-model:value="ctx.ensembleWeights[name]" class="ensemble-modal__weight-input" size="small" :min="0" :max="1" :step="0.05" />
+          <n-slider
+            :value="props.weights[name]"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            @update:value="(value: number) => emit('update:weight', name, value)"
+          />
+          <n-input-number
+            :value="props.weights[name]"
+            class="ensemble-modal__weight-input"
+            size="small"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            @update:value="(value: number | null) => value !== null && emit('update:weight', name, value)"
+          />
         </div>
       </div>
       <template #footer>

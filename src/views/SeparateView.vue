@@ -928,14 +928,6 @@ const namingModalContext = {
   moveStem, resetOutputNaming,
 }
 
-const queueModalContext = {
-  openQueuePage: () => router.push('/queue'),
-  finishedSessionJobCount, clearFinishedQueueJobs, noResultSeparationJobs, removingRunRecords,
-  removeSeparationRunRecords, queueJobs, statusLabel, queueJobInputSummary,
-  isNoResultSeparationJob, focusQueueJob, viewQueueJobLogs, dismissQueueJob,
-  cancellingQueueJobId, requestCancelQueueJob,
-}
-
 const settingsDrawerContext = {
   parameterHelpPage, helpTopics, settingsCardRef, fieldGuideRef, guidedParameter, guideTarget,
   beginnerGuide, openParameterHelp, useTta, expandedInferenceSections, advancedPanelContext,
@@ -944,14 +936,12 @@ const settingsDrawerContext = {
   locateGuidedParameter,
 }
 
-const ensembleModalContext = {
-  ensembleModels, ensembleStem, ensembleType, ensembleTypeOptions,
-  ensembleModelStems, ensembleStemOptionsByModel, ensembleWeights,
+function updateEnsembleModelStem(name: string, value: string) {
+  ensembleModelStems.value = { ...ensembleModelStems.value, [name]: value }
 }
 
-const noteModalContext = {
-  noteEditorModel, noteDraft, handleModelNoteEditorUpdate,
-  closeModelNoteEditor, saveModelNote,
+function updateEnsembleWeight(name: string, value: number) {
+  ensembleWeights.value = { ...ensembleWeights.value, [name]: value }
 }
 
 const readyStageContext = {
@@ -1125,11 +1115,11 @@ const taskStageContext = {
       @select="handleSeparateContextMenuSelect"
     />
 
-    <SeparateNoteModal v-model:show="showModelNoteEditor" :context="noteModalContext" />
-    <SeparateEnsembleModal v-model:show="showEnsembleModal" :context="ensembleModalContext" />
+    <SeparateNoteModal :show="showModelNoteEditor" v-model:draft="noteDraft" :model="noteEditorModel" @update:show="handleModelNoteEditorUpdate" @close="closeModelNoteEditor" @save="saveModelNote" />
+    <SeparateEnsembleModal v-model:show="showEnsembleModal" v-model:stem="ensembleStem" v-model:type="ensembleType" :models="ensembleModels" :model-stems="ensembleModelStems" :stem-options-by-model="ensembleStemOptionsByModel" :weights="ensembleWeights" :type-options="ensembleTypeOptions" @update:model-stem="updateEnsembleModelStem" @update:weight="updateEnsembleWeight" />
     <SeparateSettingsDrawer v-model:show="showSettingsDrawer" :context="settingsDrawerContext" />
     <SeparateNamingModal v-model:show="showNamingModal" :context="namingModalContext" />
-    <SeparateQueueModal v-model:show="showQueueModal" v-model:scope="queueScope" :context="queueModalContext" />
+    <SeparateQueueModal v-model:show="showQueueModal" v-model:scope="queueScope" :jobs="queueJobs" :no-result-jobs="noResultSeparationJobs" :finished-session-job-count="finishedSessionJobCount" :removing-run-records="removingRunRecords" :cancelling-queue-job-id="cancellingQueueJobId" :status-label="statusLabel" :queue-job-input-summary="queueJobInputSummary" :is-no-result-separation-job="isNoResultSeparationJob" @open-queue-page="router.push('/queue')" @clear-finished-queue-jobs="clearFinishedQueueJobs" @remove-separation-run-records="removeSeparationRunRecords" @focus-queue-job="focusQueueJob" @view-queue-job-logs="viewQueueJobLogs" @dismiss-queue-job="dismissQueueJob" @request-cancel-queue-job="requestCancelQueueJob" />
     <SeparateLogModal v-model:show="showLogModal" :current-task="currentTask" :current-task-file-name="currentTaskFileName" />
   </div>
 </template>

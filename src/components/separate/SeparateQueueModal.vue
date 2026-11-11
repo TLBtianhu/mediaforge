@@ -1,12 +1,29 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { isTerminalTaskStatus } from '@/features/tasks/lifecycle'
+import type { SeparationJob } from '@/stores/task'
 
 const show = defineModel<boolean>('show', { required: true })
 const scope = defineModel<'session' | 'no-results'>('scope', { required: true })
-const props = defineProps<{ context: Record<string, any> }>()
-const ctx = reactive(props.context) as any
+const props = defineProps<{
+  jobs: SeparationJob[]
+  noResultJobs: SeparationJob[]
+  finishedSessionJobCount: number
+  removingRunRecords: boolean
+  cancellingQueueJobId: string | null
+  statusLabel: (status: string) => string
+  queueJobInputSummary: (job: SeparationJob) => string
+  isNoResultSeparationJob: (job: SeparationJob) => boolean
+}>()
+const emit = defineEmits<{
+  'open-queue-page': []
+  'clear-finished-queue-jobs': []
+  'remove-separation-run-records': [jobs: SeparationJob[]]
+  'focus-queue-job': [job: SeparationJob]
+  'view-queue-job-logs': [job: SeparationJob]
+  'dismiss-queue-job': [job: SeparationJob]
+  'request-cancel-queue-job': [job: SeparationJob]
+}>()
 const { t } = useI18n()
 </script>
 
@@ -22,38 +39,38 @@ const { t } = useI18n()
       @close="show = false"
     >
       <template #header-extra>
-        <n-button size="small" quaternary @click="ctx.openQueuePage">{{ t('agent.queue') }}</n-button>
+        <n-button size="small" quaternary @click="emit('open-queue-page')">{{ t('agent.queue') }}</n-button>
         <n-button
-          v-if="scope === 'session' && ctx.finishedSessionJobCount"
+          v-if="scope === 'session' && props.finishedSessionJobCount"
           size="small"
           quaternary
-          @click="ctx.clearFinishedQueueJobs"
+          @click="emit('clear-finished-queue-jobs')"
         >
           {{ t('separate.clearFinishedTasks') }}
         </n-button>
-        <n-button v-else-if="scope === 'no-results' && ctx.noResultSeparationJobs.length" size="small" quaternary type="error"
-          :loading="ctx.removingRunRecords" :disabled="ctx.removingRunRecords" @click="ctx.removeSeparationRunRecords(ctx.noResultSeparationJobs)">
+        <n-button v-else-if="scope === 'no-results' && props.noResultJobs.length" size="small" quaternary type="error"
+          :loading="props.removingRunRecords" :disabled="props.removingRunRecords" @click="emit('remove-separation-run-records', props.noResultJobs)">
           {{ t('separate.clearNoResultHistory') }}
         </n-button>
       </template>
       <n-radio-group v-model:value="scope" size="small" class="batch-queue-scopes">
         <n-radio-button value="session">{{ t('separate.queueCurrent') }}</n-radio-button>
-        <n-radio-button value="no-results">{{ t('separate.queueNoResultHistory') }} · {{ ctx.noResultSeparationJobs.length }}</n-radio-button>
+        <n-radio-button value="no-results">{{ t('separate.queueNoResultHistory') }} · {{ props.noResultJobs.length }}</n-radio-button>
       </n-radio-group>
-      <div v-if="ctx.queueJobs.length" class="batch-queue-list">
+      <div v-if="props.jobs.length" class="batch-queue-list">
         <article
-          v-for="job in ctx.queueJobs"
+          v-for="job in props.jobs"
           :key="job.id"
           class="batch-queue-row"
           :class="`batch-queue-row--${job.status}`"
         >
-          <button type="button" class="batch-queue-row__main" @click="ctx.focusQueueJob(job)">
+          <button type="button" class="batch-queue-row__main" @click="emit('focus-queue-job', job)">
             <span class="batch-queue-row__status">
               <i></i>
-              {{ ctx.statusLabel(job.status) }}
+              {{ props.statusLabel(job.status) }}
             </span>
             <strong>{{ job.model }}</strong>
-            <span class="batch-queue-row__input" :title="job.primary.input">{{ ctx.queueJobInputSummary(job) }}</span>
+            <span class="batch-queue-row__input" :title="job.primary.input">{{ props.queueJobInputSummary(job) }}</span>
             <n-progress
               type="line"
               :percentage="job.progress"
@@ -66,14 +83,14 @@ const { t } = useI18n()
             <span>{{ job.inputCount }} {{ t('separate.queueFileUnit') }}</span>
             <div class="batch-queue-row__actions">
               <template v-if="isTerminalTaskStatus(job.status)">
-                <n-button size="small" secondary @click="job.status === 'failed' ? ctx.viewQueueJobLogs(job) : ctx.focusQueueJob(job)">
+                <n-button size="small" secondary @click="job.status === 'failed' ? emit('view-queue-job-logs', job) : emit('focus-queue-job', job)">
                   {{ job.status === 'failed' ? t('tasks.logs') : t('separate.viewTaskDetails') }}
                 </n-button>
-                <n-button v-if="ctx.isNoResultSeparationJob(job)" size="small" quaternary type="error"
-                  :loading="ctx.removingRunRecords" :disabled="ctx.removingRunRecords" @click="ctx.removeSeparationRunRecords([job])">
+                <n-button v-if="props.isNoResultSeparationJob(job)" size="small" quaternary type="error"
+                  :loading="props.removingRunRecords" :disabled="props.removingRunRecords" @click="emit('remove-separation-run-records', [job])">
                   {{ t('workbench.removeRun') }}
                 </n-button>
-                <n-button v-else size="small" quaternary @click="ctx.dismissQueueJob(job)">
+                <n-button v-else size="small" quaternary @click="emit('dismiss-queue-job', job)">
                   {{ t('common.remove') }}
                 </n-button>
               </template>
@@ -82,9 +99,9 @@ const { t } = useI18n()
                 size="small"
                 tertiary
                 type="error"
-                :loading="ctx.cancellingQueueJobId === job.id"
-                :disabled="Boolean(ctx.cancellingQueueJobId)"
-                @click="ctx.requestCancelQueueJob(job)"
+                :loading="props.cancellingQueueJobId === job.id"
+                :disabled="Boolean(props.cancellingQueueJobId)"
+                @click="emit('request-cancel-queue-job', job)"
               >
                 {{ t('tasks.cancelAction') }}
               </n-button>
@@ -148,4 +165,5 @@ const { t } = useI18n()
   color: var(--on-surface-muted);
   font-size: 11px;
   white-space: nowrap;
-}.batch-queue-row__actions{ display: flex; align-items: center; justify-content: flex-end; gap: 6px; }</style>
+}.batch-queue-row__actions{ display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+</style>

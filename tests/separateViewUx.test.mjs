@@ -252,7 +252,7 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(taskTemplate.includes("t('separate.addNextBatch')"))
   assert.ok(taskTemplate.includes('v-if="ctx.hasQueueEntries"'))
   assert.ok(template.includes('v-model:show="showQueueModal"'))
-  assert.ok(queueTemplate.includes('v-for="job in ctx.queueJobs"'))
+  assert.ok(queueTemplate.includes('v-for="job in props.jobs"'))
   assert.ok(queueTemplate.includes("job.status === 'failed'"))
   assert.ok(readyTemplate.includes(':loading="ctx.submittingJob"'))
 })
