@@ -252,7 +252,7 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(actionsSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
   assert.ok(queueModuleSource.includes('clearFinishedSessionJobs(separationSessionJobs.value.map'))
   assert.ok(taskTemplate.includes("t('separate.addNextBatch')"))
-  assert.ok(taskTemplate.includes('v-if="ctx.hasQueueEntries"'))
+  assert.ok(taskTemplate.includes('v-if="props.hasQueueEntries"'))
   assert.ok(template.includes('v-model:show="showQueueModal"'))
   assert.ok(queueTemplate.includes('v-for="job in props.jobs"'))
   assert.ok(queueTemplate.includes("job.status === 'failed'"))
@@ -300,12 +300,12 @@ test('separation task views and queue actions exclude editor workflows while ret
 
 test('terminal task actions use state-specific hierarchy', () => {
   assert.ok(stageState.includes('const completedActionOptions = computed('))
-  assert.ok(taskTemplate.includes('v-if="ctx.taskPanelState === \'done\'"'))
+  assert.ok(taskTemplate.includes('v-if="props.taskPanelState === \'done\'"'))
   assert.ok(taskTemplate.includes("t('separate.moreActions')"))
   assert.ok(taskTemplate.includes("t('separate.viewResults')"))
   assert.ok(taskTemplate.includes("t('separate.runAgain')"))
   assert.ok(taskTemplate.includes('class="result-path"'))
-  assert.ok(taskTemplate.includes('@click.stop="ctx.revealOutput"'))
+  assert.ok(taskTemplate.includes('@click.stop="props.revealOutput"'))
 })
 
 test('output stem picker uses the app scrollbar instead of native browser controls', () => {

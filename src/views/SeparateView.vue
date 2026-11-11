@@ -914,6 +914,10 @@ function updateEnsembleWeight(name: string, value: number) {
   ensembleWeights.value = { ...ensembleWeights.value, [name]: value }
 }
 
+function revealCurrentOutput() {
+  return task.revealPath(currentTask.value?.outputs[0]?.path || currentTask.value?.output || normalizedOutputDir.value)
+}
+
 const readyStageContext = {
   ensembleEnabled, hasQueueEntries, queueJobs, showQueueModal, modelPanelHasModels,
   modelSearch, modelCategoryFilter, modelCategoryOptions, modelListSortMode, modelSortOptions,
@@ -921,21 +925,11 @@ const readyStageContext = {
   handleSelectModel, openSeparateContextMenu, categoryLabel, modelMetaLine, modelUseCount, modelNote,
   filteredDownloadedModels, modelPage, modelPageSize, modelPageSizeOptions, modelDownloaded,
   modelPanelLoading, openModelsPage: () => router.push('/models'), canStart, startStatusText,
-  outputSummaryPath, revealOutput: () => task.revealPath(currentTask.value?.outputs[0]?.path || normalizedOutputDir.value),
+  outputSummaryPath, revealOutput: revealCurrentOutput,
   submittingJob, start,
 }
 
-const taskStageContext = {
-  currentTask, taskPanelState, statusLabel, showQueueModal, queueJobs, openCurrentLogs,
-  currentBatchTitle, currentBatchLine, currentBatchProgress, currentBatchIsMulti,
-  progressTitle, progressDetail, taskSubMessage, currentTaskDuration,
-  currentTaskOutputPath, currentTaskOutputSummary, cancellingTaskId,
-  handleCancelCurrentTask, beginNextSeparation, hasQueueEntries, currentBatchOutputSummary,
-  playableOutputs, playableOutputGroups, getFileName, toggleOutputPlayback,
-  playingOutputPath, getOutputPlayback, seekOutput, formatPlaybackTime,
-  completedActionOptions, handleCompletedAction, goToResults, retryCurrentTask,
-  revealOutput: () => task.revealPath(currentTask.value?.outputs[0]?.path || currentTask.value?.output || normalizedOutputDir.value),
-}
+
 
 </script>
 
@@ -950,10 +944,7 @@ const taskStageContext = {
 
       <main class="console__stage">
         <transition name="stage-swap" mode="out-in">
-          <SeparateTaskStage
-            v-if="currentTask && (taskPanelState === 'running' || isTerminalState)"
-            :context="taskStageContext"
-          />
+          <SeparateTaskStage v-if="currentTask && (taskPanelState === 'running' || isTerminalState)" :current-task="currentTask" :task-panel-state="taskPanelState" :status-label="statusLabel" :queue-jobs="queueJobs" :open-current-logs="openCurrentLogs" :current-batch-title="currentBatchTitle" :current-batch-line="currentBatchLine" :current-batch-progress="currentBatchProgress" :current-batch-is-multi="currentBatchIsMulti" :progress-title="progressTitle" :progress-detail="progressDetail" :task-sub-message="taskSubMessage" :current-task-duration="currentTaskDuration" :current-task-output-path="currentTaskOutputPath" :current-task-output-summary="currentTaskOutputSummary" :cancelling-task-id="cancellingTaskId" :handle-cancel-current-task="handleCancelCurrentTask" :begin-next-separation="beginNextSeparation" :has-queue-entries="hasQueueEntries" :current-batch-output-summary="currentBatchOutputSummary" :playable-outputs="playableOutputs" :playable-output-groups="playableOutputGroups" :get-file-name="getFileName" :toggle-output-playback="toggleOutputPlayback" :playing-output-path="playingOutputPath" :get-output-playback="getOutputPlayback" :seek-output="seekOutput" :format-playback-time="formatPlaybackTime" :completed-action-options="completedActionOptions" :handle-completed-action="handleCompletedAction" :go-to-results="goToResults" :retry-current-task="retryCurrentTask" :reveal-output="revealCurrentOutput" @open-queue="showQueueModal = true" />
           <SeparateReadyStage v-else :context="readyStageContext" />
         </transition>
       </main>
