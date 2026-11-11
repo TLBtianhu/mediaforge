@@ -4,13 +4,28 @@
  * 缩放是纯换算（normalizeScaleFactor 由视图注入，避免把 Tauri 的 webview 依赖带进测试）；
  * 主题与语言切换共用一次涟漪过渡，过渡函数与 DOM 应用也全部注入。
  */
-import type { ComputedRef, WritableComputedRef } from 'vue'
+import type { ComputedRef, Ref, WritableComputedRef } from 'vue'
+import type { ThemeAccent, ThemeMode } from '@/utils/theme'
+import type { LocaleSetting } from '@/i18n'
 
-type Deps = Record<string, any> & {
+type Deps = {
   computed: {
     <T>(source: () => T): ComputedRef<T>
     <T>(source: { get: () => T; set: (value: T) => void }): WritableComputedRef<T>
   }
+  t: (key: string, named?: Record<string, unknown>) => string
+  normalizeScaleFactor: (value: unknown) => number
+  DEFAULT_SCALE_FACTOR: number
+  scaleFactor: Ref<number>
+  themeMode: Ref<ThemeMode>
+  themeAccent: Ref<ThemeAccent>
+  locale: Ref<LocaleSetting>
+  currentLocale: Ref<string>
+  animationsEnabled: Ref<boolean>
+  languageSelectWrap: Ref<HTMLElement | null>
+  applyTheme: (mode: ThemeMode, accent?: ThemeAccent) => void
+  setLocale: (locale: LocaleSetting) => void
+  runRippleViewTransition: (update: () => void | Promise<void>, origin?: { x: number; y: number }) => Promise<void>
 }
 
 export const SCALE_FACTOR_PRESET_VALUES = [0.75, 0.9, 1, 1.1, 1.25, 1.5] as const
@@ -93,24 +108,27 @@ export function makeAppearance(deps: Deps) {
 
   async function selectThemeMode(mode: string, event: MouseEvent) {
     if (deps.themeMode.value === mode) return
+    const nextMode = mode as ThemeMode
     const origin = deps.animationsEnabled.value ? getEventOrigin(event) : undefined
     await deps.runRippleViewTransition(() => {
-      deps.themeMode.value = mode
-      deps.applyTheme(mode, deps.themeAccent.value)
+      deps.themeMode.value = nextMode
+      deps.applyTheme(nextMode, deps.themeAccent.value)
     }, origin)
   }
 
   async function selectThemeAccent(accent: string, event: MouseEvent) {
     if (deps.themeAccent.value === accent) return
+    const nextAccent = accent as ThemeAccent
     const origin = deps.animationsEnabled.value ? getEventOrigin(event) : undefined
     await deps.runRippleViewTransition(() => {
-      deps.themeAccent.value = accent
-      deps.applyTheme(deps.themeMode.value, accent)
+      deps.themeAccent.value = nextAccent
+      deps.applyTheme(deps.themeMode.value, nextAccent)
     }, origin)
   }
 
   async function selectLocale(code: string) {
     if (deps.locale.value === code) return
+    const nextLocale = code as LocaleSetting
     const origin = deps.animationsEnabled.value
       ? (getElementOrigin(deps.languageSelectWrap.value) || {
           x: window.innerWidth / 2,
@@ -118,8 +136,8 @@ export function makeAppearance(deps: Deps) {
         })
       : undefined
     await deps.runRippleViewTransition(() => {
-      deps.locale.value = code
-      deps.setLocale(code)
+      deps.locale.value = nextLocale
+      deps.setLocale(nextLocale)
     }, origin)
   }
 

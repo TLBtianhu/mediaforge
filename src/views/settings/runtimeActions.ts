@@ -4,11 +4,27 @@
  * 所有动作先过一遍 runtimeBusy 与平台闸门，再走三选一确认（confirmRuntimeAction），
  * 确认被关掉（Esc / 遮罩 / 关闭）一律当取消。派生状态见 runtimeState.ts。
  */
-import type { InstalledRuntime, RuntimeBackend } from '../../stores/app.ts'
+import type { Ref } from 'vue'
+import type { DialogApi, MessageApi } from 'naive-ui'
+import type { InstalledRuntime, RuntimeBackend, useAppStore } from '../../stores/app.ts'
 import { invoke } from '@tauri-apps/api/core'
 import { runtimeEnvironmentForBackend, runtimeSizeHint } from '../../utils/runtime.ts'
 
-type Deps = Record<string, any>
+type Deps = {
+  app: ReturnType<typeof useAppStore>
+  message: MessageApi
+  dialog: DialogApi
+  t: (key: string, named?: Record<string, unknown>) => string
+  currentLocale: Ref<string>
+  installedRuntimes: Ref<InstalledRuntime[]>
+  runtimeActivating: Ref<string | null>
+  runtimeBackendLabel: (backend: RuntimeBackend | string | null | undefined) => string
+  runtimeBusy: Ref<boolean>
+  runtimeCurrentBackend: Ref<RuntimeBackend | null>
+  runtimeDeleting: Ref<string | null>
+  runtimeManualChecking: Ref<boolean>
+  runtimeMirror: Ref<string>
+}
 
 export function makeRuntimeActions(deps: Deps) {
   const { app, message, dialog, t } = deps

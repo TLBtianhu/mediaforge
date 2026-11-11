@@ -3,7 +3,19 @@
  *
  * 迁移本身由 settings store 的状态机驱动；这里只做视图投影与对话框分派。
  */
-type Deps = Record<string, any>
+import type { Ref } from 'vue'
+import type { MessageApi } from 'naive-ui'
+import type { ModelDirMigrationState, useSettingsStore } from '@/stores/settings'
+
+type Deps = {
+  computed: <T>(source: () => T) => import('vue').ComputedRef<T>
+  t: (key: string, named?: Record<string, unknown>) => string
+  settings: ReturnType<typeof useSettingsStore>
+  message: MessageApi
+  modelDirMigrationState: Ref<ModelDirMigrationState>
+  hasActiveModelDirUsage: Ref<boolean>
+  isCheckingModelDir: Ref<boolean>
+}
 
 export function makeModelDirMigration(deps: Deps) {
   const { computed, t, settings, message } = deps

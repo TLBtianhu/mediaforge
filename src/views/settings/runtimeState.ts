@@ -4,7 +4,8 @@
  * 这里只做纯推导（读 app 的运行时快照 + 几个进行中的标记），副作用在
  * runtimeActions.ts。视图把 deps 传进来，测试直接实例化工厂，不再从 SFC 抠声明。
  */
-import type { ComputedRef } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
+import type { useAppStore } from '@/stores/app'
 import type { InstalledRuntime, RuntimeBackend } from '../../stores/app.ts'
 import {
   detectRuntimePlatform,
@@ -21,10 +22,10 @@ import { formatBytes } from '../../utils/format.ts'
 type Deps = {
   computed: <T>(source: () => T) => ComputedRef<T>
   t: (key: string, params?: Record<string, unknown>) => string
-  app: Record<string, any>
-  runtimeManualChecking: { value: boolean }
-  runtimeActivating: { value: string | null }
-  runtimeDeleting: { value: string | null }
+  app: ReturnType<typeof useAppStore>
+  runtimeManualChecking: Ref<boolean>
+  runtimeActivating: Ref<string | null>
+  runtimeDeleting: Ref<string | null>
 }
 
 export type BackendCardState = 'active' | 'installed' | 'not_installed'
