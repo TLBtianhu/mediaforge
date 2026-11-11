@@ -4,11 +4,22 @@
  *
  * 只读 modelStore 的存储摘要与删除任务，选择状态由视图持有并注入。
  */
-import type { ComputedRef } from 'vue'
-import type { ModelStorageDeleteTarget, ToolModelStorageItem } from '../../stores/model.ts'
+import type { ComputedRef, Ref } from 'vue'
+import type {
+  BatchDeleteState, DeleteTask, ModelStorageDeleteTarget, ModelStorageSummary, ToolModelStorageItem,
+} from '../../stores/model.ts'
 
-type Deps = Record<string, any> & {
+type Deps = {
   computed: <T>(source: () => T) => ComputedRef<T>
+  modelStorageSummary: Ref<ModelStorageSummary | null>
+  storageSearch: Ref<string>
+  storageDownloadedOnly: Ref<boolean>
+  storageSort: Ref<string>
+  collator: ComputedRef<Intl.Collator>
+  selectedStorageModels: Ref<string[]>
+  isDeletingModel: (name: string) => boolean
+  batchDeleteState: Ref<BatchDeleteState>
+  deleteTasks: Ref<Record<string, DeleteTask>>
 }
 
 export type StorageListItem = ModelStorageDeleteTarget & {
@@ -24,7 +35,7 @@ export function makeModelStorage(deps: Deps) {
   const { computed } = deps
 
   const allStorageModels = computed<StorageListItem[]>(() => {
-    const catalogModels: StorageListItem[] = (deps.modelStorageSummary.value?.models || []).map((item: any) => ({
+    const catalogModels: StorageListItem[] = (deps.modelStorageSummary.value?.models || []).map((item) => ({
       kind: 'catalog',
       id: item.name,
       name: item.name,
@@ -32,9 +43,9 @@ export function makeModelStorage(deps: Deps) {
       downloaded: item.downloaded,
       sizeBytes: item.sizeBytes,
       expectedSizeBytes: item.expectedSizeBytes,
-      fileCount: item.files.filter((file: any) => file.exists).length,
+      fileCount: item.files.filter(file => file.exists).length,
     }))
-    const toolModels: StorageListItem[] = (deps.modelStorageSummary.value?.toolModels || []).map((item: any) => ({
+    const toolModels: StorageListItem[] = (deps.modelStorageSummary.value?.toolModels || []).map((item) => ({
       kind: 'tool',
       id: item.id,
       name: item.name,
@@ -66,7 +77,7 @@ export function makeModelStorage(deps: Deps) {
 
   const selectedStorageBytes = computed(() => deps.selectedStorageModels.value
     .map((key: string) => allStorageModelsByKey.value.get(key))
-    .filter((item: any): item is NonNullable<typeof item> => Boolean(item))
+    .filter((item): item is StorageListItem => Boolean(item))
     .reduce((sum: number, item: StorageListItem) => sum + item.sizeBytes, 0))
 
   const hasDeletingSelectedStorageModels = computed(() => deps.selectedStorageModels.value.some((key: string) => {
