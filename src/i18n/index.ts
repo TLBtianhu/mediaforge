@@ -34,7 +34,7 @@ export function resolveLocaleSetting(locale: LocaleSetting): SupportedLocale {
 let currentLocaleSetting: LocaleSetting = SYSTEM_LOCALE
 
 function applyResolvedLocale(locale: SupportedLocale) {
-  ;(i18n.global.locale as any).value = locale
+  i18n.global.locale.value = locale
   document.documentElement.lang = locale
 }
 
@@ -62,7 +62,7 @@ export function setLocale(locale: LocaleSetting) {
 }
 
 export function getCurrentLocale(): SupportedLocale {
-  const current = (i18n.global.locale as any)?.value ?? i18n.global.locale
+  const current = i18n.global.locale.value
   return current === 'en' ? 'en' : 'zh-CN'
 }
 

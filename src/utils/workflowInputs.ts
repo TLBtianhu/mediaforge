@@ -40,9 +40,9 @@ const LEGACY_INPUT_NAME_SLOT: Record<string, number> = {
 }
 
 /** 先按名字取，取不到再按历史下标取（迁移期两条路都活着）。 */
-function loadWidget(node: any, type: string, name: string, legacySlot: number): string {
+function loadWidget(node: Record<string, unknown>, type: string, name: string, legacySlot: number): string {
   const spec = specFor(type)
-  const named = spec ? widgetValue(spec, node, name) : undefined
+  const named = spec ? widgetValue(spec, node as { widgets_values?: unknown[] }, name) : undefined
   if (named !== undefined && named !== null && String(named).trim() !== "") return String(named).trim()
   return widgetAt(node?.widgets_values, legacySlot)
 }
@@ -63,7 +63,9 @@ function looksLikePath(value: string): boolean {
 }
 
 export function analyzeWorkflowInputs(definition: Record<string, unknown> | null | undefined): WorkflowInputsAnalysis {
-  const nodes = definition && Array.isArray(definition.nodes) ? definition.nodes as any[] : []
+  const nodes = definition && Array.isArray(definition.nodes)
+    ? definition.nodes.filter((node): node is Record<string, unknown> => Boolean(node && typeof node === 'object' && !Array.isArray(node)))
+    : []
   const slots: WorkflowInputSlot[] = []
   const unresolved: WorkflowInputsAnalysis['unresolved'] = []
   let selfContained = 0
@@ -77,7 +79,7 @@ export function analyzeWorkflowInputs(definition: Record<string, unknown> | null
       : loadWidget(node, type, 'audio', 0)
     if (inputName) {
       if (!slots.some(slot => slot.name === inputName)) {
-        slots.push({ name: inputName, nodeType: type, nodeId: node.id })
+        slots.push({ name: inputName, nodeType: type, nodeId: node.id as number | string })
       }
     } else if (looksLikePath(audioWidget)) {
       // graph carries its own input file
@@ -85,15 +87,15 @@ export function analyzeWorkflowInputs(definition: Record<string, unknown> | null
     } else if (type === 'pymss_load_audio_batch') {
       const folder = loadWidget(node, type, 'folder', 0)
       if (folder) selfContained += 1
-      else unresolved.push({ nodeId: node.id, widget: '', nodeType: type })
+      else unresolved.push({ nodeId: node.id as number | string, widget: '', nodeType: type })
     } else if (audioWidget) {
       // Legacy pymss/ComfyUI load nodes use the audio widget itself as the
       // runtime input key when no dedicated input_name widget exists.
       if (!slots.some(slot => slot.name === audioWidget)) {
-        slots.push({ name: audioWidget, nodeType: type, nodeId: node.id })
+        slots.push({ name: audioWidget, nodeType: type, nodeId: node.id as number | string })
       }
     } else {
-      unresolved.push({ nodeId: node.id, widget: audioWidget, nodeType: type })
+      unresolved.push({ nodeId: node.id as number | string, widget: audioWidget, nodeType: type })
     }
   }
   return { slots, unresolved, selfContained }

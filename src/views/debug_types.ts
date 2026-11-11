@@ -46,7 +46,7 @@ export type DebugCatalogInfo = {
   baseCatalog: Record<string, unknown>
   debugCatalog: Record<string, unknown>
   effectiveCatalog: Record<string, unknown>
-  status: Record<string, any>
+  status: Record<string, unknown>
 }
 export type DebugModelConfig = {
   model: string
