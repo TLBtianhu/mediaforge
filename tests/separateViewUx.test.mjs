@@ -256,7 +256,7 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(template.includes('v-model:show="showQueueModal"'))
   assert.ok(queueTemplate.includes('v-for="job in props.jobs"'))
   assert.ok(queueTemplate.includes("job.status === 'failed'"))
-  assert.ok(readyTemplate.includes(':loading="ctx.submittingJob"'))
+  assert.ok(readyTemplate.includes(':loading="props.submittingJob"'))
 })
 
 test('separation task views and queue actions exclude editor workflows while retaining quick Ensemble', async () => {

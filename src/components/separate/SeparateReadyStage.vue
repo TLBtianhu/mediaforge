@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ModelPanelState from '@/components/ModelPanelState.vue'
+import type { ModelEntry } from '@/stores/model'
 import {
   CheckmarkCircle,
   CubeOutline,
@@ -13,8 +13,40 @@ import {
   SettingsOutline,
 } from '@vicons/ionicons5'
 
-const props = defineProps<{ context: Record<string, any> }>()
-const ctx = reactive(props.context) as any
+const ensembleEnabled = defineModel<boolean>('ensembleEnabled', { required: true })
+const modelSearch = defineModel<string>('modelSearch', { required: true })
+const modelCategoryFilter = defineModel<string>('modelCategoryFilter', { required: true })
+const modelListSortMode = defineModel<string>('modelListSortMode', { required: true })
+const modelListViewMode = defineModel<'list' | 'card'>('modelListViewMode', { required: true })
+const modelPage = defineModel<number>('modelPage', { required: true })
+const modelPageSize = defineModel<number>('modelPageSize', { required: true })
+const props = defineProps<{
+  hasQueueEntries: boolean
+  queueJobs: import('@/stores/task').SeparationJob[]
+  modelPanelHasModels: boolean
+  modelCategoryOptions: Array<{ label: string; value: string }>
+  modelSortOptions: Array<{ label: string; value: string }>
+  ensembleModels: string[]
+  pagedDownloadedModels: ModelEntry[]
+  selectedModelName: string
+  handleSelectModel: (model: ModelEntry) => void
+  openSeparateContextMenu: (event: MouseEvent, kind: 'model', item: ModelEntry) => void
+  categoryLabel: (model: ModelEntry) => string
+  modelMetaLine: (model: ModelEntry) => string
+  modelUseCount: (name: string) => number
+  modelNote: (name: string) => string
+  filteredDownloadedModels: ModelEntry[]
+  modelPageSizeOptions: number[]
+  modelDownloaded: boolean
+  modelPanelLoading: boolean
+  canStart: boolean
+  startStatusText: string
+  outputSummaryPath: string
+  revealOutput: () => void
+  submittingJob: boolean
+  start: () => void | Promise<void>
+}>()
+const emit = defineEmits<{ openQueue: []; openEnsemble: []; openModels: [] }>()
 const { t } = useI18n()
 </script>
 
@@ -31,7 +63,7 @@ const { t } = useI18n()
       <div class="stage-head__controls">
         <div class="stage-head__extra" data-guide="model-mode">
           <n-select
-            :value="ctx.ensembleEnabled ? 'ensemble' : 'single'"
+            :value="ensembleEnabled ? 'ensemble' : 'single'"
             size="small"
             :options="[
               { label: t('separate.singleModelMode'), value: 'single' },
@@ -39,23 +71,23 @@ const { t } = useI18n()
             ]"
             class="model-mode-select"
             :aria-label="t('separate.modelModeLabel')"
-            @update:value="(value: string | number) => { ctx.ensembleEnabled = value === 'ensemble' }"
+            @update:value="(value: string | number) => { ensembleEnabled = value === 'ensemble' }"
           />
         </div>
-        <n-button class="stage-head__queue" size="small" secondary data-guide="task-queue" @click="ctx.showQueueModal = true">
+        <n-button class="stage-head__queue" size="small" secondary data-guide="task-queue" @click="emit('openQueue')">
           <template #icon><n-icon :component="ListOutline" /></template>
           {{ t('separate.batchQueue') }}
-          <span class="stage-head__queue-count" :class="{ 'stage-head__queue-count--active': ctx.hasQueueEntries }">{{ ctx.queueJobs.length }}</span>
+          <span class="stage-head__queue-count" :class="{ 'stage-head__queue-count--active': props.hasQueueEntries }">{{ props.queueJobs.length }}</span>
         </n-button>
       </div>
     </div>
 
     <transition name="stage-swap" mode="out-in">
-      <div key="model" class="target-pane" :class="{ 'target-pane--ensemble': ctx.ensembleEnabled }">
-        <template v-if="ctx.modelPanelHasModels">
+      <div key="model" class="target-pane" :class="{ 'target-pane--ensemble': ensembleEnabled }">
+        <template v-if="props.modelPanelHasModels">
           <div class="target-toolbar" data-guide="separation-models">
             <n-input
-              v-model:value="ctx.modelSearch"
+              v-model:value="modelSearch"
               clearable
               :placeholder="t('separate.modelSearchPlaceholder')"
             >
@@ -63,80 +95,80 @@ const { t } = useI18n()
             </n-input>
             <n-select
               class="target-toolbar__filter"
-              v-model:value="ctx.modelCategoryFilter"
+              v-model:value="modelCategoryFilter"
               :menu-props="{ class: 'model-picker__category-menu' }"
-              :options="ctx.modelCategoryOptions"
+              :options="props.modelCategoryOptions"
             />
             <n-select
-              v-model:value="ctx.modelListSortMode"
+              v-model:value="modelListSortMode"
               class="target-toolbar__sort"
-              :options="ctx.modelSortOptions"
+              :options="props.modelSortOptions"
               :aria-label="t('separate.modelSortLabel')"
             />
             <div class="view-toggle target-toolbar__view" role="group" :aria-label="t('models.viewMode')">
               <button
                 type="button"
                 class="view-toggle__button"
-                :class="{ 'view-toggle__button--active': ctx.modelListViewMode === 'list' }"
-                :aria-pressed="ctx.modelListViewMode === 'list'"
+                :class="{ 'view-toggle__button--active': modelListViewMode === 'list' }"
+                :aria-pressed="modelListViewMode === 'list'"
                 :title="t('models.viewList')"
-                @click="ctx.modelListViewMode = 'list'"
+                @click="modelListViewMode = 'list'"
               >
                 <n-icon :component="ListOutline" />
               </button>
               <button
                 type="button"
                 class="view-toggle__button"
-                :class="{ 'view-toggle__button--active': ctx.modelListViewMode === 'card' }"
-                :aria-pressed="ctx.modelListViewMode === 'card'"
+                :class="{ 'view-toggle__button--active': modelListViewMode === 'card' }"
+                :aria-pressed="modelListViewMode === 'card'"
                 :title="t('models.viewCard')"
-                @click="ctx.modelListViewMode = 'card'"
+                @click="modelListViewMode = 'card'"
               >
                 <n-icon :component="GridOutline" />
               </button>
             </div>
           </div>
-          <div v-if="ctx.ensembleEnabled" class="ensemble-summary-bar">
+          <div v-if="ensembleEnabled" class="ensemble-summary-bar">
             <div class="ensemble-summary-bar__info">
               <strong>{{ t('separate.ensembleMode') }}</strong>
-              <span>{{ ctx.ensembleModels.length ? t('separate.ensembleSelectedCount', { count: ctx.ensembleModels.length }) : t('separate.ensembleNeedModels') }}</span>
+              <span>{{ props.ensembleModels.length ? t('separate.ensembleSelectedCount', { count: props.ensembleModels.length }) : t('separate.ensembleNeedModels') }}</span>
             </div>
-            <n-button size="small" secondary :disabled="!ctx.ensembleModels.length" @click="ctx.showEnsembleModal = true">
+            <n-button size="small" secondary :disabled="!props.ensembleModels.length" @click="emit('openEnsemble')">
               <template #icon><n-icon :component="SettingsOutline" /></template>
               {{ t('separate.ensembleConfigure') }}
             </n-button>
           </div>
           <div
-            v-if="ctx.pagedDownloadedModels.length"
+            v-if="props.pagedDownloadedModels.length"
             class="target-list target-list--models"
-            :class="`target-list--${ctx.modelListViewMode}`"
+            :class="`target-list--${modelListViewMode}`"
             role="listbox"
             :aria-label="t('separate.model')"
           >
             <button
-              v-for="item in ctx.pagedDownloadedModels"
+              v-for="item in props.pagedDownloadedModels"
               :key="item.name"
               type="button"
               role="option"
-              :aria-selected="ctx.ensembleEnabled ? ctx.ensembleModels.includes(item.name) : ctx.selectedModelName === item.name"
+              :aria-selected="ensembleEnabled ? props.ensembleModels.includes(item.name) : props.selectedModelName === item.name"
               class="target-row"
-              :class="{ 'target-row--active': ctx.ensembleEnabled ? ctx.ensembleModels.includes(item.name) : ctx.selectedModelName === item.name }"
-              @click="ctx.handleSelectModel(item)"
-              @contextmenu.stop.prevent="ctx.openSeparateContextMenu($event, 'model', item)"
+              :class="{ 'target-row--active': ensembleEnabled ? props.ensembleModels.includes(item.name) : props.selectedModelName === item.name }"
+              @click="props.handleSelectModel(item)"
+              @contextmenu.stop.prevent="props.openSeparateContextMenu($event, 'model', item)"
             >
               <span class="target-row__radio"></span>
               <span class="target-row__body">
                 <span class="target-row__name" :title="item.name">{{ item.name }}</span>
                 <span class="target-row__meta">
-                  <span class="target-row__tag" :title="ctx.categoryLabel(item)">{{ ctx.categoryLabel(item) }}</span>
-                  <span class="target-row__desc" :title="ctx.modelMetaLine(item)">{{ ctx.modelMetaLine(item) }}</span>
-                  <span v-if="ctx.modelListViewMode === 'list'" class="target-row__usage">{{ t('models.useCountValue', { count: ctx.modelUseCount(item.name) }) }}</span>
+                  <span class="target-row__tag" :title="props.categoryLabel(item)">{{ props.categoryLabel(item) }}</span>
+                  <span class="target-row__desc" :title="props.modelMetaLine(item)">{{ props.modelMetaLine(item) }}</span>
+                  <span v-if="modelListViewMode === 'list'" class="target-row__usage">{{ t('models.useCountValue', { count: props.modelUseCount(item.name) }) }}</span>
                 </span>
                 <span
-                  v-if="ctx.modelNote(item.name)"
+                  v-if="props.modelNote(item.name)"
                   class="target-row__note"
-                  :title="ctx.modelNote(item.name)"
-                >{{ ctx.modelNote(item.name) }}</span>
+                  :title="props.modelNote(item.name)"
+                >{{ props.modelNote(item.name) }}</span>
               </span>
             </button>
           </div>
@@ -144,48 +176,48 @@ const { t } = useI18n()
             <div class="stage-empty__glyph"><n-icon :component="SearchOutline" /></div>
             <strong>{{ t('separate.modelSearchEmpty') }}</strong>
           </div>
-          <div v-if="ctx.filteredDownloadedModels.length" class="model-pagination">
-            <span>{{ t('separate.modelPageSummary', { total: ctx.filteredDownloadedModels.length }) }}</span>
+          <div v-if="props.filteredDownloadedModels.length" class="model-pagination">
+            <span>{{ t('separate.modelPageSummary', { total: props.filteredDownloadedModels.length }) }}</span>
             <n-pagination
-              v-model:page="ctx.modelPage"
-              v-model:page-size="ctx.modelPageSize"
-              :item-count="ctx.filteredDownloadedModels.length"
-              :page-sizes="ctx.modelPageSizeOptions"
+              v-model:page="modelPage"
+              v-model:page-size="modelPageSize"
+              :item-count="props.filteredDownloadedModels.length"
+              :page-sizes="modelPageSizeOptions"
               show-size-picker
               size="small"
             />
           </div>
-          <div v-if="ctx.selectedModelName && !ctx.modelDownloaded" class="stage-alert">
+          <div v-if="props.selectedModelName && !props.modelDownloaded" class="stage-alert">
             {{ t('separate.startHintModelMissing') }}
           </div>
         </template>
         <ModelPanelState
           v-else
-          :loading="ctx.modelPanelLoading"
+          :loading="props.modelPanelLoading"
           :empty-title="t('separate.modelPanelEmptyTitle')"
           :empty-description="t('separate.modelPanelEmptyDesc')"
           :loading-title="t('separate.modelPanelLoadingTitle')"
           :loading-description="t('separate.modelPanelLoadingDesc')"
           :action-label="t('separate.modelPanelPrimaryAction')"
-          @action="ctx.openModelsPage"
+          @action="emit('openModels')"
         />
       </div>
     </transition>
 
-    <footer class="launch-bar" :class="`launch-bar--${ctx.canStart ? 'ready' : 'idle'}`">
+    <footer class="launch-bar" :class="`launch-bar--${props.canStart ? 'ready' : 'idle'}`">
       <div class="launch-bar__status">
         <span class="launch-bar__glyph"><n-icon :component="CheckmarkCircle" /></span>
         <div class="launch-bar__text">
-          <strong>{{ ctx.startStatusText }}</strong>
-          <span :title="ctx.outputSummaryPath">{{ ctx.outputSummaryPath }}</span>
+          <strong>{{ props.startStatusText }}</strong>
+          <span :title="props.outputSummaryPath">{{ props.outputSummaryPath }}</span>
         </div>
       </div>
       <div class="launch-bar__actions">
-        <n-button quaternary class="launch-bar__reveal" :title="t('separate.openOutput')" @click="ctx.revealOutput">
+        <n-button quaternary class="launch-bar__reveal" :title="t('separate.openOutput')" @click="props.revealOutput">
           <template #icon><n-icon :component="OpenOutline" /></template>
           {{ t('separate.openOutput') }}
         </n-button>
-        <n-button type="primary" size="large" class="launch-bar__go" data-guide="start-separation" :loading="ctx.submittingJob" :disabled="!ctx.canStart" @click="ctx.start">
+        <n-button type="primary" size="large" class="launch-bar__go" data-guide="start-separation" :loading="props.submittingJob" :disabled="!props.canStart" @click="props.start">
           <template #icon><n-icon :component="PlayOutline" /></template>
           {{ t('separate.startTask') }}
         </n-button>
