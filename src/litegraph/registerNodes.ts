@@ -20,6 +20,47 @@ import {
 
 type AnyNode = any
 
+type LiteGraphSlotLike = { name?: string; label?: string; localized_name?: string; links?: unknown[] }
+type LiteGraphWidgetLike = {
+  name?: string
+  value?: unknown
+  label?: string
+  options?: { values?: unknown }
+  hidden?: boolean
+  computeLayoutSize?: () => { minHeight: number; maxHeight: number; minWidth: number }
+}
+type LiteGraphRerouteLike = { parentId?: unknown; pos?: [number, number]; floating?: unknown }
+type LiteGraphLinkLike = {
+  id?: unknown
+  origin_id?: unknown
+  origin_slot?: unknown
+  target_id?: unknown
+  target_slot?: unknown
+  type?: unknown
+  parentId?: unknown
+}
+type LiteGraphGraphLike = {
+  links?: Map<unknown, unknown> | Record<string, unknown>
+  _links?: Map<unknown, unknown> | Record<string, unknown>
+  getNodeById?: (id: unknown) => unknown
+  getReroute?: (id: unknown) => LiteGraphRerouteLike | undefined
+  setReroute?: (reroute: { id: unknown; parentId: unknown; pos: [number, number]; linkIds: unknown[]; floating: unknown }) => void
+  reroutes?: Map<unknown, LiteGraphRerouteLike>
+}
+type ContextMenuInstance = { root?: HTMLElement }
+type ContextMenuConstructor = {
+  new (...args: unknown[]): ContextMenuInstance
+  prototype: unknown
+  __pymssAutoopenPatched?: boolean
+}
+type CanvasSearchDialog = { querySelector?: (selector: string) => Element | null }
+type CanvasPrototypeLike = {
+  __pymssI18nPatched?: boolean
+  showSearchBox: (this: unknown, ...args: unknown[]) => CanvasSearchDialog | null
+  prompt: (this: CanvasPrototypeLike, title: string, ...args: unknown[]) => unknown
+  prompt_box?: { querySelector?: (selector: string) => Element | null }
+}
+
 const DEFAULT_TITLE_FLAG = '__pymssUsesDefaultTitle'
 const LAST_DEFAULT_TITLE = '__pymssLastDefaultTitle'
 const ORIGINAL_LOCALIZED_NAME = '__pymssOriginalLocalizedName'
@@ -54,8 +95,8 @@ export function applyPymssPortColors(canvas?: LGraphCanvas) {
   Object.assign(canvas.default_connection_color_byTypeOff, PORT_COLORS_OFF)
 }
 
-function localizeContextMenu(menu: any) {
-  const root = menu?.root as HTMLElement | undefined
+function localizeContextMenu(menu: ContextMenuInstance) {
+  const root = menu?.root
   if (!root) return
   for (const child of Array.from(root.children) as HTMLElement[]) {
     if (!child.classList.contains('litemenu-entry') && !child.classList.contains('litemenu-title')) continue
@@ -69,11 +110,12 @@ function localizeContextMenu(menu: any) {
 // autoopen 选项(hover 自动展开子菜单)但没有全局开关,这里 patch 构造函数,
 // 所有菜单默认 autoopen: true。
 if (typeof window !== 'undefined') {
-  const CM = (LiteGraph as any).ContextMenu
+  const CM = (LiteGraph as unknown as { ContextMenu?: ContextMenuConstructor }).ContextMenu
   if (CM && !CM.__pymssAutoopenPatched) {
     const origCtor = CM
-    const PatchedCM = function (this: any, ...args: any[]) {
-      if (args[1] && typeof args[1] === 'object') args[1].autoopen = args[1].autoopen ?? true
+    const PatchedCM = function (this: unknown, ...args: unknown[]) {
+      const options = args[1] as { autoopen?: boolean } | undefined
+      if (options && typeof options === 'object') options.autoopen = options.autoopen ?? true
       const menu = new origCtor(...args)
       // LiteGraph opens nested menus through `that.constructor`. The object
       // returned above is an origCtor instance, so point its constructor back
@@ -90,16 +132,16 @@ if (typeof window !== 'undefined') {
     Object.setPrototypeOf(PatchedCM, origCtor)
     for (const k of Object.getOwnPropertyNames(origCtor)) {
       if (!['prototype', 'name', 'length'].includes(k)) {
-        try { (PatchedCM as any)[k] = (origCtor as any)[k] } catch { /* getter-only */ }
+        try { (PatchedCM as unknown as Record<string, unknown>)[k] = (origCtor as unknown as Record<string, unknown>)[k] } catch { /* getter-only */ }
       }
     }
-    ;(LiteGraph as any).ContextMenu = PatchedCM
+    ;(LiteGraph as unknown as { ContextMenu?: ContextMenuConstructor }).ContextMenu = PatchedCM as unknown as ContextMenuConstructor
     PatchedCM.__pymssAutoopenPatched = true
   }
 }
 
 function widgetCallback(node: AnyNode, spec: WidgetSpec) {
-  return (v: any) => {
+  return (v: unknown) => {
     node.properties[spec.name] = v
     if (spec.name === 'model_name') {
       node.onModelNameChanged?.(v)
@@ -122,7 +164,7 @@ function syncEnsembleInputs(node: AnyNode, value: unknown) {
     if (match && Number(match[1]) > count) node.removeInput(i)
   }
   for (let i = 1; i <= count; i++) {
-    if (!node.inputs.some((slot: any) => slot.name === `audio_${i}`)) {
+    if (!node.inputs.some((slot: LiteGraphSlotLike) => slot.name === `audio_${i}`)) {
       node.addInput(`audio_${i}`, PORT.AUDIO, { shape: 7 })
     }
   }
@@ -153,10 +195,10 @@ function createWidgets(node: AnyNode, specs: WidgetSpec[]) {
 }
 
 if (typeof window !== 'undefined') {
-  const proto = (LGraphCanvas as any)?.prototype
+  const proto = (LGraphCanvas as unknown as { prototype?: CanvasPrototypeLike }).prototype
   if (proto && !proto.__pymssI18nPatched) {
     const originalSearch = proto.showSearchBox
-    proto.showSearchBox = function (this: any, ...args: any[]) {
+    proto.showSearchBox = function (this: unknown, ...args: unknown[]) {
       const dialog = originalSearch.apply(this, args)
       const title = dialog?.querySelector?.('.name') as HTMLElement | null
       const input = dialog?.querySelector?.('input') as HTMLInputElement | null
@@ -165,7 +207,7 @@ if (typeof window !== 'undefined') {
       return dialog
     }
     const originalPrompt = proto.prompt
-    proto.prompt = function (this: any, title: string, ...args: any[]) {
+    proto.prompt = function (this: CanvasPrototypeLike, title: string, ...args: unknown[]) {
       const translatedTitle = title === 'Value'
         ? translateAdvancedEditorText('value', title)
         : title
@@ -195,11 +237,11 @@ function outputIdentity(name: unknown) {
   }
 }
 
-function graphLink(graph: any, linkId: unknown) {
+function graphLink(graph: LiteGraphGraphLike | null | undefined, linkId: unknown): LiteGraphLinkLike | null {
   if (!graph || linkId == null) return null
   if (graph.links instanceof Map) return graph.links.get(linkId) || null
   if (graph._links instanceof Map) return graph._links.get(linkId) || null
-  return graph.links?.[linkId as any] || graph._links?.[linkId as any] || null
+  return (graph.links?.[String(linkId)] || graph._links?.[String(linkId)] || null) as LiteGraphLinkLike | null
 }
 
 type RerouteSnapshot = {
@@ -209,7 +251,7 @@ type RerouteSnapshot = {
   floating: unknown
 }
 
-function captureRerouteChain(graph: any, parentId: unknown, snapshots: Map<unknown, RerouteSnapshot>) {
+function captureRerouteChain(graph: LiteGraphGraphLike | null | undefined, parentId: unknown, snapshots: Map<unknown, RerouteSnapshot>) {
   const visited = new Set<unknown>()
   let currentId: unknown = parentId
   while (currentId != null && !visited.has(currentId)) {
@@ -226,7 +268,7 @@ function captureRerouteChain(graph: any, parentId: unknown, snapshots: Map<unkno
   }
 }
 
-function restoreRerouteChain(graph: any, parentId: unknown, snapshots: Map<unknown, RerouteSnapshot>) {
+function restoreRerouteChain(graph: LiteGraphGraphLike | null | undefined, parentId: unknown, snapshots: Map<unknown, RerouteSnapshot>) {
   if (parentId == null || !graph?.setReroute) return undefined
   const chain: RerouteSnapshot[] = []
   const visited = new Set<unknown>()
@@ -280,7 +322,7 @@ export function setSeparateStems(node: LGraphNodeType, stems: string[]) {
     targetSlot: number
     parentRerouteId: unknown
   }> = []
-  const graph = n.graph as any
+  const graph = n.graph as LiteGraphGraphLike | undefined
   const rerouteSnapshots = new Map<unknown, RerouteSnapshot>()
   for (const output of n.outputs || []) {
     const identity = outputIdentity(output.name)
@@ -345,8 +387,8 @@ export function applyModelOptions(values: string[]) {
 
 /** Refresh one node instance's model_name combo options (call after graph
  * configure and whenever the model list changes). */
-export function refreshNodeModelOptions(node: any, values: string[]) {
-  const widget = (node.widgets || []).find((w: any) => w.name === 'model_name')
+export function refreshNodeModelOptions(node: LGraphNodeType, values: string[]) {
+  const widget = (node.widgets || []).find(w => w.name === 'model_name') as LiteGraphWidgetLike | undefined
   if (!widget) return
   widget.options = widget.options || {}
   widget.options.values = values
