@@ -24,6 +24,9 @@ const { makeTaskInferenceParams } = await vite.ssrLoadModule('/src/stores/taskIn
 const { buildInferenceParams: buildInferenceParamsFromValues, modelInferenceParamsFromState: modelInferenceParamsFromValues } = await vite.ssrLoadModule('/src/stores/taskInferenceParams.ts')
 const { makeSeparateActions } = await vite.ssrLoadModule('/src/views/separate/separateActions.ts')
 const { makeAudioOptions } = await vite.ssrLoadModule('/src/views/separate/audioOptions.ts')
+const { makeTaskCancelActions } = await vite.ssrLoadModule('/src/stores/taskCancelActions.ts')
+const { makeTaskResultHelpers } = await vite.ssrLoadModule('/src/stores/taskResultHelpers.ts')
+const { makeEditorSourceActions } = await vite.ssrLoadModule('/src/stores/editorSourceActions.ts')
 
 function stageHarness(tasks = null) {
   const currentJob = ref(tasks ? { id: 'job', output: '/out', tasks, primary: tasks[0] } : null)
@@ -305,4 +308,108 @@ test('audio options stay aligned with the format contract', () => {
   assert.equal(options.audioSteps.value.length, 3)
   assert.equal(options.getFileKindLabel('/tmp/movie.mp4'), 'separate.videoFile')
   assert.equal(options.getFileKindLabel('/tmp/song.wav'), 'separate.audioFile')
+})
+
+test('task cancel actions gate terminal tasks and restore scheduling', async () => {
+  const tasks = ref([
+    { id: 'running', jobId: 'job-1', status: 'separating' },
+    { id: 'done', status: 'done' },
+    { id: 'queued', jobId: 'job-2', status: 'queued' },
+  ])
+  const runningTasks = ref(tasks.value.filter(item => item.status === 'separating'))
+  const calls = []
+  let refreshes = 0
+  let syncs = 0
+  let schedules = 0
+  let suppressed = 0
+  let resumed = 0
+  const actions = makeTaskCancelActions({
+    tasks, runningTasks,
+    journal: { refresh: async () => { refreshes += 1 } },
+    invoke: async (command, args) => { calls.push({ command, args }); return args.taskId === 'running' },
+    syncJournalTasks: () => { syncs += 1 },
+    scheduleQueue: () => { schedules += 1 },
+    suppressScheduling: () => { suppressed += 1 },
+    resumeScheduling: () => { resumed += 1 },
+  })
+
+  assert.equal(await actions.cancelTask('done'), false)
+  assert.equal(calls.length, 0)
+  assert.equal(await actions.cancelTask('running'), true)
+  assert.equal(refreshes, 1)
+  assert.equal(syncs, 1)
+  assert.equal(schedules, 1)
+
+  assert.deepEqual(await actions.cancelAllTasks(), { total: 1, cancelled: 1 })
+  assert.equal(suppressed, 1)
+  assert.equal(resumed, 1)
+
+  await actions.cancelWorkbenchJob('job-2')
+  assert.equal(suppressed, 2)
+  assert.equal(resumed, 2)
+  assert.equal(calls.some(call => call.args?.taskId === 'queued'), true)
+})
+
+test('task result helpers keep exact-group checks and focus transitions', async () => {
+  const tasks = ref([
+    { id: 't1', jobId: 'job-1', status: 'done', outputs: [{ path: '/out/a.wav' }], files: [] },
+    { id: 't2', jobId: 'job-1', status: 'done', outputs: [], files: [] },
+  ])
+  const focusedTaskId = ref('t1')
+  const focusedResultTaskId = ref('t1')
+  const checked = []
+  let removed = []
+  const helpers = makeTaskResultHelpers({
+    tasks, focusedTaskId, focusedResultTaskId,
+    getRemovalTasksFromState: (all, ids) => all.filter(task => ids.includes(task.id)),
+    i18n: { global: { t: key => key } },
+    removeAudioJobs: async (ids, options) => {
+      checked.push({ ids, options })
+      return { schemaVersion: 2, checkedJobIds: ids, removedJobIds: ids, trashed: [], failed: [], retained: [] }
+    },
+    removeResults: async ids => { removed = ids; return { removedJobIds: ids } },
+  })
+
+  assert.equal(helpers.getTaskById('t2').id, 't2')
+  assert.equal(helpers.hasResultPresence(tasks.value[0]), true)
+  assert.equal(helpers.hasResultPresence(tasks.value[1]), false)
+  assert.deepEqual(helpers.getRemovalTasks(['t2']).map(task => task.id), ['t2'])
+  helpers.focusTask(null)
+  helpers.focusResultTask('t2')
+  assert.equal(focusedTaskId.value, null)
+  assert.equal(focusedResultTaskId.value, 't2')
+
+  const response = await helpers.checkRemoval(['t1', 't2'], true)
+  assert.deepEqual(response.checkedJobIds, ['t1', 't2'])
+  assert.equal(checked[0].options.deleteFiles, true)
+  assert.equal(await helpers.removeResult('t2'), 1)
+  assert.deepEqual(removed, ['t2'])
+})
+
+test('editor source actions derive used/missing sources and pick relink files', async () => {
+  const session = ref({
+    id: 'project',
+    tracks: [
+      { id: 'track-1', sourceId: 'source-1', clips: [{ id: 'clip-1', assetId: 'source-2' }] },
+    ],
+    sources: [
+      { id: 'source-1', missing: false },
+      { id: 'source-2', missing: true },
+      { id: 'source-3', missing: true },
+    ],
+  })
+  const calls = []
+  const actions = makeEditorSourceActions({
+    session,
+    invoke: async (command, args) => { calls.push({ command, args }); return '/picked.wav' },
+    hydratePeaksFromCache: async () => {},
+    hydrateSessionSourcesInBackground: () => {},
+  })
+
+  assert.deepEqual(actions.sourcesInUse().map(source => source.id), ['source-1', 'source-2'])
+  assert.deepEqual(actions.missingSources().map(source => source.id), ['source-2', 'source-3'])
+  assert.deepEqual(actions.missingSourcesInUse().map(source => source.id), ['source-2'])
+  assert.throws(() => actions.assertNoMissingSourcesInUse('missing'), /missing/)
+  assert.equal(await actions.pickRelinkFile(), '/picked.wav')
+  assert.equal(calls[0].command, 'pick_single_audio_file')
 })
