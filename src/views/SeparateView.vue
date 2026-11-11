@@ -803,8 +803,16 @@ function buildEnsembleWorkflow(): WorkflowEntry {
   const device = runtimeDevice.device || 'auto'
   const fmt = effectiveFormat.value || 'wav'
   const models = ensembleModels.value
-  const nodes: any[] = []
-  const links: any[] = []
+  type EnsembleNodeInput = { name: string; type: string; link: number | null; widget?: { name: string }; shape?: number }
+  type EnsembleNodeOutput = { name: string; type: string; links: number[] }
+  type EnsembleNode = {
+    id: number; type: string; pos: [number, number]; size: [number, number]; flags: Record<string, unknown>;
+    order: number; mode: number; properties: Record<string, unknown>; widgets_values: unknown[];
+    inputs: EnsembleNodeInput[]; outputs: EnsembleNodeOutput[]
+  }
+  type EnsembleLink = [number, number, number, number, number, string]
+  const nodes: EnsembleNode[] = []
+  const links: EnsembleLink[] = []
   let nodeId = 1
   let linkId = 1
   const nextId = () => nodeId++
@@ -828,7 +836,7 @@ function buildEnsembleWorkflow(): WorkflowEntry {
     const sepId = nextId()
     // stem outputs: pairs of (stem Audio, stem String); find the Audio slot index
     const audioSlot = index * 2 // we connect load.audio(0) -> sep.audio(0), params(0) -> sep.params(1)
-    const sepOutputs: any[] = [
+    const sepOutputs: EnsembleNodeOutput[] = [
       { name: `${stem} (Audio)`, type: 'AUDIO', links: [] },
       { name: `${stem} (String)`, type: 'STRING', links: [] },
     ]
@@ -846,7 +854,7 @@ function buildEnsembleWorkflow(): WorkflowEntry {
 
   // 3. audio_ensemble: inputs audio_1..audio_N (slot 0..N-1), output audio(0)
   const ensId = nextId()
-  const ensInputs: any[] = []
+  const ensInputs: EnsembleNodeInput[] = []
   models.forEach((_, index) => ensInputs.push({ name: `audio_${index + 1}`, type: 'AUDIO', link: null }))
   nodes.push({ id: ensId, type: 'pymss_audio_ensemble', pos: [900, 210], size: [220, 120], flags: {}, order: nodes.length, mode: 0, properties: {}, widgets_values: [models.length, ensembleType.value, ...models.map(m => { const w = Number(ensembleWeights.value[m]); return Number.isFinite(w) ? w : 1 })], inputs: ensInputs, outputs: [{ name: 'audio', type: 'AUDIO', links: [] }] })
   // wire each sep stem Audio -> ensemble input slot index
