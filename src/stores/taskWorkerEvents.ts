@@ -5,9 +5,62 @@
  */
 import type { TaskStatus } from '../features/tasks/lifecycle.ts'
 import type { StemOutput } from '../utils/stemOutputs.ts'
+import type { LogRecord } from '../utils/logRecord.ts'
 import type { SeparationTask } from './task.ts'
 
-type Deps = Record<string, any>
+type WorkerEventPayload = {
+  stage?: unknown
+  message?: unknown
+  progress?: unknown
+  done?: unknown
+  total?: unknown
+  nodeId?: unknown
+  nodeProgress?: unknown
+  audioIndex?: unknown
+  unit?: unknown
+  version?: unknown
+  event?: unknown
+  overallFraction?: unknown
+  outputs?: unknown
+  outputDirectories?: unknown
+  outputRoot?: unknown
+  outputDir?: unknown
+  nodeValues?: unknown
+  code?: unknown
+  detail?: unknown
+  recoverable?: unknown
+  logRecord?: unknown
+}
+
+type WorkerEvent = {
+  type?: string
+  taskId?: string
+  timestamp?: string
+  payload?: WorkerEventPayload
+}
+
+type Deps = {
+  tasks: { value: SeparationTask[] }
+  setTaskStatus: (taskId: string, status: TaskStatus, message?: string, progress?: number) => void
+  normalizeStatus: (status: unknown) => TaskStatus
+  STAGE_META: Record<TaskStatus, { progress: number; label: string }>
+  isTerminalTaskStatus: (status: TaskStatus) => boolean
+  markTaskStarted: (task: SeparationTask) => void
+  markTaskFinished: (task: SeparationTask, updatedAt?: number) => void
+  touch: (task: SeparationTask) => void
+  queueProgressPersist: () => void
+  queuePersist: () => void
+  scheduleQueue: () => void
+  appendWorkflowNodeLogs: (task: SeparationTask, nodeId: string | undefined, lines: LogRecord | LogRecord[]) => void
+  localLogRecord: (message: string, event?: string, level?: 'info' | 'error', scope?: { taskId?: string; nodeId?: string }) => LogRecord
+  workerLogRecord: (event: WorkerEvent & { payload?: Record<string, unknown> }) => LogRecord
+  normalizeLogRecord: (input: unknown, index?: number) => LogRecord
+  appendTaskLogs: (task: SeparationTask, lines: LogRecord | LogRecord[]) => void
+  useSettingsStore: () => { developerMode: boolean }
+  normalizeStemOutputs: (value: unknown, input?: string, windows?: boolean) => StemOutput[]
+  windowsPaths: { value: boolean }
+  resolveTaskErrorMessage: (code: unknown, message: unknown, input?: string) => string
+}
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(maximum, value))
@@ -34,7 +87,7 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
     return Math.round(clamp(current / total, 0, 1) * 100)
   }
 
-  function handleWorkerEvent(event: any) {
+  function handleWorkerEvent(event: WorkerEvent) {
     const taskId = event?.taskId
     if (!taskId) return
     const task = tasks.value.find((item: SeparationTask) => item.id === taskId)
@@ -43,7 +96,9 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
       setTaskStatus(taskId, 'preparing', 'Task started', 6)
     } else if (event.type === 'task.stage') {
       const stage = normalizeStatus(event.payload?.stage)
-      setTaskStatus(taskId, stage, event.payload?.message || STAGE_META[stage].label, event.payload?.progress)
+      const stageMessage = typeof event.payload?.message === 'string' ? event.payload.message : STAGE_META[stage].label
+      const stageProgress = typeof event.payload?.progress === 'number' ? event.payload.progress : undefined
+      setTaskStatus(taskId, stage, stageMessage, stageProgress)
     } else if (event.type === 'workflow_execution') {
       // Native graph execution supplies explicit lifecycle events. Do not infer
       // node completion from a progress fraction: output collection still runs
@@ -197,8 +252,8 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
       task.progressCurrent = undefined
       task.progressTotal = undefined
       task.progressDetail = undefined
-      if (Array.isArray(event.payload?.nodeValues)) task.nodeValues = event.payload.nodeValues
-      if (event.payload?.outputDir) {
+      if (Array.isArray(event.payload?.nodeValues)) task.nodeValues = event.payload.nodeValues as NonNullable<SeparationTask['nodeValues']>
+      if (typeof event.payload?.outputDir === 'string' && event.payload.outputDir) {
         task.output = event.payload.outputDir
       }
       if (task.runConfig?.workbench && Array.isArray(event.payload?.outputDirectories)) {
@@ -207,7 +262,7 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
       }
       if (typeof event.payload?.outputRoot === 'string' && event.payload.outputRoot) {
         task.jobOutput = event.payload.outputRoot
-      } else if (task.runConfig?.outputLayout === 'flat' && event.payload?.outputDir) {
+      } else if (task.runConfig?.outputLayout === 'flat' && typeof event.payload?.outputDir === 'string' && event.payload.outputDir) {
         task.jobOutput = event.payload.outputDir
       }
       const normalizedOutputs = normalizeStemOutputs(event.payload?.outputs, task.input, windowsPaths.value)
@@ -220,10 +275,11 @@ export function makeTaskWorkerEventHandler(deps: Deps) {
     } else if (event.type === 'task.cancelled') {
       if (isTerminalTaskStatus(task.status)) return
       if (task.currentNodeId && task.nodeStates?.[task.currentNodeId]) task.nodeStates[task.currentNodeId].status = 'cancelled'
-      appendWorkflowNodeLogs(task, task.currentNodeId, localLogRecord(event.payload?.message || 'Cancelled', 'task.cancelled', 'info', { taskId: task.id, nodeId: task.currentNodeId }))
+      const cancelledMessage = typeof event.payload?.message === 'string' ? event.payload.message : 'Cancelled'
+      appendWorkflowNodeLogs(task, task.currentNodeId, localLogRecord(cancelledMessage, 'task.cancelled', 'info', { taskId: task.id, nodeId: task.currentNodeId }))
       task.status = 'cancelled'
       markTaskStarted(task)
-      task.message = event.payload?.message || 'Cancelled'
+      task.message = cancelledMessage
       task.stageLabel = STAGE_META.cancelled.label
       task.progress = 100
       task.progressCurrent = undefined
