@@ -758,8 +758,11 @@ class Handler(BaseHTTPRequestHandler):
         token = getattr(self.server, "token", None)
         if not token:
             return True
-        expected = f"Bearer {token}"
-        return self.headers.get("Authorization") == expected
+        expected = f"Bearer {token}".encode()
+        supplied = (self.headers.get("Authorization") or "").encode()
+        # Constant-time comparison: the token is a local secret, but a timing
+        # oracle here would still let a same-machine process guess it.
+        return secrets.compare_digest(supplied, expected)
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] == "/health":
@@ -816,6 +819,17 @@ def serve_stdio(bridge: Bridge) -> int:
     return 0
 
 
+def write_pairing_file(path: Path, payload: dict[str, Any]) -> None:
+    """Write the pairing file with user-only permissions where the OS supports it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if os.name != "nt":
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="MediaForge local MCP bridge")
     parser.add_argument("--port", type=int, default=int(os.environ.get("MEDIAFORGE_MCP_PORT") or 1421))
@@ -839,19 +853,14 @@ def main() -> int:
     server.token = token or None  # type: ignore[attr-defined]
 
     pair_path = Path(args.pair_file).expanduser() if args.pair_file else data_root / "mcp-bridge.json"
-    pair_path.parent.mkdir(parents=True, exist_ok=True)
-    pair_path.write_text(
-        json.dumps(
-            {
-                "url": f"http://127.0.0.1:{args.port}/mcp",
-                "token": token,
-                "serverName": "mediaforge",
-                "version": VERSION,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    write_pairing_file(
+        pair_path,
+        {
+            "url": f"http://127.0.0.1:{args.port}/mcp",
+            "token": token,
+            "serverName": "mediaforge",
+            "version": VERSION,
+        },
     )
     print(f"MediaForge MCP bridge: http://127.0.0.1:{args.port}/mcp", flush=True)
     print(f"Pairing file: {pair_path}", flush=True)
