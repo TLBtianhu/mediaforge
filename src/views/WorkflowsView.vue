@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { saveTextFileDialog } from '@/api/native'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useDialog, useMessage, type DropdownOption } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -575,10 +576,7 @@ async function exportWorkflowDefinition(
     const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
     if (isTauri) {
       const content = `${JSON.stringify(payload, null, 2)}\n`
-      const savedPath = await invoke<string | null>('save_text_file_dialog', {
-        defaultName: fileName,
-        content,
-      })
+      const savedPath = await saveTextFileDialog(fileName, content)
       if (!savedPath) return
     } else {
       downloadJsonFile(fileName, payload)

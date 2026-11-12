@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { closeCurrentWindow, isCurrentWindowMaximized, minimizeCurrentWindow, startDragCurrentWindow, toggleMaximizeCurrentWindow } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 
 import { computed, h, onMounted, onUnmounted, ref } from 'vue'
@@ -6,7 +7,6 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NButton, useDialog, useMessage } from 'naive-ui'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke } from '@tauri-apps/api/core'
 import AppBrandMark from '@/components/AppBrandMark.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useTaskStore } from '@/stores/task'
@@ -37,7 +37,7 @@ const isMacOS = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platfo
 async function refreshMaximized() {
   if (!appWindow) { isMaximized.value = false; return }
   try {
-    isMaximized.value = await invoke<boolean>('is_current_window_maximized')
+    isMaximized.value = await isCurrentWindowMaximized()
   } catch {
     try { isMaximized.value = await appWindow.isMaximized() } catch { isMaximized.value = false }
   }
@@ -45,7 +45,7 @@ async function refreshMaximized() {
 async function minimize() {
   if (!appWindow) return
   try {
-    await invoke('minimize_current_window')
+    await minimizeCurrentWindow()
   } catch (error) {
     studioLog.warn('[title-bar] minimize_current_window failed', error)
     appWindow.minimize().catch(innerError => studioLog.warn('[title-bar] appWindow.minimize failed', innerError))
@@ -54,7 +54,7 @@ async function minimize() {
 async function toggleMaximize() {
   if (!appWindow) return
   try {
-    isMaximized.value = await invoke<boolean>('toggle_maximize_current_window')
+    isMaximized.value = await toggleMaximizeCurrentWindow()
   } catch (error) {
     studioLog.warn('[title-bar] toggle_maximize_current_window failed', error)
     appWindow.toggleMaximize().then(refreshMaximized).catch(innerError => studioLog.warn('[title-bar] appWindow.toggleMaximize failed', innerError))
@@ -105,7 +105,7 @@ async function performWindowClose() {
   }
   allowForcedClose.value = true
   try {
-    await invoke('close_current_window')
+    await closeCurrentWindow()
     return true
   } catch {
     try {
@@ -223,7 +223,7 @@ async function close() {
 function startDrag(event: MouseEvent) {
   if (event.detail > 1) { void toggleMaximize(); return }
   if (!appWindow) return
-  invoke('start_drag_current_window').catch((error) => {
+  startDragCurrentWindow().catch((error) => {
     studioLog.warn('[title-bar] start_drag_current_window failed', error)
     appWindow.startDragging().catch(innerError => studioLog.warn('[title-bar] appWindow.startDragging failed', innerError))
   })

@@ -80,8 +80,8 @@ async function bootstrap() {
   }
   initTheme(settings.themeMode, settings.themeAccent)
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const buildInfo = await invoke<{ version?: string; variant?: string }>('get_build_info')
+    const { getBuildInfo } = await import('@/api/native')
+    const buildInfo = await getBuildInfo()
     appState.buildInfoVersion = buildInfo.version || ''
     appState.buildInfoVariant = buildInfo.variant || ''
   } catch (error: unknown) {

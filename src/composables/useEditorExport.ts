@@ -1,7 +1,6 @@
-import { revealPath } from '@/api/native'
+import { pickOutputFolder, revealPath } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { computed, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import type { MessageApiInjection } from 'naive-ui/es/message/src/MessageProvider'
 import type { ComposerTranslation } from 'vue-i18n'
 import type { EditorExportFormat, EditorExportSampleRate } from '@/types/editor'
@@ -109,7 +108,7 @@ export function useEditorExport(options: UseEditorExportOptions) {
   async function pickExportDir() {
     exportDirPicking.value = true
     try {
-      const folder = await invoke<string | null>('pick_output_folder')
+      const folder = await pickOutputFolder()
       if (folder) exportDirDraft.value = folder
     } catch (error) {
       message.error(error instanceof Error ? error.message : t('editor.exportDirPickFailed'))

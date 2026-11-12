@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pickModelConfigFile, pickModelWeightsFile } from '@/api/native'
 import ModelSlotFields from '../components/ModelSlotFields.vue'
 import { makeModelStorage, type StorageListItem } from './models/storage'
 import { makeModelCardStatus } from './models/cardStatus'
@@ -12,7 +13,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog, type DropdownOption } from 'naive-ui'
-import { invoke } from '@tauri-apps/api/core'
 import {
   SearchOutline,
   RefreshOutline,
@@ -535,15 +535,11 @@ function confirmRemoveCustomModel(model: ModelEntry) {
 async function relinkCustomModel(model: ModelEntry, event?: MouseEvent) {
   event?.stopPropagation()
   try {
-    const picked = await invoke<string | null>('pick_model_weights_file', {
-      title: t('models.customPickWeightsTitle', { name: model.name }),
-    })
+    const picked = await pickModelWeightsFile(t('models.customPickWeightsTitle', { name: model.name }))
     if (!picked) return
     let configPicked: string | null = null
     if (model.configPath) {
-      configPicked = await invoke<string | null>('pick_model_config_file', {
-        title: t('models.customPickConfigTitle', { name: model.name }),
-      })
+      configPicked = await pickModelConfigFile(t('models.customPickConfigTitle', { name: model.name }))
       // Most architectures require a config, so relinking without one would fail deep inside
       // pymss with a confusing message. A cancelled picker means "abandon the relink".
       if (!configPicked) return

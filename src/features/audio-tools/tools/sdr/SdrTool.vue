@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickSingleAudioFile } from '@/api/native'
 import { ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { AnalyticsOutline, DocumentOutline } from '@vicons/ionicons5'
 import AudioToolPanel from '../../shared/AudioToolPanel.vue'
@@ -8,7 +8,7 @@ import AudioToolHeader from '../../shared/AudioToolHeader.vue'
 import { useAudioToolRuntime } from '../../runtime'
 const { t } = useI18n(); const runtime = useAudioToolRuntime(); const state = runtime.stateFor('sdr')
 const referencePath = ref(''); const estimatedPath = ref('')
-async function pick(target: 'reference' | 'estimated') { const path = await invoke<string | null>('pick_single_audio_file'); if (!path) return; if (target === 'reference') referencePath.value = path; else estimatedPath.value = path }
+async function pick(target: 'reference' | 'estimated') { const path = await pickSingleAudioFile(); if (!path) return; if (target === 'reference') referencePath.value = path; else estimatedPath.value = path }
 function run() { void runtime.execute('sdr', { referencePath: referencePath.value, estimatedPath: estimatedPath.value }) }
 </script>
 <template><AudioToolPanel tool="sdr" :status-title="t('tools.analysisResult')" :status-hint="t('tools.sdrResultHint')">

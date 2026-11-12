@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { invoke } from '@tauri-apps/api/core'
+import { getBuildInfo } from '@/api/native'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
@@ -8,7 +10,6 @@ import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
-import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import packageMeta from '../../package.json'
 import { SYSTEM_LOCALE, setLocale } from '@/i18n'
@@ -318,7 +319,7 @@ const aboutLinks = computed(() => [
 
 async function loadBuildInfo() {
   try {
-    buildInfo.value = await invoke<BuildInfo>('get_build_info')
+    buildInfo.value = await getBuildInfo()
     app.buildInfoVersion = buildInfo.value?.version || ''
     app.buildInfoVariant = buildInfo.value?.variant || ''
   } catch {

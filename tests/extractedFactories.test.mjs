@@ -107,13 +107,21 @@ test('model panel maps labels and handles single/ensemble selection', async () =
 test('task input actions filter, dedupe, reorder and scan paths', async () => {
   const inputFiles = ref([])
   const calls = []
-  const invoke = async (command, args) => {
-    calls.push({ command, args })
-    if (command === 'scan_media_paths') return { files: ['/b.wav', '/bad.txt'], warnings: ['skipped'] }
-    if (command === 'pick_media_files') return ['/c.mp3']
-    return null
-  }
-  const actions = makeTaskInputActions({ inputFiles, invoke })
+  const actions = makeTaskInputActions({
+    inputFiles,
+    native: {
+      pickMediaFiles: async () => { calls.push({ command: 'pick_media_files' }); return ['/c.mp3'] },
+      scanMediaPaths: async (paths) => {
+        calls.push({ command: 'scan_media_paths', paths })
+        return { files: ['/b.wav', '/bad.txt'], warnings: ['skipped'] }
+      },
+      pickInputFolder: async () => { calls.push({ command: 'pick_input_folder' }); return null },
+      movePathsToTrash: async (paths) => {
+        calls.push({ command: 'move_paths_to_trash', paths })
+        return { trashed: paths, failed: [] }
+      },
+    },
+  })
 
   assert.equal(actions.addInputFiles(['/a.wav', '/a.wav', '/x.txt', '/b.mp4']), 2)
   assert.deepEqual(Array.from(inputFiles.value), ['/a.wav', '/b.mp4'])
@@ -402,7 +410,7 @@ test('editor source actions derive used/missing sources and pick relink files', 
   const calls = []
   const actions = makeEditorSourceActions({
     session,
-    invoke: async (command, args) => { calls.push({ command, args }); return '/picked.wav' },
+    pickSingleAudioFile: async () => { calls.push({ command: 'pick_single_audio_file' }); return '/picked.wav' },
     hydratePeaksFromCache: async () => {},
     hydrateSessionSourcesInBackground: () => {},
   })

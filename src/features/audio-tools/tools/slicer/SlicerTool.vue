@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickAudioFiles, pickInputFolder, pickOutputFolder, scanAudioPathsWithOptions } from '@/api/native'
 import { computed, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { CloseCircleOutline, CutOutline, DocumentOutline, FolderOpenOutline } from '@vicons/ionicons5'
@@ -8,7 +8,6 @@ import { useSettingsStore } from '@/stores/settings'
 import AudioToolPanel from '../../shared/AudioToolPanel.vue'
 import AudioToolHeader from '../../shared/AudioToolHeader.vue'
 import { useAudioToolRuntime } from '../../runtime'
-type ScanResult = { files: string[]; warnings: string[] }
 const { t } = useI18n(); const message = useMessage(); const settings = useSettingsStore(); const runtime = useAudioToolRuntime(); const state = runtime.stateFor('slicer')
 const inputs = ref<string[]>([]); const outputDir = ref(settings.outputDir); const outputFormat = ref('wav'); const threshold = ref(-40); const minLength = ref(5000); const minInterval = ref(300); const hopSize = ref(10); const maxSilKept = ref(500)
 const formats = ['wav', 'flac', 'mp3'].map(value => ({ label: value.toUpperCase(), value }))
@@ -16,9 +15,9 @@ const valid = computed(() => minLength.value >= minInterval.value && minInterval
 watch(() => settings.outputDir, value => { if (!outputDir.value) outputDir.value = value })
 function fileName(path: string) { return path.split(/[\\/]/).filter(Boolean).pop() || path }
 function add(paths: string[]) { const current = new Set(inputs.value); inputs.value = [...inputs.value, ...paths.filter(path => path && !current.has(path))] }
-async function pickFiles() { add(await invoke<string[]>('pick_audio_files') || []) }
-async function pickFolder() { const folder = await invoke<string | null>('pick_input_folder'); if (!folder) return; const result = await invoke<ScanResult>('scan_audio_paths_with_options', { paths: [folder], recursive: true, sortFiles: true }); const before = inputs.value.length; add(result.files || []); message.info(t(inputs.value.length > before ? 'tools.folderScanned' : 'tools.folderEmpty', { count: inputs.value.length - before })) }
-async function pickOutput() { const path = await invoke<string | null>('pick_output_folder'); if (path) outputDir.value = path }
+async function pickFiles() { add(await pickAudioFiles() || []) }
+async function pickFolder() { const folder = await pickInputFolder(); if (!folder) return; const result = await scanAudioPathsWithOptions([folder], { recursive: true, sortFiles: true }); const before = inputs.value.length; add(result.files || []); message.info(t(inputs.value.length > before ? 'tools.folderScanned' : 'tools.folderEmpty', { count: inputs.value.length - before })) }
+async function pickOutput() { const path = await pickOutputFolder(); if (path) outputDir.value = path }
 function run() { if (!valid.value) return void message.error(t('tools.slicerParameterError')); void runtime.execute('slicer', { inputs: inputs.value, outputDir: outputDir.value, outputFormat: outputFormat.value, threshold: threshold.value, minLength: minLength.value, minInterval: minInterval.value, hopSize: hopSize.value, maxSilKept: maxSilKept.value }) }
 function seconds(value: number) { return `${value.toFixed(2)} s` }
 </script>

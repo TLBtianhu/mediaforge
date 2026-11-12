@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pickInputFolder } from '@/api/native'
 import { computed, nextTick, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
@@ -391,7 +392,7 @@ async function browseDirectory() {
   const project = props.session
   let chosen = false
   await run(async () => {
-    const path = await invoke<string | null>('pick_input_folder')
+    const path = await pickInputFolder()
     if (path && !disposed) { directoryDraft.value = path; addDirectory(); chosen = true }
   })
   if (chosen && !disposed && props.session === project) { sourcesOpen.value = false; await scan() }

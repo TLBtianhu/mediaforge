@@ -8,6 +8,7 @@
  * allowlisted SDK methods pass, and every incoming message is checked against
  * "source must be this iframe".
  */
+import { getBuildInfo } from '@/api/native'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
@@ -55,7 +56,7 @@ async function handleCall(id: number, method: string, params: Record<string, unk
   if (!allowed(method)) throw new Error(`PERMISSION_DENIED: ${method}`)
   switch (method) {
     case 'app.info': {
-      const build = await invoke<{ version: string }>('get_build_info')
+      const build = await getBuildInfo()
       return { studio: 'pymss-studio', version: build.version, locale: t('plugins.sdkLocale' as never) || 'en' }
     }
     case 'operations.describe':

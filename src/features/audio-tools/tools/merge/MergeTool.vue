@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickInputFolder, pickOutputFolder } from '@/api/native'
 import { computed, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { FolderOpenOutline, GitMergeOutline } from '@vicons/ionicons5'
 import { useSettingsStore } from '@/stores/settings'
@@ -69,12 +69,12 @@ watch([sortBy, sortDirection, regexPattern], () => {
 })
 
 async function pickInput() {
-  const path = await invoke<string | null>('pick_input_folder')
+  const path = await pickInputFolder()
   if (path) inputDir.value = path
 }
 
 async function pickOutput() {
-  const path = await invoke<string | null>('pick_output_folder')
+  const path = await pickOutputFolder()
   if (path) outputDir.value = path
 }
 

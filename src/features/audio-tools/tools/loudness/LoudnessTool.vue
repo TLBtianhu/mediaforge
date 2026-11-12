@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickAudioFiles, pickInputFolder, pickOutputFolder, pickSingleAudioFile, scanAudioPathsWithOptions } from '@/api/native'
 import { computed, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { CloseCircleOutline, DocumentOutline, FolderOpenOutline, VolumeHighOutline } from '@vicons/ionicons5'
@@ -10,7 +10,6 @@ import AudioToolHeader from '../../shared/AudioToolHeader.vue'
 import { useAudioToolRuntime } from '../../runtime'
 import { loadAudioToolsState, updateAudioToolsState } from '../../state'
 
-type ScanResult = { files: string[]; warnings: string[] }
 type LoudnessMeasurement =
   | 'itu-bs1770-3'
   | 'rms'
@@ -137,11 +136,11 @@ function addInputs(paths: string[]) {
   const current = new Set(inputs.value)
   inputs.value = [...inputs.value, ...paths.filter(path => path && !current.has(path))]
 }
-async function pickFiles() { addInputs(await invoke<string[]>('pick_audio_files') || []) }
+async function pickFiles() { addInputs(await pickAudioFiles() || []) }
 async function pickFolder() {
-  const folder = await invoke<string | null>('pick_input_folder')
+  const folder = await pickInputFolder()
   if (!folder) return
-  const result = await invoke<ScanResult>('scan_audio_paths_with_options', { paths: [folder], recursive: true, sortFiles: true })
+  const result = await scanAudioPathsWithOptions([folder], { recursive: true, sortFiles: true })
   const before = inputs.value.length
   addInputs(result.files || [])
   const added = inputs.value.length - before
@@ -150,11 +149,11 @@ async function pickFolder() {
   if (result.warnings?.length) message.warning(t('tools.folderScanWarnings', { count: result.warnings.length }))
 }
 async function pickOutput() {
-  const value = await invoke<string | null>('pick_output_folder')
+  const value = await pickOutputFolder()
   if (value) outputDir.value = value
 }
 async function pickReference() {
-  const value = await invoke<string | null>('pick_single_audio_file')
+  const value = await pickSingleAudioFile()
   if (value) referencePath.value = value
 }
 function run() {

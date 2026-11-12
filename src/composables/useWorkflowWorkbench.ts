@@ -1,6 +1,6 @@
+import { scanMediaPaths } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref, watch, type ComputedRef } from 'vue'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -120,7 +120,7 @@ export function useWorkflowWorkbench(options: {
         const id = target?.dataset.workbenchInput || session.value.bindings.primaryInput || (nodes.length === 1 ? nodes[0].id : '')
         if (!id || !nodes.some(node => node.id === id)) { message.warning(t('workbench.missingInput')); return }
         try {
-          const scanned = await invoke<{ files: string[] }>('scan_media_paths', { paths: event.payload.paths })
+          const scanned = await scanMediaPaths(event.payload.paths)
           const previous = session.value.bindings.inputs[id]?.files || []
           session.value.bindings.inputs[id] = { files: [...new Set([...previous, ...scanned.files])] }
           session.value.bindings.primaryInput ||= id

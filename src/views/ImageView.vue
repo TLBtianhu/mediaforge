@@ -1,9 +1,9 @@
 ﻿<script setup lang="ts">
-import { pathKinds, revealPath } from '@/api/native'
+import { pathKinds, revealPath, scanImagePaths } from '@/api/native'
 import { dropSkippedSteps, precheckPlan, summarizePrecheck } from '../utils/mediaPrecheck.ts'
 import { DIRECTORY_ZONES, findDropZone, folderToReference, toCssPoint, type PathKind } from '../utils/dropZones.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -224,7 +224,7 @@ onMounted(async () => {
           message.warning(t('image.dropFolderHere'))
           return
         }
-        const result = await invoke<{ files: string[]; warnings: string[] }>('scan_image_paths', { paths })
+        const result = await scanImagePaths(paths)
         const files = result.files || []
         if (files.length) {
           addInputs(files)

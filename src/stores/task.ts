@@ -3,6 +3,12 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { cancelTask as cancelNativeTask } from '@/api/native'
+import {
+  pickInputFolder as pickInputFolderDialog,
+  pickMediaFiles,
+  movePathsToTrash,
+  scanMediaPaths,
+} from '@/api/native'
 import i18n from '@/i18n'
 import { loadAppStore, saveAppStore } from '@/utils/appStore'
 import { useSettingsStore } from '@/stores/settings'
@@ -94,7 +100,15 @@ export const useTaskStore = defineStore('task', () => {
 const {
   addInputFiles, removeInputFile, clearInputFiles, moveInputFile,
   pickFiles, pickInputFolder, addPaths, revealPath, trashPaths,
-} = makeTaskInputActions({ inputFiles, invoke })
+} = makeTaskInputActions({
+  inputFiles,
+  native: {
+    pickMediaFiles,
+    scanMediaPaths,
+    pickInputFolder: pickInputFolderDialog,
+    movePathsToTrash,
+  },
+})
   const separateRunMode = ref<'model' | 'workflow'>('model')
   const ensembleEnabled = ref(false)
   const ensembleModels = ref<string[]>([])

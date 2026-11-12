@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickInputFolder, pickMediaFiles, scanMediaPaths } from '@/api/native'
 import { computed, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { FolderOpenOutline, RefreshOutline } from '@vicons/ionicons5'
@@ -56,13 +56,13 @@ async function safely(action: () => Promise<void>) {
   finally { busy.value = false }
 }
 function pickFiles(id: string) { return safely(async () => {
-  const selected = await invoke<string[]>('pick_media_files')
+  const selected = await pickMediaFiles()
   if (selected?.length) setFiles(id, [...files(id), ...selected])
 }) }
 function pickFolder(id: string) { return safely(async () => {
-  const folder = await invoke<string | null>('pick_input_folder')
+  const folder = await pickInputFolder()
   if (!folder) return
-  const scanned = await invoke<{ files: string[]; warnings: string[] }>('scan_media_paths', { paths: [folder] })
+  const scanned = await scanMediaPaths([folder])
   setFiles(id, [...files(id), ...scanned.files], folder)
   if (!scanned.files.length) message.warning(t('workbench.emptyFolder'))
 }) }

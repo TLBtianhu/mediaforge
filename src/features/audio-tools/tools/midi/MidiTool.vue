@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickModelWeightsFile, pickOutputFolder, pickSingleAudioFile } from '@/api/native'
 import { computed, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
@@ -22,9 +22,9 @@ const languages = computed(() => [{ label: t('tools.midiLanguageAuto'), value: '
 const validBpm = computed(() => typeof bpm.value === 'number' && Number.isFinite(bpm.value) && bpm.value >= 30 && bpm.value <= 300)
 const looksLikeAccompaniment = computed(() => /(?:instrumental|accompaniment|no[_ -]?vocals?|伴奏|无人声)/i.test(fileName(inputPath.value)))
 function fileName(path: string) { return path.split(/[\\/]/).filter(Boolean).pop() || path }
-async function pickAudio() { const path = await invoke<string | null>('pick_single_audio_file'); if (path) inputPath.value = path }
-async function pickOutput() { const path = await invoke<string | null>('pick_output_folder'); if (path) outputDir.value = path }
-async function pickModel() { const path = await invoke<string | null>('pick_model_weights_file', { title: t('tools.midiModelPickerTitle') }); if (!path) return; if (!path.toLowerCase().endsWith('.pt')) return void message.error(t('tools.midiModelExtensionError')); modelPath.value = path }
+async function pickAudio() { const path = await pickSingleAudioFile(); if (path) inputPath.value = path }
+async function pickOutput() { const path = await pickOutputFolder(); if (path) outputDir.value = path }
+async function pickModel() { const path = await pickModelWeightsFile(t('tools.midiModelPickerTitle')); if (!path) return; if (!path.toLowerCase().endsWith('.pt')) return void message.error(t('tools.midiModelExtensionError')); modelPath.value = path }
 async function openRelease() { try { if (typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window)) window.open(GAME_URL, '_blank', 'noopener,noreferrer'); else await open(GAME_URL) } catch (error) { message.error(errorMessage(error)) } }
 async function detectBpm() {
   const path = inputPath.value

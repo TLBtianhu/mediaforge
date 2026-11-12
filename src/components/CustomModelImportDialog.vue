@@ -1,9 +1,9 @@
 ﻿<script setup lang="ts">
+import { pickModelConfigFile, pickModelWeightsFile } from '@/api/native'
 import { safeModelName } from '@/utils/modelName'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
-import { invoke } from '@tauri-apps/api/core'
 import { DocumentAttachOutline, FolderOpenOutline } from '@vicons/ionicons5'
 import { useModelStore, type CustomModelInspection } from '@/stores/model'
 import { formatBytes } from '@/utils/format'
@@ -101,18 +101,14 @@ watch(() => props.show, (visible) => {
 })
 
 async function pickWeights() {
-  const picked = await invoke<string | null>('pick_model_weights_file', {
-    title: t('models.customPickWeights'),
-  })
+  const picked = await pickModelWeightsFile(t('models.customPickWeights'))
   if (!picked) return
   modelPath.value = picked
   clearInspectionForFileChange()
 }
 
 async function pickConfig() {
-  const picked = await invoke<string | null>('pick_model_config_file', {
-    title: t('models.customPickConfig'),
-  })
+  const picked = await pickModelConfigFile(t('models.customPickConfig'))
   if (!picked) return
   configPath.value = picked
   clearInspectionForFileChange()

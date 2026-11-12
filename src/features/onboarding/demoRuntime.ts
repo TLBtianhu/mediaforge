@@ -1,4 +1,4 @@
-﻿import { createDemoAudio, createDemoModels, createDemoWorkflow } from './demoData.ts'
+import { createDemoAudio, createDemoModels, createDemoWorkflow } from './demoData.ts'
 import type { TutorialAdapter } from './demoContext'
 import { audioJobEvent } from '../tasks/audioJobs.ts'
 import type { JournalJob } from '../tasks/journal.ts'
@@ -236,7 +236,7 @@ export function createDemoRuntime(config: DemoConfig) {
     throw new Error(config.locale === 'en' ? 'This action is not available in the guided tutorial' : '此操作暂不适用于新手指引。')
   }
   return {
-    invoke, callback, assetUrl, emit, models, task, workflow, initialProject, runtimeInfo, envInfo, input, output, unknown, commands, stores,
+    invoke, nativeCall: invoke, callback, assetUrl, emit, models, task, workflow, initialProject, runtimeInfo, envInfo, input, output, unknown, commands, stores,
     connectWindows(open: (path: string) => void, close: () => void) { openPopup = open; closePopup = close },
     dispose() { timers.forEach(clearTimeout); timers.clear(); listeners.clear(); callbacks.clear(); URL.revokeObjectURL(audioUrl) },
   } satisfies TutorialAdapter & Record<string, unknown>

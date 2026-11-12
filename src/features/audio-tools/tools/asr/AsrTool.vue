@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { pickInputFolder, pickOutputFolder, pickSingleAudioFile } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import { normalizeLogRecord } from '@/utils/logRecord'
 
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { deleteToolModel } from '@/api/models'
 import { open } from '@tauri-apps/plugin-shell'
 import { useI18n } from 'vue-i18n'
@@ -109,17 +109,17 @@ const canRun = computed(() => (
 ))
 
 async function pickAudio() {
-  const path = await invoke<string | null>('pick_single_audio_file')
+  const path = await pickSingleAudioFile()
   if (path) inputPath.value = path
 }
 
 async function pickOutput() {
-  const path = await invoke<string | null>('pick_output_folder')
+  const path = await pickOutputFolder()
   if (path) outputDir.value = path
 }
 
 async function pickModel(target: ModelTarget) {
-  const path = await invoke<string | null>('pick_input_folder')
+  const path = await pickInputFolder()
   if (!path) return
   if (target === 'model') modelPath.value = path
   else if (target === 'vad') vadModelPath.value = path

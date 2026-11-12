@@ -1,18 +1,19 @@
 import type { Ref } from 'vue'
+import { relinkEditorSources } from '@/api/native'
 import { normalizeSession } from '@/stores/editorNormalize'
 import { localizedAutoTrackName } from '@/stores/editorSupport'
 import type { EditorSession } from '@/types/editor'
-import type { PickFileResult, RelinkEditorSourcesResult } from '@/stores/editorSupport'
+import type { PickFileResult } from '@/stores/editorSupport'
 
 type Deps = {
   session: Ref<EditorSession | null>
-  invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+  pickSingleAudioFile: () => Promise<PickFileResult>
   hydratePeaksFromCache: (projectId?: string) => Promise<void>
   hydrateSessionSourcesInBackground: (projectId: string) => void
 }
 
 export function makeEditorSourceActions({
-  session, invoke, hydratePeaksFromCache, hydrateSessionSourcesInBackground,
+  session, pickSingleAudioFile, hydratePeaksFromCache, hydrateSessionSourcesInBackground,
 }: Deps) {
   function sourcesInUse() {
     if (!session.value) return []
@@ -38,7 +39,7 @@ export function makeEditorSourceActions({
   }
 
   async function pickRelinkFile() {
-    return invoke<PickFileResult>('pick_single_audio_file')
+    return pickSingleAudioFile()
   }
 
   async function relinkSource(sourceId: string, pickedPath?: string | null) {
@@ -47,12 +48,10 @@ export function makeEditorSourceActions({
     if (!source) throw new Error('Source asset not found')
     const resolvedPath = pickedPath ?? await pickRelinkFile()
     if (!resolvedPath) return null
-    const result = await invoke<RelinkEditorSourcesResult>('relink_editor_sources', {
-      payload: {
-        projectId: session.value.id,
-        sourceId,
-        pickedPath: resolvedPath,
-      },
+    const result = await relinkEditorSources({
+      projectId: session.value.id,
+      sourceId,
+      pickedPath: resolvedPath,
     })
     session.value = normalizeSession(result.project, localizedAutoTrackName)
     await hydratePeaksFromCache(session.value.id)

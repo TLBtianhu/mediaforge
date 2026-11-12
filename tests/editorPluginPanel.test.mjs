@@ -93,6 +93,8 @@ function environment(t, { scanControl = false } = {}) {
     clearTimeout: id => timers.delete(id),
     clonePluginChain, pluginDescriptorCategory, pluginDescriptorFamilies, pluginDescriptorFormat, pluginFavoriteKey, pluginDescriptorLabels, pluginDescriptorVariant, pluginSlotMatchesDescriptor,
   })
+  // The panel imports the typed picker wrapper; route it through the same invoke mock.
+  context.pickInputFolder = async () => context.invoke('pick_input_folder')
   const scope = effectScope()
   scope.run(() => vm.runInContext(code, context))
   const dispose = () => { if (!stopped) { stopped = true; disposals.forEach(callback => callback()); scope.stop() } }

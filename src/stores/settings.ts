@@ -1,3 +1,4 @@
+import { pickOutputFolder } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -539,16 +540,16 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function pickModelDir() {
-    return invoke<string | null>('pick_output_folder')
+    return pickOutputFolder()
   }
 
   async function pickOutputDir() {
-    const folder = await invoke<string | null>('pick_output_folder')
+    const folder = await pickOutputFolder()
     if (folder) outputDir.value = folder
   }
 
   async function pickFolder() {
-    return invoke<string | null>('pick_output_folder')
+    return pickOutputFolder()
   }
 
   async function refreshModelDataAfterDirChange() {

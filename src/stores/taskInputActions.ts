@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { ScanMediaPathsResult } from '@/stores/taskTypes'
 import { revealPath as revealNativePath } from '@/api/native'
+import type { TrashResult } from '@/api/native'
 
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus']
 const VIDEO_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv']
@@ -10,13 +11,21 @@ function isSupportedInputPath(path: string) {
   return AUDIO_EXTENSIONS.includes(ext) || VIDEO_EXTENSIONS.includes(ext)
 }
 
+/** Native file operations this module depends on; injected so tests stay filesystem-free. */
+export type TaskInputNative = {
+  pickMediaFiles: () => Promise<string[]>
+  scanMediaPaths: (paths: string[]) => Promise<ScanMediaPathsResult>
+  pickInputFolder: () => Promise<string | null>
+  movePathsToTrash: (paths: string[]) => Promise<TrashResult>
+}
+
 type Deps = {
   inputFiles: Ref<string[]>
-  invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+  native: TaskInputNative
 }
 
 /** Input-file selection and filesystem actions for the task store. */
-export function makeTaskInputActions({ inputFiles, invoke }: Deps) {
+export function makeTaskInputActions({ inputFiles, native }: Deps) {
   function addInputFiles(paths: string[]) {
     const valid = paths.filter((p) => p?.trim() && isSupportedInputPath(p))
     if (!valid.length) return 0
@@ -46,19 +55,19 @@ export function makeTaskInputActions({ inputFiles, invoke }: Deps) {
   }
 
   async function pickFiles() {
-    const files = await invoke<string[]>('pick_media_files')
+    const files = await native.pickMediaFiles()
     addInputFiles(files || [])
     return files?.length || 0
   }
 
   async function scanAndAddPaths(paths: string[]) {
     if (!paths?.length) return { added: 0, warnings: [] as string[] }
-    const result = await invoke<ScanMediaPathsResult>('scan_media_paths', { paths })
+    const result = await native.scanMediaPaths(paths)
     return { added: addInputFiles(result.files || []), warnings: result.warnings || [] }
   }
 
   async function pickInputFolder() {
-    const folder = await invoke<string | null>('pick_input_folder')
+    const folder = await native.pickInputFolder()
     if (!folder) return 0
     const result = await scanAndAddPaths([folder])
     return result.added
@@ -76,7 +85,7 @@ export function makeTaskInputActions({ inputFiles, invoke }: Deps) {
   async function trashPaths(paths: string[]) {
     const valid = paths.filter((p) => p?.trim())
     if (!valid.length) return { trashed: [] as string[], failed: [] as string[] }
-    return invoke<{ trashed: string[]; failed: string[] }>('move_paths_to_trash', { paths: valid, emptyDirs: [] })
+    return native.movePathsToTrash(valid)
   }
 
   return {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { closeCurrentWindow, isCurrentWindowMaximized, minimizeCurrentWindow, startDragCurrentWindow, toggleMaximizeCurrentWindow } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -6,7 +7,6 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke } from '@tauri-apps/api/core'
 import { storeToRefs } from 'pinia'
 import WorkflowRunPanel from '@/components/workflow/WorkflowRunPanel.vue'
 import WorkflowExecutionProgress from '@/components/workflow/WorkflowExecutionProgress.vue'
@@ -325,7 +325,7 @@ async function closeEditor() {
 
 async function destroyWindow() {
   if (isStandaloneWindow.value && currentWindow) {
-    try { await invoke('close_current_window'); return } catch { await currentWindow.close().catch(() => undefined); return }
+    try { await closeCurrentWindow(); return } catch { await currentWindow.close().catch(() => undefined); return }
   }
   confirmedClose = true
   await router.push('/workflows')
@@ -337,7 +337,7 @@ async function refreshMaximized() {
     return
   }
   try {
-    isMaximized.value = await invoke<boolean>('is_current_window_maximized')
+    isMaximized.value = await isCurrentWindowMaximized()
   } catch {
     try { isMaximized.value = await currentWindow.isMaximized() } catch { isMaximized.value = false }
   }
@@ -349,18 +349,18 @@ function startWindowDrag(event?: MouseEvent) {
     return
   }
   if (!currentWindow) return
-  invoke('start_drag_current_window').catch(() => currentWindow.startDragging().catch(() => undefined))
+  startDragCurrentWindow().catch(() => currentWindow.startDragging().catch(() => undefined))
 }
 
 async function minimizeWindow() {
   if (!currentWindow) return
-  try { await invoke('minimize_current_window') } catch { await currentWindow.minimize().catch(() => undefined) }
+  try { await minimizeCurrentWindow() } catch { await currentWindow.minimize().catch(() => undefined) }
 }
 
 async function toggleMaximizeWindow() {
   if (!currentWindow) return
   try {
-    isMaximized.value = await invoke<boolean>('toggle_maximize_current_window')
+    isMaximized.value = await toggleMaximizeCurrentWindow()
   } catch {
     await currentWindow.toggleMaximize().then(refreshMaximized).catch(() => undefined)
   }

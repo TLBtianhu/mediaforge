@@ -7,9 +7,8 @@
  *
  * 注意：Tauri 的原生拖放只给**窗口坐标**，所以用 `[data-drop-zone]` 标记投放区。
  */
-import { pathKinds } from '@/api/native'
+import { pathKinds, scanImagePaths, scanMediaPaths } from '@/api/native'
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 import { DIRECTORY_ZONES, findDropZone, folderToReference, toCssPoint, type PathKind } from '../utils/dropZones'
@@ -64,8 +63,8 @@ export function useMediaDrop(handlers: MediaDropHandlers): { dragging: Ref<boole
       return
     }
 
-    const command = handlers.scanImages === false ? 'scan_media_paths' : 'scan_image_paths'
-    const result = await invoke<{ files: string[] }>(command, { paths: rawPaths })
+    const scan = handlers.scanImages === false ? scanMediaPaths : scanImagePaths
+    const result = await scan(rawPaths)
     const files = accepted(result.files || [])
     if (files.length) handlers.onFiles(files)
   }
