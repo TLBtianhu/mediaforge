@@ -16,11 +16,25 @@ pub fn plugins_root() -> Option<PathBuf> {
         .clone()
 }
 
+/// The plugin view document is sandboxed without same-origin, so the parent page's
+/// CSP does not apply to it. It gets its own policy: local assets stay loadable,
+/// while outbound requests and form submissions (the exfiltration path for local
+/// paths the host hands to a view) are blocked.
+const PLUGIN_VIEW_CSP: &str = "default-src 'none'; \
+script-src 'self' 'unsafe-inline' blob: http://pymss-plugin.localhost pymss-plugin:; \
+style-src 'self' 'unsafe-inline' http://pymss-plugin.localhost pymss-plugin:; \
+img-src 'self' data: blob: http://pymss-plugin.localhost pymss-plugin:; \
+media-src 'self' data: blob: http://pymss-plugin.localhost pymss-plugin:; \
+font-src 'self' data: http://pymss-plugin.localhost pymss-plugin:; \
+connect-src 'self' http://pymss-plugin.localhost pymss-plugin:; \
+worker-src 'self' blob:; form-action 'none'; base-uri 'none'; object-src 'none'";
+
 fn response(status: u16, mime: &str, bytes: Vec<u8>) -> tauri::http::Response<Vec<u8>> {
     tauri::http::Response::builder()
         .status(status)
         .header("Content-Type", mime)
-        .header("Access-Control-Allow-Origin", "*")
+        .header("Content-Security-Policy", PLUGIN_VIEW_CSP)
+        .header("Access-Control-Allow-Origin", "null")
         .header("Cache-Control", "no-cache")
         .body(bytes)
         .expect("static protocol headers are valid")
@@ -324,7 +338,15 @@ mod tests {
         let module = serve_view_file(&root, "author.chain", "editor", &["main.mjs".into()]);
         assert_eq!(module.status(), 200);
         assert_eq!(module.headers()["Content-Type"], "application/javascript");
-        assert_eq!(module.headers()["Access-Control-Allow-Origin"], "*");
+        assert_eq!(module.headers()["Access-Control-Allow-Origin"], "null");
+        assert!(module.headers()["Content-Security-Policy"]
+            .to_str()
+            .unwrap()
+            .contains("connect-src 'self' http://pymss-plugin.localhost"));
+        assert!(html.headers()["Content-Security-Policy"]
+            .to_str()
+            .unwrap()
+            .contains("form-action 'none'"));
         let escaped = serve_view_file(
             &root,
             "author.chain",
@@ -343,7 +365,11 @@ mod tests {
         let result = read_sdk_asset(&guard.path, "pymss-sdk.js");
         assert_eq!(result.status(), 200);
         assert_eq!(result.headers()["Content-Type"], "application/javascript");
-        assert_eq!(result.headers()["Access-Control-Allow-Origin"], "*");
+        assert_eq!(result.headers()["Access-Control-Allow-Origin"], "null");
+        assert!(result.headers()["Content-Security-Policy"]
+            .to_str()
+            .unwrap()
+            .contains("default-src 'none'"));
         assert_eq!(read_sdk_asset(&guard.path, "../secret").status(), 404);
     }
 
