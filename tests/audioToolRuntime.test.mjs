@@ -47,9 +47,12 @@ async function createRuntime(t, { autoStart = true, listenGate, launchGate } = {
     listen: async (_, handler) => { receive = handler; if (listenGate) await listenGate.promise; return () => {} },
     invoke: async (command, args) => {
       calls.push({ command, args })
-      if (command === 'cancel_task') return cancelCommand()
       if (launchGate) await launchGate.promise
       return { started: true, taskId: args.payload.requestId }
+    },
+    cancelTask: async taskId => {
+      calls.push({ command: 'cancel_task', args: { taskId } })
+      return cancelCommand()
     },
   })
   const runtime = exports.createAudioToolRuntime()

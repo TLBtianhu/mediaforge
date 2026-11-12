@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
+import { revealPath } from '@/api/native'
 import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
@@ -128,7 +128,7 @@ async function openOutput() {
   const path = String(job.value?.payload?.outputDir || outputDir.value)
   if (!path) return
   try {
-    await invoke('reveal_path', { path })
+    await revealPath(path)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }

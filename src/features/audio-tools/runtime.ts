@@ -1,3 +1,4 @@
+import { cancelTask, revealPath as revealNativePath } from '@/api/native'
 import { computed, inject, type ComputedRef, type InjectionKey, reactive, ref, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -326,7 +327,7 @@ export function createAudioToolRuntime(): AudioToolRuntime {
       return false
     }
     try {
-      const accepted = await invoke<boolean>('cancel_task', { taskId: pending.id })
+      const accepted = await cancelTask(pending.id)
       if (!accepted) {
         // The Rust registry no longer knows this task (for example, the worker
         // exited before its terminal event reached the UI). Reject the pending
@@ -365,7 +366,7 @@ export function createAudioToolRuntime(): AudioToolRuntime {
   }
 
   async function revealPath(path: string) {
-    try { await invoke('reveal_path', { path }) }
+    try { await revealNativePath(path) }
     catch (error) { message.error(error instanceof Error ? error.message : String(error)) }
   }
 

@@ -2,6 +2,7 @@ import { createLogger } from '@/utils/logger'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { cancelTask as cancelNativeTask } from '@/api/native'
 import i18n from '@/i18n'
 import { loadAppStore, saveAppStore } from '@/utils/appStore'
 import { useSettingsStore } from '@/stores/settings'
@@ -433,7 +434,7 @@ const {
   const {
     cancelAllTasks, cancelTask, cancelWorkbenchJob,
   } = makeTaskCancelActions({
-    tasks, runningTasks, journal, invoke, syncJournalTasks, scheduleQueue,
+    tasks, runningTasks, journal, cancelTaskRequest: cancelNativeTask, syncJournalTasks, scheduleQueue,
     suppressScheduling, resumeScheduling,
   })
 

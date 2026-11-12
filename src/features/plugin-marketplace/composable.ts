@@ -1,3 +1,4 @@
+import { cancelTask } from '@/api/native'
 import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { invokeWorkerQuery } from '@/api/worker'
@@ -197,7 +198,7 @@ async function cancel() {
   if (!taskId.value) return
   const id = taskId.value
   // A false result can mean the terminal event is already queued for delivery.
-  await invoke<boolean>('cancel_task', { taskId: id })
+  await cancelTask(id)
 }
 registerWindowCloseGuard(async () => { if (busy.value) await cancel() }, 70)
 

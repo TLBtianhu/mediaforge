@@ -1,4 +1,5 @@
 ﻿<script setup lang="ts">
+import { cancelTask, revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
@@ -85,7 +86,7 @@ async function load() {
 
 async function openWorkspace() {
   try {
-    await invoke('reveal_path', { path: dataRoot.value })
+    await revealPath(dataRoot.value)
   } catch (cause) {
     if (!disposed) message.error(cause instanceof Error ? cause.message : String(cause))
   }
@@ -97,7 +98,7 @@ async function cancel(job: QueueEntry) {
   try {
     const requested = await cancelQueueJob(job, {
       audio: taskId => taskStore.cancelTask(taskId),
-      manual: taskId => invoke('cancel_task', { taskId }),
+      manual: taskId => cancelTask(taskId),
       agent: jobId => invoke('cancel_agent_job', { jobId }),
     })
     if (disposed) return

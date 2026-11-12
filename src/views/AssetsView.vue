@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { mediaLibrary } from '@/api/mediaLibrary'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -161,7 +162,7 @@ async function removeAsset(asset: Asset) {
 
 async function revealAsset(asset: Asset) {
   try {
-    await invoke('reveal_path', { path: asset.path })
+    await revealPath(asset.path)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }

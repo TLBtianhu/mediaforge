@@ -1,3 +1,4 @@
+import { cancelTask } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { workerLogRecord, type LogRecord } from '@/utils/logRecord'
 import { defineStore } from 'pinia'
@@ -1102,11 +1103,11 @@ export const useModelStore = defineStore('model', () => {
       })
       const startedTask = downloadTasks.value[name]
       if (!startedTask || startedTask.taskId !== taskId) {
-        await invoke<boolean>('cancel_task', { taskId }).catch(() => false)
+        await cancelTask(taskId).catch(() => false)
         return false
       }
       if (startedTask.status === 'cancelled' || startedTask.status === 'paused') {
-        await invoke<boolean>('cancel_task', { taskId }).catch(() => false)
+        await cancelTask(taskId).catch(() => false)
         return false
       }
       if (startedTask.status === 'preparing') {
@@ -1121,7 +1122,7 @@ export const useModelStore = defineStore('model', () => {
       if (!currentTask || currentTask.taskId !== taskId || ['paused', 'cancelled'].includes(currentTask.status)) return false
       // The command may have spawned the worker even if its IPC response was lost. A best-effort
       // cancellation prevents that worker from continuing after the UI has reported a failure.
-      await invoke<boolean>('cancel_task', { taskId }).catch(() => false)
+      await cancelTask(taskId).catch(() => false)
       const message = err instanceof Error ? err.message : String(err)
       downloadStates.value = { ...downloadStates.value, [name]: 'error' }
       downloadErrors.value = { ...downloadErrors.value, [name]: message }
@@ -1151,10 +1152,10 @@ export const useModelStore = defineStore('model', () => {
         [name]: { ...task, status: pause ? 'paused' : 'cancelled', message: pause ? 'Paused' : 'Cancelled', updatedAt: Date.now() },
       }
       downloadStates.value = { ...downloadStates.value, [name]: 'idle' }
-      await invoke<boolean>('cancel_task', { taskId: task.taskId }).catch(() => false)
+      await cancelTask(task.taskId).catch(() => false)
       return true
     }
-    const cancelled = await invoke<boolean>('cancel_task', { taskId: task.taskId })
+    const cancelled = await cancelTask(task.taskId)
     if (cancelled) {
       downloadTasks.value = {
         ...downloadTasks.value,
@@ -1476,7 +1477,7 @@ export const useModelStore = defineStore('model', () => {
   async function cancelCustomModelImport() {
     const taskId = customImportState.value.taskId
     if (!taskId || customImportState.value.status !== 'importing') return false
-    return invoke<boolean>('cancel_task', { taskId })
+    return cancelTask(taskId)
   }
 
   function resetCustomImportState() {
@@ -1518,7 +1519,7 @@ export const useModelStore = defineStore('model', () => {
       taskIds.add(customImportState.value.taskId)
     }
     await Promise.all([...taskIds].map((taskId) =>
-      invoke<boolean>('cancel_task', { taskId }).catch(() => false),
+      cancelTask(taskId).catch(() => false),
     ))
   }, 70)
 

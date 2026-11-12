@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { NCheckbox, useDialog, useMessage, type DialogReactive } from 'naive-ui'
 import { FolderOpenOutline, RefreshOutline, TrashOutline } from '@vicons/ionicons5'
@@ -8,6 +8,7 @@ import type { JournalResult } from './journalResults'
 import { formatBytes } from '@/utils/format'
 import { useMediaJobsStore } from '@/stores/mediaJobs'
 import { removeResultJobs, type ResultRemovalResponse } from '@/features/tasks/journal'
+import { revealPath } from '@/api/native'
 
 const props = defineProps<{ results: JournalResult[]; total: number; loading?: boolean; error?: string }>()
 defineEmits<{ refresh: [] }>()
@@ -51,7 +52,7 @@ function operationLabel(operation: string) { return operationKeys[operation] ? t
 function statusLabel(status: string) { return t(`results.journal.status.${status === 'done' ? 'completed' : status}`) }
 function time(value: number) { return value ? new Date(value).toLocaleString() : '—' }
 async function reveal(path: string) {
-  try { await invoke('reveal_path', { path }) }
+  try { await revealPath(path) }
   catch (error) { message.error(error instanceof Error ? error.message : t('results.journal.openFailed')) }
 }
 function togglePreview(id: string, path: string) { if (!removing.value) previews.value[id] = previews.value[id] === path ? '' : path }

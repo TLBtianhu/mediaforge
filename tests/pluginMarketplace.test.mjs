@@ -17,6 +17,7 @@ const vite = await createServer({
       return code
         .replace("import { invoke } from '@tauri-apps/api/core'", 'const invoke = (...args) => globalThis.__pluginInvoke(...args)')
         .replace("import { invokeWorkerQuery } from '@/api/worker'", 'const invokeWorkerQuery = (...args) => globalThis.__pluginInvoke(...args)')
+        .replace("import { cancelTask } from '@/api/native'", 'const cancelTask = taskId => globalThis.__pluginInvoke("cancel_task", { taskId })')
         .replace("import { listen, type UnlistenFn } from '@tauri-apps/api/event'", 'type UnlistenFn = () => void; const listen = (...args) => globalThis.__pluginListen(...args)')
     },
   }],

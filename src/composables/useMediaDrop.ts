@@ -7,6 +7,7 @@
  *
  * 注意：Tauri 的原生拖放只给**窗口坐标**，所以用 `[data-drop-zone]` 标记投放区。
  */
+import { pathKinds } from '@/api/native'
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -50,7 +51,7 @@ export function useMediaDrop(handlers: MediaDropHandlers): { dragging: Ref<boole
     })
     const point = toCssPoint(position as { x: number; y: number } | null, window.devicePixelRatio)
     const zone = findDropZone(point, zones) || 'input'
-    const rawKinds = await invoke<Array<[string, string]>>('path_kinds', { paths: rawPaths })
+    const rawKinds = await pathKinds(rawPaths)
     const kinds = rawKinds.map(([path, kind]) => ({ path, kind: kind as PathKind['kind'] }))
 
     if (DIRECTORY_ZONES.has(zone)) {

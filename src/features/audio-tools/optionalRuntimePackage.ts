@@ -1,3 +1,6 @@
+// 本模块会被 Node 原生测试直接导入（tests/optionalRuntimePackage.test.ts），
+// 所以内部导入必须用相对路径加 .ts 扩展名；不要改成 @/ 别名。
+import { cancelTask } from '../../api/native.ts'
 import { ref, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -220,7 +223,7 @@ function createOptionalRuntimePackage(packageName: string): OptionalRuntimePacka
     if (!busy.value || !taskId.value || cancelling.value) return false
     cancelling.value = true
     try {
-      const accepted = await invoke<boolean>('cancel_task', { taskId: taskId.value })
+      const accepted = await cancelTask(taskId.value)
       if (!accepted) {
         const completion = pending
         finishOperation()

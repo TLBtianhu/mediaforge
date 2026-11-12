@@ -9,6 +9,7 @@
 import { computed, onActivated, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
+import { revealPath } from '@/api/native'
 import { pluginRevision } from '../plugin-marketplace/composable'
 import { usePluginOps, type OperationParamSchema, type OperationSpec } from '../plugin-ops/composable'
 
@@ -72,8 +73,7 @@ async function execute() {
 async function reveal(path?: string) {
   if (!path) return
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('reveal_path', { path })
+    await revealPath(path)
   } catch {
     // reveal is best-effort
   }

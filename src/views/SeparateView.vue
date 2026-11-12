@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pathKinds } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 
 import { computed, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch, type Ref } from 'vue'
@@ -7,7 +8,6 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useDialog, useMessage, type DropdownOption } from 'naive-ui'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import {
@@ -745,7 +745,7 @@ onMounted(async () => {
               window.devicePixelRatio,
             )
             if (findDropZone(point, zones) === 'outputDir' && paths.length === 1) {
-              const kinds = await invoke<Array<[string, string]>>('path_kinds', { paths })
+              const kinds = await pathKinds(paths)
               const folder = kinds.length === 1 && kinds[0][1] === 'directory' ? kinds[0][0] : ''
               if (folder) {
                 temporaryOutputDir.value = folder

@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { ScanMediaPathsResult } from '@/stores/taskTypes'
+import { revealPath as revealNativePath } from '@/api/native'
 
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus']
 const VIDEO_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv']
@@ -69,7 +70,7 @@ export function makeTaskInputActions({ inputFiles, invoke }: Deps) {
   }
 
   async function revealPath(path: string) {
-    await invoke('reveal_path', { path })
+    await revealNativePath(path)
   }
 
   async function trashPaths(paths: string[]) {

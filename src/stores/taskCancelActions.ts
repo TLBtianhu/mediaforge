@@ -6,7 +6,7 @@ type Deps = {
   tasks: Ref<SeparationTask[]>
   runningTasks: Ref<SeparationTask[]>
   journal: { refresh: () => Promise<void> }
-  invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+  cancelTaskRequest: (taskId: string) => Promise<boolean>
   syncJournalTasks: () => void
   scheduleQueue: () => void
   suppressScheduling: () => void
@@ -14,13 +14,13 @@ type Deps = {
 }
 
 export function makeTaskCancelActions({
-  tasks, runningTasks, journal, invoke, syncJournalTasks, scheduleQueue,
+  tasks, runningTasks, journal, cancelTaskRequest, syncJournalTasks, scheduleQueue,
   suppressScheduling, resumeScheduling,
 }: Deps) {
   async function cancelTask(id: string) {
     const task = tasks.value.find(item => item.id === id)
     if (!task || isTerminalTaskStatus(task.status)) return false
-    const cancelled = await invoke<boolean>('cancel_task', { taskId: id })
+    const cancelled = await cancelTaskRequest(id)
     if (cancelled) {
       await journal.refresh()
       syncJournalTasks()
@@ -46,7 +46,7 @@ export function makeTaskCancelActions({
     const targets = tasks.value.filter(task => taskJobId(task) === jobId && !isTerminalTaskStatus(task.status))
     suppressScheduling()
     try {
-      for (const target of targets) await invoke('cancel_task', { taskId: target.id })
+      for (const target of targets) await cancelTaskRequest(target.id)
       await journal.refresh()
       syncJournalTasks()
     } finally {

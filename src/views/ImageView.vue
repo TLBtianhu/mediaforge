@@ -1,4 +1,5 @@
 ﻿<script setup lang="ts">
+import { pathKinds, revealPath } from '@/api/native'
 import { dropSkippedSteps, precheckPlan, summarizePrecheck } from '../utils/mediaPrecheck.ts'
 import { DIRECTORY_ZONES, findDropZone, folderToReference, toCssPoint, type PathKind } from '../utils/dropZones.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -175,7 +176,7 @@ async function openOutput() {
   const path = String(job.value?.payload?.outputDir || outputDir.value)
   if (!path) return
   try {
-    await invoke('reveal_path', { path })
+    await revealPath(path)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -208,7 +209,7 @@ onMounted(async () => {
         })
         const cssPoint = toCssPoint(event.payload.position, window.devicePixelRatio)
         const zone = findDropZone(cssPoint, zones) || 'input'
-        const rawKinds = await invoke<Array<[string, string]>>('path_kinds', { paths })
+        const rawKinds = await pathKinds(paths)
         const kinds = rawKinds.map(([path, kind]) => ({ path, kind: kind as PathKind['kind'] }))
         if (DIRECTORY_ZONES.has(zone)) {
           // 输出目录/模型目录：拖入单个文件夹 = 引用它

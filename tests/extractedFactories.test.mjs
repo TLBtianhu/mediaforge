@@ -327,7 +327,7 @@ test('task cancel actions gate terminal tasks and restore scheduling', async () 
   const actions = makeTaskCancelActions({
     tasks, runningTasks,
     journal: { refresh: async () => { refreshes += 1 } },
-    invoke: async (command, args) => { calls.push({ command, args }); return args.taskId === 'running' },
+    cancelTaskRequest: async taskId => { calls.push({ command: 'cancel_task', args: { taskId } }); return taskId === 'running' },
     syncJournalTasks: () => { syncs += 1 },
     scheduleQueue: () => { schedules += 1 },
     suppressScheduling: () => { suppressed += 1 },

@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
+import { revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { modelHub, type ModelHubListResult } from '@/api/models'
 import { KnownObject } from '@/types/contracts'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -135,7 +135,7 @@ async function pickDir() {
 
 async function openFolder() {
   try {
-    await invoke('reveal_path', { path: modelDir.value })
+    await revealPath(modelDir.value)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }

@@ -1,3 +1,4 @@
+import { revealPath } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
@@ -151,7 +152,7 @@ export function useEditorExport(options: UseEditorExportOptions) {
         }))
       }
       try {
-        await invoke('reveal_path', { path: result.path })
+        await revealPath(result.path)
       } catch {
         message.warning(t('editor.exportOpenFailed'))
       }
