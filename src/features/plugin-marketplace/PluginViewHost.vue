@@ -8,10 +8,10 @@
  * allowlisted SDK methods pass, and every incoming message is checked against
  * "source must be this iframe".
  */
-import { getBuildInfo } from '@/api/native'
+import { getBuildInfo, setPluginViewRoot, startOperationTask } from '@/api/native'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invokeWorkerCommand } from '@/api/worker'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -69,13 +69,11 @@ async function handleCall(id: number, method: string, params: Record<string, unk
       // Unmount can reject the request while the native start call is pending.
       void promise.catch(() => undefined)
       try {
-        await invoke('start_operation_task', {
-          payload: {
-            operation: params.operation,
-            inputs: params.inputs || {},
-            params: params.params || {},
-            requestId,
-          },
+        await startOperationTask({
+          operation: params.operation,
+          inputs: params.inputs || {},
+          params: params.params || {},
+          requestId,
         })
         return await promise
       } finally {
@@ -158,7 +156,7 @@ onMounted(async () => {
   try {
     if (!props.view.entryPath && !props.view.entry) throw new Error('view entry not found')
     if (!props.pluginsRoot) throw new Error('plugins root not ready')
-    await invoke('set_plugin_view_root', { root: props.pluginsRoot })
+    await setPluginViewRoot(props.pluginsRoot)
     if (disposed) return
     const unlisten = await listen<{ type: string; requestId?: string; taskId?: string; payload: Record<string, unknown> }>(
       'pymss://worker-event',

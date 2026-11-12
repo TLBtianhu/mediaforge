@@ -1,6 +1,6 @@
+import { startAudioTool } from '@/api/native'
 import { computed, onScopeDispose, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
@@ -267,7 +267,7 @@ export const useMediaJobsStore = defineStore('mediaJobs', () => {
       runtime: { stage: null, progress: null, nodes: {}, order: [] }, logs: [], payload: request, result: null, error: null })
     try {
       // The listener and immutable local snapshot exist before native work starts.
-      await invoke('start_audio_tool', { payload: request })
+      await startAudioTool(request)
     } catch (cause) {
       // An IPC acknowledgement can be lost after the backend accepted a waiter.
       // Resolve against disk before deciding whether the submission was rejected.

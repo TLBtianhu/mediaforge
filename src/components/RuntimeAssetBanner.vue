@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 首次运行时：应用本身能开（界面不依赖 Python），但处理能力还没就绪。
 // 这里负责把"缺运行时"变成一条可操作的引导，并在装好后原地刷新状态。
+import { runtimeAssetInstall, runtimeAssetStatus, versionsAcceptRuntime, versionsCheck } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -48,12 +48,12 @@ async function ensureProgressListener() {
 
 async function refreshStatus() {
   try {
-    const status = await invoke<{
+    const status = await runtimeAssetStatus<{
       installed: boolean
       stale?: boolean
       size: number
       sha256: string
-    }>('runtime_asset_status')
+    }>()
     if (disposed) return
     installed.value = Boolean(status.installed)
     // stale=true 表示本地那份运行时存在但不是当前版本（缺依赖或版本不符），
@@ -72,10 +72,10 @@ async function refreshStatus() {
 
 async function checkVersions() {
   try {
-    const result = await invoke<{
+    const result = await versionsCheck<{
       available?: { runtime?: boolean }
       remote?: { runtime?: string }
-    }>('versions_check')
+    }>()
     if (disposed) return
     remoteRuntime.value = result?.available?.runtime ? String(result?.remote?.runtime || '') : ''
   } catch {
@@ -88,7 +88,7 @@ async function acceptRemoteRuntime() {
   if (!canStart.value) return
   error.value = ''
   try {
-    await invoke('versions_accept_runtime')
+    await versionsAcceptRuntime()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
     return
@@ -108,7 +108,7 @@ async function startInstall() {
     // Retry a failed subscription before starting work whose progress would be lost.
     await ensureProgressListener()
     if (disposed) return
-    await invoke('runtime_asset_install')
+    await runtimeAssetInstall()
   } catch (err) {
     running.value = false
     error.value = err instanceof Error ? err.message : String(err)

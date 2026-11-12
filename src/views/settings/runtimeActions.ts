@@ -4,10 +4,12 @@
  * 所有动作先过一遍 runtimeBusy 与平台闸门，再走三选一确认（confirmRuntimeAction），
  * 确认被关掉（Esc / 遮罩 / 关闭）一律当取消。派生状态见 runtimeState.ts。
  */
+// 本模块会被 Node 原生测试直接导入，内部导入必须用相对路径加 .ts 扩展名；
+// 不要改成 @/ 别名。
+import { runtimeAssetInstall } from '../../api/native.ts'
 import type { Ref } from 'vue'
 import type { DialogApi, MessageApi } from 'naive-ui'
 import type { InstalledRuntime, RuntimeBackend, useAppStore } from '../../stores/app.ts'
-import { invoke } from '@tauri-apps/api/core'
 import { runtimeEnvironmentForBackend, runtimeSizeHint } from '../../utils/runtime.ts'
 
 type Deps = {
@@ -63,7 +65,7 @@ export function makeRuntimeActions(deps: Deps) {
     try {
       if (backend === 'cuda') {
         // CUDA 已统一为内容寻址资产安装；其它后端暂保留旧路径，直到有对应资产清单。
-        await invoke('runtime_asset_install')
+        await runtimeAssetInstall()
       } else {
         await app.installRuntime(backend, deps.runtimeMirror.value, deps.currentLocale.value)
       }

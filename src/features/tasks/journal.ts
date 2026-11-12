@@ -1,4 +1,11 @@
-import { invoke } from '@tauri-apps/api/core'
+// 本模块会被 Node 原生测试直接导入，内部导入必须用相对路径加 .ts 扩展名；
+// 不要改成 @/ 别名。
+import {
+  agentJobs,
+  enqueueAudioJobs as enqueueAudioJobsNative,
+  removeAudioJobs as removeAudioJobsNative,
+  removeResultJobs as removeResultJobsNative,
+} from '../../api/native.ts'
 import { isTauriRuntime } from '../../utils/appStore.ts'
 import { CURRENT_INFERENCE_PARAMS_VERSION } from '../../stores/taskNormalize.ts'
 import { RESULT_JOB_COMMANDS } from './resultCommands.ts'
@@ -138,12 +145,11 @@ function previewJobs(): JournalJob[] {
 /** Ask the backend for the catalog; `known` turns the reply into a delta. */
 export async function readJournal(known?: Readonly<Record<string, number>>): Promise<JournalSnapshot> {
   if (!isTauriRuntime()) return validateJournalSnapshot({ schemaVersion: 3, full: true, jobs: previewJobs(), removed: [], dataRoot: '', jobsDir: '' })
-  const args = known && Object.keys(known).length ? { known } : {}
-  return validateJournalSnapshot(await invoke('agent_jobs', args))
+  return validateJournalSnapshot(await agentJobs(known && Object.keys(known).length ? known : undefined))
 }
 
 export async function enqueueAudioJobs(payload: AudioEnqueue): Promise<JournalSnapshot> {
-  if (isTauriRuntime()) return validateJournalSnapshot(await invoke('enqueue_audio_jobs', { payload }))
+  if (isTauriRuntime()) return validateJournalSnapshot(await enqueueAudioJobsNative(payload))
   const current = previewJobs()
   if (payload.schemaVersion !== 2 || !payload.tasks.length || payload.primaryJobId !== payload.tasks[0].jobId) return invalid()
   const now = Date.now() / 1000
@@ -196,9 +202,7 @@ function removalResponse(value: unknown, jobIds: string[], options: ResultRemova
 
 export async function removeAudioJobs(jobIds: string[], options: ResultRemovalOptions = {}): Promise<ResultRemovalResponse> {
   validateRemovalRequest(jobIds)
-  if (isTauriRuntime()) return removalResponse(await invoke('remove_audio_jobs', {
-    jobIds, deleteFiles: options.deleteFiles === true, checkOnly: options.checkOnly === true,
-  }), jobIds, options, true)
+  if (isTauriRuntime()) return removalResponse(await removeAudioJobsNative(jobIds, options), jobIds, options, true)
   const jobs = previewJobs()
   const groups = new Set(jobIds.map(id => {
     const job = jobs.find(row => row.jobId === id)
@@ -215,9 +219,7 @@ export async function removeAudioJobs(jobIds: string[], options: ResultRemovalOp
 
 export async function removeResultJobs(jobIds: string[], options: ResultRemovalOptions = {}): Promise<ResultRemovalResponse> {
   validateRemovalRequest(jobIds)
-  if (isTauriRuntime()) return removalResponse(await invoke('remove_result_jobs', {
-    jobIds, deleteFiles: options.deleteFiles === true, checkOnly: options.checkOnly === true,
-  }), jobIds, options)
+  if (isTauriRuntime()) return removalResponse(await removeResultJobsNative(jobIds, options), jobIds, options)
   const jobs = previewJobs()
   const removing = jobIds.map(id => {
     const job = jobs.find(row => row.jobId === id)

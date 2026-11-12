@@ -1,5 +1,10 @@
+import {
+  debugLogClear as requestDebugLogClear,
+  debugLogCreateReport as requestDebugLogReport,
+  debugLogInfo as fetchDebugLogInfo,
+  debugLogRead as readDebugLog,
+} from '@/api/native'
 import { computed, nextTick, ref, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { formatBytes } from '@/utils/format'
 import {
   formatLogRecord,
@@ -142,8 +147,8 @@ export function useDebugLogs({ t, message, developerMode, revealPath }: Deps) {
     debugLogError.value = ''
     try {
       const [info, content] = await Promise.all([
-        invoke<DebugLogInfo>('debug_log_info'),
-        invoke<DebugLogContent>('debug_log_read'),
+        fetchDebugLogInfo<DebugLogInfo>(),
+        readDebugLog<DebugLogContent>(),
       ])
       debugLogInfo.value = info
       debugLogContent.value = content
@@ -159,8 +164,8 @@ export function useDebugLogs({ t, message, developerMode, revealPath }: Deps) {
     if (!developerMode.value) return
     debugLogClearing.value = true
     try {
-      debugLogInfo.value = await invoke<DebugLogInfo>('debug_log_clear')
-      debugLogContent.value = await invoke<DebugLogContent>('debug_log_read')
+      debugLogInfo.value = await requestDebugLogClear<DebugLogInfo>()
+      debugLogContent.value = await readDebugLog<DebugLogContent>()
       await scrollDebugLogToLatest()
       message.success(t('debug.logCleared'))
     } catch (error) {
@@ -185,7 +190,7 @@ export function useDebugLogs({ t, message, developerMode, revealPath }: Deps) {
     if (!developerMode.value || debugLogReportLoading.value || debugLogClearing.value) return
     debugLogReportLoading.value = true
     try {
-      const report = await invoke<DebugLogReport>('debug_log_create_report')
+      const report = await requestDebugLogReport<DebugLogReport>()
       message.success(t('debug.reportCreated'))
       await loadDebugLog()
       await revealPath(report.path)

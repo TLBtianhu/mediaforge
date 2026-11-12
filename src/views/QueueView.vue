@@ -1,7 +1,6 @@
 ﻿<script setup lang="ts">
-import { cancelTask, revealPath } from '@/api/native'
+import { cancelAgentJob, cancelTask, revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { FolderOpenOutline, RefreshOutline, SparklesOutline } from '@vicons/ionicons5'
@@ -99,7 +98,7 @@ async function cancel(job: QueueEntry) {
     const requested = await cancelQueueJob(job, {
       audio: taskId => taskStore.cancelTask(taskId),
       manual: taskId => cancelTask(taskId),
-      agent: jobId => invoke('cancel_agent_job', { jobId }),
+      agent: jobId => cancelAgentJob(jobId),
     })
     if (disposed) return
     if (requested) message.success(t('agent.cancelRequested'))

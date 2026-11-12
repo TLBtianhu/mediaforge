@@ -309,6 +309,225 @@ export function cancelEditorMixExport(
   return invoke('cancel_editor_mix_export', { taskId, projectId, exportDir })
 }
 
+// ─── 插件宿主与插件操作 ────────────────────────────────────────────────────
+
+/** Scan-related commands return host-shaped values; callers name the concrete type. */
+export function pluginHostCachedScanReport<T>(paths: string[]): Promise<T> {
+  return invoke('plugin_host_cached_scan_report', { paths })
+}
+
+export function pluginHostScanReport<T>(
+  paths: string[],
+  options: { force?: boolean; scanId?: string } = {},
+): Promise<T> {
+  return invoke('plugin_host_scan_report', { paths, force: options.force, scanId: options.scanId })
+}
+
+export function pluginHostScanStatus<T>(scanId: string): Promise<T | null> {
+  return invoke('plugin_host_scan_status', { scanId })
+}
+
+export function pluginHostScanBlacklist<T>(): Promise<T[]> {
+  return invoke('plugin_host_scan_blacklist')
+}
+
+export function pluginHostSkipScan(scanId: string, path: string): Promise<{ skipped: boolean }> {
+  return invoke('plugin_host_skip_scan', { scanId, path })
+}
+
+export function pluginHostCancelScan(scanId: string): Promise<{ cancelled: boolean }> {
+  return invoke('plugin_host_cancel_scan', { scanId })
+}
+
+export function pluginHostRemoveScanBlacklist(path: string): Promise<void> {
+  return invoke('plugin_host_remove_scan_blacklist', { path })
+}
+
+export function pluginHostRequest<T>(request: unknown): Promise<T> {
+  return invoke('plugin_host_request', { request })
+}
+
+export function pluginHostCapabilitySnapshot<T>(): Promise<T> {
+  return invoke('plugin_host_capabilities')
+}
+
+export function startOperationTask(payload: unknown): Promise<unknown> {
+  return invoke('start_operation_task', { payload })
+}
+
+export function setPluginViewRoot(root: string): Promise<unknown> {
+  return invoke('set_plugin_view_root', { root })
+}
+
+// ─── 版本、运行时资产与可选组件 ────────────────────────────────────────────
+
+export function versionsCheck<T = unknown>(): Promise<T> {
+  return invoke('versions_check')
+}
+
+export function versionsAcceptRuntime(): Promise<unknown> {
+  return invoke('versions_accept_runtime')
+}
+
+export function runtimeAssetInstall(): Promise<unknown> {
+  return invoke('runtime_asset_install')
+}
+
+export function runtimeAssetStatus<T>(): Promise<T> {
+  return invoke('runtime_asset_status')
+}
+
+export function optionalRuntimePackageStatus<T>(pkg: string): Promise<T> {
+  return invoke('optional_runtime_package_status', { package: pkg })
+}
+
+export function manageOptionalRuntimePackage<T = unknown>(payload: unknown): Promise<T> {
+  return invoke('manage_optional_runtime_package', { payload })
+}
+
+// ─── 任务账本 ──────────────────────────────────────────────────────────────
+
+export function agentJobs<T = unknown>(known?: Record<string, number>): Promise<T> {
+  return invoke('agent_jobs', known ? { known } : {})
+}
+
+export function enqueueAudioJobs<T = unknown>(payload: unknown): Promise<T> {
+  return invoke('enqueue_audio_jobs', { payload })
+}
+
+export function removeAudioJobs<T = unknown>(
+  jobIds: string[],
+  options: { deleteFiles?: boolean; checkOnly?: boolean } = {},
+): Promise<T> {
+  return invoke('remove_audio_jobs', {
+    jobIds,
+    deleteFiles: options.deleteFiles === true,
+    checkOnly: options.checkOnly === true,
+  })
+}
+
+export function removeResultJobs<T = unknown>(
+  jobIds: string[],
+  options: { deleteFiles?: boolean; checkOnly?: boolean } = {},
+): Promise<T> {
+  return invoke('remove_result_jobs', {
+    jobIds,
+    deleteFiles: options.deleteFiles === true,
+    checkOnly: options.checkOnly === true,
+  })
+}
+
+export function startAudioTool<T = unknown>(payload: unknown): Promise<T> {
+  return invoke('start_audio_tool', { payload })
+}
+
+export function cancelAgentJob<T = unknown>(jobId: string): Promise<T> {
+  return invoke('cancel_agent_job', { jobId })
+}
+
+// ─── 环境、代理与应用路径 ──────────────────────────────────────────────────
+
+export function getEnvInfo<T>(): Promise<T> {
+  return invoke('get_env_info')
+}
+
+export function startEnvCheck(requestId: string): Promise<void> {
+  return invoke('start_env_check', { requestId })
+}
+
+export function getAppPaths<T>(): Promise<T> {
+  return invoke('get_app_paths')
+}
+
+export function updateProxySettings(payload: {
+  mode: string
+  url: string
+  bypass: string
+}): Promise<unknown> {
+  return invoke('update_proxy_settings', { payload })
+}
+
+export function writeFrontendLog(record: unknown): Promise<void> {
+  return invoke('write_frontend_log', { record })
+}
+
+/** Moves a rejected settings file aside after the user explicitly confirms. */
+export function recoverAppSettings<T>(): Promise<T> {
+  return invoke('recover_app_settings', { confirm: true })
+}
+
+// ─── 模型目录迁移 ──────────────────────────────────────────────────────────
+
+export function prepareModelDirChange<T>(payload: {
+  currentModelDir: string
+  targetModelDir: string
+}): Promise<T> {
+  return invoke('prepare_model_dir_change', { payload })
+}
+
+export function startModelDirMigration(payload: {
+  taskId: string
+  currentModelDir: string
+  targetModelDir: string
+}): Promise<unknown> {
+  return invoke('start_model_dir_migration', { payload })
+}
+
+export function respondModelDirMigrationConflict(payload: {
+  taskId: string
+  resolution: unknown
+}): Promise<unknown> {
+  return invoke('respond_model_dir_migration_conflict', { payload })
+}
+
+export function confirmModelDirMigrationSwitch(payload: { taskId: string }): Promise<unknown> {
+  return invoke('confirm_model_dir_migration_switch', { payload })
+}
+
+export function cancelModelDirMigration(payload: { taskId: string }): Promise<unknown> {
+  return invoke('cancel_model_dir_migration', { payload })
+}
+
+// ─── 工作流存储与编辑器窗口 ────────────────────────────────────────────────
+
+export function getWorkflowEditors<T>(): Promise<T> {
+  return invoke('get_workflow_editors')
+}
+
+export function mutateWorkflowStore<T>(payload: unknown): Promise<T> {
+  return invoke('mutate_workflow_store', { payload })
+}
+
+export function mutateMediaWorkflows<T>(payload: unknown): Promise<T> {
+  return invoke('mutate_media_workflows', { payload })
+}
+
+export function startCustomModelImport(payload: unknown): Promise<unknown> {
+  return invoke('start_custom_model_import', { payload })
+}
+
+// ─── 调试日志与运行时指针 ──────────────────────────────────────────────────
+
+export function debugLogInfo<T>(): Promise<T> {
+  return invoke('debug_log_info')
+}
+
+export function debugLogRead<T>(): Promise<T> {
+  return invoke('debug_log_read')
+}
+
+export function debugLogClear<T>(): Promise<T> {
+  return invoke('debug_log_clear')
+}
+
+export function debugLogCreateReport<T>(): Promise<T> {
+  return invoke('debug_log_create_report')
+}
+
+export function debugRuntimePointers<T>(): Promise<T> {
+  return invoke('debug_runtime_pointers')
+}
+
 // ─── 编辑器源引用 ──────────────────────────────────────────────────────────
 
 export function relinkEditorSources(payload: {

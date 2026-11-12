@@ -1,8 +1,7 @@
-import { pickOutputFolder } from '@/api/native'
+import { cancelModelDirMigration, confirmModelDirMigrationSwitch, getAppPaths, pickOutputFolder, prepareModelDirChange as prepareModelDirChangeRequest, recoverAppSettings, respondModelDirMigrationConflict, startModelDirMigration, updateProxySettings } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import {
   applyTheme,
   DEFAULT_THEME_ACCENT,
@@ -344,7 +343,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function initialize() {
     if (initialized.value) return
     const paths = isTauriRuntime()
-      ? await invoke<AppPathsPayload>('get_app_paths')
+      ? await getAppPaths<AppPathsPayload>()
       : browserAppPaths()
     let stored: StoredSettings | null = null
     try {
@@ -463,12 +462,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function syncProxyToBackend() {
     if (!initialized.value || !isTauriRuntime() || !isMainTaskOwner()) return
-    await invoke('update_proxy_settings', {
-      payload: {
-        mode: proxyMode.value,
-        url: proxyUrl.value,
-        bypass: proxyBypass.value,
-      },
+    await updateProxySettings({
+      mode: proxyMode.value,
+      url: proxyUrl.value,
+      bypass: proxyBypass.value,
     })
   }
 
@@ -591,11 +588,9 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function prepareModelDirChange(targetDir: string) {
-    const payload = normalizePrepareModelDirChangePayload(await invoke<PrepareModelDirChangePayload>('prepare_model_dir_change', {
-      payload: {
-        currentModelDir: modelDir.value,
-        targetModelDir: targetDir,
-      },
+    const payload = normalizePrepareModelDirChangePayload(await prepareModelDirChangeRequest<PrepareModelDirChangePayload>({
+      currentModelDir: modelDir.value,
+      targetModelDir: targetDir,
     }))
 
     if (payload.sameAsCurrent) {
@@ -646,12 +641,10 @@ export const useSettingsStore = defineStore('settings', () => {
       resolvingConflict: false,
     }
     try {
-      await invoke('start_model_dir_migration', {
-        payload: {
-          taskId,
-          currentModelDir: preparation.currentModelDir,
-          targetModelDir: preparation.targetModelDir,
-        },
+      await startModelDirMigration({
+        taskId,
+        currentModelDir: preparation.currentModelDir,
+        targetModelDir: preparation.targetModelDir,
       })
     } catch (error) {
       modelDirMigrationState.value = {
@@ -674,11 +667,9 @@ export const useSettingsStore = defineStore('settings', () => {
       resolvingConflict: true,
     }
     try {
-      await invoke('respond_model_dir_migration_conflict', {
-        payload: {
-          taskId,
-          resolution,
-        },
+      await respondModelDirMigrationConflict({
+        taskId,
+        resolution,
       })
       modelDirMigrationState.value = {
         ...modelDirMigrationState.value,
@@ -733,13 +724,9 @@ export const useSettingsStore = defineStore('settings', () => {
     modelDir.value = targetModelDir
     try {
       await refreshModelDataAfterDirChange()
-      await invoke('confirm_model_dir_migration_switch', {
-        payload: { taskId },
-      })
+      await confirmModelDirMigrationSwitch({ taskId })
     } catch (error) {
-      await invoke('cancel_model_dir_migration', {
-        payload: { taskId },
-      }).catch(() => {})
+      await cancelModelDirMigration({ taskId }).catch(() => {})
       modelDir.value = previousModelDir
       await refreshModelDataAfterDirChange().catch(() => {})
       modelDirMigrationState.value = {
@@ -941,10 +928,7 @@ export const useSettingsStore = defineStore('settings', () => {
     if (recoveryState.value.status === 'running') return { ok: false, recovered: false }
     recoveryState.value = { status: 'running' }
     try {
-      const response = await invoke<{ ok: boolean; recovered: boolean; backupPath?: string }>(
-        'recover_app_settings',
-        { confirm: true },
-      )
+      const response = await recoverAppSettings<{ ok: boolean; recovered: boolean; backupPath?: string }>()
       recoveryState.value = { status: 'recovered', backupPath: response.backupPath || '' }
       loadError.value = ''
       initialized.value = false

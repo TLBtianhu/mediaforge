@@ -10,8 +10,8 @@
  * `task.result` (with an empty `failed[]`), `error`, or `task.cancelled`.
  * `stop()` ends the waits that a closed page can no longer observe.
  */
+import { startOperationTask } from '@/api/native'
 import { reactive, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { invokeWorkerCommand, invokeWorkerQuery } from '@/api/worker'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
@@ -195,14 +195,12 @@ export function usePluginOps() {
       pendingRuns.set(requestId, { resolve, reject, onProgress: options.onProgress, fraction: 0 })
     })
     try {
-      await invoke('start_operation_task', {
-        payload: {
-          operation: options.operation,
-          params: options.params,
-          inputs: options.inputs,
-          outputDir: options.outputDir,
-          requestId,
-        },
+      await startOperationTask({
+        operation: options.operation,
+        params: options.params,
+        inputs: options.inputs,
+        outputDir: options.outputDir,
+        requestId,
       })
       return await completion
     } finally {

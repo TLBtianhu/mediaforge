@@ -1,8 +1,7 @@
 // 本模块会被 Node 原生测试直接导入（tests/optionalRuntimePackage.test.ts），
 // 所以内部导入必须用相对路径加 .ts 扩展名；不要改成 @/ 别名。
-import { cancelTask } from '../../api/native.ts'
+import { cancelTask, manageOptionalRuntimePackage, optionalRuntimePackageStatus } from '../../api/native.ts'
 import { ref, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { registerWindowCloseGuard } from '../../utils/windowCloseGuards.ts'
 import { workerLogRecord, type LogRecord } from '../../utils/logRecord.ts'
@@ -166,9 +165,7 @@ function createOptionalRuntimePackage(packageName: string): OptionalRuntimePacka
     error.value = ''
     status.value = null
     try {
-      const nextStatus = await invoke<OptionalPackageStatus>('optional_runtime_package_status', {
-        package: packageName,
-      })
+      const nextStatus = await optionalRuntimePackageStatus<OptionalPackageStatus>(packageName)
       if (sequence !== refreshSequence) return status.value
       status.value = nextStatus
       return nextStatus
@@ -199,14 +196,12 @@ function createOptionalRuntimePackage(packageName: string): OptionalRuntimePacka
     })
     try {
       await start()
-      await invoke<{ taskId: string; started: boolean }>('manage_optional_runtime_package', {
-        payload: {
-          package: packageName,
-          action: packageAction,
-          mirror: options.mirror,
-          locale: options.locale,
-          taskId: taskId.value,
-        },
+      await manageOptionalRuntimePackage<{ taskId: string; started: boolean }>({
+        package: packageName,
+        action: packageAction,
+        mirror: options.mirror,
+        locale: options.locale,
+        taskId: taskId.value,
       })
     } catch (startError) {
       const detail = String(startError)

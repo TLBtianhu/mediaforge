@@ -56,8 +56,10 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 
 - worker 契约命令只能经 `src/api/*` 调用；唯一例外是 `src/utils/mediaPrecheck.ts`（Node 测试加载器无法解析别名）与
   `src/features/plugin-marketplace/composable.ts`（Rust 启动命令返回 taskId、结果走事件），例外必须仍命中真实调用点。
-- 原生命令一旦在 `src/api/native.ts` 有包装（当前 `cancel_task` / `reveal_path` / `path_kinds`），其它地方不得再直接
-  `invoke` 同一命令；包装名单从该文件派生，新增包装即自动禁止旁路。
+- 原生命令的 invoke 全部收口在 `src/api/native.ts`（当前 91 条）；其它文件不得直接 `invoke` 已包装命令，
+  包装名单从该文件派生，新增包装即自动禁止旁路。
+- 需要注入到工厂的原生操作用显式 port 对象（如 `TaskInputNative` / `EditorProjectsNative`），
+  不要传通用 `invoke` 依赖；新增原生命令先加 wrapper，再从调用点迁移。
 - 被 Node 原生测试直接导入的模块（如 `src/features/audio-tools/optionalRuntimePackage.ts`）必须用相对路径加 `.ts`
   扩展名，不能改成 `@/` 别名。
 - 守门：`python scripts/check-frontend-invokes.py`（CI 步骤 “Check the frontend invoke boundary”）与

@@ -1,4 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
+// 本模块会被 Node 原生测试直接导入，内部导入必须用相对路径加 .ts 扩展名；
+// 不要改成 @/ 别名。
+import { writeFrontendLog } from '../api/native.ts'
 import type { LogLevel, LogRecord } from './logRecord.ts'
 
 type Method = 'debug' | 'info' | 'warn' | 'error'
@@ -19,7 +21,7 @@ export function recordFeatureVisit(page: string, tool?: string) {
     message: tool ? 'Audio tool selected' : 'Page opened',
     context: { page, ...(tool ? { tool } : {}) },
   }
-  try { void invoke('write_frontend_log', { record }).catch(() => {}) } catch { /* Navigation remains available when logging is unavailable. */ }
+  try { void writeFrontendLog(record).catch(() => {}) } catch { /* Navigation remains available when logging is unavailable. */ }
 }
 
 const CREDENTIAL_KEYS = 'password|passwd|access_token|refresh_token|token|secret|credential|authorization|api[_-]?key|proxy[-_]?pass'
@@ -130,7 +132,7 @@ export function createLogger(module: string) {
       context: {},
     }
     // Logging must never interrupt the operation that produced the original error.
-    try { void invoke('write_frontend_log', { record }).catch(() => {}) } catch { /* A missing IPC bridge must not fail the original operation. */ }
+    try { void writeFrontendLog(record).catch(() => {}) } catch { /* A missing IPC bridge must not fail the original operation. */ }
   }
   return {
     debug: (message: string, ...details: unknown[]) => write('debug', message, details),

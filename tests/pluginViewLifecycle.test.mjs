@@ -35,6 +35,9 @@ function host(overrides = {}) {
     pluginViewUrl: () => 'http://pymss-plugin.localhost/view/gain/editor/index.html', convertFileSrc() {},
     listen: async () => () => {}, invoke: async () => {}, ...overrides,
   }
+  // The host imports typed wrappers; route them through the invoke mock above.
+  state.startOperationTask = payload => state.invoke('start_operation_task', { payload })
+  state.setPluginViewRoot = root => state.invoke('set_plugin_view_root', { root })
   const controller = vm.runInNewContext(`${code}\n({handleCall, postToFrame, onWindowMessage, mount: onMountedCallback, unmount: onBeforeUnmountCallback})`, state)
   return { state, controller, messages }
 }

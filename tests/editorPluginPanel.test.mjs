@@ -93,8 +93,28 @@ function environment(t, { scanControl = false } = {}) {
     clearTimeout: id => timers.delete(id),
     clonePluginChain, pluginDescriptorCategory, pluginDescriptorFamilies, pluginDescriptorFormat, pluginFavoriteKey, pluginDescriptorLabels, pluginDescriptorVariant, pluginSlotMatchesDescriptor,
   })
-  // The panel imports the typed picker wrapper; route it through the same invoke mock.
+  // The panel imports the typed picker/scan wrappers; route them through the same invoke mock.
   context.pickInputFolder = async () => context.invoke('pick_input_folder')
+  const scanCommand = {
+    pluginHostCachedScanReport: 'plugin_host_cached_scan_report',
+    pluginHostScanReport: 'plugin_host_scan_report',
+    pluginHostScanStatus: 'plugin_host_scan_status',
+    pluginHostScanBlacklist: 'plugin_host_scan_blacklist',
+    pluginHostSkipScan: 'plugin_host_skip_scan',
+    pluginHostCancelScan: 'plugin_host_cancel_scan',
+    pluginHostRemoveScanBlacklist: 'plugin_host_remove_scan_blacklist',
+  }
+  for (const [name, command] of Object.entries(scanCommand)) {
+    context[name] = (...args) => {
+      let payload
+      if (name === 'pluginHostCachedScanReport') payload = { paths: args[0] }
+      else if (name === 'pluginHostScanReport') payload = { paths: args[0], ...(args[1] || {}) }
+      else if (name === 'pluginHostSkipScan') payload = { scanId: args[0], path: args[1] }
+      else if (name === 'pluginHostScanStatus' || name === 'pluginHostCancelScan') payload = { scanId: args[0] }
+      else if (name === 'pluginHostRemoveScanBlacklist') payload = { path: args[0] }
+      return context.invoke(command, payload)
+    }
+  }
   const scope = effectScope()
   scope.run(() => vm.runInContext(code, context))
   const dispose = () => { if (!stopped) { stopped = true; disposals.forEach(callback => callback()); scope.stop() } }

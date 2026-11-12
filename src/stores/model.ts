@@ -1,9 +1,8 @@
-import { cancelTask } from '@/api/native'
+import { cancelTask, startCustomModelImport } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { workerLogRecord, type LogRecord } from '@/utils/logRecord'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { matchesModelQuery } from '@/utils/modelSearch'
@@ -1455,9 +1454,7 @@ export const useModelStore = defineStore('model', () => {
     try {
       // The configured model directory travels with the request: copies must land beside the
       // catalog models, and the worker's MEDIAFORGE_MODEL_DIR only ever holds the default location.
-      await invoke('start_custom_model_import', {
-        payload: { ...request, taskId, modelDir: settings.modelDir || null },
-      })
+      await startCustomModelImport({ ...request, taskId, modelDir: settings.modelDir || null })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       customImportState.value = { ...customImportState.value, status: 'error', message }

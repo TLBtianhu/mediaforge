@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 版本与更新：只做"检测 + 接受"，替换永远整包进行。
 // 检测读的是签名过的 versions.json；验签失败/没有发布时只提示，不自动装。
+import { runtimeAssetInstall, versionsAcceptRuntime, versionsCheck } from '@/api/native'
 import { computed, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -32,7 +32,7 @@ async function check() {
   checking.value = true
   error.value = ''
   try {
-    result.value = await invoke<CheckResult>('versions_check')
+    result.value = await versionsCheck<CheckResult>()
     checked.value = true
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -46,8 +46,8 @@ async function switchRuntime() {
   switching.value = true
   error.value = ''
   try {
-    await invoke('versions_accept_runtime')
-    await invoke('runtime_asset_install')
+    await versionsAcceptRuntime()
+    await runtimeAssetInstall()
     // 进度由全局 RuntimeAssetBanner 显示；这里只确认"已开始"
     result.value = null
     checked.value = false

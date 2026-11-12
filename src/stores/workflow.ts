@@ -1,7 +1,7 @@
+import { getWorkflowEditors, mutateWorkflowStore } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
 import { isWorkflowEditorSnapshot, workflowEditorFor, WorkflowEditorInUseError, type WorkflowEditorSnapshot, type WorkflowEditorRecord } from '@/utils/workflowEditorState'
 import {
@@ -127,7 +127,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   async function refreshEditorWindows() {
-    if (isTauriRuntime()) applyEditorSnapshot(await invoke('get_workflow_editors'))
+    if (isTauriRuntime()) applyEditorSnapshot(await getWorkflowEditors())
   }
 
   function recordEditorOpened(result: unknown, kind: 'simple' | 'advanced', workflowId: string) {
@@ -184,7 +184,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   async function mutateStoredState(mutation: WorkflowStoreMutation): Promise<WorkflowMutationResponse> {
     if (isTauriRuntime()) {
       try {
-        const response = await invoke<WorkflowMutationResponse>('mutate_workflow_store', { payload: mutation })
+        const response = await mutateWorkflowStore<WorkflowMutationResponse>(mutation)
         if (response.editorSnapshot) applyEditorSnapshot(response.editorSnapshot)
         return response
       } catch (error) {

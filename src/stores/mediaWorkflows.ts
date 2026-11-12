@@ -1,6 +1,6 @@
+import { mutateMediaWorkflows } from '@/api/native'
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { invoke } from '@tauri-apps/api/core'
 import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
 import { applyMediaWorkflowMutation, normalizeMediaWorkflowDefinition, normalizeMediaWorkflowState,
   type MediaWorkflowDefinition, type MediaWorkflowMutation, type MediaWorkflowPreset, type MediaWorkflowResponse } from '@/features/media/workflowPresets'
@@ -54,7 +54,7 @@ export const useMediaWorkflowsStore = defineStore('mediaWorkflows', () => {
     const operation = async () => {
       try {
         let response: MediaWorkflowResponse
-        if (isTauriRuntime()) response = await invoke('mutate_media_workflows', { payload: mutation })
+        if (isTauriRuntime()) response = await mutateMediaWorkflows<MediaWorkflowResponse>(mutation)
         else {
           const preview = previewQueue.catch(() => {}).then(async () => {
             const result = applyMediaWorkflowMutation(await loadAppStore('media-workflows'), mutation)

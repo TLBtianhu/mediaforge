@@ -1,3 +1,4 @@
+import { getEnvInfo, startEnvCheck } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { workerLogRecord, type LogEntry } from '@/utils/logRecord'
 import { defineStore } from 'pinia'
@@ -329,7 +330,7 @@ export const useAppStore = defineStore('app', () => {
     lastError.value = null
     try {
       const result: EnvInfo = isTauriRuntime()
-        ? await runRuntimeQuery(() => invoke<EnvInfo>('get_env_info'))
+        ? await runRuntimeQuery(() => getEnvInfo<EnvInfo>())
         : { platform: navigator.platform }
       if (envRequestId === requestId) {
         envInfo.value = result
@@ -365,7 +366,7 @@ export const useAppStore = defineStore('app', () => {
     try {
       await import('@/utils/events').then(({ registerWorkerEvents }) => registerWorkerEvents())
       if (envRequestId !== requestId) return
-      await invoke('start_env_check', { requestId })
+      await startEnvCheck(requestId)
     } catch (error) {
       if (envRequestId === requestId) {
         envRequestId = null

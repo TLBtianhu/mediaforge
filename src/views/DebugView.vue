@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { debugRuntimePointers } from '@/api/native'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { invokeWorkerCommand } from '@/api/worker'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
@@ -552,7 +552,7 @@ async function loadRuntimeDebugPointers() {
   runtimeDebugLoading.value = true
   runtimeDebugError.value = ''
   try {
-    const info = await invoke<DebugRuntimePointers>('debug_runtime_pointers')
+    const info = await debugRuntimePointers<DebugRuntimePointers>()
     setRuntimeDebugInfo(info)
   } catch (error) {
     runtimeDebugError.value = error instanceof Error ? error.message : String(error)
