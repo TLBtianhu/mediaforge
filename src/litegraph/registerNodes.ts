@@ -6,6 +6,7 @@
  * pymss.graph.load_comfy_file.
  */
 import { LiteGraph, LGraphNode, LGraphCanvas, type LGraphNode as LGraphNodeType } from '@comfyorg/litegraph'
+import type { ISerialisedNode } from '@comfyorg/litegraph/dist/types/serialisation'
 import { NODE_SPECS, BUILTIN_SPECS, NodeSpec, WidgetSpec, PORT } from './nodeSpecs'
 import { isWorkflowSeparationNodeType } from '../workflows/formats'
 import {
@@ -18,7 +19,6 @@ import {
   type NodeTranslator,
 } from './nodeLocalization'
 
-type AnyNode = any
 
 type LiteGraphSlotLike = { name?: string; label?: string; localized_name?: string; links?: unknown[] }
 type LiteGraphWidgetLike = {
@@ -67,6 +67,8 @@ const ORIGINAL_LOCALIZED_NAME = '__pymssOriginalLocalizedName'
 const ORIGINAL_LABEL = '__pymssOriginalLabel'
 const LAST_LOCALIZED_LABEL = '__pymssLastLocalizedLabel'
 const LOCALIZE_LABEL_FLAG = '__pymssLocalizeLabel'
+
+type AnyNode = any
 
 export const SEPARATE_NODE_MIN_WIDTH = 300
 
@@ -416,7 +418,7 @@ export function registerPluginNodeSpecs(specs: NodeSpec[]) {
     if (existing) remove(spec.type)
     PLUGIN_NODE_SPECS[spec.type] = spec
     if (registered) {
-      const cls = makeNodeClass(spec) as any
+      const cls = makeNodeClass(spec)
       LiteGraph.registerNodeType(spec.type, cls)
       cls.category = translateNodeCategory(spec.category)
       registeredNodeClasses.push({ cls, spec })
@@ -528,7 +530,7 @@ export function setPymssNodeTranslator(translator?: NodeTranslator) {
   refreshRegisteredNodeMetadata(translator)
 }
 
-function makeNodeClass(spec: NodeSpec): any {
+function makeNodeClass(spec: NodeSpec): typeof LGraphNode {
   const klass = class extends LGraphNode {
     static title = translateNodeTitle(spec)
     static category = translateNodeCategory(spec.category)
@@ -546,10 +548,10 @@ function makeNodeClass(spec: NodeSpec): any {
       createWidgets(this, spec.widgets)
 
       for (const input of spec.inputs) {
-        const extra: any = {}
+        const extra: Record<string, unknown> = {}
         if (input.widget) extra.widget = { name: input.widget.name }
         if (input.shape !== undefined) extra.shape = input.shape
-        this.addInput(input.name, input.type, extra)
+        this.addInput(input.name, input.type, extra as never)
       }
 
       if (spec.dynamicStems) {
@@ -562,7 +564,7 @@ function makeNodeClass(spec: NodeSpec): any {
         for (const output of spec.outputs) this.addOutput(output.name, output.type)
       }
 
-      if (spec.isOutput) (this as any).is_output_node = true
+      if (spec.isOutput) (this as unknown as { is_output_node?: boolean }).is_output_node = true
       if (spec.type === 'pymss_audio_ensemble') syncEnsembleInputs(this, this.widgets?.[0]?.value)
       localizeNodeWithSpec(this, spec)
       if (isWorkflowSeparationNodeType(spec.type)) {
@@ -578,7 +580,7 @@ function makeNodeClass(spec: NodeSpec): any {
       }
     }
 
-    configure(info: any) {
+    configure(info: ISerialisedNode) {
       const normalizedInfo = info
       const incomingTitle = typeof normalizedInfo.title === 'string' ? normalizedInfo.title : ''
       const defaultTitle = !incomingTitle
@@ -598,19 +600,20 @@ function makeNodeClass(spec: NodeSpec): any {
       ])
     }
 
-    onSerialize(data: any) {
+    onSerialize(data: ISerialisedNode) {
+      data.properties ||= {}
       for (const widget of this.widgets || []) data.properties[widget.name] = widget.value
       if (usesDefaultTitle(this, spec)) delete data.title
-      restoreSerializedLocalizedNames(data.inputs, this.inputs)
-      restoreSerializedLocalizedNames(data.outputs, this.outputs)
+      restoreSerializedLocalizedNames(data.inputs as AnyNode[] | undefined, this.inputs)
+      restoreSerializedLocalizedNames(data.outputs as AnyNode[] | undefined, this.outputs)
     }
 
     onExecute() {
       /* Execution happens in pymss; the canvas is edit-only. */
     }
   }
-  ;(klass as any)._pymssSpec = spec
-  return klass
+  ;(klass as unknown as { _pymssSpec?: NodeSpec })._pymssSpec = spec
+  return klass as unknown as typeof LGraphNode
 }
 
 let registered = false
@@ -633,7 +636,7 @@ export function registerPymssNodes(translator?: NodeTranslator) {
   if (registered) return
   registered = true
   const register = (spec: NodeSpec, type = spec.type) => {
-    const cls = makeNodeClass(spec) as any
+    const cls = makeNodeClass(spec)
     LiteGraph.registerNodeType(type, cls)
     // Native search enumerates the registry without checking skip_list.
     // Keep legacy types addressable by name for imports, outside that catalog.
