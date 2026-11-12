@@ -52,6 +52,17 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 - 安装验收用`smoke-installer.ps1`显式stage/版本/Python3.12/编译器，重编唯一测试身份，只跑bootstrap health；正式安装包只读记录哈希，不拿生产AppId覆盖用户安装来冒烟。
 - Inno `[Files]`的可变资产排除须从包根锚定，不能以任意层级`models/data`排除合法Python依赖代码；安装验收逐文件比对完整stage，不能只验EXE/health或关键文件抽样。
 
+## 强制规则：前端 invoke 边界
+
+- worker 契约命令只能经 `src/api/*` 调用；唯一例外是 `src/utils/mediaPrecheck.ts`（Node 测试加载器无法解析别名）与
+  `src/features/plugin-marketplace/composable.ts`（Rust 启动命令返回 taskId、结果走事件），例外必须仍命中真实调用点。
+- 原生命令一旦在 `src/api/native.ts` 有包装（当前 `cancel_task` / `reveal_path` / `path_kinds`），其它地方不得再直接
+  `invoke` 同一命令；包装名单从该文件派生，新增包装即自动禁止旁路。
+- 被 Node 原生测试直接导入的模块（如 `src/features/audio-tools/optionalRuntimePackage.ts`）必须用相对路径加 `.ts`
+  扩展名，不能改成 `@/` 别名。
+- 守门：`python scripts/check-frontend-invokes.py`（CI 步骤 “Check the frontend invoke boundary”）与
+  `tests/python/test_frontend_invoke_boundary.py`；新增旁路或过期例外都会失败。
+
 ## 强制规则：DSH 插件集成（2026-11-09 事故后）
 
 MediaForge 曾把 MCP 配置注入 DSH 的 profile `cordis.patch.yml`，而 DSH 设置页会把新行追加到文件末尾注释之前——用户的 web_search 配置因此落进注入区块，下一次安装器整块替换就会删除它。差点发生，已迁移到 bundle。规则：

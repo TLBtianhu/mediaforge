@@ -141,7 +141,7 @@ jobs:
       - name: Check generated worker command contracts
         run: python scripts/sync_worker_contracts.py --check
 
-      - name: Check the frontend worker invoke boundary
+      - name: Check the frontend invoke boundary
         run: python scripts/check-frontend-invokes.py
 
       - name: Check the Tauri command map

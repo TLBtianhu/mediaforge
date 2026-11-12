@@ -10,11 +10,11 @@
                   surfaces/dispatch.py 查表分派；check-command-surface.py --strict 已进 CI
 命令字段契约      全部 8 个域 / 48 条命令已声明 payload/result schema；dispatch 先校验 payload
 前端契约边界      worker 契约调用集中在 src/api/*；scripts/check-frontend-invokes.py 扫描
+                  src/ 其余直接 invoke，只允许 media_precheck 与 manage_plugin 两个已记录例外；
+                  原生命令凡在 src/api/native.ts 有包装（cancel_task/reveal_path/path_kinds）
+                  者禁止在别处直调，包装名单从该文件派生；其余 149 处原生直调待按域收口
 CSP              tauri.conf.json 设置生产 csp 与 devCsp（Vite websocket/开发脚本单独放行）；
                   禁止生产 script-src 'unsafe-eval'，asset/plugin 协议显式列入
-                  src/ 其余直接 invoke，只允许 media_precheck 与 manage_plugin 两个已记录例外
-模型库分流        主音频模型库 = list_models（完整 ModelEntry/分类/debug 状态）；
-                  媒体目录 = model_hub（id/provider/modality/downloadable 行）
 模型库分流        主音频模型库 = list_models（完整 ModelEntry/分类/debug 状态）；
                   媒体目录 = model_hub（id/provider/modality/downloadable 行）
 Tauri 命令映射     manifest/tauri-commands.json（137 条，由 Rust #[tauri::command] 生成）；
@@ -154,6 +154,8 @@ worker.rs 白名单里的 "update_runtime_core" 字符串
 巨文件（行数）   SettingsView.vue 791 / ModelsView.vue 984 / SeparateView.vue 967 /
                  DebugView.vue 1395 / stores/task.ts 676 / stores/editor.ts 637
                  SeparateView 与 DebugView 已按工厂拆过一轮，剩下的先把有测试契约的簇外移。
+原生命令边界     149 处 src/api 之外的直接 invoke（pick_*/scan_*/窗口/编辑器工程/plugin_host/设置），
+                 已收口 cancel_task / reveal_path / path_kinds 三条；下一步按域接入 src/api/native.ts
 门面间接         已移除：worker_bootstrap.py 合并为普通模块，bootstrap_parts 分包已删除。
 测试稳定性       editorParameterSlider.test.mjs 已统一焦点、active 状态和生命周期拖拽准备；
                  plugin dialog fixtures 消除关闭时的二次 panic，以 pending 语义替代墙钟断言；
