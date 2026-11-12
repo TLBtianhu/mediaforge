@@ -1,6 +1,7 @@
+import { debugEditorPlayback } from '@/api/native'
 import { onBeforeUnmount, type Ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import i18n from '@/i18n'
 import { normalizeMasterLimiter } from '@/utils/masterLimiter'
 import masterLimiterWorkletUrl from '@/audio/masterLimiterProcessor.js?url'
@@ -871,7 +872,7 @@ export function useEditorPlayback(options: PlaybackOptions) {
     if (!(window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) return
     const timelineTime = timelinePlayback?.currentTime ?? currentTime.value
     const clips = new Map(activeClips().map(({ clip }) => [clip.id, clip]))
-    void invoke('debug_editor_playback', { snapshot: {
+    void debugEditorPlayback({
       event, status: status.value, time: currentTime.value, error: error.value,
       context: audioContext ? {
         state: audioContext.state, time: audioContext.currentTime, sampleRate: audioContext.sampleRate,
@@ -888,7 +889,7 @@ export function useEditorPlayback(options: PlaybackOptions) {
           seeking: audio?.seeking, readyState: audio?.readyState, error: audio?.error?.message,
         }
       }),
-    } }).catch(() => undefined)
+    }).catch(() => undefined)
   }
 
   function updateLevelMeter() {

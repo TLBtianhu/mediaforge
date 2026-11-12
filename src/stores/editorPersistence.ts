@@ -1,5 +1,5 @@
+import { loadEditorProject, saveEditorProject } from '@/api/native'
 import { onScopeDispose, watch, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import i18n from '@/i18n'
 import { toPersistedSession } from '@/stores/editorNormalize'
 import { AUTO_SAVE_DELAY, type PersistedSession } from '@/stores/editorSupport'
@@ -114,7 +114,7 @@ export function makeEditorPersistence({
   async function restoreSavedPluginSession() {
     const project = session.value
     if (!project) return
-    const persisted = await invoke<PersistedSession>('load_editor_project', { projectId: project.id })
+    const persisted = await loadEditorProject(project.id)
     if (session.value !== project) throw new Error(String(i18n.global.t('editor.plugins.stateCaptureSuperseded')))
     const savedSlots = projectPluginSlots(persisted)
     for (const slot of projectPluginSlots(project)) {
@@ -153,7 +153,7 @@ export function makeEditorPersistence({
             if (hasEditorPlugins(target)) await capturePluginState(target)
             if (discardingWindowChanges) return null
             const captured = toPersistedSession(target)
-            const result = await invoke<PersistedSession>('save_editor_project', { project: captured })
+            const result = await saveEditorProject(captured)
             if (session.value?.id === projectId) {
               if (result.updatedAt) session.value.updatedAt = Number(result.updatedAt)
               const host = currentPluginSession()

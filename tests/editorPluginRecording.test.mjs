@@ -53,15 +53,33 @@ function environment(t, { plugins = true, capability = true, playGate, permissio
     requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId }, cancelAnimationFrame: id => frames.delete(id),
     btoa, Uint8Array, DataView,
     async pluginHostCapabilities() { calls.push(['capability']); return { enabled: true, ...(capability === null ? {} : { recording: capability }) } },
-    async invoke(command, args) {
-      calls.push([command, args])
-      if (command === 'begin_editor_recording') { const id = `capture-${++fileId}`; files.set(id, []); return { recordingId: id } }
-      if (command === 'append_editor_recording_chunk') {
-        if (appendGate) await appendGate.promise
-        if (appendFailure) throw new Error(appendFailure)
-        files.get(args.recordingId).push(Buffer.from(args.dataBase64, 'base64'))
+    // The composable imports the typed recording wrappers; keep recording the same
+    // command/args tuples the assertions below expect.
+    async beginEditorRecording(projectId) {
+      calls.push(['begin_editor_recording', { projectId }])
+      const id = `capture-${++fileId}`
+      files.set(id, [])
+      return { recordingId: id }
+    },
+    async appendEditorRecordingChunk(projectId, recordingId, dataBase64) {
+      calls.push(['append_editor_recording_chunk', { projectId, recordingId, dataBase64 }])
+      if (appendGate) await appendGate.promise
+      if (appendFailure) throw new Error(appendFailure)
+      files.get(recordingId).push(Buffer.from(dataBase64, 'base64'))
+    },
+    async finishEditorRecording(projectId, recordingId, sampleRate, channels) {
+      calls.push(['finish_editor_recording', { projectId, recordingId, sampleRate, channels }])
+      if (finalizeGate) await finalizeGate.promise
+      return {
+        path: '/take.wav', name: 'Take', sampleRate, channels: 1,
+        duration: Buffer.concat(files.get(recordingId)).length / 2 / sampleRate,
       }
-      if (command === 'finish_editor_recording') { if (finalizeGate) await finalizeGate.promise; return { path: '/take.wav', name: 'Take', sampleRate: args.sampleRate, channels: 1, duration: Buffer.concat(files.get(args.recordingId)).length / 2 / args.sampleRate } }
+    },
+    async cancelEditorRecording(projectId, recordingId) {
+      calls.push(['cancel_editor_recording', { projectId, recordingId }])
+    },
+    async discardEditorRecording(projectId, recordingId) {
+      calls.push(['discard_editor_recording', { projectId, recordingId }])
     },
   })
   const scope = effectScope()

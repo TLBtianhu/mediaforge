@@ -1,4 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
+// 本模块会被 Node 原生测试直接导入（tests/editorAudio.test.ts），
+// 所以内部导入必须用相对路径加 .ts 扩展名；不要改成 @/ 别名。
+import { editorPreviewChunk } from '../api/native.ts'
 import type { EditorClip, EditorSource } from '../types/editor'
 
 /**
@@ -49,9 +51,7 @@ export function createPreviewChunkReader(context: BaseAudioContext) {
       // of source-rate buffers cannot interpolate across their boundaries.
       const sampleRate = context.sampleRate
       const channels = source.channels === 1 ? 1 : 2
-      const bytes = await invoke<ArrayBuffer | number[]>('editor_preview_chunk', {
-        path: source.path, index, sampleRate, channels,
-      })
+      const bytes = await editorPreviewChunk(source.path, index, sampleRate, channels)
       // An in-flight native call keeps its decoder slot until completion. A
       // cancelled request must not allocate PCM buffers or release that slot early.
       if (signal?.aborted) throw cancelled()

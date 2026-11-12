@@ -8,9 +8,23 @@ import { makeEditorPersistence } from '@/stores/editorPersistence'
 import { trackColor, duplicatedTrackColor, fileName, stripExt } from '@/stores/editorStems'
 import { makeId, clamp, cloneTracks, normalizeClip } from '@/stores/editorNormalize'
 import { createLogger } from '@/utils/logger'
+import {
+  createBlankEditorProject,
+  createEditorProjectFromTask,
+  deleteEditorProject,
+  deleteEditorProjectsForTasks,
+  deleteOrphanedEditorProjects,
+  editorProjectIdsForTasks,
+  importEditorAssets,
+  listEditorProjects,
+  listOpenEditorProjectsForTasks,
+  listOrphanedEditorProjects,
+  loadEditorProject,
+  openEditorWindow,
+  pickSingleAudioFile,
+} from '@/api/native'
 import { clonePluginChain } from '@/utils/editorPlugins'
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import i18n from '@/i18n'
 import {
   overwriteClipsInRange,
@@ -41,7 +55,7 @@ export type {
 } from '@/types/editor'
 
 import type {
-  ExportResult, ImportEditorAssetsResult, ScanAudioPathsResult,
+  ExportResult, ScanAudioPathsResult,
   EditorExportProgress,
   AudioMetadata,
   HistorySnapshot,
@@ -277,7 +291,20 @@ export const useEditorStore = defineStore('editor', () => {
     listOrphanedProjects, deleteOrphanedProjects, loadProject,
   } = makeEditorProjects({
     session, loading, lastError, projectSummaries, selectedTrackId, selectedClipId,
-    invoke, clearHistory, selectTrack, localizedAutoTrackName,
+    native: {
+      createFromTask: createEditorProjectFromTask,
+      openWindow: openEditorWindow,
+      listProjects: listEditorProjects,
+      createBlank: createBlankEditorProject,
+      deleteProject: deleteEditorProject,
+      projectIdsForTasks: editorProjectIdsForTasks,
+      deleteProjectsForTasks: deleteEditorProjectsForTasks,
+      openProjectIdsForTasks: listOpenEditorProjectsForTasks,
+      listOrphaned: listOrphanedEditorProjects,
+      deleteOrphaned: deleteOrphanedEditorProjects,
+      loadProject: loadEditorProject,
+    },
+    clearHistory, selectTrack, localizedAutoTrackName,
     hydratePeaksFromCache, hydrateSourceMetadataState, hydrateSessionSourcesInBackground,
     saveProject, drainPendingSaves, scheduleSave,
     suspendProjectSave, resumeProjectSave,
@@ -454,10 +481,7 @@ export const useEditorStore = defineStore('editor', () => {
   async function scanAssets(paths: string[], options?: { addTracks?: boolean }) {
     if (!session.value) throw new Error('Editor session is not loaded')
     const targetSession = session.value
-    const imported = await invoke<ImportEditorAssetsResult>('import_editor_assets', {
-      projectId: targetSession.id,
-      paths,
-    })
+    const imported = await importEditorAssets(targetSession.id, paths)
     if (session.value !== targetSession) throw new Error('Editor project changed during asset import')
     const sourcePaths = new Map<string, string>()
     const warnings = [...(imported.warnings || [])]
@@ -519,7 +543,7 @@ export const useEditorStore = defineStore('editor', () => {
     missingSources, missingSourcesInUse, assertNoMissingSourcesInUse,
     pickRelinkFile, relinkSource, relinkMissingSources,
   } = makeEditorSourceActions({
-    session, invoke, hydratePeaksFromCache, hydrateSessionSourcesInBackground,
+    session, pickSingleAudioFile, hydratePeaksFromCache, hydrateSessionSourcesInBackground,
   })
 
   const { exportMix, cancelExport } = makeEditorExportActions({

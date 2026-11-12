@@ -12,6 +12,21 @@ import type {
 } from '@/stores/editorSupport'
 import type { EditorSourceRole } from '@/types/editor'
 
+/** Native editor-project commands, injected so the store stays testable. */
+export type EditorProjectsNative = {
+  createFromTask: (payload: { taskId: string; input: string; outputDir: string; outputs: StemOutput[] }) => Promise<PersistedSession>
+  openWindow: (projectId: string) => Promise<unknown>
+  listProjects: () => Promise<EditorProjectSummary[]>
+  createBlank: (payload: { name: string; locale?: string }) => Promise<PersistedSession>
+  deleteProject: (projectId: string) => Promise<boolean>
+  projectIdsForTasks: (taskIds: string[]) => Promise<string[]>
+  deleteProjectsForTasks: (taskIds: string[]) => Promise<EditorProjectCleanupResult>
+  openProjectIdsForTasks: (taskIds: string[]) => Promise<string[]>
+  listOrphaned: () => Promise<OrphanedEditorProject[]>
+  deleteOrphaned: (projectIds: string[]) => Promise<EditorProjectCleanupResult>
+  loadProject: (projectId: string) => Promise<PersistedSession>
+}
+
 type Deps = {
   session: Ref<EditorSession | null>
   loading: Ref<boolean>
@@ -19,7 +34,7 @@ type Deps = {
   projectSummaries: Ref<EditorProjectSummary[]>
   selectedTrackId: Ref<string | null>
   selectedClipId: Ref<string | null>
-  invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+  native: EditorProjectsNative
   clearHistory: () => void
   selectTrack: (trackId: string | null) => void
   localizedAutoTrackName: (name: string, role: EditorSourceRole, stemKey?: string | null) => string
@@ -36,7 +51,7 @@ type Deps = {
 /** Editor project listing, creation, loading and deletion. */
 export function makeEditorProjects({
   session, loading, lastError, projectSummaries, selectedTrackId, selectedClipId,
-  invoke, clearHistory, selectTrack, localizedAutoTrackName,
+  native, clearHistory, selectTrack, localizedAutoTrackName,
   hydratePeaksFromCache, hydrateSourceMetadataState, hydrateSessionSourcesInBackground,
   saveProject, drainPendingSaves, scheduleSave, suspendProjectSave, resumeProjectSave,
 }: Deps) {
@@ -48,13 +63,11 @@ export function makeEditorProjects({
   }
 
   async function requestProjectFromTask(task: SeparationTask) {
-    return invoke<PersistedSession>('create_editor_project_from_task', {
-      payload: {
-        taskId: task.id,
-        input: task.input,
-        outputDir: task.output,
-        outputs: task.outputs as StemOutput[],
-      },
+    return native.createFromTask({
+      taskId: task.id,
+      input: task.input,
+      outputDir: task.output,
+      outputs: task.outputs as StemOutput[],
     })
   }
 
@@ -81,7 +94,7 @@ export function makeEditorProjects({
   }
 
   async function openProjectWindow(projectId: string) {
-    return invoke('open_editor_window', { payload: { projectId } })
+    return native.openWindow(projectId)
   }
 
   async function ensureProjectForTask(task: SeparationTask, options?: { loadIntoSession?: boolean }) {
@@ -92,7 +105,7 @@ export function makeEditorProjects({
   }
 
   async function listProjects() {
-    const result = await invoke<EditorProjectSummary[]>('list_editor_projects')
+    const result = await native.listProjects()
     projectSummaries.value = [...(result || [])].sort((a, b) => b.updatedAt - a.updatedAt)
     return projectSummaries.value
   }
@@ -105,11 +118,9 @@ export function makeEditorProjects({
   // blank-project entry is hidden until external audio import has clear UI.
   async function createBlankProject(name?: string) {
     const locale = getCurrentLocale()
-    const result = await invoke<PersistedSession>('create_blank_editor_project', {
-      payload: {
-        name: name?.trim() || blankProjectName(),
-        locale,
-      },
+    const result = await native.createBlank({
+      name: name?.trim() || blankProjectName(),
+      locale,
     })
     const normalized = normalizeSession(result, localizedAutoTrackName)
     const summary: EditorProjectSummary = {
@@ -133,7 +144,7 @@ export function makeEditorProjects({
     suspendProjectSave(projectId)
     let result: boolean
     try {
-      result = await invoke<boolean>('delete_editor_project', { projectId })
+      result = await native.deleteProject(projectId)
     } catch (error) {
       resumeProjectSave(projectId)
       if (session.value?.id === projectId) scheduleSave()
@@ -154,14 +165,12 @@ export function makeEditorProjects({
       failedProjectIds: [],
     })
     if (!uniqueTaskIds.length || !isTauriRuntime()) return emptyResult()
-    const projectIds = await invoke<string[]>('editor_project_ids_for_tasks', { taskIds: uniqueTaskIds })
+    const projectIds = await native.projectIdsForTasks(uniqueTaskIds)
 
     await drainPendingSaves()
     projectIds.forEach(projectId => suspendProjectSave(projectId))
     try {
-      const result = await invoke<EditorProjectCleanupResult>('delete_editor_projects_for_tasks', {
-        taskIds: uniqueTaskIds,
-      })
+      const result = await native.deleteProjectsForTasks(uniqueTaskIds)
       const removedProjectIds = new Set([
         ...(result.deletedProjectIds || []),
         ...(result.missingProjectIds || []),
@@ -182,15 +191,13 @@ export function makeEditorProjects({
   async function listOpenProjectsForTasks(taskIds: string[]) {
     const uniqueTaskIds = [...new Set(taskIds.map(id => id.trim()).filter(Boolean))]
     if (!uniqueTaskIds.length || !isTauriRuntime()) return []
-    const backendOpenProjectIds = await invoke<string[]>('list_open_editor_projects_for_tasks', {
-      taskIds: uniqueTaskIds,
-    })
+    const backendOpenProjectIds = await native.openProjectIdsForTasks(uniqueTaskIds)
     return [...new Set(backendOpenProjectIds || [])]
   }
 
   async function listOrphanedProjects() {
     if (!isTauriRuntime()) return [] as OrphanedEditorProject[]
-    return invoke<OrphanedEditorProject[]>('list_orphaned_editor_projects')
+    return native.listOrphaned()
   }
 
   async function deleteOrphanedProjects() {
@@ -207,7 +214,7 @@ export function makeEditorProjects({
     await drainPendingSaves()
     projectIds.forEach(projectId => suspendProjectSave(projectId))
     try {
-      const result = await invoke<EditorProjectCleanupResult>('delete_orphaned_editor_projects', { projectIds })
+      const result = await native.deleteOrphaned(projectIds)
       const removedProjectIds = new Set([
         ...(result.deletedProjectIds || []),
         ...(result.missingProjectIds || []),
@@ -229,7 +236,7 @@ export function makeEditorProjects({
     loading.value = true
     lastError.value = null
     try {
-      const result = await invoke<PersistedSession>('load_editor_project', { projectId })
+      const result = await native.loadProject(projectId)
       session.value = normalizeSession(result, localizedAutoTrackName)
       await hydratePeaksFromCache(session.value.id)
       const metadataChanged = await hydrateSourceMetadataState(session.value.id)

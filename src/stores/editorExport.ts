@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { cancelEditorMixExport, pluginHostCancelRender, pluginHostCleanupRender, pluginHostRender } from '@/api/native'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { Ref } from 'vue'
 import i18n from '@/i18n'
@@ -157,7 +157,7 @@ export function makeEditorExportActions({
             nativeRenderTaskId = taskId
             exportProgress.value = { phase: 'preparing', completed: 0, total: 100, current: '' }
             try {
-              const rendered = await invoke<{ path: string; duration: number; sampleRate: number; channels: number; tailLimited?: boolean }>('plugin_host_render', {
+              const rendered = await pluginHostRender({
                 project: pluginProcessingProject(snapshot), taskId,
                 sampleRate: normalizeMasterLimiter(snapshot.masterLimiter).enabled
                   ? masterLimiterRenderRate(snapshot, normalized.audioParams?.sampleRate) : undefined,
@@ -215,7 +215,7 @@ export function makeEditorExportActions({
       throw failure
     } finally {
       if (pluginRenderRequired) {
-        await invoke('plugin_host_cleanup_render', { taskId }).catch(error => {
+        await pluginHostCleanupRender(taskId).catch(error => {
           studioLog.warn('Failed to clean up plugin render files', error)
         })
       }
@@ -230,11 +230,7 @@ export function makeEditorExportActions({
 
   async function cancelPendingExportTask(pending: PendingEditorExport | null) {
     if (!pending) return false
-    return invoke<boolean>('cancel_editor_mix_export', {
-      taskId: pending.id,
-      projectId: pending.projectId,
-      exportDir: pending.exportDir,
-    })
+    return cancelEditorMixExport(pending.id, pending.projectId, pending.exportDir)
   }
 
   async function cancelExport() {
@@ -244,7 +240,7 @@ export function makeEditorExportActions({
     try {
       if (exportRenderController) {
         exportRenderController.abort()
-        if (nativeRenderTaskId) await invoke('plugin_host_cancel_render', { taskId: nativeRenderTaskId })
+        if (nativeRenderTaskId) await pluginHostCancelRender(nativeRenderTaskId)
         return true
       }
       if (exportStartPromise) await exportStartPromise
