@@ -20,6 +20,12 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1
 powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -SkipSign -SkipDownloadCopy -OutputDir release\candidates\0.0.33
 ```
 
+本地工具链若被清理过，先确认 `rustc --version` 与 ISCC 路径可用（默认
+`%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`，可用 `MEDIAFORGE_ISCC` 覆盖）。
+Inno Setup 6.7+ 不再随安装器分发中文翻译：缺 `Languages\ChineseSimplified.isl` 时 ISCC 会报
+`Couldn't open include file ...ChineseSimplified.isl`；从 `jrsoftware/issrc` 对应 tag 的
+`Files/Languages/Unofficial/` 取同名文件放入 Inno 的 `Languages\` 即可（本机 6.7.4 实测）。
+
 ```
 □ [1/6] 生产构建走 pnpm tauri build（不是 cargo build，否则前端资源不内嵌）
 □ [2/6] staging断言通过：完整python分层、manifest、SDK、integrations、bin与bootstrap
