@@ -11,8 +11,9 @@
 | 国内（推荐，免登录） | https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist | 单连接约 1 MB/s，可用下载器加速 |
 | GitHub Releases | https://github.com/TLBtianhu/mediaforge/releases | 需要能访问 GitHub |
 
-- 安装包：`MediaForge-<版本>-windows-x64-cuda-setup.exe`（约 1.85 GB）
-- 便携版：`MediaForge-<版本>-windows-x64-portable.zip`（约 3.3 GB，解压即用，无需管理员）
+- 安装包：`MediaForge-<版本>-windows-x64-cuda-setup.exe`（约 85 MB，不含运行时）
+- 便携版：`MediaForge-<版本>-windows-x64-portable.7z`（约 117 MB，解压即用，无需管理员）
+安装包**不内置运行时**：首次启动会下载约 3.8 GB 的 CUDA 运行包（解压后约 6.8 GB），校验 sha256 后解压；模型权重也不随包，按需下载。
 
 ## 30 秒上手
 
@@ -20,7 +21,8 @@
 2. 打开应用 → 模型库 → 下载一个模型（例如 Real-ESRGAN 2×，约 64 MB）
 3. 图像处理 → 拖入图片 → 选超分和模型 → 开始转换
 
-数据固定放在 `C:\Users\<你>\.mediaforge`，**卸载不会删除模型**；升级就是重新装一遍新安装包，数据原样保留。
+数据、模型和运行时放在安装目录旁：`%LOCALAPPDATA%\Programs\MediaForge\data`、`models`、`runtime-envs`（便携版在 exe 同目录）。
+**卸载不会删除它们**，覆盖升级也会保留；但它们与程序同目录——清理“程序目录”时不要整目录删除，否则数据会一起丢失。
 
 ## 想用 agent 调它？
 
@@ -89,8 +91,8 @@ python/media_ops/
 
 页面：`#/assets`
 
-- SQLite 索引（默认 `%APPDATA%/MediaForge/library.db`）
-- 缩略图缓存（`%APPDATA%/MediaForge/thumbnails`）
+- SQLite 索引（`<数据根>/library.db`）
+- 缩略图缓存（`<数据根>/thumbnails`）
 - 导入文件/文件夹，支持拖拽
 - 搜索名称/路径/标签，按图片/视频/音频筛选
 - 一键「去格式工厂」带着素材跳转
@@ -183,9 +185,9 @@ MCP 只提供能力，不传递 DSH 模型或 API Key。模型网关和内部 Ag
 
 页面：`#/agent`
 
-- 读取 `agent-jobs/index.json` 和 `agent-workspace.json`
-- 手动图像/视频/格式工厂任务也会写入同一索引
-- 音频分离批次同样写入同一索引，可在 Agent 页观察和取消
+- 读取 `<数据根>/agent-jobs/<jobId>.json` 账本（无 index/workspace 副本）
+- 手动图像/视频/格式工厂任务也写入同一账本
+- 音频分离批次同样写入同一账本，可在队列页观察和取消
 - 手动用户可以看到 Agent 通过 MCP 启动的任务，也可以取消
 - Agent 先查 `models_list`，计划缺模型时用 `models_download` 下载；下载前应由用户确认
 - 手动任务从 Agent 页取消时会走 `cancel_task`，Agent 任务走 `cancel_agent_job`
@@ -224,8 +226,8 @@ python download_models.py
 | 环境 | 启动方式 | 数据 / 缓存 | 用途 |
 | --- | --- | --- | --- |
 | 开发 | `.\scripts\dev.ps1` | `.dev-data/`、`.dev-webview/` | 日常改代码、看实际效果 |
-| 干净包验证 | `.\scripts\clean-test.ps1 -Exe "C:\Program Files\MediaForge\MediaForge.exe"` | 系统临时目录，关闭即删 | 验证“首次启动、无个性化配置”的发布包 |
-| 狗粮 / 长期用户 | `.\scripts\dogfood.ps1 -Exe "C:\Program Files\MediaForge\MediaForge.exe"` | 用户目录 `.mediaforge` + 默认 WebView2 | 模拟真实用户持续使用与跨版本更新 |
+| 干净包验证 | `.\scripts\clean-test.ps1 -Exe "%LOCALAPPDATA%\Programs\MediaForge\app\MediaForge.exe"` | 系统临时目录，关闭即删 | 验证“首次启动、无个性化配置”的发布包 |
+| 狗粮 / 长期用户 | `.\scripts\dogfood.ps1 -Exe "%LOCALAPPDATA%\Programs\MediaForge\app\MediaForge.exe"` | 安装根 data/models/runtime-envs + 默认 WebView2 | 模拟真实用户持续使用与跨版本更新 |
 
 > `src-tauri/target/release` 会被应用识别为开发构建。干净包验证和狗粮必须指向**安装后的 exe**，不能用 target 下的产物。
 
@@ -241,7 +243,7 @@ python download_models.py
 
 - `clean-test.ps1` 的临时 profile 会在窗口关闭后自动删除
 - `dogfood` 的数据**故意不清理**，否则无法测试升级/迁移
-- 要重置狗粮环境：卸载应用后删除用户目录 `.mediaforge` 和 `%LOCALAPPDATA%\studio.mediaforge.desktop`
+- 要重置狗粮环境：卸载应用后删除 `<安装根>\data`、`models`、`runtime-envs` 和 `%LOCALAPPDATA%\studio.mediaforge.desktop`
 - 做跨版本升级测试时，建议用**独立 Windows 本地账户**或虚拟机跑狗粮，避免和开发账户互相影响
 
 ## 开发
@@ -287,7 +289,7 @@ WEBVIEW2_USER_DATA_FOLDER
 - `data/`：旧开发数据，已 ignore
 - `.dev-data/`：隔离开发数据，已 ignore
 - `.dev-webview/`：隔离 WebView2 缓存，已 ignore
-- 正式版数据：用户目录下的 `.mediaforge`
+- 正式版数据：`<安装根>/data`（模型/运行时为同根兄弟目录）
 - 模型、日志、索引、下载记录都不进 Git
 - `scripts/reset-dev.ps1` 只清理项目内开发目录，不碰正式用户数据
 

@@ -14,7 +14,9 @@
                   原生命令 invoke 全部收口在 src/api/native.ts（91 条），包装名单从该文件派生，
                   worker 契约以外的直接 invoke 已清零；工厂依赖改为显式 native port
 CSP              tauri.conf.json 设置生产 csp 与 devCsp（Vite websocket/开发脚本单独放行）；
-                  禁止生产 script-src 'unsafe-eval'，asset/plugin 协议显式列入
+                  禁止生产 script-src 'unsafe-eval'，asset/plugin 协议显式列入；
+                  插件视图响应自带 CSP（本地资源/内联放行，connect-src 限本地、form-action 'none'），
+                  沙箱 opaque origin 的 Access-Control-Allow-Origin 为 null
 模型库分流        主音频模型库 = list_models（完整 ModelEntry/分类/debug 状态）；
                   媒体目录 = model_hub（id/provider/modality/downloadable 行）
 Tauri 命令映射     manifest/tauri-commands.json（137 条，由 Rust #[tauri::command] 生成）；
