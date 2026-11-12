@@ -68,12 +68,37 @@ def _json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
 
 
+def _fsync_parent(path: Path) -> None:
+    """Persist the rename itself where the platform supports directory fsync.
+
+    Windows cannot open a directory for this, and NTFS already orders the rename
+    behind the file data, so the file fsync above is the whole guarantee there.
+    """
+    if os.name == "nt":
+        return
+    try:
+        descriptor = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _atomic_write(path: Path, text: str) -> None:
-    # Writers publish a whole job snapshot with one atomic replacement.
+    # Writers publish a whole job snapshot with one atomic replacement. Flush the
+    # payload to disk before the rename: the rename alone only makes the new name
+    # visible, so a crash could otherwise publish a truncated terminal record that
+    # the reader rejects, silently dropping an acknowledged job from the ledger.
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        temporary.write_text(text, encoding="utf-8")
+        with temporary.open("w", encoding="utf-8") as file:
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
         temporary.replace(path)
+        _fsync_parent(path)
     finally:
         temporary.unlink(missing_ok=True)
 

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
+from core import operation_kernel as kernel  # noqa: E402
 from core.operation_kernel import Job, OperationKernel  # noqa: E402
 from core.worker_runtime_lock import RuntimeLockBusy  # noqa: E402
 from core.job_store import JobStoreError
@@ -262,6 +264,38 @@ class PersistTests(unittest.TestCase):
             kernel._persist(job)  # 没有 force，但状态变了必须落盘
             saved = read_json(root / "agent-jobs" / "job_status_change.json")
             self.assertEqual(saved["status"], "running")
+
+
+class AtomicWriteTests(unittest.TestCase):
+    def test_payload_is_fsynced_before_the_rename(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "job_atomic.json"
+            target_existed = []
+            real_fsync = os.fsync
+
+            def record(descriptor: int) -> None:
+                target_existed.append(target.exists())
+                real_fsync(descriptor)
+
+            with mock.patch.object(kernel.os, "fsync", side_effect=record):
+                kernel._atomic_write(target, '{"ok": true}\n')
+
+            self.assertEqual(target.read_text(encoding="utf-8"), '{"ok": true}\n')
+            self.assertTrue(target_existed, "the payload must be flushed to disk")
+            self.assertFalse(
+                target_existed[0],
+                "fsync must happen before the rename becomes visible",
+            )
+            self.assertEqual(list(target.parent.glob("*.tmp")), [])
+
+    def test_failed_fsync_never_publishes_a_partial_record(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "job_atomic_failure.json"
+            with mock.patch.object(kernel.os, "fsync", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    kernel._atomic_write(target, '{"ok": false}\n')
+            self.assertFalse(target.exists(), "a failed flush must not publish the record")
+            self.assertEqual(list(target.parent.glob("*.tmp")), [])
 
 
 class SingleFileHistoryTests(unittest.TestCase):
