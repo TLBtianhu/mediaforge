@@ -17,6 +17,8 @@ CSP              tauri.conf.json 设置生产 csp 与 devCsp（Vite websocket/�
                   禁止生产 script-src 'unsafe-eval'，asset/plugin 协议显式列入；
                   插件视图响应自带 CSP（本地资源/内联放行，connect-src 限本地、form-action 'none'），
                   沙箱 opaque origin 的 Access-Control-Allow-Origin 为 null
+回收站边界         move_paths_to_trash 只允许 <data-root>/outputs 与 editor-projects 子树；
+                  canonicalize 后判断（Windows 去掉 \\?\ 前缀），.. / 相对路径 / 逃逸一律拒绝
 模型库分流        主音频模型库 = list_models（完整 ModelEntry/分类/debug 状态）；
                   媒体目录 = model_hub（id/provider/modality/downloadable 行）
 Tauri 命令映射     manifest/tauri-commands.json（137 条，由 Rust #[tauri::command] 生成）；

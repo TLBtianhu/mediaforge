@@ -3,7 +3,8 @@
   "_comment": [
     "运行时清单：这套运行时能做什么、跑的是什么解释器与 torch。",
     "App 与 worker 在启动/接单时校验，缺能力要明确拒绝，而不是等到调用时才报模块缺失。",
-    "schemaVersion 2必须显式声明Python ABI；程序从本清单读取资产身份，不在代码中重复写assetId/hash。"
+    "schemaVersion 2必须显式声明Python ABI；程序从本清单读取资产身份，不在代码中重复写assetId/hash。",
+    "urls 按可用性排序：ModelScope 当前可用（Range 206），hf-mirror 会 302 到 HF 并返回 404，只作兜底。"
   ],
   "fallbackAssetId": "runtime-cuda-py312-2026.11.7",
   "runtimes": [
@@ -28,8 +29,8 @@
       "sha256": "3a6442657831aa52818e359592c467cea20f6bbdfef7bf9ee550fd66f5bdce84",
       "size": 3794089293,
       "urls": [
-        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-py312-2026.11.7.zip",
-        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-py312-2026.11.7.zip"
+        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-py312-2026.11.7.zip",
+        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-py312-2026.11.7.zip"
       ]
     }
   ]
