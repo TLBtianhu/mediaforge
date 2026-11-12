@@ -125,8 +125,12 @@ Vue 拆分          已拆分簇的测试直接实例化下列工厂，其余部
    当前完整原生UI、崩溃中途多文件事务恢复与跨平台后代监督仍需独立验收。
 
 2. 本地候选与正式分发
-   当前Windows候选版本0.0.34，从当前干净源码重建，复用既有3.12 bootstrap；
-   具体源码提交、产物哈希及独立身份无GUI验收以release/candidates/0.0.34/verification.json为准。
+   当前Windows候选版本0.0.34，从提交6fa4f4c的干净源码重建（rust 1.99.1 / Inno 6.7.4，未签名）；
+   候选目录release/candidates/0.0.34-20261112/，产物哈希、stage清单、安装与运行时证据见其
+   candidate.json与stage-0.0.34.sha256。本机静默安装 exit 0，data/models/runtime-envs 初始为空；
+   再用 MediaForge.exe --smoke-install-runtime 真实下载并校验 3.79GB CUDA 资产
+   （30271 文件/6.83GB，Python 3.12.13、torch 2.7.1+cu128、CUDA True），worker env_info 与
+   list_models 326 条均通过。GUI 视觉验收、模型下载与签名仍未做。
    旧候选保留各自原始证据，不把0.0.33安装包当作包含最近源码变更。
    0.0.33历史本地原生及安装/便携/更新包已生成；独立AppId的31→33升级、
    静默卸载保留4项资产、真实3.12资产headless首装/拒旧ABI/坏哈希/离线复用、
