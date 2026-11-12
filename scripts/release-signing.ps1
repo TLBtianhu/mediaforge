@@ -77,7 +77,9 @@ function New-ReleaseProcessStartInfo {
     $start.RedirectStandardError = $true
     $start.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
     $start.StandardErrorEncoding = New-Object Text.UTF8Encoding($false)
-    foreach ($name in $Environment.Keys) { $start.EnvironmentVariables[$name] = [string]$Environment[$name] }
+    $environmentVariables = $start.EnvironmentVariables
+    if ($null -eq $environmentVariables) { $environmentVariables = $start.Environment }
+    foreach ($name in $Environment.Keys) { $environmentVariables[$name] = [string]$Environment[$name] }
     $start
 }
 
