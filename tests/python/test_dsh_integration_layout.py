@@ -186,6 +186,9 @@ await adapter.apply({
             self.assertEqual(connection["env"]["MEDIAFORGE_MODEL_DIR"], str(app / ".dev-data" / "models"))
             self.assertEqual(connection["env"]["MEDIAFORGE_RUNTIME_ENVS_DIR"], str(app / ".dev-data" / "runtime-envs"))
 
+    def test_migration_tool_declares_utf8_for_windows_powershell(self) -> None:
+        self.assertTrue((self.root / "register.ps1").read_bytes().startswith(b"\xef\xbb\xbf"))
+
     def test_migration_tool_no_longer_writes_a_launcher_or_registry_pointer(self) -> None:
         self.assertNotIn("mediaforge-mcp.cmd", self.register)
         self.assertNotIn("HKCU:", self.register)

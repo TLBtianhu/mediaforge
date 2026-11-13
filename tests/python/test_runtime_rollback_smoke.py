@@ -33,6 +33,8 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         source = (ROOT / "scripts/make-fixture-runtime.ps1").read_text(encoding="utf-8")
         for required in ("python312.dll", "Lib/encodings/__init__.py", "Lib/site-packages", "torchBackend", "basePrefix"):
             self.assertIn(required, source)
+        for key in ("platform", "arch"):
+            self.assertIn(r'\"' + key + r'\"', source)
         installer = (ROOT / "src-tauri/src/runtime_assets.rs").read_text(encoding="utf-8")
         self.assertNotIn("repair_embedded_python_from", installer)
         self.assertNotIn('backend == "fixture"', installer)

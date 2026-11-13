@@ -1,4 +1,4 @@
-# MediaForge DSH 集成的迁移工具（不再向 cordis.patch.yml 注入配置）。
+﻿# MediaForge DSH 集成的迁移工具（不再向 cordis.patch.yml 注入配置）。
 #
 # 旧安装器会在此维护一段 BEGIN/END 区块，整块替换。问题是 DSH 设置页把新行追加到
 # 文件末尾，于是设置会落进区块内部，下次替换就把用户配置删掉。现在改为 bundle 安装：

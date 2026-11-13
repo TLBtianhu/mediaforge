@@ -75,6 +75,7 @@ jobs:
           workspaces: src-tauri -> target
           key: macos-native
       - uses: actions/setup-python@v5
+        id: python
         with:
           python-version: '3.12'
       - name: Verify single instance and bundled bootstrap
@@ -82,6 +83,8 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml single_instance
           cargo test --manifest-path src-tauri/Cargo.toml bundled_bootstrap_uses_user_overlay_without_changing_bundle
       - name: Verify plugin resources and native protocol paths
+        env:
+          MEDIAFORGE_RUNTIME_PYTHON: ${{ steps.python.outputs.python-path }}
         run: |
           python -m pip install --disable-pip-version-check --prefer-binary "numpy>=1.26,<3"
           python -m unittest discover -s tests/python -t tests -p 'test_plugin_sdk_bundle.py'
@@ -105,6 +108,7 @@ jobs:
           cache: pnpm
 
       - uses: actions/setup-python@v5
+        id: python
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -156,6 +160,9 @@ jobs:
         run: python scripts/smoke_mcp.py
 
       - name: Run all tests
+        env:
+          MEDIAFORGE_RUNTIME_PYTHON: ${{ steps.python.outputs.python-path }}
+          PYTHONUTF8: '1'
         run: pnpm test:all
 
       - name: Build frontend
@@ -175,6 +182,9 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: runtime-lifecycle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Build the real release executable
         run: cargo build --release --manifest-path src-tauri/Cargo.toml
       - name: Verify the development executable keeps its data in the repository
@@ -192,6 +202,8 @@ jobs:
           ./scripts/fetch-third-party.ps1 -ToolName aria2 -Destination "$stage\bin"
           ./scripts/smoke-runtime-rollback.ps1 -AppExe "$stage\MediaForge.exe"
       - name: Verify first install downloads, verifies and activates a runtime
+        env:
+          TEMP: ${{ runner.temp }}
         shell: pwsh
         run: |
           ./scripts/make-fixture-runtime.ps1 -OutZip "$env:RUNNER_TEMP\runtime-fixture.zip" -AssetId 'runtime-fixture'

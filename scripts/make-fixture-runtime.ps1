@@ -16,7 +16,16 @@ try {
 fn main() {
     let exe = std::env::current_exe().unwrap();
     let root = exe.parent().unwrap().parent().unwrap().to_string_lossy();
-    println!("{{\"python\":\"3.12\",\"prefix\":{:?},\"basePrefix\":{:?},\"imports\":true,\"torchBackend\":\"cuda\"}}", root, root);
+    println!(
+        concat!(
+            "{{\"python\":\"3.12\",\"platform\":{:?},\"arch\":{:?},",
+            "\"prefix\":{:?},\"basePrefix\":{:?},\"imports\":true,\"torchBackend\":\"cuda\"}}"
+        ),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        root,
+        root,
+    );
 }
 '@ | Set-Content -LiteralPath $source -Encoding ASCII
     $fakePython = Join-Path $work 'python.exe'
