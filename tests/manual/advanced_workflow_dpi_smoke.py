@@ -50,7 +50,7 @@ with sync_playwright() as playwright:
             page.add_init_script('''
               window.__dpiGetterBefore=Object.getOwnPropertyDescriptor(window,'devicePixelRatio').get
               localStorage.setItem('pymss-studio:app-settings', JSON.stringify({
-                startupOnboardingSeen:true,locale:'zh-CN',themeMode:'dark',scaleFactor:1,
+                version:1,startupOnboardingSeen:true,locale:'zh-CN',themeMode:'dark',scaleFactor:1,
               }))
             ''')
             page.goto(args.url.rstrip('/')+'/#/workflow-node-editor?new=1')

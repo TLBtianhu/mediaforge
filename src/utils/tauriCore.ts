@@ -4,7 +4,7 @@ import { isTutorialFrame, tutorialAdapter } from '@/features/onboarding/demoCont
 export * from '@tauri-core-native'
 export function invoke<T>(command: string, args?: native.InvokeArgs, options?: native.InvokeOptions): Promise<T> {
   if (isTutorialFrame()) {
-    try { return tutorialAdapter().invoke(command, args) as Promise<T> } catch (error) { return Promise.reject(error) }
+    try { return tutorialAdapter().nativeCall(command, args) as Promise<T> } catch (error) { return Promise.reject(error) }
   }
   return native.invoke<T>(command, args, options)
 }

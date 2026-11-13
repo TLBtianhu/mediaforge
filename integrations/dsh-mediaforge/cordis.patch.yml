@@ -1,14 +1,3 @@
 - insert:
     - id: mediaforge-mcp
-      name: '@deepseek-ai/dsh-mcp-client'
-      config:
-        serverName: mediaforge
-        transport: stdio
-        # 启动器随安装包放在 integrations/dsh-mediaforge 下，
-        # 不再写旧 .mediaforge；cmd 会展开 %LOCALAPPDATA%。
-        command: cmd
-        args:
-          - /c
-          - '%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\mediaforge-mcp.cmd'
-        failOnStartupError: false
-        toolCallTimeoutMs: 120000
+      name: './mcp-plugin.mjs'

@@ -4,14 +4,41 @@
  * 所有动作先过一遍 runtimeBusy 与平台闸门，再走三选一确认（confirmRuntimeAction），
  * 确认被关掉（Esc / 遮罩 / 关闭）一律当取消。派生状态见 runtimeState.ts。
  */
-import type { InstalledRuntime, RuntimeBackend } from '../../stores/app.ts'
-import { invoke } from '@tauri-apps/api/core'
-import { runtimeEnvironmentForBackend, runtimeSizeHint } from '../../utils/runtime.ts'
+// 本模块会被 Node 原生测试直接导入，内部导入必须用相对路径加 .ts 扩展名；
+// 不要改成 @/ 别名。
+import { runtimeAssetInstall, runtimeAssetStatus, type RuntimeAssetStatus } from '../../api/native.ts'
+import type { Ref } from 'vue'
+import type { DialogApi, MessageApi } from 'naive-ui'
+import type { InstalledRuntime, RuntimeBackend, useAppStore } from '../../stores/app.ts'
+import { runtimeBackendsForTarget, runtimeEnvironmentForBackend, runtimeSizeHint } from '../../utils/runtime.ts'
+import { formatBytes } from '../../utils/format.ts'
 
-type Deps = Record<string, any>
+type RuntimeAssetNative = {
+  status: (backend: RuntimeBackend) => Promise<RuntimeAssetStatus>
+  install: (backend: RuntimeBackend) => Promise<unknown>
+}
+
+type Deps = {
+  app: ReturnType<typeof useAppStore>
+  message: MessageApi
+  dialog: DialogApi
+  t: (key: string, named?: Record<string, unknown>) => string
+  currentLocale: Ref<string>
+  installedRuntimes: Ref<InstalledRuntime[]>
+  runtimeActivating: Ref<string | null>
+  runtimeBackendLabel: (backend: RuntimeBackend | string | null | undefined) => string
+  runtimeBusy: Ref<boolean>
+  runtimeCurrentBackend: Ref<RuntimeBackend | null>
+  runtimeDeleting: Ref<string | null>
+  runtimeManualChecking: Ref<boolean>
+  runtimeMirror: Ref<string>
+  runtimeAssets?: RuntimeAssetNative
+}
 
 export function makeRuntimeActions(deps: Deps) {
   const { app, message, dialog, t } = deps
+  const assets = deps.runtimeAssets ?? { status: runtimeAssetStatus, install: runtimeAssetInstall }
+  let choosingInstall = false
 
   function confirmRuntimeAction(title: string, content: string, positiveText: string) {
     return new Promise<boolean>((resolve) => {
@@ -30,29 +57,40 @@ export function makeRuntimeActions(deps: Deps) {
   }
 
   async function installBackend(backend: RuntimeBackend) {
-    if (!app.runtimeManagementSupported || deps.runtimeBusy.value) return
-    const target = deps.runtimeBackendLabel(backend)
-    const sizeHint = t('settings.runtimeInstallSizeHint', { size: runtimeSizeHint(backend) })
-    const reinstall = deps.installedRuntimes.value.some((entry: InstalledRuntime) => entry.backend === backend)
-    // The worker writes active-runtime.json at the end of an install, so this also switches.
-    const switchHint = deps.runtimeCurrentBackend.value === backend ? '' : ` ${t('settings.runtimeInstallActivatesHint')}`
-    const confirmed = await confirmRuntimeAction(
-      reinstall ? t('settings.runtimeReinstallTitle') : t('settings.runtimeInstallTitle'),
-      reinstall
-        ? `${t('settings.runtimeReinstallContent', { current: deps.runtimeBackendLabel(deps.runtimeCurrentBackend.value), target })} ${sizeHint}${switchHint}`
-        : `${t('settings.runtimeInstallContent', { backend: target })} ${sizeHint}${switchHint}`,
-      t('common.confirm'),
-    )
-    if (!confirmed) return
+    if (choosingInstall || deps.runtimeBusy.value) return
+    choosingInstall = true
     try {
-      if (backend === 'cuda') {
-        // CUDA 已统一为内容寻址资产安装；其它后端暂保留旧路径，直到有对应资产清单。
-        await invoke('runtime_asset_install')
+      const status = await assets.status(backend)
+      if (deps.runtimeBusy.value) return
+      const managed = status.available && status.backend === backend
+      const worker = backend !== 'mlx' && app.runtimeManagementSupported
+        && runtimeBackendsForTarget(status.platform, status.arch).includes(backend)
+        && (backend !== 'cuda' || status.platform === 'linux')
+      if (!managed && !worker) {
+        message.error(status.reason || t('settings.runtimeInstallTargetUnsupported'))
+        return
+      }
+      const target = deps.runtimeBackendLabel(backend)
+      const sizeHint = t('settings.runtimeInstallSizeHint', { size: managed ? formatBytes(status.size) : runtimeSizeHint(backend) })
+      const reinstall = deps.installedRuntimes.value.some((entry: InstalledRuntime) => entry.backend === backend)
+      const switchHint = deps.runtimeCurrentBackend.value === backend ? '' : ` ${t('settings.runtimeInstallActivatesHint')}`
+      const confirmed = await confirmRuntimeAction(
+        reinstall ? t('settings.runtimeReinstallTitle') : t('settings.runtimeInstallTitle'),
+        reinstall
+          ? `${t('settings.runtimeReinstallContent', { current: deps.runtimeBackendLabel(deps.runtimeCurrentBackend.value), target })} ${sizeHint}${switchHint}`
+          : `${t('settings.runtimeInstallContent', { backend: target })} ${sizeHint}${switchHint}`,
+        t('common.confirm'),
+      )
+      if (!confirmed || deps.runtimeBusy.value) return
+      if (managed) {
+        await assets.install(backend)
       } else {
         await app.installRuntime(backend, deps.runtimeMirror.value, deps.currentLocale.value)
       }
     } catch (error) {
       message.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      choosingInstall = false
     }
   }
 

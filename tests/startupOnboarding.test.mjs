@@ -4,7 +4,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { computed, effectScope, nextTick, reactive, ref, watch } from 'vue'
-import { detectRuntimePlatform, preferredInstalledRuntimeBackend, recommendedRuntimeBackend, runtimeEnvironmentForBackend } from '../src/utils/runtime.ts'
+import { detectRuntimePlatform, preferredInstalledRuntimeBackend, recommendedRuntimeBackend, runtimeBackendsForTarget, runtimeEnvironmentForBackend } from '../src/utils/runtime.ts'
 
 const source = readFileSync(new URL('../src/components/StartupOnboarding.vue', import.meta.url), 'utf8')
   .match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
@@ -34,7 +34,7 @@ function environment(t, options = {}) {
   const actions = []
   const platform = options.platform || 'win32'
   const app = reactive({
-    runtimeInfo: { platform, machine: options.machine || 'arm64', ready: Boolean(options.ready),
+    runtimeInfo: { platform, machine: options.machine || (platform === 'darwin' ? 'arm64' : 'AMD64'), ready: Boolean(options.ready),
       torchBackend: options.backend || 'cpu', packages: { mlx: platform === 'darwin' },
       installedEnvironments: options.installed || [],
     },
@@ -55,7 +55,7 @@ function environment(t, options = {}) {
     router: { push: async route => actions.push(`route:${route.name}${route.query ? ':' + route.query.section + ':' + route.query.backend : ''}`) },
     message: { error: text => actions.push(`error:${text}`) },
     emit: () => actions.push('emitted'),
-    computed, ref, watch, Error, detectRuntimePlatform, preferredInstalledRuntimeBackend, recommendedRuntimeBackend, runtimeEnvironmentForBackend,
+    computed, ref, watch, Error, detectRuntimePlatform, preferredInstalledRuntimeBackend, recommendedRuntimeBackend, runtimeBackendsForTarget, runtimeEnvironmentForBackend,
     runtimeBackendName: backend => backend, runtimeSizeHint: () => '', isTauriRuntime: () => true,
     t: key => key, runRippleViewTransition: async action => action(), window: { innerWidth: 1280, innerHeight: 800 },
     MusicalNotesOutline: 'welcome', ColorPaletteOutline: 'appearance', FolderOpenOutline: 'directory', HardwareChipOutline: 'runtime',
@@ -83,10 +83,10 @@ test('four setup steps retain appearance and directory confirmation', t => {
 })
 
 for (const machine of ['arm64', 'aarch64', 'x86_64']) {
-  test(`macOS/${machine} only selects MLX and never installs or activates an environment`, async t => {
+  test(`macOS/${machine} uses the packaged runtime route without installing or activating an environment`, async t => {
     const env = environment(t, { platform: 'darwin', machine })
     assert.equal(env.selectedBackend.value, 'mlx')
-    assert.deepEqual(Array.from(env.runtimeBackendChoices.value, item => item.value), ['mlx'])
+    assert.deepEqual(Array.from(env.runtimeBackendChoices.value, item => item.value), machine === 'x86_64' ? [] : ['mlx'])
     await env.finishOnboarding()
     assert.deepEqual(env.actions, [])
     env.step.value = 3

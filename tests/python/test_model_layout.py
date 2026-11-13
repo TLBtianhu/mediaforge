@@ -1,12 +1,4 @@
-"""模型目录布局：媒体权重在 `media/` 下，音频保持 pymss 的分类相对路径。
-
-2026-10-29 改动：媒体权重原来和音频的分类目录平铺在同一个根下（`models/big-lama.pt`）。
-按"一个根、分格子"的约定，媒体统一进 `models/media/`。
-
-难点不在搬目录，在**升级**：0.0.13 之前下载的模型就躺在根目录，布局一改，
-老用户会看到"模型未下载"——重下代价是几百 MB，而且他会以为是自己的问题。
-所以这组测试的重点是迁移：搬一次、只搬点名的、搬完不重复搬、失败不致命。
-"""
+"""Current model layout resolves media/ paths without moving existing assets."""
 from __future__ import annotations
 
 import json
@@ -56,59 +48,9 @@ class MediaRelpathTests(unittest.TestCase):
             model_hub._media_files({"name": "depth-demo", "files": [{"path": "../secret"}]})
 
 
-class MigrationTests(unittest.TestCase):
-    def setUp(self) -> None:
-        worker_paths.reset_migration_cache()
-        self.addCleanup(worker_paths.reset_migration_cache)
-        self.root = Path(tempfile.mkdtemp())
-        self.addCleanup(__import__("shutil").rmtree, self.root, True)
-
-    def test_flat_weights_are_moved_into_the_subdirectory(self) -> None:
-        (self.root / "big-lama.pt").write_bytes(b"a")
-        moved = worker_paths.migrate_media_models(self.root, ["big-lama.pt"])
-        self.assertEqual(moved, ["big-lama.pt"])
-        self.assertTrue((self.root / "media" / "big-lama.pt").is_file())
-        self.assertFalse((self.root / "big-lama.pt").exists())
-
-    def test_migration_is_idempotent(self) -> None:
-        (self.root / "big-lama.pt").write_bytes(b"a")
-        worker_paths.migrate_media_models(self.root, ["big-lama.pt"])
-        worker_paths.reset_migration_cache()
-        self.assertEqual(worker_paths.migrate_media_models(self.root, ["big-lama.pt"]), [])
-        self.assertTrue((self.root / "media" / "big-lama.pt").is_file())
-
-    def test_unknown_files_are_left_alone(self) -> None:
-        """模型根是应用管理的，但用户可能放过别的东西——不点名的绝不搬。"""
-        (self.root / "my-notes.txt").write_bytes(b"x")
-        (self.root / "big-lama.pt").write_bytes(b"a")
-        worker_paths.migrate_media_models(self.root, ["big-lama.pt"])
-        self.assertTrue((self.root / "my-notes.txt").is_file())
-        self.assertFalse((self.root / "media" / "my-notes.txt").exists())
-
-    def test_existing_target_wins(self) -> None:
-        """目标已存在时不覆盖（可能是刚下载好的那份）。"""
-        (self.root / "media").mkdir()
-        (self.root / "media" / "big-lama.pt").write_bytes(b"new")
-        (self.root / "big-lama.pt").write_bytes(b"old")
-        moved = worker_paths.migrate_media_models(self.root, ["big-lama.pt"])
-        self.assertEqual(moved, [])
-        self.assertEqual((self.root / "media" / "big-lama.pt").read_bytes(), b"new")
-
-    def test_audio_style_relative_names_are_skipped(self) -> None:
-        moved = worker_paths.migrate_media_models(self.root, ["cleanup/audio/x.ckpt"])
-        self.assertEqual(moved, [])
-
-    def test_per_root_flag_is_reset_for_tests(self) -> None:
-        (self.root / "big-lama.pt").write_bytes(b"a")
-        worker_paths.migrate_media_models(self.root, ["big-lama.pt"])
-        # 同一进程内第二次调用直接返回空——这正是性能保护
-        self.assertEqual(worker_paths.migrate_media_models(self.root, ["big-lama.pt"]), [])
-
 
 class CapabilityPathTests(unittest.TestCase):
     def setUp(self) -> None:
-        worker_paths.reset_migration_cache()
-        self.addCleanup(worker_paths.reset_migration_cache)
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(__import__("shutil").rmtree, self.root, True)
         catalog = {
@@ -133,13 +75,39 @@ class CapabilityPathTests(unittest.TestCase):
             resolved = capabilities.model_path("media:lama")
         self.assertEqual(resolved, self.models / "media" / "big-lama.pt")
 
-    def test_model_path_triggers_migration_of_an_old_layout(self) -> None:
+    def test_model_path_does_not_move_flat_assets(self) -> None:
         (self.models / "big-lama.pt").write_bytes(b"old")
         with mock.patch.object(capabilities, "CATALOG_PATH", self.catalog_path), \
                 mock.patch.object(worker_paths, "model_root", return_value=self.models):
             resolved = capabilities.model_path("media:lama")
         self.assertEqual(resolved, self.models / "media" / "big-lama.pt")
-        self.assertTrue(resolved.is_file(), "老布局的权重应在解析路径时被搬过去")
+        self.assertFalse(resolved.exists())
+        self.assertEqual((self.models / "big-lama.pt").read_bytes(), b"old")
+
+    def test_listing_ignores_flat_assets_without_moving_or_deleting_them(self) -> None:
+        (self.models / "big-lama.pt").write_bytes(b"flat")
+        with mock.patch.object(capabilities, "CATALOG_PATH", self.catalog_path), \
+                mock.patch.object(worker_paths, "model_root", return_value=self.models):
+            listed = capabilities.list_capabilities()
+        lama = next(item for item in listed["capabilities"] if item["id"] == "watermark_removal")
+        model = next(entry for entry in lama["models"] if entry["id"] == "media:lama")
+        self.assertFalse(model["downloaded"])
+        self.assertEqual((self.models / "big-lama.pt").read_bytes(), b"flat")
+        self.assertFalse((self.models / "media").exists())
+
+    def test_model_hub_listing_uses_current_layout_and_leaves_flat_and_current_assets_unchanged(self) -> None:
+        (self.models / "big-lama.pt").write_bytes(b"flat")
+        (self.models / "media").mkdir()
+        (self.models / "media/big-lama.pt").write_bytes(b"new")
+        empty_audio = self.root / "audio.json"
+        empty_audio.write_text('{"models": []}', encoding="utf-8")
+        with mock.patch.object(model_hub, "MEDIA_CATALOG", self.catalog_path), \
+                mock.patch.object(model_hub, "AUDIO_CATALOG", empty_audio), \
+                mock.patch.object(model_hub.importlib.util, "find_spec", return_value=None):
+            listing = model_hub.list_models(root=str(self.models))
+        self.assertEqual((self.models / "big-lama.pt").read_bytes(), b"flat")
+        self.assertEqual((self.models / "media/big-lama.pt").read_bytes(), b"new")
+        self.assertTrue(listing["models"][0]["downloaded"])
 
     def test_listing_reports_downloaded_from_the_new_location(self) -> None:
         (self.models / "media").mkdir()
@@ -191,8 +159,6 @@ class ImageRestorerDefaultPathTests(unittest.TestCase):
         except Exception as exc:  # pragma: no cover - 取决于解释器里装了什么
             self.skipTest(f"无法导入 image_ops：{exc}")
         self.image_ops = image_ops
-        worker_paths.reset_migration_cache()
-        self.addCleanup(worker_paths.reset_migration_cache)
 
     def test_defaults_resolve_through_capabilities(self) -> None:
         recorded: list[str] = []

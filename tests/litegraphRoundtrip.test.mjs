@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs'
 import test, { after } from 'node:test'
 import { createServer } from 'vite'
 import { reactive } from 'vue'
+import vm from 'node:vm'
+import ts from 'typescript'
+import { parse } from 'vue/compiler-sfc'
 import { setupLitegraphEnvDom } from './_litegraphEnv.mjs'
 
 await setupLitegraphEnvDom()
@@ -30,6 +33,7 @@ const {
   SEPARATE_NODE_MIN_WIDTH,
 } = await vite.ssrLoadModule('/src/litegraph/registerNodes.ts')
 const adapter = await vite.ssrLoadModule('/src/litegraph/graphAdapter.ts')
+const historyApi = await vite.ssrLoadModule('/src/litegraph/history.ts')
 registerPymssNodes()
 
 test('plugin node declarations update new instances and remove stale creation entries', () => {
@@ -72,6 +76,35 @@ function load(source) {
   return graph
 }
 const exportGraph = graph => jsonClone(adapter.litegraphToComfy(graph.serialize()))
+
+test('the actual editor undo and redo restore LiteGraph memory snapshots and publish current Comfy definitions', () => {
+  const graph=load(fixture('example_ensemble'))
+  const originalLinks=jsonClone(exportGraph(graph).links)
+  const baseline=JSON.stringify(graph.serialize())
+  const input=graph.nodes.find(node=>node.type==='pymss_load_audio')
+  const original=input.widgets[0].value
+  input.widgets[0].value='changed.wav'
+  const state={...historyApi,graphRef:{value:graph},canvasRef:{value:{setDirty(){}}},
+    history:{value:historyApi.recordWorkflowSnapshot(historyApi.createWorkflowHistory(baseline),JSON.stringify(graph.serialize()))},
+    definition:{value:null},configuringGraph:false,pendingSnap:0,cancelAnimationFrame(){},
+    configureGraphNode(){},restoreViewport(){},emit(){},readGraphDefaults:()=>({}),
+    snapshotDefinition:()=>exportGraph(graph)}
+  const descriptor=parse(readFileSync(new URL('../src/components/workflow/WorkflowNodeEditorLite.vue',import.meta.url),'utf8')).descriptor
+  const source=ts.createSourceFile('editor.ts',descriptor.scriptSetup.content,ts.ScriptTarget.Latest,true)
+  const names=new Set(['serializeGraph','restoreSnapshot','undo','redo'])
+  const functions=source.statements.filter(node=>ts.isFunctionDeclaration(node)&&names.has(node.name?.text))
+  assert.equal(functions.length,names.size)
+  const code=ts.transpileModule(functions.map(node=>node.getText(source)).join('\n'),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText
+  const editor=vm.runInNewContext(`${code}\n({undo,redo})`,state)
+  editor.undo()
+  assert.equal(graph.getNodeById(input.id).widgets[0].value,original)
+  assert.deepEqual(exportGraph(graph).links,originalLinks)
+  assert.equal(state.definition.value.version,0.4)
+  editor.redo()
+  assert.equal(graph.getNodeById(input.id).widgets[0].value,'changed.wav')
+  assert.deepEqual(exportGraph(graph).links,originalLinks)
+  assert.doesNotThrow(()=>adapter.comfyToLitegraph(state.definition.value))
+})
 
 test('advanced editor locale catalogs cover every registered node type', () => {
   const expected = Object.keys({ ...NODE_SPECS, ...BUILTIN_SPECS }).sort()
@@ -161,12 +194,12 @@ test('separate nodes shrink after switching from six stems to two', () => {
   assert.equal(node.outputs.length, 4)
 })
 
-test('legacy audio preview nodes are hidden from creation menus but remain importable', () => {
+test('upstream audio preview nodes are hidden from creation menus but remain importable', () => {
   assert.equal(NODE_SPECS.PreviewAudio.hidden, true)
   const preview = LiteGraph.registered_node_types.PreviewAudio
   assert.equal(preview.skip_list, true)
   assert.equal(Object.keys(LiteGraph.registered_node_types).includes('PreviewAudio'), false)
-  const graph = load({ nodes: [{ id: 1, type: 'PreviewAudio', pos: [10, 20], size: [200, 80],
+  const graph = load({ version: 0.4, nodes: [{ id: 1, type: 'PreviewAudio', pos: [10, 20], size: [200, 80],
     inputs: [{ name: 'audio', type: 'AUDIO', link: null }], outputs: [], widgets_values: [] }], links: [] })
   assert.equal(graph.nodes[0].type, 'PreviewAudio')
   const exported = exportGraph(graph)
@@ -268,33 +301,19 @@ test('workflow port types use distinct colors for links and connection states', 
   }
 })
 
-test('legacy Studio builtin widget layouts migrate without shifting values', () => {
-  const cases = [
-    ['SaveAudio', [], ['audio']],
-    ['SaveAudioMP3', ['128k'], ['audio', '128k']],
-    ['SaveAudioOpus', ['96k'], ['audio', '96k']],
-    ['SaveAudioAdvanced', ['mp3', '44100', 'FLOAT', 'PCM_24', '192k'], ['audio', 'mp3', '192k']],
-    ['AudioConcat', ['front'], ['before']],
-    ['StringTrim', ['left'], ['', 'Left']],
-    ['CaseConverter', ['title'], ['', 'Title Case']],
-    ['RegexExtract', ['all'], ['', '', 'All Matches', 1]],
-  ]
-  for (const [type, legacy, expected] of cases) {
-    const graph = new LGraph()
-    const node = LiteGraph.createNode(type)
-    graph.add(node)
-    const source = exportGraph(graph)
-    source.nodes[0].widgets_values = legacy
-    if (type === 'SaveAudioAdvanced') source.nodes[0].outputs = []
-    const restored = load(source).nodes[0]
-    assert.deepEqual(restored.widgets.map(widget => widget.value), expected, type)
-    if (type === 'SaveAudioAdvanced') {
-      assert.deepEqual(restored.outputs.map(output => output.name), ['audio'])
-    }
+test('obsolete builtin widget layouts are rejected without changing the definition', () => {
+  const cases=[['SaveAudio',[]],['SaveAudioMP3',['128k']],['SaveAudioOpus',['96k']],
+    ['SaveAudioAdvanced',['mp3','44100','FLOAT','PCM_24','192k']],['AudioConcat',['front']],
+    ['StringTrim',['left']],['CaseConverter',['title']],['RegexExtract',['all']]]
+  for(const [type,values] of cases){
+    const graph=new LGraph();graph.add(LiteGraph.createNode(type));const source=exportGraph(graph)
+    source.nodes[0].widgets_values=values;const before=jsonClone(source)
+    assert.throws(()=>load(source),/Unsupported graph widget schema/,type)
+    assert.deepEqual(source,before)
   }
 })
 
-test('legacy AudioMerge graphs retain peak protection and their merge method', () => {
+test('an omitted optional AudioMerge normalization flag keeps peak protection', () => {
   for (const method of ['add', 'subtract', 'mean', 'average']) {
     const graph = new LGraph()
     graph.add(LiteGraph.createNode('AudioMerge'))
@@ -410,9 +429,6 @@ test('reactive workflow definitions load without cloning proxies or mutating the
 
 test('exported tuples declare schema 0.4 and load without a Studio adapter', () => {
   const source = fixture('example_mss_separate')
-  // Earlier Studio versions stored tuples under version 1, including numeric-key objects.
-  source.version = 1
-  source.links = source.links.map(link => ({ ...link }))
   const before = jsonClone(source)
   const exported = jsonClone(adapter.litegraphToComfy(source))
   assert.equal(exported.version, 0.4)
@@ -442,46 +458,15 @@ test('new save nodes and upstream five-value imports use the same widget order',
   assert.deepEqual(load(exported).getNodeById(save.id).widgets.map(w => w.value), ['flac', '48000', 'PCM_16', 'PCM_24', '192k'])
 })
 
-test('legacy six-value save nodes retain their output folder across editing and reload', () => {
-  const source = fixture('example_mss_separate')
-  const save = source.nodes.find(node => node.type === 'pymss_save_audio')
-  const values = ['mp3', 'stems', '48000', 'FLOAT', 'PCM_16', '192k']
-  save.widgets_values = values
-  const graph = load(source)
-  const node = graph.getNodeById(save.id)
-  assert.equal(node.widgets.find(w => w.name === 'output_folder').value, 'stems')
-  assert.equal(node.widgets.find(w => w.name === 'sample_rate').value, '48000')
-  const exported = exportGraph(graph)
-  assert.deepEqual(exported.nodes.find(n => n.id === save.id).widgets_values, values)
-  assert.deepEqual(load(exported).getNodeById(save.id).widgets.map(w => w.value), values)
-})
-
-test('save layouts distinguish numeric folders from trailing ComfyUI button values', () => {
-  for (const values of [
-    ['wav', '2026', '48000', 'FLOAT', 'PCM_24', '320k'],
-    ['wav', '48000', 'FLOAT', 'PCM_24', '320k', null],
-  ]) {
-    const graph = new LGraph()
-    const node = LiteGraph.createNode('pymss_save_audio')
-    graph.add(node)
-    node.configure({ ...node.serialize(), widgets_values: values })
-    const folder = node.widgets.find(w => w.name === 'output_folder')
-    assert.equal(folder?.value, values[1] === '2026' ? '2026' : undefined)
-    assert.equal(node.widgets.find(w => w.name === 'sample_rate').value, '48000')
-    const expected = folder ? values : values.slice(0, 5)
-    assert.deepEqual(exportGraph(load(exportGraph(graph))).nodes[0].widgets_values, expected)
-  }
-})
-
-test('prefixed legacy custom separator layouts migrate for both output variants', () => {
-  for (const suffix of ['', '_list']) {
-    const graph = new LGraph()
-    const node = LiteGraph.createNode(`pymss_custom_mss_separate${suffix}`)
-    graph.add(node)
-    const source = exportGraph(graph)
-    source.nodes[0].widgets_values = ['custom.ckpt', 'bs_roformer', 'cpu', true, 'modelscope', '0,1', true]
-    const restored = load(source).nodes[0]
-    assert.deepEqual(restored.widgets.map(w => w.value), ['custom.ckpt', 'bs_roformer', 'cpu', '0,1', true])
+test('obsolete save-folder and custom separator widget layouts are rejected without mutation', () => {
+  for(const [type,values] of [['pymss_save_audio',['mp3','stems','48000','FLOAT','PCM_16','192k']],
+    ['pymss_save_audio',['wav','2026','48000','FLOAT','PCM_24','320k']],
+    ['pymss_custom_mss_separate',['custom.ckpt','bs_roformer','cpu',true,'modelscope','0,1',true]],
+    ['pymss_custom_mss_separate_list',['custom.ckpt','bs_roformer','cpu',true,'modelscope','0,1',true]]]) {
+    const graph=new LGraph();graph.add(LiteGraph.createNode(type));const source=exportGraph(graph)
+    source.nodes[0].widgets_values=values;const before=jsonClone(source)
+    assert.throws(()=>load(source),/Unsupported graph widget schema/)
+    assert.deepEqual(source,before)
   }
 })
 

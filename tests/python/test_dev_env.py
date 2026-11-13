@@ -67,6 +67,7 @@ class DevEnvTests(unittest.TestCase):
             ["git", "check-ignore", "-q", str(REPO_ROOT / ".dev-data" / "dev.env")],
             cwd=REPO_ROOT,
             capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if result.returncode not in (0, 1):
             self.skipTest("git 不可用")

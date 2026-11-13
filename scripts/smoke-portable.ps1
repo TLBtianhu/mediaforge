@@ -84,7 +84,7 @@ Check '便携形态被识别' ($rootOutput -match '(?m)^SMOKE_DEVELOPMENT=false\
 Check '数据根在程序旁 data\' ($actualRoot -and $actualRoot.Equals($expectedRoot, [StringComparison]::OrdinalIgnoreCase)) $actualRoot
 if ($failures.Count -gt 0) { exit 1 }
 
-$process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru `
+$process = Start-Process -FilePath $exe -WorkingDirectory $app -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 Start-Sleep -Seconds ([Math]::Min(3, $LaunchSeconds))
 Check '应用启动后保持运行' (-not $process.HasExited)

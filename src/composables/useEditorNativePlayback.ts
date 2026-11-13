@@ -231,7 +231,7 @@ export function useEditorNativePlayback(editor: ReturnType<typeof useEditorStore
     try { await syncMonitor(projectId, serial) }
     catch (cause) { if (serial === generation && !disposed) fail(playback.requestId, cause) }
   })
-  watch(() => playback.loop, loop => {
+  watch(() => playback.loop, () => {
     if (activeProjectId && playback.intent === 'play' && !recordingOwnsPosition(activeProjectId)) void play(playback.currentTime)
   })
   watch(() => editor.session, (project, oldProject) => {

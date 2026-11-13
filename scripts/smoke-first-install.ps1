@@ -8,8 +8,8 @@
 #   powershell -ExecutionPolicy Bypass -File scripts/smoke-first-install.ps1 `
 #       -AppExe release\stage-0.0.31\MediaForge.exe
 param(
-    [string]$AppExe = "$PSScriptRoot\..\release\stage-0.0.31\MediaForge.exe",
-    [string]$RuntimeZip = "$PSScriptRoot\..\release\runtime\runtime-cuda-2026.11.4.zip",
+    [Parameter(Mandatory = $true)][string]$AppExe,
+    [Parameter(Mandatory = $true)][string]$RuntimeZip,
     [int]$Port = 8765,
     [string]$HttpPython = ''
 )
@@ -35,7 +35,7 @@ $httpRoot = Join-Path $work 'http'
 New-Item -ItemType Directory -Force -Path $httpRoot | Out-Null
 
 # 本地 HTTP 源：正例放真运行时，负例放一个内容必然对不上 sha256 的小文件。
-Copy-Item $zip (Join-Path $httpRoot (Split-Path $zip -Leaf))
+New-Item -ItemType HardLink -Path (Join-Path $httpRoot (Split-Path $zip -Leaf)) -Target $zip | Out-Null
 Set-Content (Join-Path $httpRoot 'corrupted.zip') 'not-a-runtime' -Encoding ASCII
 
 # HTTP 服务只用显式解释器或系统 Python；绝不默认读取真实用户运行时。
@@ -50,7 +50,10 @@ try {
     # 夹具资产必然对不上。这里把本地下载源和真实哈希一起交给应用，夹具与真包都能跑。
     $descriptor = @{
         assetId = $assetId
-        backend = 'fixture'
+        backend = 'cuda'
+        platform = 'windows'
+        arch = 'x86_64'
+        python = '3.12'
         sha256 = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         size = (Get-Item $zip).Length
         urls = @("$baseUrl/$(Split-Path $zip -Leaf)")
@@ -96,4 +99,7 @@ if ($failures.Count -gt 0) {
     Write-Host ("FAIL: {0}" -f ($failures -join ', '))
     exit 1
 }
+. (Join-Path $PSScriptRoot 'temp-work-guard.ps1')
+$resolvedWork = Assert-TempWorkDir -Work $work -Prefix 'mediaforge-first-install-'
+Remove-Item -LiteralPath $resolvedWork -Recurse -Force
 Write-Host 'PASS: 首装下载运行时端到端成立（含 sha256 负例）'

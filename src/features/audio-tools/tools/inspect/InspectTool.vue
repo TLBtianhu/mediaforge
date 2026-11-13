@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickSingleAudioFile } from '@/api/native'
 import { ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { CopyOutline, DocumentTextOutline, FolderOpenOutline, InformationCircleOutline, LockClosedOutline } from '@vicons/ionicons5'
@@ -10,7 +10,7 @@ import { useAudioToolRuntime } from '../../runtime'
 import type { AudioStreamInfo } from '../../types'
 const { t } = useI18n(); const message = useMessage(); const runtime = useAudioToolRuntime(); const state = runtime.stateFor('inspect'); const inputPath = ref('')
 async function inspect(path: string) { await runtime.execute('inspect', { inputPath: path }) }
-async function pick() { const path = await invoke<string | null>('pick_single_audio_file'); if (path) { inputPath.value = path; await inspect(path) } }
+async function pick() { const path = await pickSingleAudioFile(); if (path) { inputPath.value = path; await inspect(path) } }
 function run() { void inspect(inputPath.value) }
 function size(value: number) { const units = ['B', 'KB', 'MB', 'GB']; let amount = value; let unit = 0; while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1 } return `${amount.toFixed(unit ? 2 : 0)} ${units[unit]}` }
 function duration(value: number | null) { if (value == null) return '—'; const seconds = Math.max(0, Math.round(value)); return `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor(seconds % 3600 / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` }

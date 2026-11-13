@@ -17,7 +17,7 @@ const args = [path.join(root, 'scripts', 'tauri.mjs'), mode,
   '--config', 'src-tauri/tauri.vstlab.conf.json', '--features', 'vst-lab']
 if (mode === 'build') args.push('--debug', '--no-bundle')
 args.push(...process.argv.slice(3))
-const child = spawn(process.execPath, args, { cwd: root, env, stdio: 'inherit' })
+const child = spawn(process.execPath, args, { cwd: root, env, stdio: 'inherit', windowsHide: true })
 child.on('error', error => { console.error(error.message); process.exitCode = 1 })
 child.on('exit', (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0) })
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => child.kill(signal))

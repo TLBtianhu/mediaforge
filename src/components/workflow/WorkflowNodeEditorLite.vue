@@ -12,7 +12,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowR
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { AddOutline, ArrowRedoOutline, ArrowUndoOutline, ExpandOutline, SearchOutline } from '@vicons/ionicons5'
-import { invoke } from '@tauri-apps/api/core'
+import { pickInputFolder, pickSingleAudioFile } from '@/api/native'
+import { invokeWorkerQuery } from '@/api/worker'
 import { LGraph, LGraphCanvas, LiteGraph, createBounds, type LGraphNode } from '@comfyorg/litegraph'
 import '@comfyorg/litegraph/style.css'
 import {
@@ -28,6 +29,7 @@ import {
 } from '@/litegraph/registerNodes'
 import { litegraphToComfy, comfyToLitegraph } from '@/litegraph/graphAdapter'
 import { installCanvasDpi } from '@/litegraph/canvasDpi'
+import { CANVAS_EVENT_LINK_COLOR, canvasThemeFor } from '@/litegraph/canvasTheme'
 import {
   createWorkflowHistory,
   recordWorkflowSnapshot,
@@ -40,6 +42,8 @@ import { parseModelStems } from '@/utils/workflowSimple'
 import type { ModelEntry } from '@/stores/model'
 import type { NodeSpec } from '@/litegraph/nodeSpecs'
 import { translateNodeCategory, translateNodeTitle, type NodeTranslator } from '@/litegraph/nodeLocalization'
+import { getResolvedThemeTokens, themeIsDark } from '@/utils/theme'
+import { useSettingsStore } from '@/stores/settings'
 import { isGraphWorkflowDefinition } from '@/workflows/formats'
 import { applyGraphDefaultWidgets, type GraphDefaults } from '@/workflows/graphDefaults'
 import { registerPluginNodeSpecs } from '@/litegraph/registerNodes'
@@ -75,7 +79,7 @@ async function loadPluginNodeSpecs() {
   if (disposed || typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   const request = ++pluginNodeLoadId
   try {
-    const response = await invoke<{ nodes?: PluginNodeDecl[] }>('list_nodes')
+    const response = (await invokeWorkerQuery('list_nodes')) as unknown as { nodes?: PluginNodeDecl[] }
     if (disposed || request !== pluginNodeLoadId) return
     const declarations = Array.isArray(response?.nodes) ? response.nodes : []
     const PORT_VALUES = ['AUDIO', 'STRING', 'COMBO', 'BOOLEAN', 'PYMSS_MSS_PARAMS', 'PYMSS_VR_PARAMS'] as const
@@ -264,7 +268,8 @@ function restoreSnapshot(snap: string) {
   const data = JSON.parse(snap)
   configuringGraph = true
   try {
-    graph.configure(comfyToLitegraph(data))
+    // History snapshots are LiteGraph's current in-memory schema, not persisted Comfy files.
+    graph.configure(data)
   } finally {
     configuringGraph = false
   }
@@ -318,18 +323,28 @@ function onEditorKey(event: KeyboardEvent) {
 const canUndo = computed(() => history.value.past.length > 0)
 const canRedo = computed(() => history.value.future.length > 0)
 
-// --- theme: dark to match pymss-studio -------------------------------------
+// --- theme: canvas palette derived from the app tokens ---------------------
+const settings = useSettingsStore()
+
 function applyTheme() {
-  LiteGraph.NODE_DEFAULT_BGCOLOR = '#262b33'
-  LiteGraph.NODE_DEFAULT_COLOR = '#303947'
-  LiteGraph.NODE_TITLE_COLOR = '#e6e8eb'
-  LiteGraph.LINK_COLOR = '#5b8def'
+  const theme = canvasThemeFor(getResolvedThemeTokens(settings.themeMode, settings.themeAccent))
+  LiteGraph.NODE_DEFAULT_BGCOLOR = theme.nodeBackground
+  LiteGraph.NODE_DEFAULT_COLOR = theme.nodeTitle
+  LiteGraph.NODE_TITLE_COLOR = theme.text
+  LiteGraph.LINK_COLOR = theme.link
   LiteGraph.ROUND_RADIUS = 6
-  ;(LiteGraph as any).NODE_DEFAULT_TITLECOLOR = '#e6e8eb'
-  ;(LiteGraph as any).NODE_TITLE_BOXCOLOR = '#5b8def'
-  ;(LiteGraph as any).NODE_TEXT_COLOR = '#e6e8eb'
-  ;(LiteGraph as any).EVENT_LINK_COLOR = '#9b6dff'
+  ;(LiteGraph as any).NODE_DEFAULT_TITLECOLOR = theme.text
+  ;(LiteGraph as any).NODE_TITLE_BOXCOLOR = theme.link
+  ;(LiteGraph as any).NODE_TEXT_COLOR = theme.text
+  ;(LiteGraph as any).EVENT_LINK_COLOR = CANVAS_EVENT_LINK_COLOR
 }
+
+// LiteGraph keeps its palette in globals, so a theme switch has to repaint the
+// canvas explicitly; without this the graph stayed dark after switching to light.
+watch([() => settings.themeMode, () => settings.themeAccent, themeIsDark], () => {
+  applyTheme()
+  canvasRef.value?.setDirty(true, true)
+})
 
 // --- model -> stems lookup for separate nodes ------------------------------
 function stemsForModel(modelNameRaw: string): string[] {
@@ -757,7 +772,7 @@ function configureGraphNode(node: LGraphNode) {
         if (picking) return
         picking = true
         try {
-          const path = await invoke<string | null>(batch ? 'pick_input_folder' : 'pick_single_audio_file')
+          const path = await (batch ? pickInputFolder() : pickSingleAudioFile())
           const graph = graphRef.value
           if (!path || !graph || graph.getNodeById(node.id) !== node) return
           graph.beforeChange()
@@ -851,7 +866,7 @@ function configureGraphNode(node: LGraphNode) {
 .palette__help { padding: 9px 12px; border-top: 1px solid var(--outline); color: var(--on-surface-muted); font-size: 10px; }
 .canvas-error { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 28px; background: var(--surface-1); overflow: auto; }
 .canvas-error :deep(.n-result) { max-width: 640px; overflow-wrap: anywhere; }
-.canvas-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--outline); border-radius: 14px; background: #16181d; }
+.canvas-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--outline); border-radius: 14px; background: var(--surface); }
 .lg-canvas { width: 100%; height: 100%; display: block; }
 .toolbar > :deep(.workflow-execution-progress) { flex-basis: 100%; }
 </style>

@@ -1,8 +1,7 @@
 <script setup lang="ts">
+import { pickPreviewFiles } from '@/api/native'
 import { useMediaDrop } from '../composables/useMediaDrop'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { computed, ref } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
@@ -11,14 +10,14 @@ import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
+import MediaWorkflowPresets from '@/components/media/MediaWorkflowPresets.vue'
 import { buildMediaWorkflowPayload } from '@/features/media/workflowPayload'
-import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
+import { useMediaJob } from '@/composables/useMediaJob'
 
 defineOptions({ name: 'MediaWorkflowView' })
 
 type PlanStep = { capability: string; bindings: Record<string, string>; params: Record<string, unknown> }
 type WorkflowOutput = { path: string; source: string; steps?: string[]; size?: number }
-type WorkerEvent = { type?: string; requestId?: string | null; taskId?: string | null; payload?: Record<string, unknown> }
 
 const { t } = useI18n()
 const message = useMessage()
@@ -28,18 +27,27 @@ const modality = ref<'image' | 'video'>('image')
 const modelDir = ref('')
 const steps = ref<PlanStep[]>([{ capability: 'upscale', bindings: { upscaler: 'media:real-esrgan-x2' }, params: { scale: 2 } }])
 const maskPath = ref('')
+const stepAvailability = ref<boolean[]>([])
+const planAvailable = computed(() => steps.value.length > 0 && !stepAvailability.value.some(value => value === false))
+type PresetDefinition = { version: 1; modality: 'image' | 'video'; steps: PlanStep[] }
+const presetDefinition = computed<PresetDefinition>(() => ({ version: 1, modality: modality.value, steps: steps.value }))
+function applyPreset(definition: PresetDefinition) {
+  if (busy.value) return
+  modality.value = definition.modality
+  steps.value = JSON.parse(JSON.stringify(definition.steps)) as PlanStep[]
+  stepAvailability.value = []
+}
 const needsMask = computed(() => steps.value.some(step => step.capability === 'video_inpainting') && modality.value === 'video')
-const busy = ref(false)
-const progress = ref(0)
-const status = ref('')
-const outputs = ref<WorkflowOutput[]>([])
-let requestId = ''
-let unlisten: UnlistenFn | undefined
+const { busy, progress, status, outputs, start: startJob } = useMediaJob<WorkflowOutput>(
+  'media_workflow', { queued: () => t('tasks.waitingForResources'), running: () => t('mediaWorkflow.starting'), completed: () => t('mediaWorkflow.completed'), failed: () => t('mediaWorkflow.failed'), cancelled: () => t('tasks.cancelSuccess') }, message, payload => {
+    if (Array.isArray(payload.inputs)) inputs.value = payload.inputs as string[]
+    if (typeof payload.outputDir === 'string') outputDir.value = payload.outputDir
+    if (typeof payload.modelDir === 'string') modelDir.value = payload.modelDir
+    if (payload.modality === 'image' || payload.modality === 'video') modality.value = payload.modality
+    if (Array.isArray(payload.steps)) { steps.value = payload.steps as PlanStep[]; stepAvailability.value = [] }
+    if (typeof payload.maskPath === 'string') maskPath.value = payload.maskPath
+  })
 
-const stepsSummary = computed(() => steps.value.map((step, index) => ({
-  title: `${index + 1}. ${t(`plan.capabilities.${step.capability}`)}`,
-  text: step.bindings[Object.keys(step.bindings)[0]] || step.capability,
-})))
 const workflowSteps = computed(() => [
   { title: t('mediaWorkflow.input'), text: t('mediaWorkflow.inputHint') },
   { title: t('plan.title'), text: t('mediaWorkflow.stepHint') },
@@ -52,6 +60,7 @@ function addStep() {
 function removeStep(index: number) {
   if (steps.value.length <= 1) return
   steps.value.splice(index, 1)
+  stepAvailability.value.splice(index, 1)
 }
 function updateStep(index: number, value: PlanStep) {
   steps.value[index] = value
@@ -70,9 +79,7 @@ useMediaDrop({
   scanImages: false,
 })
 async function pickInputs() {
-  const selected = await open({ multiple: true, filters: [{ name: modality.value === 'image' ? 'Images' : 'Videos', extensions: modality.value === 'image' ? ['png', 'jpg', 'jpeg', 'webp', 'gif'] : ['mp4', 'mkv', 'mov', 'webm', 'avi'] }] })
-  if (typeof selected === 'string') addInputs([selected])
-  else if (Array.isArray(selected)) addInputs(selected)
+  addInputs(await pickPreviewFiles(modality.value))
 }
 async function pickOutput() {
   const selected = await open({ directory: true, multiple: false })
@@ -86,11 +93,8 @@ async function pickMaskPath() {
   const selected = await open({ directory: true, multiple: false })
   if (typeof selected === 'string') maskPath.value = selected
 }
-function onProgress(payload: Record<string, unknown>) {
-  progress.value = Math.round(Number(payload.fraction || 0) * 100)
-  status.value = String(payload.current || status.value)
-}
 async function start() {
+  if (busy.value || !planAvailable.value) return
   if (!inputs.value.length) {
     message.warning(t('mediaWorkflow.noInput'))
     return
@@ -99,50 +103,17 @@ async function start() {
     message.warning(t('mediaWorkflow.noOutput'))
     return
   }
-  busy.value = true
-  progress.value = 0
-  outputs.value = []
-  requestId = `media-workflow-${Date.now()}`
-  status.value = t('mediaWorkflow.starting')
-  try {
-    await invoke('start_audio_tool', {
-      payload: buildMediaWorkflowPayload({
-        requestId,
-        modality: modality.value,
-        inputs: inputs.value,
-        outputDir: outputDir.value,
-        modelDir: modelDir.value,
-        steps: steps.value,
-        maskPath: needsMask.value ? maskPath.value : '',
-      }),
-    })
-  } catch (error) {
-    busy.value = false
-    status.value = error instanceof Error ? error.message : String(error)
-    message.error(status.value)
-  }
+  await startJob(buildMediaWorkflowPayload({
+    requestId: `media-workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    modality: modality.value,
+    inputs: inputs.value,
+    outputDir: outputDir.value,
+    modelDir: modelDir.value,
+    steps: steps.value,
+    maskPath: needsMask.value ? maskPath.value : '',
+  }))
 }
-onMounted(async () => {
-  unlisten = await listen<WorkerEvent>('pymss://worker-event', event => {
-    const payload = event.payload
-    const id = payload?.requestId || payload?.taskId || null
-    if (!requestId || id !== requestId) return
-    if (isTaskProgress(payload?.type) && payload.payload) {
-      onProgress(payload.payload)
-      return
-    }
-    if (isTaskResult(payload?.type) && payload.payload) {
-      const result = payload.payload
-      outputs.value = Array.isArray(result.outputs) ? result.outputs as WorkflowOutput[] : []
-      busy.value = false
-      progress.value = 100
-      status.value = outputs.value.length ? t('mediaWorkflow.completed') : t('mediaWorkflow.failed')
-      if (outputs.value.length) message.success(status.value)
-      else message.warning(status.value)
-    }
-  })
-})
-onBeforeUnmount(() => unlisten?.())
+
 </script>
 
 <template>
@@ -213,20 +184,21 @@ onBeforeUnmount(() => unlisten?.())
 
       <WorkbenchCard class="workbench-plan" :icon="GitNetworkOutline" :title="t('plan.title')" :subtitle="t('mediaWorkflow.stepHint')">
         <n-space vertical :size="12">
-          <div v-for="(step, index) in steps" :key="index" class="media-workflow-step">
+          <MediaWorkflowPresets key="media-workflow-presets" :definition="presetDefinition" :busy="busy" @apply="applyPreset" />
+          <div v-for="(step, index) in steps" :key="`media-step-${index}`" class="media-workflow-step">
             <div class="media-workflow-step__head">
               <strong>{{ t('mediaWorkflow.step', { index: index + 1 }) }}</strong>
               <n-button text :disabled="busy || steps.length <= 1" @click="removeStep(index)">{{ t('mediaWorkflow.removeStep') }}</n-button>
             </div>
-            <ProcessingPlan :model-value="step" :modality="modality" :busy="busy" :model-dir="modelDir" @update:model-value="value => updateStep(index, value)" />
+            <ProcessingPlan :model-value="step" :modality="modality" :busy="busy" :model-dir="modelDir" :workflow="true" :step-count="steps.length" @availability="value => stepAvailability[index] = value" @update:model-value="value => updateStep(index, value)" />
           </div>
-          <n-button secondary :disabled="busy" @click="addStep">+ {{ t('mediaWorkflow.addStep') }}</n-button>
-          <n-button type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy" @click="start">
+          <n-button key="media-workflow-add-step" secondary :disabled="busy || steps.length >= 64" @click="addStep">+ {{ t('mediaWorkflow.addStep') }}</n-button>
+          <n-button key="media-workflow-start" type="primary" size="large" class="mf-primary-action" :loading="busy" :disabled="busy || !planAvailable" @click="start">
             <template #icon><n-icon :component="PlayOutline" /></template>
             {{ t('mediaWorkflow.start') }}
           </n-button>
-          <n-progress v-if="busy || progress" type="line" :percentage="progress" />
-          <n-alert v-if="status" :type="outputs.length ? 'info' : 'warning'" :bordered="false">{{ status }}</n-alert>
+          <n-progress v-if="busy || progress" key="media-workflow-progress" type="line" :percentage="progress" />
+          <n-alert v-if="status" key="media-workflow-status" :type="outputs.length ? 'info' : 'warning'" :bordered="false">{{ status }}</n-alert>
         </n-space>
       </WorkbenchCard>
 

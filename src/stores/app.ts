@@ -1,3 +1,4 @@
+import { getEnvInfo, startEnvCheck } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { workerLogRecord, type LogEntry } from '@/utils/logRecord'
 import { defineStore } from 'pinia'
@@ -8,34 +9,25 @@ import { activeRuntimeEnvironment, supportsRuntimeCoreUpdate, supportsRuntimeMan
 import { isTauriRuntime } from '@/utils/appStore'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
 import { useSettingsStore } from '@/stores/settings'
+import {
+  activateRuntime as activateRuntimeRequest,
+  deleteRuntime as deleteRuntimeRequest,
+  runtimeCoreVersions as fetchRuntimeCoreVersions,
+  runtimeEnvSizes as fetchRuntimeEnvSizes,
+  runtimeInfo as fetchRuntimeInfo,
+} from '@/api/runtime'
+import { KnownObject } from '@/types/contracts'
+import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
 const studioLog = createLogger('ui.stores.app')
 
-export type EnvInfo = {
-  pythonVersion?: string
-  platform?: string
-  workerVersion?: string
-  pymssAvailable?: boolean
-  /** Whether the active runtime's pymss exposes the user-model registry (2.0.15+). */
-  customModelsSupported?: boolean
-  pymssPath?: string | null
-  pymssVersion?: string | null
-  pymssError?: string
-  torchAvailable?: boolean
-  torchVersion?: string | null
-  torchError?: string
-  torchBackend?: 'cpu' | 'cuda' | 'rocm' | string
-  hipVersion?: string | null
-  cudaAvailable?: boolean
-  cudaAvailableError?: string | null
-  cudaDeviceCount?: number
+type EnvInfoContract = Omit<KnownObject<WorkerCommandResult<'env_info'>>, 'cudaDevices'>
+
+export type EnvInfo = Partial<EnvInfoContract> & {
   cudaDevices?: CudaDeviceInfo[]
-  cudaDeviceCountError?: string | null
-  cudaDeviceNamesError?: string | null
-  mpsAvailable?: boolean
-  mlxAvailable?: boolean
-  avAvailable?: boolean
-  librosaAvailable?: boolean
+  /** Probe failures are optional and only present when the corresponding probe failed. */
+  pymssError?: string
+  torchError?: string
 }
 
 export type RuntimeBackend = 'cpu' | 'cuda' | 'rocm' | 'mlx'
@@ -119,15 +111,7 @@ export type InstalledRuntime = {
   coreUpdateSupported?: boolean
 }
 
-export type RuntimeCoreVersions = {
-  channel?: 'stable' | 'prerelease'
-  packages?: Record<string, {
-    latestVersion?: string | null
-    currentVersion?: string | null
-    updateAvailable?: boolean
-    error?: string
-  }>
-}
+export type RuntimeCoreVersions = Partial<KnownObject<WorkerCommandResult<'runtime_core_versions'>>>
 
 export type CudaDeviceInfo = {
   id: number
@@ -146,6 +130,42 @@ export type DiagnosticItem = {
   detail?: string
 }
 
+
+type EnvWorkerEventPayload = {
+  code?: string
+  message?: string
+  logPath?: string
+  backend?: RuntimeBackend
+  [key: string]: unknown
+}
+type AppWorkerEvent = {
+  type?: string
+  taskId?: string
+  requestId?: string
+  payload?: EnvWorkerEventPayload
+}
+type RuntimeEventPayload = {
+  mode?: string
+  backend?: RuntimeBackend
+  stage?: string
+  message?: string
+  logPath?: string
+  state?: NonNullable<RuntimeInfo['installState']>
+  rollbackAvailable?: boolean
+  [key: string]: unknown
+}
+type RuntimeWorkerEvent = {
+  type?: string
+  taskId?: string
+  payload?: RuntimeEventPayload
+}
+type WorkerEventEnvelope = {
+  type?: string
+  taskId?: string
+  requestId?: string
+  payload?: Record<string, unknown>
+}
+
 export type WorkerEventConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error'
 
 export const useAppStore = defineStore('app', () => {
@@ -155,7 +175,7 @@ export const useAppStore = defineStore('app', () => {
   const envError = ref<string | null>(null)
   const envCheckedOnce = ref(false)
   let envRequestId: string | null = null
-  const workerEvents = ref<any[]>([])
+  const workerEvents = ref<WorkerEventEnvelope[]>([])
   const workerEventConnectionStatus = ref<WorkerEventConnectionStatus>('idle')
   const workerEventConnectionError = ref('')
   const lastError = ref<string | null>(null)
@@ -261,16 +281,16 @@ export const useAppStore = defineStore('app', () => {
     return true
   }
 
-  function recordWorkerEvent(event: any) {
+  function recordWorkerEvent(event: WorkerEventEnvelope) {
     workerEvents.value.unshift(event)
     workerEvents.value = workerEvents.value.slice(0, 100)
   }
 
-  function handleWorkerEvent(event: any) {
+  function handleWorkerEvent(event: AppWorkerEvent) {
     const envCheckFailed = event?.type === 'error' && event?.payload?.code === 'ENV_CHECK_FAILED'
     if ((event?.type === 'env_info' || envCheckFailed) && (!envRequestId || event.requestId !== envRequestId)) return
     if (event?.type === 'env_info') {
-      envInfo.value = event.payload
+      envInfo.value = event.payload as unknown as EnvInfo
       envError.value = null
       envLoading.value = false
       envCheckedOnce.value = true
@@ -310,7 +330,7 @@ export const useAppStore = defineStore('app', () => {
     lastError.value = null
     try {
       const result: EnvInfo = isTauriRuntime()
-        ? await runRuntimeQuery(() => invoke<EnvInfo>('get_env_info'))
+        ? await runRuntimeQuery(() => getEnvInfo<EnvInfo>())
         : { platform: navigator.platform }
       if (envRequestId === requestId) {
         envInfo.value = result
@@ -346,7 +366,7 @@ export const useAppStore = defineStore('app', () => {
     try {
       await import('@/utils/events').then(({ registerWorkerEvents }) => registerWorkerEvents())
       if (envRequestId !== requestId) return
-      await invoke('start_env_check', { requestId })
+      await startEnvCheck(requestId)
     } catch (error) {
       if (envRequestId === requestId) {
         envRequestId = null
@@ -467,10 +487,7 @@ export const useAppStore = defineStore('app', () => {
         runtimeIncompleteBackends.value = []
         return runtimeEnvSizes.value
       }
-      const result = await invoke<{
-        sizes?: Record<string, number>
-        incompleteBackends?: string[]
-      }>('runtime_env_sizes')
+      const result = await fetchRuntimeEnvSizes()
       runtimeEnvSizes.value = result?.sizes || {}
       runtimeIncompleteBackends.value = result?.incompleteBackends || []
       return runtimeEnvSizes.value
@@ -522,7 +539,7 @@ export const useAppStore = defineStore('app', () => {
           runtimeInfoError.value = ''
           return result
         }
-        const result = await invoke<RuntimeInfo>('runtime_info', { payload: backend ? { backend } : {} })
+        const result = (await fetchRuntimeInfo(backend ? { backend } : {})) as RuntimeInfo
         runtimeInfo.value = result
         runtimeInfoError.value = ''
         return result
@@ -558,10 +575,10 @@ export const useAppStore = defineStore('app', () => {
         return runtimeCoreVersions.value
       }
       const info = runtimeInfo.value
-      const result = await invoke<RuntimeCoreVersions>('runtime_core_versions', { payload: {
+      const result = await fetchRuntimeCoreVersions({
         channel,
         versions: { pymss: info?.pymssVersion || info?.installState?.pymssVersion, 'pymss-core': info?.pymssCoreVersion || info?.installState?.pymssCoreVersion },
-      } })
+      })
       if (request === runtimeVersionsRequest && channel === settings.updateChannel) runtimeCoreVersions.value = result
       return result
     } finally {
@@ -686,7 +703,7 @@ export const useAppStore = defineStore('app', () => {
       ...target,
       ...(options.onlyIfNoActive ? { onlyIfNoActive: true } : {}),
     }
-    await mutateRuntime(() => invoke('activate_runtime', { payload }))
+    await mutateRuntime(() => activateRuntimeRequest(payload))
     const checks: Promise<unknown>[] = [checkRuntimeInfo(), checkEnv()]
     if (options.refreshCoreVersions !== false) checks.push(loadRuntimeCoreVersions())
     await Promise.all(checks)
@@ -755,12 +772,13 @@ export const useAppStore = defineStore('app', () => {
 
   async function deleteRuntime(backend: RuntimeBackend, target: { pythonPath?: string } = {}) {
     requireRuntimeManagement()
-    await mutateRuntime(() => invoke('delete_runtime', { payload: { backend, ...target } }))
+    await mutateRuntime(() => deleteRuntimeRequest({ backend, ...target }))
     await checkRuntimeInfo()
   }
 
-  function handleRuntimeEvent(event: any) {
+  function handleRuntimeEvent(event: RuntimeWorkerEvent) {
     const taskId = event?.taskId
+    if (!taskId) return
     const operation = runtimeBackgroundOperations.get(taskId)
     if (operation && (
       event?.type === operation.finishedEvent || event?.type === 'error'
@@ -772,13 +790,13 @@ export const useAppStore = defineStore('app', () => {
     if (runtimeCoreUpdateTaskId.value && taskId === runtimeCoreUpdateTaskId.value) {
       const waiter = corePlanWaiters.get(taskId)
       if (event?.type === 'runtime_core_update_plan') {
-        preparedRuntimeCorePlanId = (event.payload as RuntimeCorePlan).id
+        preparedRuntimeCorePlanId = (event.payload as unknown as RuntimeCorePlan).id
         runtimeCoreUpdateStatus.value = 'prepared'
         runtimeCoreUpdateTaskId.value = null
         runtimeCoreUpdateMessage.value = ''
         runtimeCoreUpdateStage.value = ''
         corePlanWaiters.delete(taskId)
-        waiter?.resolve(event.payload as RuntimeCorePlan)
+        waiter?.resolve(event.payload as unknown as RuntimeCorePlan)
       } else if (event?.type === 'runtime_core_update_finished') {
         invalidateRuntimeReads()
         runtimeCoreVersions.value = null
@@ -812,7 +830,7 @@ export const useAppStore = defineStore('app', () => {
         })
       } else if (event?.type === 'runtime_core_update_started') {
         if (runtimeCoreUpdateStatus.value !== 'preparing') runtimeCoreUpdateStatus.value = 'updating'
-        runtimeCoreUpdateMode.value = event.payload?.mode || 'update'
+        runtimeCoreUpdateMode.value = (event.payload?.mode as RuntimeCoreMode | undefined) || 'update'
         runtimeCoreUpdateMessage.value = event.payload?.backend || ''
         if (event.payload?.logPath) runtimeInfo.value = { ...(runtimeInfo.value || {}), logPath: event.payload.logPath }
       } else if (event?.type === 'runtime_core_update_stage' || event?.type === 'runtime_core_update_log') {

@@ -1,11 +1,11 @@
 /**
- * 源/片段/轨道/会话的规范化与持久化：默认值填充、旧字段兼容、克隆。
+ * 源/片段/轨道/会话的规范化与持久化：当前格式校验、数值规范化与克隆。
  *
  * 纯函数，不碰 store 响应式状态；类型从 editor.ts 引入（import type 擦除）。
  */
-import { fileName, isLegacyAutoTrackName, trackColor } from './editorStems.ts'
+import { fileName, trackColor } from './editorStems.ts'
 import { normalizeMasterLimiter } from '../utils/masterLimiter.ts'
-import { normalizePluginChain, clonePluginChain, pluginProjectVersion } from '../utils/editorPlugins.ts'
+import { normalizePluginChain, clonePluginChain, pluginProjectVersion, CURRENT_EDITOR_PROJECT_VERSION } from '../utils/editorPlugins.ts'
 import type { EditorSource, EditorClip, EditorTrack, EditorSession, EditorSourceRole } from '../types/editor.ts'
 import type { PersistedSession } from './editor.ts'
 
@@ -17,16 +17,9 @@ export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-export function cloneLegacyTrackEffects(effects: unknown): EditorTrack['effects'] {
-  return effects && typeof effects === 'object' && !Array.isArray(effects)
-    ? JSON.parse(JSON.stringify(effects)) as Record<string, unknown>
-    : undefined
-}
-
 export function cloneTracks(tracks: EditorTrack[]) {
   return tracks.map((track) => ({
     ...track,
-    effects: cloneLegacyTrackEffects(track.effects),
     pluginChain: clonePluginChain(track.pluginChain),
     clips: track.clips?.map((clip) => ({ ...clip })),
   }))
@@ -80,7 +73,6 @@ export function normalizeClip(clip: Partial<EditorClip>, source?: EditorSource):
 export function normalizeTrack(
   track: Partial<EditorTrack>,
   sources: Map<string, EditorSource>,
-  clipFadesCanonical: boolean,
   localizedName: (name: string, role: EditorSourceRole, stemKey?: string | null) => string,
 ): EditorTrack {
   const source = sources.get(String(track.sourceId || ''))
@@ -89,36 +81,18 @@ export function normalizeTrack(
     : (source?.role || 'stem')
   const stemKey = source?.stemKey || null
   const storedName = String(track.name || source?.name || 'Track')
-  const autoName = typeof track.autoName === 'boolean'
-    ? track.autoName
-    : isLegacyAutoTrackName(storedName, role, stemKey)
+  const autoName = track.autoName === true
   const clips = Array.isArray(track.clips)
     ? track.clips
         .map((clip) => normalizeClip(clip, sources.get(String(clip.assetId || track.sourceId || ''))))
         .filter((clip) => clip.assetId && clip.duration > 0)
     : []
-  if (!clips.length && source && source.duration > 0) {
-    clips.push(normalizeClip({
-      id: `clip_${String(track.id || source.id)}`,
-      assetId: source.id,
-      duration: source.duration,
-      fadeIn: Number(track.fadeIn || 0),
-      fadeOut: Number(track.fadeOut || 0),
-    }, source))
-  }
   let fadeIn = Math.max(0, Number(track.fadeIn || 0))
   let fadeOut = Math.max(0, Number(track.fadeOut || 0))
   if (clips.length === 1) {
     const clip = clips[0]
-    if (clipFadesCanonical) {
-      fadeIn = clip.fadeIn
-      fadeOut = clip.fadeOut
-    } else {
-      clip.fadeIn = clamp(fadeIn, 0, clip.duration)
-      clip.fadeOut = clamp(fadeOut, 0, clip.duration)
-      fadeIn = clip.fadeIn
-      fadeOut = clip.fadeOut
-    }
+    fadeIn = clip.fadeIn
+    fadeOut = clip.fadeOut
   }
   return {
     id: String(track.id || makeId('track')),
@@ -133,7 +107,6 @@ export function normalizeTrack(
     solo: Boolean(track.solo),
     fadeIn,
     fadeOut,
-    effects: cloneLegacyTrackEffects(track.effects),
     pluginChain: normalizePluginChain(track.pluginChain),
     type: track.type === 'recording' || role === 'recording'
       ? 'recording'
@@ -143,13 +116,16 @@ export function normalizeTrack(
 }
 
 export function normalizeSession(session: PersistedSession, localizedName: (name: string, role: EditorSourceRole, stemKey?: string | null) => string): EditorSession {
+  if (session.version !== CURRENT_EDITOR_PROJECT_VERSION || !Array.isArray(session.sources) || !Array.isArray(session.tracks)
+    || session.tracks.some(track => !track || typeof track !== 'object' || 'effects' in track || !Array.isArray(track.clips) || typeof track.autoName !== 'boolean')) {
+    throw new Error('Unsupported editor project schema; the original file was preserved')
+  }
   const sources = Array.isArray(session.sources)
     ? session.sources.map(normalizeSource)
     : []
   const sourceMap = new Map(sources.map((source) => [source.id, source]))
-  const clipFadesCanonical = Number(session.version || 0) >= 3
   const tracks = Array.isArray(session.tracks)
-    ? session.tracks.map((track) => normalizeTrack(track, sourceMap, clipFadesCanonical, localizedName))
+    ? session.tracks.map((track) => normalizeTrack(track, sourceMap, localizedName))
     : []
 
   return {

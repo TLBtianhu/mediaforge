@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { InputInst } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -613,7 +613,7 @@ function updateFades(patch: { fadeIn?: number; fadeOut?: number }) {
 .inspector-strip__meter { display: grid; grid-template-columns: 5px 5px 16px; gap: 2px; }
 .inspector-strip__meter-bar { position: relative; overflow: hidden; background: var(--surface-2); border: 1px solid var(--outline); border-radius: 2px; }
 .inspector-strip__meter-bar > span { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255, 106, 106, 0.95), rgba(255, 170, 102, 0.92) 24%, rgba(92, 214, 132, 0.9) 60%); }
-.inspector-strip__meter-bar > .inspector-strip__meter-fill--full { background: var(--error, var(--warning)); }
+.inspector-strip__meter-bar > .inspector-strip__meter-fill--full { background: var(--danger, var(--warning)); }
 .inspector-strip__meter-scale { position: relative; color: var(--on-surface-muted); font-size: 8px; line-height: 1; font-variant-numeric: tabular-nums; }
 .inspector-strip__meter-scale > span { position: absolute; left: 0; white-space: nowrap; transform: translateY(-50%); }
 .inspector-strip__meter-scale > span::before { content: ''; position: absolute; top: 50%; left: -3px; width: 2px; height: 1px; background: var(--outline-strong); }

@@ -45,7 +45,7 @@ with sync_playwright() as playwright:
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.add_init_script("""localStorage.setItem('pymss-studio:app-settings',JSON.stringify({
-          startupOnboardingSeen:false,locale:'zh-CN',themeMode:'dark',animationsEnabled:false
+          version:1,startupOnboardingSeen:false,locale:'zh-CN',themeMode:'dark',animationsEnabled:false
         }))""")
         page.goto(args.url.rstrip('/') + '/index.html', wait_until='networkidle')
         expect(page.locator('.onboarding-card')).to_be_visible()

@@ -9,11 +9,12 @@
 
 * `name`        稳定 id（agent 用它调用；改名等于破坏契约，要升 version）
 * `command` + `operation`  worker 工具真正落到哪个命令；桥接专属工具则为 `command=None`
-* `executor`     `worker` 走统一 dispatch，`bridge` 由 MCP 桥直接执行
+* `executor`     `worker` 使用 worker 命令，`bridge` 由 MCP 桥直接执行
 * `inputSchema` 输入（JSON Schema 的子集，够 MCP 用）
 * `approval`    需要什么级别的确认：`none` 只读 / `confirm` 会写文件或耗时 / `explicit` 下载·安装·删除
 * `cost`        预期耗时档位，供 agent 决定"直接等"还是"提交作业再轮询"
-* `longRunning` 是否走作业台账（有 jobId / 可取消）
+* `longRunning` 是否属于长耗时操作
+* `admission`   `kernel` 进入共享作业账本，`inline` 仅在当前进程内执行
 * `produces`    产物形状（file / report / json），供调用方知道去哪儿取结果
 * `evaluate`    自评价钩子（跑完之后怎么判断"做好了没有"）
 
@@ -23,8 +24,11 @@
 from __future__ import annotations
 
 import re
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
+
+from shared.protocol_contract import command_entries
 
 CONTRACT_VERSION = 1
 
@@ -78,8 +82,11 @@ def _result_event(name: str, command: str | None, operation: str | None) -> str 
     explicit = RESULT_EVENTS.get(name)
     if explicit:
         return explicit
+    declared = command_entries().get(command or "", {}).get("resultEvent")
+    if isinstance(declared, str):
+        return declared
     # 音频仍经 audio_tools，媒体经 media_tool；两者都收口到规范终止事件。
-    if command in {"audio_tools", "media_tool"}:
+    if command in {"audio_tools", "media_tool", "infer", "infer_workflow"}:
         return "task.result"
     return None
 
@@ -107,6 +114,7 @@ def _tool(
     approval: str = "none",
     cost: str = "instant",
     long_running: bool = False,
+    admission: str | None = None,
     input_schema: dict[str, Any] | None = None,
     produces: str | None = None,
     evaluate: str | None = None,
@@ -120,6 +128,9 @@ def _tool(
         raise ValueError(f"unknown cost level {cost!r} for {name}")
     if bridge_only != (command is None):
         raise ValueError(f"bridge_only must match command=None for {name}")
+    admission = admission or ("kernel" if long_running else "inline")
+    if admission not in {"inline", "kernel"}:
+        raise ValueError(f"unknown admission mode {admission!r} for {name}")
     return {
         "name": name,
         "title": title,
@@ -131,6 +142,7 @@ def _tool(
         "approval": approval,
         "cost": cost,
         "longRunning": bool(long_running),
+        "admission": admission,
         "inputSchema": input_schema or _schema(),
         "produces": produces,
         "evaluate": evaluate,
@@ -228,7 +240,7 @@ _MEDIA_STEPS_SCHEMA = _schema(
 
 
 def _media_tools() -> list[dict[str, Any]]:
-    from media_ops import capabilities, runtime_guard
+    from media_ops import capabilities, runtime_guard, workflow_contract
 
     tools: list[dict[str, Any]] = []
     # 契约本身不能因为"某个可选依赖没装"就生成不出来：
@@ -244,15 +256,18 @@ def _media_tools() -> list[dict[str, Any]]:
             bindings = capabilities.default_bindings(capability["id"])
         except Exception:  # noqa: BLE001
             bindings = {}
-        is_available = capability["id"] in implemented and capability["id"] in runtime_supported
+        base_available = capability["id"] in implemented and capability["id"] in runtime_supported
         # 模型清单来自能力声明（catalog 的 id）；新增模型只要登记进能力就会出现在工具里
         models = [str(item) for item in capability.get("modelIds") or []]
         for modality in capability["modalities"]:
             name = f"media.{modality}.{capability['id']}"
+            workflow_supported = modality == "image" or workflow_contract.workflow_support(capability["id"])[modality]["supported"]
             description = (
                 f"{capability['label']}（{capability['labelEn']}）。"
                 f"默认模型：{', '.join(f'{role}={model}' for role, model in bindings.items()) or '未声明'}。"
             )
+            if not workflow_supported:
+                description += "当前 MCP 入口需要串行工作流适配器；请使用应用内的单任务页面。"
             tools.append(
                 _tool(
                     name,
@@ -264,10 +279,11 @@ def _media_tools() -> list[dict[str, Any]]:
                     approval="confirm",
                     cost="seconds" if modality == "image" else "minutes",
                     long_running=modality == "video",
+                    admission="kernel",
                     input_schema=_MEDIA_STEPS_SCHEMA,
                     produces="file",
                     evaluate="media.evaluate",
-                    available=is_available,
+                    available=base_available and workflow_supported,
                     params_schema=_capability_params(capability["id"]),
                     models=models,
                 )
@@ -307,6 +323,7 @@ def _audio_tool_tools() -> list[dict[str, Any]]:
                 approval="confirm",
                 cost="seconds",
                 long_running=operation in {"asr", "merge", "slicer"},
+                admission="kernel",
                 input_schema=_schema(
                     {
                         "operation": {"type": "string", "const": operation},
@@ -347,7 +364,12 @@ def _native_tools() -> list[dict[str, Any]]:
         _tool("model.delete", "删除模型", "删除本地权重文件。", "model", "delete_model",
               approval="explicit", input_schema=_schema({"model": {"type": "string"}}, ["model"])),
         _tool("model.import_custom", "导入自定义模型", "把外部权重注册进分离模型库。", "model", "import_custom_model",
-              approval="explicit", cost="seconds", input_schema=_schema({"paths": inputs_array}, ["paths"])),
+              approval="explicit", cost="seconds", long_running=True, input_schema=_schema({
+                  "name":{"type":"string"}, "modelType":{"type":"string"}, "modelPath":{"type":"string"},
+                  "configPath":{"type":"string"}, "aliases":{"type":"array","items":{"type":"string"}},
+                  "importMode":{"type":"string","enum":["reference","copy"]},
+                  "verify":{"type":"boolean"}, "force":{"type":"boolean"},
+              }, ["name", "modelType", "modelPath"])),
         _tool("model.inspect_custom", "检查自定义模型", "在不注册的情况下检查权重是否可加载。", "model",
               "inspect_custom_model", cost="seconds", input_schema=_schema({"paths": inputs_array}, ["paths"])),
         _tool("model.storage", "模型存储概览", "各目录占用与可回收空间。", "model", "model_storage_summary"),
@@ -399,23 +421,23 @@ def _native_tools() -> list[dict[str, Any]]:
               ),
               produces="file"),
         # 分离
-        _tool("audio.separate", "音频分离", "用一个分离模型把人声/伴奏等拆开。", "audio", "infer",
+        _tool("audio.separate", "音频分离", "用已下载的分离模型处理一个或多个本地文件，产物写入本次任务的输出目录。", "audio", "infer",
               approval="confirm", cost="minutes", long_running=True,
               input_schema=_schema({"model": {"type": "string"}, "inputs": inputs_array}, ["model", "inputs"]),
               produces="file"),
         # 编辑器
         _tool("editor.export_mix", "导出混音", "把编辑器工程导出为音频文件。", "editor", "export_editor_mix",
-              approval="confirm", cost="seconds", input_schema=_schema({"project": {"type": "object"}}, ["project"]),
+              approval="confirm", cost="seconds", admission="kernel", input_schema=_schema({"project": {"type": "object"}}, ["project"]),
               produces="file"),
         _tool("editor.peaks", "波形峰值", "计算波形显示用峰值。", "editor", "waveform_peaks",
-              input_schema=_schema({"inputs": inputs_array}, ["inputs"])),
+              input_schema=_schema({"path":{"type":"string"}, "resolution":{"type":"integer"}, "cacheDir":{"type":"string"}}, ["path"])),
         _tool("media.metadata", "媒体元数据", "Read media metadata with ffprobe. Returns a compact probe summary.", "media", "media_tool",
               operation="media_probe", input_schema=_schema({"inputs": inputs_array}, ["inputs"]), produces="json"),
         _tool("media.library", "媒体库", "列出/刷新媒体库。", "media", "media_library"),
         # 自评价
         # 多步编排：worker 侧 media_image/media_video 只接受单步，多步必须走 media_workflow
         _tool("media.image.workflow", "图像多步工作流", "按顺序执行多个能力（如先去水印再放大），一次调用完成编排。",
-              "media", "media_tool", operation="media_workflow", approval="confirm", cost="seconds",
+              "media", "media_tool", operation="media_workflow", approval="confirm", cost="seconds", admission="kernel",
               input_schema=_MEDIA_STEPS_SCHEMA, produces="file", evaluate="media.evaluate"),
         _tool("media.video.workflow", "视频多步工作流", "按顺序执行多个能力；视频耗时按分钟计，走作业台账。",
               "media", "media_tool", operation="media_workflow", approval="confirm", cost="minutes",
@@ -675,8 +697,9 @@ def cmd_agent_contract(payload: dict[str, Any]) -> int:
 
 def find_tool(tool_name: str) -> dict[str, Any]:
     _ensure_mcp_compatible()
+    canonical = next((name for name, alias in BRIDGE_ALIASES.items() if alias == tool_name), tool_name)
     for tool in _native_tools() + _media_tools() + _audio_tool_tools() + _bridge_only_tools():
-        if tool["name"] == tool_name:
+        if tool["name"] == canonical:
             return tool
     raise KeyError(f"unknown tool: {tool_name}")
 
@@ -770,6 +793,7 @@ def dispatch(
     arguments: dict[str, Any] | None = None,
     *,
     retry: bool = True,
+    data_root: str | None = None,
 ) -> dict[str, Any]:
     """进程内执行一个工具；对可识别的失败**自动纠正一次**（有预算）。
 
@@ -789,7 +813,7 @@ def dispatch(
         payload.setdefault("operation", tool["operation"])
     budget_remaining = budget_from_env() if retry else 0
     attempts: list[dict[str, Any]] = []
-    outcome = _dispatch_once(tool_name, tool, payload)
+    outcome = _dispatch_once(tool_name, tool, payload, data_root=data_root)
     while True:
         result = outcome.get("result") or {}
         hint = recovery_from_result(result.get("payload") if isinstance(result.get("payload"), dict) else result)
@@ -809,14 +833,14 @@ def dispatch(
         budget_remaining -= 1
         attempts.append({"code": hint.get("code"), "applied": [action.get("action") for action in actions]})
         payload = adjusted
-        outcome = _dispatch_once(tool_name, tool, payload)
+        outcome = _dispatch_once(tool_name, tool, payload, data_root=data_root)
     if attempts:
         outcome["recoveryAttempts"] = attempts
         outcome["arguments"] = payload
     return outcome
 
 
-def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any], *, data_root: str | None = None) -> dict[str, Any]:
     """**进程内**执行一个工具：不起子进程、不走管道、不需要端口。
 
     这就是"内嵌 agent 与外部 agent 共用同一个执行器"的那一层：
@@ -846,6 +870,9 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
                 },
             },
         }
+    if tool["command"] in {"media_library", "waveform_peaks"} and data_root is not None:
+        # Executor scope is not a caller argument and never changes process env.
+        payload = {**payload, "dataRoot": data_root}
     events: list[dict[str, Any]] = []
     import worker
     from shared import worker_protocol
@@ -853,11 +880,12 @@ def _dispatch_once(tool_name: str, tool: dict[str, Any], payload: dict[str, Any]
     def sink(event_type: str, data: dict[str, Any], request_id: str | None, task_id: str | None) -> None:
         events.append({"type": event_type, "payload": data})
 
-    worker_protocol.set_event_sink(sink)
-    try:
+    with ExitStack() as scope:
+        if tool["command"] == "list_models" and data_root is not None:
+            from core.worker_models import user_model_registry_scope
+            scope.enter_context(user_model_registry_scope(data_root))
+        scope.enter_context(worker_protocol.bind_event_sink(sink))
         code = worker.run_command(tool["command"], payload)
-    finally:
-        worker_protocol.set_event_sink(None)
 
     terminal = events[-1] if events else None
     payload = terminal.get("payload") if isinstance(terminal, dict) else None

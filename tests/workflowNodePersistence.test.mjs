@@ -10,6 +10,7 @@ import { createServer } from 'vite'
 const vite = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, hmr: false }, optimizeDeps: { noDiscovery: true }, resolve: { alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) } } })
 after(() => vite.close())
 const { storeGraphDefaults } = await vite.ssrLoadModule('/src/workflows/graphDefaults.ts')
+const { COMFY_WORKFLOW_VERSION } = await vite.ssrLoadModule('/src/workflows/formats.ts')
 
 const descriptor = parse(readFileSync(new URL('../src/views/WorkflowNodeEditorView.vue', import.meta.url), 'utf8')).descriptor
 const source = ts.createSourceFile('view.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true)
@@ -23,7 +24,7 @@ const mounted = source.statements.find(statement => ts.isExpressionStatement(sta
 const code = ts.transpileModule([...statements, mounted].map(item => item.getText(source)).join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 const ref = value => ({ value })
 const plain = value => JSON.parse(JSON.stringify(value))
-const graph = model => ({ nodes: [{ id: 1, type: 'mss_separate', widgets_values: [model] }], links: [] })
+const graph = model => ({ version: COMFY_WORKFLOW_VERSION, nodes: [{ id: 1, type: 'mss_separate', widgets_values: [model] }], links: [] })
 class ConflictError extends Error {}
 
 function environment(query = {}) {
@@ -41,7 +42,7 @@ function environment(query = {}) {
     saveError: ref(''), closing: ref(false), submitting: ref(false), editingName: ref(false), showClosePrompt: ref(false), dirty: ref(true),
     pendingDefinition: ref(null), showRevisionConflict: ref(false), editorKey: ref(0),
     editorRef: ref({ snapshotDefinition: () => canvas }),
-    cloneWorkflow: plain, storeGraphDefaults,
+    cloneWorkflow: plain, storeGraphDefaults, COMFY_WORKFLOW_VERSION,
     isGraphWorkflowDefinition: value => Array.isArray(value.nodes),
     WorkflowRevisionConflictError: ConflictError, WorkflowEditorInUseError: class extends Error {},
     model: { initialize: async () => {} },

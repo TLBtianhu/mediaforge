@@ -24,7 +24,7 @@ fn valid_token(token: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
-fn process_alive(pid: u32) -> bool {
+pub(super) fn process_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
     }
@@ -345,16 +345,16 @@ mod tests {
     #[test]
     fn killed_python_worker_outputs_are_removed_by_the_parent() {
         use std::io::BufRead;
-        use std::process::{Command, Stdio};
+        use std::process::Stdio;
         let root = tempfile::tempdir().unwrap();
         let output = root.path().join("output");
         let records = root.path().join("records");
         fs::create_dir(&output).unwrap();
         let mut scope = AudioOutputScope::create(&records, output.clone()).unwrap();
-        let mut command = Command::new(if cfg!(windows) { "python" } else { "python3" });
-        command.args(["-c", "from pathlib import Path\nimport sys,time\nfrom audio_tools.common import _render_output\ndef render(path):\n path.write_bytes(b'partial')\n print('ready',flush=True)\n time.sleep(60)\n_render_output(Path(sys.argv[1])/'final.wav',render)"])
+        let mut command = crate::process_command::isolated_test_python(root.path());
+        command.args(["-I", "-B", "-c", "from pathlib import Path\nimport sys,time\nsys.path.insert(0,sys.argv[2])\nfrom audio_tools.common import _render_output\ndef render(path):\n path.write_bytes(b'partial')\n print('ready',flush=True)\n time.sleep(60)\n_render_output(Path(sys.argv[1])/'final.wav',render)"])
             .arg(&output)
-            .env("PYTHONPATH", Path::new(env!("CARGO_MANIFEST_DIR")).join("../python"))
+            .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../python"))
             .stdout(Stdio::piped()).stderr(Stdio::piped());
         scope.configure(&mut command);
         let mut child = command.spawn().unwrap();

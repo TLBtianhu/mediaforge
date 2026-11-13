@@ -67,7 +67,7 @@ function guardLogKeys(event: KeyboardEvent) {
 .workflow-node-log__progress i { display: block; height: 100%; background: var(--primary); }
 .workflow-node-log:not([open]) .workflow-node-log__progress { margin-bottom: 0; }
 .workflow-node-log[data-node-status="done"] .workflow-node-log__status { color: var(--success, #44936b); }
-.workflow-node-log[data-node-status="running"] .workflow-node-log__status { color: var(--primary-strong); font-weight: 600; }
+.workflow-node-log[data-node-status="running"] .workflow-node-log__status { color: var(--primary-ink); font-weight: 600; }
 .workflow-node-log[data-node-status="failed"] .workflow-node-log__status { color: var(--danger); }
 .workflow-node-log[data-node-status="failed"] .workflow-node-log__progress i { background: var(--danger); }
 </style>

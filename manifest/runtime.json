@@ -1,16 +1,20 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "_comment": [
     "运行时清单：这套运行时能做什么、跑的是什么解释器与 torch。",
     "App 与 worker 在启动/接单时校验，缺能力要明确拒绝，而不是等到调用时才报模块缺失。",
-    "assetId 与 src-tauri/src/runtime_assets.rs 里的 ASSET_ID 必须一致（由测试保证）。"
+    "schemaVersion 3要求每个资产显式声明平台、架构、后端和 Python ABI。",
+    "fallbackAssetId 只在目标平台、架构和请求后端匹配时使用。",
+    "urls 按可用性排序：ModelScope 当前可用（Range 206），hf-mirror 会 302 到 HF 并返回 404，只作兜底。"
   ],
-  "fallbackAssetId": "runtime-cuda-2026.11.4",
+  "fallbackAssetId": "runtime-cuda-py312-2026.11.7",
   "runtimes": [
     {
-      "assetId": "runtime-cuda-2026.11.4",
+      "assetId": "runtime-cuda-py312-2026.11.7",
+      "platform": "windows",
+      "arch": "x86_64",
       "backend": "cuda",
-      "python": "3.11",
+      "python": "3.12",
       "torch": "2.7.1",
       "capabilities": [
         "upscale",
@@ -24,12 +28,12 @@
         "video_super_resolution",
         "video_inpainting"
       ],
-      "notes": "自包含嵌入式 Python 运行时；无 venv 启动器或 pyvenv.cfg，包含 ProPainter 动态 mask 与流式修复依赖，按任务起独立进程。",
-      "sha256": "ccbeb67d0110dc1b6abc1906d06e7636c9945e333672874b43738f53b29d021f",
-      "size": 3618200716,
+      "notes": "Python 3.12.13 自包含运行时；解释器、DLL、stdlib与cp312扩展同源，无venv或安装期解释器覆盖。包含ProPainter动态mask与流式修复依赖。该资产已本地生成，正式使用前须发布到下列资产源。",
+      "sha256": "3a6442657831aa52818e359592c467cea20f6bbdfef7bf9ee550fd66f5bdce84",
+      "size": 3794089293,
       "urls": [
-        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-2026.11.4.zip",
-        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-2026.11.4.zip"
+        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-py312-2026.11.7.zip",
+        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-py312-2026.11.7.zip"
       ]
     }
   ]

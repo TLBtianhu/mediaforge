@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix="pymss-separate-workflow-") as temporary
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.add_init_script(
         "localStorage.setItem('pymss-studio:app-settings', JSON.stringify(" + json.dumps({
-            "startupOnboardingSeen": True, "locale": "en", "themeMode": "light",
+            "version": 1, "startupOnboardingSeen": True, "locale": "en", "themeMode": "light",
             "outputDir": str(directory / "outputs"), "clearInputAfterSubmit": False,
         }) + ")); localStorage.setItem('pymss-studio:workflow-state', JSON.stringify(" + json.dumps(state) + "));"
     )
@@ -147,6 +147,7 @@ with tempfile.TemporaryDirectory(prefix="pymss-separate-workflow-") as temporary
             env={**os.environ, "PYTHONIOENCODING": "utf-8", **(
                 {"PYTHONPATH": str(args.runtime.resolve())} if args.runtime else {}
             )},
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         assert completed.returncode == 0, (completed.stdout + completed.stderr)[-6000:]
         events = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]

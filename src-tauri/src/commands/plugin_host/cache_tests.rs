@@ -166,7 +166,7 @@ fn deleted_directory_aliases_stay_removed_after_partial_refresh_and_catalog_rest
         std::os::unix::fs::symlink(&package, alias).unwrap();
         #[cfg(windows)]
         {
-            let output = Command::new("cmd")
+            let output = crate::process_command::hidden_command("cmd")
                 .args(["/C", "mklink", "/J"])
                 .arg(alias)
                 .arg(&package)
@@ -233,7 +233,7 @@ fn cached_catalog_matches_source_aliases_below_a_symlinked_parent_directory() {
         std::os::unix::fs::symlink(target, alias).unwrap();
         #[cfg(windows)]
         {
-            let output = Command::new("cmd")
+            let output = crate::process_command::hidden_command("cmd")
                 .args(["/C", "mklink", "/J"])
                 .arg(alias)
                 .arg(target)

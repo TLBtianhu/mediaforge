@@ -1,45 +1,30 @@
 ﻿<script setup lang="ts">
+import { cancelAgentJob, cancelTask, revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { FolderOpenOutline, RefreshOutline, SparklesOutline } from '@vicons/ionicons5'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import { useTaskStore } from '@/stores/task'
+import { useMediaJobsStore } from '@/stores/mediaJobs'
+import { cancelQueueJob, isQueueActive, isQueueFailed, mergeQueueJobs, queueOutputCount, type QueueEntry } from './queue/projection.ts'
 
 defineOptions({ name: 'QueueView' })
 
-type AgentJob = {
-  jobId: string
-  command: string
-  status: string
-  source?: 'manual' | 'agent'
-  cancelTaskId?: string
-  fraction: number
-  message: string
-  createdAt: number
-  finishedAt?: number | null
-  payload?: Record<string, unknown>
-  result?: Record<string, unknown> | null
-  error?: string | null
-}
-type AgentResponse = {
-  ok: boolean
-  dataRoot: string
-  workspace: string
-  index: { version: number; jobs: AgentJob[] }
-}
-
 const { t } = useI18n()
 const message = useMessage()
-const jobs = ref<AgentJob[]>([])
-const dataRoot = ref('')
-const workspace = ref('')
-const loading = ref(false)
-const error = ref('')
+const taskStore = useTaskStore()
+const mediaJobs = useMediaJobsStore()
+const jobs = computed(() => mergeQueueJobs(mediaJobs.jobs, taskStore.tasks))
+const dataRoot = computed(() => mediaJobs.dataRoot)
+const jobsDir = computed(() => mediaJobs.jobsDir)
+const loading = computed(() => mediaJobs.loading)
+const error = computed(() => mediaJobs.error || taskStore.loadError)
+const cancelling = ref(new Set<string>())
 const query = ref('')
 const sourceFilter = ref<'all' | 'manual' | 'agent'>('all')
 const statusFilter = ref<'all' | 'active' | 'completed' | 'failed'>('all')
-let timer: ReturnType<typeof setInterval> | undefined
+let disposed = false
 
 const sourceOptions = computed(() => [
   { label: t('agent.allSources'), value: 'all' },
@@ -57,21 +42,31 @@ const filteredJobs = computed(() => {
   return jobs.value.filter(job => {
     const source = job.source || 'agent'
     if (sourceFilter.value !== 'all' && source !== sourceFilter.value) return false
-    if (statusFilter.value === 'active' && !['running', 'queued'].includes(job.status)) return false
+    if (statusFilter.value === 'active' && !isQueueActive(job)) return false
     if (statusFilter.value === 'completed' && job.status !== 'completed') return false
-    if (statusFilter.value === 'failed' && job.status !== 'failed') return false
+    if (statusFilter.value === 'failed' && !isQueueFailed(job)) return false
     if (!text) return true
-    return [job.command, job.jobId, job.message, job.error].some(value => String(value || '').toLowerCase().includes(text))
+    return [job.command, job.payload?.operation, jobTitle(job), job.jobId, job.message, job.error, job.payload?.input, ...(Array.isArray(job.payload?.inputs) ? job.payload.inputs : [])]
+      .some(value => String(value || '').toLowerCase().includes(text))
   })
 })
 
-const running = computed(() => jobs.value.filter(job => job.status === 'running' || job.status === 'queued').length)
+const running = computed(() => jobs.value.filter(isQueueActive).length)
 const completed = computed(() => jobs.value.filter(job => job.status === 'completed').length)
-const failed = computed(() => jobs.value.filter(job => job.status === 'failed').length)
+const failed = computed(() => jobs.value.filter(isQueueFailed).length)
+
+function jobTitle(job: QueueEntry) {
+  const operation = String(job.payload?.operation || job.command)
+  const titles: Record<string, string> = {
+    media_image: 'image.title', media_video: 'video.title',
+    media_convert: 'factory.title', media_workflow: 'mediaWorkflow.title',
+  }
+  return titles[operation] ? t(titles[operation]) : operation
+}
 
 function statusType(status: string) {
   if (status === 'completed') return 'success'
-  if (status === 'failed') return 'error'
+  if (status === 'failed' || status === 'interrupted') return 'error'
   if (status === 'cancelled') return 'default'
   return 'info'
 }
@@ -81,60 +76,46 @@ function formatTime(value?: number | null) {
   return new Date(value * 1000).toLocaleString()
 }
 
-function outputCount(job: AgentJob) {
-  const outputs = job.result?.outputs
-  return Array.isArray(outputs) ? outputs.length : 0
-}
-
 async function load() {
-  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
-  loading.value = true
-  try {
-    const response = await invoke<AgentResponse>('agent_jobs')
-    jobs.value = Array.isArray(response.index?.jobs) ? response.index.jobs : []
-    dataRoot.value = response.dataRoot || ''
-    workspace.value = response.workspace || ''
-    error.value = ''
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : String(cause)
-  } finally {
-    loading.value = false
-  }
+  if (disposed) return
+  // The resident store merges live events and orders concurrent journal reads.
+  // Its error/loading state remains available when this view is not mounted.
+  await mediaJobs.refresh().catch(() => {})
 }
 
 async function openWorkspace() {
   try {
-    await invoke('reveal_path', { path: dataRoot.value })
+    await revealPath(dataRoot.value)
   } catch (cause) {
-    message.error(cause instanceof Error ? cause.message : String(cause))
+    if (!disposed) message.error(cause instanceof Error ? cause.message : String(cause))
   }
 }
 
-async function cancel(job: AgentJob) {
+async function cancel(job: QueueEntry) {
+  if (disposed || cancelling.value.has(job.jobId) || !isQueueActive(job)) return
+  cancelling.value.add(job.jobId)
   try {
-    if ((job.source || 'agent') === 'manual') {
-      await invoke('cancel_task', { taskId: job.cancelTaskId || job.jobId })
-    } else {
-      await invoke('cancel_agent_job', { jobId: job.jobId })
-    }
-    message.success(t('agent.cancelRequested'))
+    const requested = await cancelQueueJob(job, {
+      audio: taskId => taskStore.cancelTask(taskId),
+      manual: taskId => cancelTask(taskId),
+      agent: jobId => cancelAgentJob(jobId),
+    })
+    if (disposed) return
+    if (requested) message.success(t('agent.cancelRequested'))
     await load()
   } catch (cause) {
-    message.error(cause instanceof Error ? cause.message : String(cause))
+    if (!disposed) message.error(cause instanceof Error ? cause.message : String(cause))
+  } finally {
+    if (!disposed) cancelling.value.delete(job.jobId)
   }
 }
 
 onMounted(() => {
-  void load()
-  timer = setInterval(() => {
-    // 页面不可见时不轮询；无活跃任务时放宽到 10 秒，避免每条命令都新起一个 Python 进程。
-    if (typeof document !== 'undefined' && document.hidden) return
-    void load()
-  }, 10000)
+  void mediaJobs.initialize().catch(() => {})
 })
 
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
+  disposed = true
 })
 </script>
 
@@ -168,7 +149,7 @@ onBeforeUnmount(() => {
         <n-button text @click="openWorkspace"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('agent.openWorkspace') }}</n-button>
       </div>
       <div class="agent-path">{{ dataRoot || t('agent.noWorkspace') }}</div>
-      <div class="agent-path agent-path--muted">{{ workspace }}</div>
+      <div class="agent-path agent-path--muted">{{ jobsDir }}</div>
     </section>
 
     <section class="agent-toolbar">
@@ -189,14 +170,14 @@ onBeforeUnmount(() => {
       <div v-else class="agent-list">
         <article v-for="job in filteredJobs" :key="job.jobId" class="agent-job">
           <div class="agent-job__head">
-            <div class="agent-job__title"><strong>{{ job.command }}</strong><span>{{ job.jobId }}</span></div>
+            <div class="agent-job__title"><strong>{{ jobTitle(job) }}</strong><span>{{ job.jobId }}</span></div>
             <div class="agent-job__actions">
-              <n-button v-if="job.status === 'running' || job.status === 'queued'" text size="tiny" @click="cancel(job)">{{ t('agent.cancel') }}</n-button>
+              <n-button v-if="isQueueActive(job)" text size="tiny" :loading="cancelling.has(job.jobId)" :disabled="cancelling.has(job.jobId)" @click="cancel(job)">{{ t('agent.cancel') }}</n-button>
               <n-tag size="small" :type="statusType(job.status)" :bordered="false">{{ job.status }}</n-tag>
             </div>
           </div>
-          <div class="agent-job__meta"><span>{{ job.source === 'manual' ? t('agent.manual') : t('agent.agent') }}</span><span>{{ formatTime(job.createdAt) }}</span><span>{{ outputCount(job) }} {{ t('agent.outputs') }}</span></div>
-          <n-progress v-if="job.status === 'running' || job.status === 'queued'" type="line" :percentage="Math.round(Number(job.fraction || 0) * 100)" />
+          <div class="agent-job__meta"><span>{{ job.source === 'manual' ? t('agent.manual') : t('agent.agent') }}</span><span>{{ formatTime(job.createdAt) }}</span><span>{{ queueOutputCount(job) }} {{ t('agent.outputs') }}</span></div>
+          <n-progress v-if="isQueueActive(job)" type="line" :percentage="Math.round(Number(job.fraction || 0) * 100)" />
           <p class="agent-job__message">{{ job.error || job.message }}</p>
         </article>
       </div>

@@ -1,16 +1,49 @@
 //! 编辑器录音：临时 PCM 的追加、完成、取消与 WAV 封装。
 
-use super::{editor_project_dir, now_millis};
+use super::now_millis;
 use crate::error::{AppError, AppResult};
 use base64::Engine as _;
 use serde::Serialize;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-fn editor_recordings_dir(app: &AppHandle, project_id: &str) -> AppResult<PathBuf> {
-    Ok(editor_project_dir(app, project_id)?.join("recordings"))
+fn with_recording_project<T>(
+    root: &Path,
+    project_id: &str,
+    action: impl FnOnce(&Path) -> AppResult<T>,
+) -> AppResult<T> {
+    super::validate_editor_project_id(project_id)?;
+    let _asset = crate::python::library_references::AssetLease::acquire(
+        root,
+        std::time::Duration::from_secs(5),
+    )?;
+    let project = root
+        .join("editor-projects")
+        .join(project_id)
+        .join("project.json");
+    crate::python::result_jobs::plain_path(&project)
+        .map_err(|reason| AppError::Worker(reason.into()))?;
+    let value =
+        crate::python::result_jobs::parse_reference_json(&std::fs::read_to_string(&project)?)?;
+    crate::storage::validate_editor_project(&value)?;
+    if value["id"] != project_id {
+        return Err(AppError::Worker(
+            "recording project identity mismatch; original files preserved".into(),
+        ));
+    }
+    let directory = project.parent().unwrap().join("recordings");
+    crate::python::result_jobs::plain_path(&directory)
+        .map_err(|reason| AppError::Worker(reason.into()))?;
+    action(&directory)
+}
+
+fn recording_path(directory: &Path, id: &str, suffix: &str) -> AppResult<PathBuf> {
+    let path = directory.join(format!("{id}{suffix}"));
+    crate::python::result_jobs::plain_path(&path)
+        .map_err(|reason| AppError::Worker(reason.into()))?;
+    Ok(path)
 }
 
 pub(crate) fn validate_recording_id(recording_id: &str) -> AppResult<&str> {
@@ -78,29 +111,31 @@ pub async fn begin_editor_recording(
     app: AppHandle,
     project_id: String,
 ) -> AppResult<EditorRecordingHandle> {
-    let recordings_dir = editor_recordings_dir(&app, &project_id)?;
-    std::fs::create_dir_all(&recordings_dir)?;
-    let base = now_millis();
-    for suffix in 0..1000u16 {
-        let recording_id = if suffix == 0 {
-            format!("recording_{base}")
-        } else {
-            format!("recording_{base}_{suffix}")
-        };
-        let partial_path = recordings_dir.join(format!("{recording_id}.pcm.partial"));
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(partial_path)
-        {
-            Ok(_) => return Ok(EditorRecordingHandle { recording_id }),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
+    let root = crate::storage::data_root_dir(&app)?;
+    with_recording_project(&root, &project_id, |recordings_dir| {
+        std::fs::create_dir_all(recordings_dir)?;
+        let base = now_millis();
+        for suffix in 0..1000u16 {
+            let recording_id = if suffix == 0 {
+                format!("recording_{base}")
+            } else {
+                format!("recording_{base}_{suffix}")
+            };
+            let partial_path = recording_path(recordings_dir, &recording_id, ".pcm.partial")?;
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(partial_path)
+            {
+                Ok(_) => return Ok(EditorRecordingHandle { recording_id }),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error.into()),
+            }
         }
-    }
-    Err(AppError::Worker(
-        "could not allocate a recording file".into(),
-    ))
+        Err(AppError::Worker(
+            "could not allocate a recording file".into(),
+        ))
+    })
 }
 
 #[tauri::command]
@@ -117,11 +152,13 @@ pub async fn append_editor_recording_chunk(
     if bytes.is_empty() || bytes.len() > 2 * 1024 * 1024 || bytes.len() % 2 != 0 {
         return Err(AppError::Worker("invalid recording chunk size".into()));
     }
-    let partial_path =
-        editor_recordings_dir(&app, &project_id)?.join(format!("{recording_id}.pcm.partial"));
-    let mut file = OpenOptions::new().append(true).open(partial_path)?;
-    file.write_all(&bytes)?;
-    Ok(())
+    let root = crate::storage::data_root_dir(&app)?;
+    with_recording_project(&root, &project_id, |recordings_dir| {
+        let partial_path = recording_path(recordings_dir, recording_id, ".pcm.partial")?;
+        let mut file = OpenOptions::new().append(true).open(partial_path)?;
+        file.write_all(&bytes)?;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -133,44 +170,47 @@ pub async fn finish_editor_recording(
     channels: u16,
 ) -> AppResult<EditorRecordingResult> {
     let recording_id = validate_recording_id(&recording_id)?;
-    let recordings_dir = editor_recordings_dir(&app, &project_id)?;
-    let partial_path = recordings_dir.join(format!("{recording_id}.pcm.partial"));
-    let data_len_u64 = std::fs::metadata(&partial_path)?.len();
-    if data_len_u64 == 0 || data_len_u64 % 2 != 0 || data_len_u64 > u32::MAX as u64 - 36 {
-        return Err(AppError::Worker(
-            "recording does not contain valid PCM audio".into(),
-        ));
-    }
-    let data_len = data_len_u64 as u32;
-    let output_path = recordings_dir.join(format!("{recording_id}.wav"));
-    let output_partial_path = recordings_dir.join(format!("{recording_id}.wav.partial"));
-    let mut input = std::fs::File::open(&partial_path)?;
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&output_partial_path)?;
-    let write_result = (|| -> AppResult<()> {
-        output.write_all(&pcm_wav_header(data_len, sample_rate, channels)?)?;
-        std::io::copy(&mut input, &mut output)?;
-        output.flush()?;
-        output.sync_all()?;
-        Ok(())
-    })();
-    drop(output);
-    if let Err(error) = write_result {
-        let _ = std::fs::remove_file(&output_partial_path);
-        return Err(error);
-    }
-    std::fs::rename(&output_partial_path, &output_path)?;
-    std::fs::remove_file(partial_path)?;
+    let root = crate::storage::data_root_dir(&app)?;
+    with_recording_project(&root, &project_id, |recordings_dir| {
+        let partial_path = recording_path(recordings_dir, recording_id, ".pcm.partial")?;
+        let data_len_u64 = std::fs::metadata(&partial_path)?.len();
+        if data_len_u64 == 0 || data_len_u64 % 2 != 0 || data_len_u64 > u32::MAX as u64 - 36 {
+            return Err(AppError::Worker(
+                "recording does not contain valid PCM audio".into(),
+            ));
+        }
+        let data_len = data_len_u64 as u32;
+        let output_path = recording_path(recordings_dir, recording_id, ".wav")?;
+        let output_partial_path = recording_path(recordings_dir, recording_id, ".wav.partial")?;
+        let mut input = std::fs::File::open(&partial_path)?;
+        let mut output = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&output_partial_path)?;
+        let write_result = (|| -> AppResult<()> {
+            output.write_all(&pcm_wav_header(data_len, sample_rate, channels)?)?;
+            std::io::copy(&mut input, &mut output)?;
+            output.flush()?;
+            output.sync_all()?;
+            Ok(())
+        })();
+        drop(output);
+        if let Err(error) = write_result {
+            let _ = std::fs::remove_file(&output_partial_path);
+            return Err(error);
+        }
+        std::fs::rename(&output_partial_path, &output_path)?;
+        std::fs::remove_file(partial_path)?;
+        crate::preview_assets::remember(&app, &output_path);
 
-    let duration = data_len as f64 / (sample_rate as f64 * channels as f64 * 2.0);
-    Ok(EditorRecordingResult {
-        path: output_path.to_string_lossy().to_string(),
-        name: format!("{recording_id}.wav"),
-        duration,
-        sample_rate,
-        channels,
+        let duration = data_len as f64 / (sample_rate as f64 * channels as f64 * 2.0);
+        Ok(EditorRecordingResult {
+            path: output_path.to_string_lossy().to_string(),
+            name: format!("{recording_id}.wav"),
+            duration,
+            sample_rate,
+            channels,
+        })
     })
 }
 
@@ -181,22 +221,23 @@ pub async fn cancel_editor_recording(
     recording_id: String,
 ) -> AppResult<()> {
     let recording_id = validate_recording_id(&recording_id)?;
-    let partial_path =
-        editor_recordings_dir(&app, &project_id)?.join(format!("{recording_id}.pcm.partial"));
-    let wav_partial_path =
-        editor_recordings_dir(&app, &project_id)?.join(format!("{recording_id}.wav.partial"));
-    let mut first_error = None;
-    for path in [partial_path, wav_partial_path] {
-        if let Err(error) = std::fs::remove_file(path) {
-            if error.kind() != std::io::ErrorKind::NotFound && first_error.is_none() {
-                first_error = Some(error);
+    let root = crate::storage::data_root_dir(&app)?;
+    with_recording_project(&root, &project_id, |recordings_dir| {
+        let partial_path = recording_path(recordings_dir, recording_id, ".pcm.partial")?;
+        let wav_partial_path = recording_path(recordings_dir, recording_id, ".wav.partial")?;
+        let mut first_error = None;
+        for path in [partial_path, wav_partial_path] {
+            if let Err(error) = std::fs::remove_file(path) {
+                if error.kind() != std::io::ErrorKind::NotFound && first_error.is_none() {
+                    first_error = Some(error);
+                }
             }
         }
-    }
-    match first_error {
-        Some(error) => Err(error.into()),
-        None => Ok(()),
-    }
+        match first_error {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
+        }
+    })
 }
 
 #[tauri::command]
@@ -206,10 +247,91 @@ pub async fn discard_editor_recording(
     recording_id: String,
 ) -> AppResult<()> {
     let recording_id = validate_recording_id(&recording_id)?;
-    let output_path = editor_recordings_dir(&app, &project_id)?.join(format!("{recording_id}.wav"));
-    match std::fs::remove_file(output_path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
+    let root = crate::storage::data_root_dir(&app)?;
+    with_recording_project(&root, &project_id, |recordings_dir| {
+        let output_path = recording_path(recordings_dir, recording_id, ".wav")?;
+        match std::fs::remove_file(output_path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn current_project(root: &Path) -> PathBuf {
+        let project = root.join("editor-projects/edit_p/project.json");
+        std::fs::create_dir_all(project.parent().unwrap()).unwrap();
+        std::fs::write(
+            &project,
+            json!({"id":"edit_p","version":4,"sources":[],"tracks":[]}).to_string(),
+        )
+        .unwrap();
+        project
+    }
+
+    #[test]
+    fn recording_mutation_does_not_recreate_a_deleted_project() {
+        let root = tempfile::tempdir().unwrap();
+        let project = current_project(root.path());
+        std::fs::remove_dir_all(project.parent().unwrap()).unwrap();
+        let mut entered = false;
+        let result = with_recording_project(root.path(), "edit_p", |directory| {
+            entered = true;
+            std::fs::create_dir_all(directory)?;
+            Ok(())
+        });
+        assert!(result.is_err());
+        assert!(!entered);
+        assert!(!project.parent().unwrap().exists());
+    }
+
+    #[test]
+    fn recording_mutations_reject_old_duplicate_and_wrong_identity_projects_before_writing() {
+        let root = tempfile::tempdir().unwrap();
+        let project = current_project(root.path());
+        for raw in [
+            r#"{"id":"edit_p","version":3,"sources":[],"tracks":[]}"#,
+            r#"{"id":"other","version":4,"sources":[],"tracks":[]}"#,
+            r#"{"id":"other","id":"edit_p","version":4,"sources":[],"tracks":[]}"#,
+        ] {
+            std::fs::write(&project, raw).unwrap();
+            let result = with_recording_project(root.path(), "edit_p", |directory| {
+                std::fs::create_dir_all(directory)?;
+                Ok(())
+            });
+            assert!(result.is_err());
+            assert_eq!(std::fs::read_to_string(&project).unwrap(), raw);
+            assert!(!project.parent().unwrap().join("recordings").exists());
+        }
+    }
+
+    #[test]
+    fn recording_lease_covers_the_mutation_and_is_released_on_error() {
+        let root = tempfile::tempdir().unwrap();
+        current_project(root.path());
+        let result = with_recording_project(root.path(), "edit_p", |directory| -> AppResult<()> {
+            assert!(crate::python::library_references::AssetLease::acquire(
+                root.path(),
+                std::time::Duration::ZERO
+            )
+            .is_err());
+            std::fs::create_dir_all(directory)?;
+            std::fs::write(
+                recording_path(directory, "recording_fixture", ".pcm.partial")?,
+                b"\0\0",
+            )?;
+            Err(AppError::Worker("injected recording failure".into()))
+        });
+        assert!(result.is_err());
+        let _released = crate::python::library_references::AssetLease::acquire(
+            root.path(),
+            std::time::Duration::ZERO,
+        )
+        .unwrap();
     }
 }

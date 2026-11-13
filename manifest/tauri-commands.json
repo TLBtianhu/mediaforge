@@ -1,0 +1,971 @@
+{
+  "schemaVersion": 1,
+  "commands": [
+    {
+      "tauri": "activate_runtime",
+      "worker": "activate_runtime",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "agent_jobs",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "append_editor_recording_chunk",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor/recording.rs"
+    },
+    {
+      "tauri": "begin_editor_recording",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor/recording.rs"
+    },
+    {
+      "tauri": "cancel_agent_job",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "cancel_editor_mix_export",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor/export.rs"
+    },
+    {
+      "tauri": "cancel_editor_recording",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor/recording.rs"
+    },
+    {
+      "tauri": "cancel_model_dir_migration",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/migration.rs"
+    },
+    {
+      "tauri": "cancel_runtime_install",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "cancel_task",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "cleanup_model_residual_files",
+      "worker": "cleanup_model_residual_files",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "close_current_window",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/window.rs"
+    },
+    {
+      "tauri": "confirm_model_dir_migration_switch",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/migration.rs"
+    },
+    {
+      "tauri": "create_blank_editor_project",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "create_editor_project_from_task",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "debug_catalog_info",
+      "worker": "debug_catalog_info",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_catalog_reset",
+      "worker": "debug_catalog_reset",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_catalog_save",
+      "worker": "debug_catalog_save",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_editor_playback",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_log_clear",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_log_create_report",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_log_info",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_log_read",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_model_config",
+      "worker": "debug_model_config",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_runtime_override_active",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_runtime_pointers",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_runtime_restore_file",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "debug_runtime_write_file",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/debug_cmd.rs"
+    },
+    {
+      "tauri": "delete_editor_project",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "delete_editor_projects_for_tasks",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "delete_orphaned_editor_projects",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "delete_runtime",
+      "worker": "delete_runtime",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "delete_tool_model",
+      "worker": "delete_tool_model",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "describe_operation",
+      "worker": "describe_operation",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/plugin.rs"
+    },
+    {
+      "tauri": "discard_editor_recording",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor/recording.rs"
+    },
+    {
+      "tauri": "editor_preview_chunk",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor/preview.rs"
+    },
+    {
+      "tauri": "editor_project_ids_for_tasks",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "enqueue_audio_jobs",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "finish_editor_recording",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor/recording.rs"
+    },
+    {
+      "tauri": "generate_waveform_peaks",
+      "worker": "waveform_peaks",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/editor/preview.rs"
+    },
+    {
+      "tauri": "get_app_paths",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "get_audio_metadata",
+      "worker": "audio_metadata",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/editor/preview.rs"
+    },
+    {
+      "tauri": "get_build_info",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "get_env_info",
+      "worker": "env_info",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "get_model_info",
+      "worker": "model_info",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "get_model_storage_summary",
+      "worker": "model_storage_summary",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "get_workflow_editors",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "import_editor_assets",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "inspect_custom_model",
+      "worker": "inspect_custom_model",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "is_current_window_maximized",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/window.rs"
+    },
+    {
+      "tauri": "list_editor_projects",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "list_models",
+      "worker": "list_models",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "list_nodes",
+      "worker": "list_nodes",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/plugin.rs"
+    },
+    {
+      "tauri": "list_open_editor_projects_for_tasks",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "list_operations",
+      "worker": "list_operations",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/plugin.rs"
+    },
+    {
+      "tauri": "list_orphaned_editor_projects",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "load_app_store",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "load_editor_project",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "manage_optional_runtime_package",
+      "worker": "manage_optional_package",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "manage_plugin",
+      "worker": "manage_plugin",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/plugin.rs"
+    },
+    {
+      "tauri": "media_capabilities",
+      "worker": "media_capabilities",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "media_library",
+      "worker": "media_library",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "media_precheck",
+      "worker": "media_precheck",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "minimize_current_window",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/window.rs"
+    },
+    {
+      "tauri": "model_hub",
+      "worker": "model_hub",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "mutate_media_workflows",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "mutate_workflow_store",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "open_editor_window",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "open_workflow_node_editor_window",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "open_workflow_simple_editor_window",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "optional_runtime_package_status",
+      "worker": "optional_package_status",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "path_kinds",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/scan.rs"
+    },
+    {
+      "tauri": "pick_audio_files",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_input_folder",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_media_files",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_model_config_file",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_model_weights_file",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_output_folder",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_preview_files",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_preview_folders",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_single_audio_file",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "plugin_host_cached_scan_report",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_host_cancel_render",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/render.rs"
+    },
+    {
+      "tauri": "plugin_host_cancel_scan",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_host_capabilities",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/session.rs"
+    },
+    {
+      "tauri": "plugin_host_cleanup_render",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/render.rs"
+    },
+    {
+      "tauri": "plugin_host_remove_scan_blacklist",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_host_render",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/render.rs"
+    },
+    {
+      "tauri": "plugin_host_request",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/request.rs"
+    },
+    {
+      "tauri": "plugin_host_scan",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_host_scan_blacklist",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_host_scan_report",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_host_scan_status",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_host_skip_scan",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/plugin_host/scan.rs"
+    },
+    {
+      "tauri": "plugin_marketplace",
+      "worker": "plugin_marketplace",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/plugin.rs"
+    },
+    {
+      "tauri": "prepare_model_dir_change",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/migration.rs"
+    },
+    {
+      "tauri": "recover_app_settings",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "relink_custom_model",
+      "worker": "relink_custom_model",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "relink_editor_sources",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "remap_custom_model_paths",
+      "worker": "remap_custom_model_paths",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "remove_audio_jobs",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "remove_result_jobs",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "respond_model_dir_migration_conflict",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/migration.rs"
+    },
+    {
+      "tauri": "reveal_path",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/scan.rs"
+    },
+    {
+      "tauri": "runtime_asset_install",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/runtime_assets.rs"
+    },
+    {
+      "tauri": "runtime_asset_status",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/runtime_assets.rs"
+    },
+    {
+      "tauri": "runtime_core_versions",
+      "worker": "runtime_core_versions",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "runtime_env_sizes",
+      "worker": "runtime_env_sizes",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "runtime_info",
+      "worker": "runtime_info",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "save_app_store",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "save_editor_project",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/editor.rs"
+    },
+    {
+      "tauri": "save_text_file_dialog",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "scan_audio_paths",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/scan.rs"
+    },
+    {
+      "tauri": "scan_audio_paths_with_options",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/scan.rs"
+    },
+    {
+      "tauri": "scan_image_paths",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/scan.rs"
+    },
+    {
+      "tauri": "scan_media_paths",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/scan.rs"
+    },
+    {
+      "tauri": "set_plugin_view_root",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/plugin.rs"
+    },
+    {
+      "tauri": "start_audio_tool",
+      "worker": "audio_tools",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "start_cleanup_model_residual_files",
+      "worker": "cleanup_model_residual_files",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "start_custom_model_import",
+      "worker": "import_custom_model",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "start_drag_current_window",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/window.rs"
+    },
+    {
+      "tauri": "start_editor_mix_export",
+      "worker": "export_editor_mix",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/editor/export.rs"
+    },
+    {
+      "tauri": "start_env_check",
+      "worker": "env_info",
+      "workerKind": "query",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "start_model_delete",
+      "worker": "delete_model",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "start_model_dir_migration",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/migration.rs"
+    },
+    {
+      "tauri": "start_model_hub_download",
+      "worker": "model_download",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "start_operation_task",
+      "worker": "run_operation",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "start_runtime_install",
+      "worker": "install_runtime",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/runtime.rs"
+    },
+    {
+      "tauri": "start_separation",
+      "worker": "infer",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "start_tempo_key_analysis",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/tempo_key.rs"
+    },
+    {
+      "tauri": "start_workflow_inference",
+      "worker": "infer_workflow",
+      "workerKind": "task",
+      "dispatch": "start",
+      "source": "src-tauri/src/commands/app/tasks.rs"
+    },
+    {
+      "tauri": "test_proxy_connection",
+      "worker": "test_connection",
+      "workerKind": "query",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "toggle_maximize_current_window",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/window.rs"
+    },
+    {
+      "tauri": "unregister_custom_model",
+      "worker": "unregister_custom_model",
+      "workerKind": "task",
+      "dispatch": "sync",
+      "source": "src-tauri/src/commands/app/models.rs"
+    },
+    {
+      "tauri": "update_proxy_settings",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    },
+    {
+      "tauri": "versions_accept_runtime",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/version_check.rs"
+    },
+    {
+      "tauri": "versions_check",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/version_check.rs"
+    },
+    {
+      "tauri": "write_frontend_log",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/session.rs"
+    }
+  ]
+}

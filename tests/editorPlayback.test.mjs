@@ -178,7 +178,7 @@ function environment(t, { clips = [{ start: 0, offset: 0, duration: 20 }], conte
       return ctx.createBuffer(2, 48000 * 4)
     },
     onBeforeUnmount: callback => unmount.push(callback),
-    convertFileSrc: value => value,
+    mediaPreviewUrl: value => value,
     createEditorAudioElement: url => { const audio = new FakeAudio(); audio.src = url; audios.push(audio); return audio },
     i18n: { global: { t: key => key } },
     window: { AudioContext: function () { contextCreations++; return ctx }, navigator: { platform } },

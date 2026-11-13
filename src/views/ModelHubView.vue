@@ -1,6 +1,8 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
+import { revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { modelHub, type ModelHubListResult } from '@/api/models'
+import { KnownObject } from '@/types/contracts'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
@@ -25,35 +27,7 @@ defineOptions({ name: 'ModelHubView' })
 const modelStore = useModelStore()
 
 type Modality = 'all' | 'audio' | 'image' | 'video'
-type ModelRecord = {
-  id: string
-  provider: string
-  modality: 'audio' | 'image' | 'video'
-  modalities: string[]
-  implemented: boolean
-  status?: string
-  blockedReason?: string
-  name: string
-  label: string
-  task: string
-  category: string
-  categoryCn: string
-  architecture: string
-  size: number
-  license: string
-  description: string
-  downloaded: boolean
-  partial: boolean
-  runtime: string
-}
-type HubResult = {
-  ok: boolean
-  modelDir: string
-  models: ModelRecord[]
-  environment: Record<string, boolean>
-  count: number
-  downloadedCount: number
-}
+type ModelRecord = KnownObject<ModelHubListResult['models'][number]>
 type WorkerPayload = {
   fraction?: number
   current?: string
@@ -136,9 +110,9 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await invoke<HubResult>('model_hub', {
-      payload: { operation: 'list', query: '', modality: 'all', source: 'modelscope', modelDir: modelDir.value },
-    })
+  const result = (await modelHub({
+    operation: 'list', query: '', modality: 'all', source: 'modelscope', modelDir: modelDir.value,
+  })) as ModelHubListResult
     models.value = result.models || []
     environment.value = result.environment || {}
     if (!modelDir.value) modelDir.value = result.modelDir
@@ -161,7 +135,7 @@ async function pickDir() {
 
 async function openFolder() {
   try {
-    await invoke('reveal_path', { path: modelDir.value })
+    await revealPath(modelDir.value)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -301,20 +275,21 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .hub-error { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-.hub-error a { color: var(--primary-strong); font-weight: 700; white-space: nowrap; }
+.hub-error a { color: var(--primary-ink); font-weight: 700; white-space: nowrap; }
 .hub-dir { display: flex; gap: 8px; align-items: center; }
 .hub-env { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
 .hub-env__label { margin-right: 4px; color: var(--on-surface-muted); font-size: 11px; font-weight: 700; }
 .hub-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; }
-.hub-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--divider-color); border-radius: 11px; background: var(--card-color); }
+.hub-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--outline); border-radius: 11px; background: var(--surface-1); }
 .hub-tabs button { padding: 6px 9px; border: 0; border-radius: 8px; background: transparent; color: var(--on-surface-muted); font-family: inherit; font-size: 11px; cursor: pointer; }
-.hub-tabs button.active { background: var(--primary-soft); color: var(--primary-strong); font-weight: 700; }
-.hub-tabs button span { opacity: 0.65; font-size: 9px; }
+.hub-tabs button.active { background: var(--primary-soft); color: var(--primary-ink); font-weight: 700; }
+.hub-tabs button span { color: var(--on-surface-faint); font-size: 9px; }
+.hub-tabs button.active span { color: var(--primary-ink); }
 .hub-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .hub-card { padding: 17px 18px; border: 0; border-radius: 18px; background: color-mix(in srgb, var(--surface-1) 78%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--outline) 80%, transparent), inset 0 1px 0 rgba(255,255,255,.03), var(--shadow-panel); transition: box-shadow 160ms ease, transform 160ms ease; }
 .hub-card:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.03), var(--shadow-soft); transform: translateY(-1px); }
 .hub-card__head { display: flex; gap: 9px; align-items: flex-start; }
-.hub-card__icon { display: grid; flex: 0 0 auto; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--primary-soft); color: var(--primary-strong); }
+.hub-card__icon { display: grid; flex: 0 0 auto; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--primary-soft); color: var(--primary-ink); }
 .hub-card__title { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
 .hub-card__title strong { overflow: hidden; color: var(--on-surface-heading); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 .hub-card__title span { overflow: hidden; color: var(--on-surface-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -322,6 +297,6 @@ onBeforeUnmount(() => {
 .hub-card__desc { display: -webkit-box; overflow: hidden; min-height: 32px; margin: 9px 0; color: var(--on-surface); font-size: 11px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .hub-card__meta { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-bottom: 11px; color: var(--on-surface-muted); font-size: 10px; }
 .hub-card__ready { display: flex; gap: 6px; align-items: center; justify-content: center; min-height: 34px; border-radius: 9px; background: color-mix(in srgb, #0f9f72 10%, transparent); color: #0f9f72; font-size: 11px; font-weight: 700; }
-.hub-card__pending { display: flex; align-items: center; justify-content: center; min-height: 34px; border-radius: 9px; background: var(--action-color); color: var(--on-surface-muted); font-size: 10.5px; }
+.hub-card__pending { display: flex; align-items: center; justify-content: center; min-height: 34px; border-radius: 9px; background: var(--primary); color: var(--on-surface-muted); font-size: 10.5px; }
 @media (max-width: 980px) { .hub-grid { grid-template-columns: 1fr; } .hub-toolbar { grid-template-columns: 1fr; } }
 </style>

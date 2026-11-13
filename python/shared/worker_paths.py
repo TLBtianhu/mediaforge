@@ -35,22 +35,33 @@ def allow_debug_runtime_override() -> bool:
 
 
 def data_root(override: Any = None) -> Path:
-    explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
+    explicit = (str(override or "").strip() or os.environ.get("MEDIAFORGE_DATA_ROOT")
+                or os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("PYMSS_STUDIO_DATA_ROOT"))
     if explicit:
         return Path(explicit).expanduser()
     return default_layout()[0]
 
 
+def user_models_file(root: Any = None) -> Path:
+    """The custom registry shares the canonical app data root, including MCP workers."""
+    return data_root(root).absolute() / "settings" / "user_models.json"
+
+
 def _sibling_or_child(root: Path, name: str) -> Path:
-    # 安装/便携的 data 与 models、runtime-envs 同级；显式自定义数据根保持其子目录语义。
-    return root.parent / name if root.name.lower() == "data" else root / name
+    # 只认实际安装/便携布局，不能根据任意临时目录名为 data 就逃出显式数据根。
+    layout = default_layout()
+    if root == layout[0] and not any(os.environ.get(key) for key in (
+        "MEDIAFORGE_DATA_ROOT", "MEDIAFORGE_DATA_DIR", "PYMSS_STUDIO_DATA_ROOT"
+    )):
+        return layout[1 if name == "models" else 2]
+    return root / name
 
 
 def runtime_envs_root(override: Any = None, *, data_root: Any = None) -> Path:
     explicit = str(override or "").strip() or os.environ.get("MEDIAFORGE_RUNTIME_ENVS_DIR")
     if explicit:
         return Path(explicit).expanduser()
-    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("MEDIAFORGE_DATA_ROOT")):
+    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_ROOT"), os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("PYMSS_STUDIO_DATA_ROOT")):
         text = str(candidate or "").strip()
         if text:
             return _sibling_or_child(Path(text).expanduser(), "runtime-envs")
@@ -68,9 +79,9 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
     解析链（顺序固定，别在别处再写一遍）：
 
     1. ``override`` —— payload 里的 ``modelDir`` / 调用方显式参数
-    2. ``MEDIAFORGE_MODEL_DIR``
-    3. ``data_root`` / ``MEDIAFORGE_DATA_DIR`` / ``MEDIAFORGE_DATA_ROOT``
-       —— 安装与便携版的 ``data`` 旁取同级 ``models``，开发根取其 ``models`` 子目录
+    2. ``MEDIAFORGE_MODEL_DIR`` / ``PYMSS_MODEL_DIR``
+    3. ``data_root`` / ``MEDIAFORGE_DATA_ROOT`` / ``MEDIAFORGE_DATA_DIR``
+       —— 显式数据根取其 ``models`` 子目录，只有默认安装/便携布局取同级目录
     4. ``default_layout()`` —— 安装、便携或开发布局的唯一默认模型根
 
     不再回退到 ``~/.mediaforge/models``，也不包含仓库根的 ``all_models`` 或程序目录。
@@ -82,12 +93,12 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
     if explicit:
         return Path(explicit).expanduser()
 
-    for key in ("MEDIAFORGE_MODEL_DIR", "MEDIAFORGE_MODEL_DIR"):
+    for key in ("MEDIAFORGE_MODEL_DIR", "PYMSS_MODEL_DIR"):
         value = str(os.environ.get(key) or "").strip()
         if value:
             return Path(value).expanduser()
 
-    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("MEDIAFORGE_DATA_ROOT")):
+    for candidate in (data_root, os.environ.get("MEDIAFORGE_DATA_ROOT"), os.environ.get("MEDIAFORGE_DATA_DIR"), os.environ.get("PYMSS_STUDIO_DATA_ROOT")):
         text = str(candidate or "").strip()
         if text:
             return _sibling_or_child(Path(text).expanduser(), "models")
@@ -98,7 +109,7 @@ def model_root(override: Any = None, *, data_root: Any = None) -> Path:
 def export_model_root(model_dir: Any) -> None:
     """把 payload 里的 `modelDir` 固化成进程环境变量（三个 media worker 共用）。
 
-    为什么**两个都写**：`model_root()` 认 `MEDIAFORGE_MODEL_DIR` / `MEDIAFORGE_MODEL_DIR`，
+    为什么**两个都写**：`model_root()` 认 `MEDIAFORGE_MODEL_DIR` / `PYMSS_MODEL_DIR`，
     而 pymss 自己的 `DEFAULT_MODEL_DIR` 是在**导入时**求值的——只写前者的话，
     之后才 import pymss 的代码仍然会落到 `~/.cache/pymss/models`。
     两边都写，才能保证"同一份模型根"这句话在整个进程里成立。
@@ -110,7 +121,7 @@ def export_model_root(model_dir: Any) -> None:
     if not text:
         return
     os.environ["MEDIAFORGE_MODEL_DIR"] = text
-    os.environ["MEDIAFORGE_MODEL_DIR"] = text
+    os.environ["PYMSS_MODEL_DIR"] = text
 
 
 def normalize_output_dir(value: Any) -> str:
@@ -126,54 +137,9 @@ def normalize_output_dir(value: Any) -> str:
 # 音频权重保持 pymss 的分类相对路径（cleanup/… vocal/…），两套布局并列不冲突。
 MEDIA_SUBDIR = "media"
 
-_MIGRATED_ROOTS: set[str] = set()
-
-
 def media_model_relpath(name: str) -> str:
     """媒体权重在模型根下的相对路径：`media/<文件名>`。"""
     text = str(name or "").strip().replace("\\", "/").lstrip("/")
     if not text:
         raise ValueError("media model name is empty")
     return f"{MEDIA_SUBDIR}/{text}"
-
-
-def migrate_media_models(root: Any, names: Any) -> list[str]:
-    """把老布局（权重直接放在模型根下）搬进 `media/`。幂等、只动点名的文件。
-
-    为什么必须有迁移：0.0.13 之前下载的模型就躺在根目录。布局一改，那些文件会
-    **看起来消失**（列表显示"未下载"），用户重下的代价是几百 MB 和一脸问号。
-    迁移在第一次解析模型根时跑一次，之后靠进程内标记跳过。
-
-    只搬 `names` 里点名的文件：模型根是应用管理的，但用户可能往里放过别的东西，
-    不该顺手搬家。
-    """
-    base = Path(root)
-    key = str(base).lower()
-    if key in _MIGRATED_ROOTS:
-        return []
-    _MIGRATED_ROOTS.add(key)
-
-    moved: list[str] = []
-    for name in names or ():
-        text = str(name or "").strip()
-        # 带路径分隔符的（音频那套分类相对路径）本来就在子目录里，不用搬
-        if not text or "/" in text or "\\" in text:
-            continue
-        source = base / text
-        target = base / MEDIA_SUBDIR / text
-        if target.exists() or not source.is_file():
-            continue
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            source.replace(target)
-        except OSError:
-            # 迁移失败不是致命错误：退回旧位置仍然能被旧路径读到，
-            # 让下一次解析再试（标记已置位，本进程不再重试）。
-            continue
-        moved.append(text)
-    return moved
-
-
-def reset_migration_cache() -> None:
-    """测试用：清掉"这个根已经迁移过"的进程内标记。"""
-    _MIGRATED_ROOTS.clear()

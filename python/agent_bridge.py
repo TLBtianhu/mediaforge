@@ -30,8 +30,8 @@ sys.path.insert(0, str(ROOT))
 from surfaces import agent_contract  # noqa: E402
 from core import media_eval  # noqa: E402
 from core import model_hub  # noqa: E402
-from shared import worker_paths  # noqa: E402
-from media_ops import capabilities  # noqa: E402
+from shared import protocol_contract, runtime_pointer, worker_paths  # noqa: E402
+from media_ops import capabilities, task_params  # noqa: E402
 
 
 def _data_root(override: str = "") -> Path:
@@ -44,17 +44,22 @@ def _json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
-def _active_runtime_python(runtime_envs: Path) -> str | None:
-    state_path = runtime_envs / "active-runtime.json"
+def _runtime_bound_commands() -> frozenset[str]:
+    """Commands that need the activated runtime; downloads and queries do not."""
     try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    python_path = state.get("pythonPath") if isinstance(state, dict) else None
-    if not isinstance(python_path, str):
-        return None
-    candidate = Path(python_path).expanduser()
-    return str(candidate) if candidate.is_file() else None
+        protocol = protocol_contract.load_protocol()
+    except Exception:  # noqa: BLE001 - a broken manifest must not block queries
+        return frozenset()
+    result_jobs = (protocol.get("execution") or {}).get("resultJobs") or {}
+    return frozenset(result_jobs.get("commands") or [])
+
+
+def _active_runtime_python(runtime_envs: Path) -> tuple[str | None, str | None]:
+    """Return the activated interpreter and why a present pointer was rejected."""
+    state, error = runtime_pointer.load_active_runtime(runtime_envs / "active-runtime.json")
+    if state is None:
+        return None, error
+    return str(Path(str(state["pythonPath"]))), None
 
 
 from core.operation_kernel import Job, OperationKernel
@@ -66,7 +71,8 @@ class Bridge:
         self.port = port
         self.data_root = data_root
         runtime_envs = worker_paths.runtime_envs_root(data_root=data_root)
-        self.python_path = _active_runtime_python(runtime_envs)
+        self.python_path, self.runtime_error = _active_runtime_python(runtime_envs)
+        self.runtime_bound_commands = _runtime_bound_commands()
         self.jobs = OperationKernel(data_root, self.python_path)
         # 每个作业已用掉几次自动重试（异步重试必须自己记，台账不存这个）
         self._retry_counts: dict[str, int] = {}
@@ -79,6 +85,19 @@ class Bridge:
         self._feedback_lock = threading.Lock()
 
     # ---- tool implementations ------------------------------------------------
+
+    def _runtime_blocked(self, command: str) -> dict[str, Any] | None:
+        """Refuse runtime-bound work when the activated pointer is damaged."""
+        error = getattr(self, "runtime_error", None)
+        if not error or command not in getattr(self, "runtime_bound_commands", frozenset()):
+            return None
+        return {
+            "ok": False,
+            "code": "RUNTIME_POINTER_INVALID",
+            "command": command,
+            "error": error,
+            "hint": "Repair or reactivate the runtime, then retry; status and model.list still work.",
+        }
 
     def status(self) -> dict[str, Any]:
         try:
@@ -98,17 +117,34 @@ class Bridge:
             "dataRoot": str(self.data_root),
             "modelDir": str(self.model_root),
             "models": {"count": model_count, "downloaded": downloaded, "error": model_error},
+            "runtimeError": self.runtime_error,
             "jobs": self.jobs.count(),
             "pid": os.getpid(),
         }
 
     def models_list(self, query: str = "", modality: str = "all") -> dict[str, Any]:
         data = model_hub.list_models(query, modality, root=str(self.model_root))
+        records = list(data["models"])
+        if modality in {"all", "audio"}:
+            from core import worker_models
+            with worker_models.user_model_registry_scope(self.data_root):
+                entries = worker_models.list_registered_user_models()
+            text = str(query or "").strip().lower()
+            for entry in entries:
+                if text and not any(text in value.lower() for value in (
+                    entry.name, Path(entry.name).stem, entry.primary_category_cn, entry.secondary_category_cn, entry.architecture)):
+                    continue
+                path = worker_models.model_path_for(entry, str(self.model_root))
+                config = worker_models.config_path_for(entry, str(self.model_root))
+                records.append({"id": f"audio:{entry.name}", "label": Path(entry.name).stem, "modalities": ["audio"],
+                                "task": entry.model_type, "size": worker_models._entry_size_bytes(entry, path),
+                                "downloaded": path.is_file() and (config is None or config.is_file()),
+                                "implemented": entry.supported, "source": "user", "downloadable": False})
         return {
             "ok": True,
             "modelDir": data["modelDir"],
-            "count": data["count"],
-            "downloadedCount": data["downloadedCount"],
+            "count": len(records),
+            "downloadedCount": sum(bool(item["downloaded"]) for item in records),
             "environment": data["environment"],
             "models": [
                 {
@@ -119,8 +155,9 @@ class Bridge:
                     "size": item["size"],
                     "downloaded": item["downloaded"],
                     "implemented": item["implemented"],
+                    **({"source":"user", "downloadable":False} if item.get("source") == "user" else {}),
                 }
-                for item in data["models"]
+                for item in records
             ],
         }
 
@@ -158,6 +195,9 @@ class Bridge:
     def probe(self, inputs: list[str]) -> dict[str, Any]:
         if not inputs:
             return {"ok": False, "error": "inputs must contain at least one file"}
+        blocked = self._runtime_blocked("media_tool")
+        if blocked:
+            return blocked
         job = self.jobs.start("media_tool", {"operation": "media_probe", "inputs": inputs})
         return self._wait(job, timeout=55)
 
@@ -174,6 +214,9 @@ class Bridge:
         if not output_dir:
             return {"ok": False, "error": "outputDir is required"}
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+        blocked = self._runtime_blocked("audio_tools")
+        if blocked:
+            return blocked
         job = self.jobs.start(
             "audio_tools",
             {
@@ -203,7 +246,7 @@ class Bridge:
         if modality not in {"image", "video"}:
             return {"ok": False, "error": "modality must be image or video"}
         try:
-            normalized = capabilities.normalize_steps(steps)
+            normalized = task_params.normalize_steps({"steps": steps}, modality=modality)
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
         if len(normalized) != 1:
@@ -224,19 +267,18 @@ class Bridge:
             "steps": normalized,
         }
         if modality == "video":
-            watermark = next((step for step in normalized if step["capability"] == "watermark_removal"), None)
-            upscale = next((step for step in normalized if step["capability"] == "upscale"), None)
             payload.update(
                 {
-                    "scale": 2 if upscale else 1,
-                    "previewSeconds": float(options.get("previewSeconds") or 0),
-                    "crf": int(options.get("crf") or 18),
-                    "preset": str(options.get("preset") or "fast"),
-                    "detectMode": str((watermark or {}).get("params", {}).get("detectMode") or "fixed"),
-                    "conf": float((watermark or {}).get("params", {}).get("conf") or 0.25),
-                    "expand": int((watermark or {}).get("params", {}).get("expand") or 8),
+                    "previewSeconds": float(task_params.value(options, "previewSeconds", 0)),
+                    "crf": int(task_params.value(options, "crf", 18)),
+                    "preset": str(task_params.value(options, "preset", "fast")),
                 }
             )
+        if "tile" in options:
+            payload["tile"] = task_params.value(options, "tile", 0)
+        blocked = self._runtime_blocked("media_tool")
+        if blocked:
+            return blocked
         job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
@@ -261,7 +303,7 @@ class Bridge:
         if modality not in {"image", "video"}:
             return {"ok": False, "error": "modality must be image or video"}
         try:
-            normalized = capabilities.normalize_steps(steps)
+            normalized = task_params.normalize_steps({"steps": steps}, modality=modality)
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
         if not normalized:
@@ -281,13 +323,15 @@ class Bridge:
             "outputDir": output_dir,
             "modelDir": str(self.model_root),
             "steps": normalized,
-            "previewSeconds": float(options.get("previewSeconds") or 0),
-            "crf": int(options.get("crf") or 18),
-            "preset": str(options.get("preset") or "fast"),
-            "width": int(options.get("width") or 0),
-            "height": int(options.get("height") or 0),
-            "fit": str(options.get("fit") or "contain"),
+            "previewSeconds": float(task_params.value(options, "previewSeconds", 0)),
+            "crf": int(task_params.value(options, "crf", 18)),
+            "preset": str(task_params.value(options, "preset", "fast")),
         }
+        if "tile" in options:
+            payload["tile"] = task_params.value(options, "tile", 0)
+        blocked = self._runtime_blocked("media_tool")
+        if blocked:
+            return blocked
         job = self.jobs.start("media_tool", payload)
         return {"ok": True, "jobId": job.job_id, "status": job.snapshot(), "steps": normalized}
 
@@ -392,13 +436,25 @@ class Bridge:
         return {"ok": True, "feedbackId": record["id"], "path": str(self.feedback_path)}
 
     def _wait(self, job: Job, timeout: float) -> dict[str, Any]:
+        from core.job_store import TERMINAL_STATES
+
         deadline = time.time() + timeout
         while time.time() < deadline:
-            snapshot = job.snapshot()
-            if snapshot["status"] in {"completed", "failed", "cancelled"}:
+            current = self.jobs.get(job.job_id)
+            if current is None:
+                return {"ok": False, "error": "unknown job", "jobId": job.job_id}
+            snapshot = current.snapshot()
+            if snapshot["status"] in TERMINAL_STATES:
                 return {"ok": snapshot["status"] == "completed", **snapshot}
             time.sleep(0.1)
-        return {"ok": True, "jobId": job.job_id, "status": "running", "message": "job is still running; poll job_status"}
+        current = self.jobs.get(job.job_id)
+        if current is None:
+            return {"ok": False, "error": "unknown job", "jobId": job.job_id}
+        snapshot = current.snapshot()
+        if snapshot["status"] in TERMINAL_STATES:
+            return {"ok": snapshot["status"] == "completed", **snapshot}
+        return {"ok": True, "jobId": job.job_id, "status": snapshot["status"],
+                "message": f"job is {snapshot['status']}; poll job_status"}
 
     # ---- MCP tool registry ---------------------------------------------------
 
@@ -461,6 +517,28 @@ class Bridge:
         ]
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        try:
+            tool = agent_contract.find_tool(name)
+        except agent_contract.ContractMismatchError as error:
+            return {"ok": False, "tool": name, "code": error.code, "error": str(error)}
+        except KeyError:
+            raise ValueError(f"unknown tool: {name}") from None
+        arguments = dict(arguments or {})
+        confirmed = arguments.pop("confirmExplicit", False) is True
+        problems = agent_contract.validate_arguments(tool["name"], arguments)
+        if problems:
+            return {"ok": False, "tool": name, "error": "; ".join(problems), "problems": problems}
+        if tool["approval"] == "explicit" and not confirmed:
+            return {
+                "ok": False,
+                "tool": name,
+                "approval": "explicit",
+                "requiresConfirmation": True,
+                "error": f"{name} downloads, installs or deletes data; call it again with confirmExplicit=true after the user agrees",
+            }
+        return self._call_validated(name, arguments)
+
+    def _call_validated(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name == "mediaforge_status":
             return self.status()
         if name == "models_list":
@@ -538,14 +616,32 @@ class Bridge:
         if snapshot.get("status") != "failed":
             return {"ok": False, "error": "job did not fail", "status": snapshot.get("status")}
         from core.retry_policy import plan_retry
+        from core.job_store import resolve_payload
 
         used = self._retry_counts.get(job_id, 0)
-        plan = plan_retry(snapshot.get("payload") or {}, snapshot.get("result"), attempts_used=used)
+        request = resolve_payload(snapshot, self.jobs.jobs_root)
+        result = snapshot.get("result")
+        tasks = request.get("tasks")
+        if (snapshot.get("source") == "agent" and snapshot.get("command") == "infer"
+                and isinstance(tasks, list) and len(tasks) > 1 and isinstance(result, dict) and result.get("outputs")):
+            return {"ok": False, "jobId": job_id, "attemptsUsed": used,
+                    "error": "some inputs produced outputs; submit only the failed inputs to retry"}
+        plan = plan_retry(request, result, attempts_used=used)
         if not plan["ok"]:
             return {**plan, "jobId": job_id, "attemptsUsed": used}
         self._retry_counts[job_id] = used + 1
-        payload = {**plan["payload"], "requestId": f"{job_id}-r{used + 1}"}
-        retried = self.jobs.start(str(snapshot.get("command") or job.command), payload)
+        retry_id = f"{job_id}-r{used + 1}"
+        payload = {**plan["payload"], "requestId": retry_id, "taskId": retry_id}
+        if isinstance(payload.get("tasks"), list):
+            payload["tasks"] = [
+                {**task, "taskId": retry_id if len(payload["tasks"]) == 1 else f"{retry_id}-t{index + 1}"}
+                for index, task in enumerate(payload["tasks"])
+            ]
+        command = str(snapshot.get("command") or job.command)
+        blocked = self._runtime_blocked(command)
+        if blocked:
+            return blocked
+        retried = self.jobs.start(command, payload)
         return {
             "ok": True,
             "jobId": retried.job_id,
@@ -559,47 +655,76 @@ class Bridge:
     # ---- 契约兜底：没被上面显式处理的名字，只要契约里有就能执行 ----------------
 
     def _dispatch_contract(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """按契约执行一个工具：长任务进作业台账，其余在进程内跑。
-
-        这样新增功能只要登记进 `agent_contract`，MCP 侧**不用改一行**就能被 agent 调用。
-        """
+        """按契约选择共享 Kernel 或当前进程内的查询执行器。"""
         try:
             tool = agent_contract.find_tool(name)
         except agent_contract.ContractMismatchError as error:
             return {"ok": False, "tool": name, "code": error.code, "error": str(error)}
         except KeyError:
             raise ValueError(f"unknown tool: {name}") from None
-        # 确认标记不是工具参数：先摘掉，再按契约校验，最后才判断审批
-        arguments = dict(arguments or {})
-        confirmed = bool(arguments.pop("confirmExplicit", False))
-        problems = agent_contract.validate_arguments(name, arguments)
-        if problems:
-            return {"ok": False, "tool": name, "error": "; ".join(problems), "problems": problems}
-        # 审批等级不能只是文档：`explicit`（下载/安装/删除）必须显式确认才执行
-        if str(tool.get("approval")) == "explicit" and not confirmed:
-            return {
-                "ok": False,
-                "tool": name,
-                "approval": "explicit",
-                "requiresConfirmation": True,
-                "error": f"{name} downloads, installs or deletes data; call it again with confirmExplicit=true after the user agrees",
-            }
+        if not tool["available"]:
+            return {"ok": False, "tool": name, "code": "TOOL_UNAVAILABLE", "error": "This tool is not available in the current runtime"}
         payload = dict(arguments)
+        if tool["name"] == "audio.separate":
+            try:
+                payload = self._separation_payload(arguments)
+            except ValueError as error:
+                return {"ok": False, "tool": name, "code": "INPUT_NOT_FOUND", "error": str(error)}
         if tool["operation"]:
             payload.setdefault("operation", tool["operation"])
-        if tool["longRunning"]:
+        if tool["command"] == "media_tool" and tool["operation"] != "media_probe":
+            payload.setdefault("modelDir", str(self.model_root))
+        if tool["admission"] == "kernel":
+            blocked = self._runtime_blocked(tool["command"])
+            if blocked:
+                return blocked
             job = self.jobs.start(tool["command"], payload)
             return {
                 "ok": True,
                 "tool": name,
                 "jobId": job.job_id,
                 "status": job.snapshot(),
-                "note": "long-running: poll job_status",
+                "note": "queued in the shared job ledger: poll job_status",
             }
-        outcome = agent_contract.dispatch(name, payload)
+        if tool["command"] == "failure_stats":
+            # The bridge's --data-root is request scope, not a process-wide env override.
+            from core.failure_stats import collect
+
+            return {"ok": True, "tool": name, **collect(self.data_root)}
+        outcome = agent_contract.dispatch(name, payload, **({"data_root": str(self.data_root)} if tool["command"] in {"media_library", "list_models", "waveform_peaks"} else {}))
         terminal = outcome.get("result") or {}
         body = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}
         return {"ok": outcome["ok"], "tool": name, **body}
+
+    def _separation_payload(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        inputs: list[str] = []
+        for index, value in enumerate(arguments["inputs"]):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"inputs[{index}] must be a non-empty file path")
+            try:
+                path = Path(value).resolve(strict=True)
+                if not path.is_file():
+                    raise FileNotFoundError(value)
+            except (OSError, RuntimeError, ValueError) as error:
+                raise ValueError(f"inputs[{index}] is not an available file: {value!r}") from error
+            inputs.append(str(path))
+        job_id = f"job_{uuid.uuid4().hex[:12]}"
+        payload = {
+            "model": arguments["model"],
+            "modelDir": str(self.model_root.absolute()),
+            "output": str(self.data_root.absolute() / "outputs" / job_id),
+            "download": False,
+            "requestId": job_id,
+            "taskId": job_id,
+        }
+        if len(inputs) == 1:
+            payload["input"] = inputs[0]
+        else:
+            payload["tasks"] = [
+                {"taskId": f"{job_id}-t{index}", "input": path, "inputIndex": index}
+                for index, path in enumerate(inputs, 1)
+            ]
+        return payload
 
     # ---- JSON-RPC ------------------------------------------------------------
 
@@ -675,8 +800,11 @@ class Handler(BaseHTTPRequestHandler):
         token = getattr(self.server, "token", None)
         if not token:
             return True
-        expected = f"Bearer {token}"
-        return self.headers.get("Authorization") == expected
+        expected = f"Bearer {token}".encode()
+        supplied = (self.headers.get("Authorization") or "").encode()
+        # Constant-time comparison: the token is a local secret, but a timing
+        # oracle here would still let a same-machine process guess it.
+        return secrets.compare_digest(supplied, expected)
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] == "/health":
@@ -713,21 +841,35 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve_stdio(bridge: Bridge) -> int:
     """Line-delimited JSON-RPC over stdio for DSH's stdio MCP transport."""
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            request = json.loads(line)
-            if not isinstance(request, dict):
-                raise ValueError("JSON-RPC request must be an object")
-            response = bridge.rpc(request)
-        except Exception as exc:  # noqa: BLE001
-            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
-        if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                request = json.loads(line)
+                if not isinstance(request, dict):
+                    raise ValueError("JSON-RPC request must be an object")
+                response = bridge.rpc(request)
+            except Exception as exc:  # noqa: BLE001
+                response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
+            if response is not None:
+                sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+                sys.stdout.flush()
+    finally:
+        bridge.jobs.close()
     return 0
+
+
+def write_pairing_file(path: Path, payload: dict[str, Any]) -> None:
+    """Write the pairing file with user-only permissions where the OS supports it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if os.name != "nt":
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
 
 
 def main() -> int:
@@ -753,19 +895,14 @@ def main() -> int:
     server.token = token or None  # type: ignore[attr-defined]
 
     pair_path = Path(args.pair_file).expanduser() if args.pair_file else data_root / "mcp-bridge.json"
-    pair_path.parent.mkdir(parents=True, exist_ok=True)
-    pair_path.write_text(
-        json.dumps(
-            {
-                "url": f"http://127.0.0.1:{args.port}/mcp",
-                "token": token,
-                "serverName": "mediaforge",
-                "version": VERSION,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    write_pairing_file(
+        pair_path,
+        {
+            "url": f"http://127.0.0.1:{args.port}/mcp",
+            "token": token,
+            "serverName": "mediaforge",
+            "version": VERSION,
+        },
     )
     print(f"MediaForge MCP bridge: http://127.0.0.1:{args.port}/mcp", flush=True)
     print(f"Pairing file: {pair_path}", flush=True)
@@ -776,6 +913,7 @@ def main() -> int:
         pass
     finally:
         server.server_close()
+        bridge.jobs.close()
     return 0
 
 

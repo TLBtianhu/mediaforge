@@ -1,5 +1,5 @@
+import { appendEditorRecordingChunk, beginEditorRecording, cancelEditorRecording, discardEditorRecording, finishEditorRecording } from '@/api/native'
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import i18n from '@/i18n'
 import { hasEditorPlugins } from '@/utils/editorPlugins'
 import { pluginHostCapabilities } from '@/utils/pluginHost'
@@ -171,11 +171,7 @@ export function useEditorRecording(options: RecordingOptions) {
     appendChain = appendChain.then(async () => {
       try {
         if (appendError) return
-        await invoke('append_editor_recording_chunk', {
-          projectId,
-          recordingId: activeRecordingId,
-          dataBase64: bytesToBase64(payload),
-        })
+        await appendEditorRecordingChunk(projectId, activeRecordingId, bytesToBase64(payload))
       } catch (cause) {
         failCapture(cause)
       } finally {
@@ -218,18 +214,12 @@ export function useEditorRecording(options: RecordingOptions) {
 
   async function cleanupPartial(projectId = recordingProjectId, activeRecordingId = recordingId) {
     if (!activeRecordingId || !projectId) return
-    await invoke('cancel_editor_recording', {
-      projectId,
-      recordingId: activeRecordingId,
-    }).catch(() => undefined)
+    await cancelEditorRecording(projectId, activeRecordingId).catch(() => undefined)
   }
 
   async function discardFinalized(projectId: string, activeRecordingId: string) {
     if (!activeRecordingId || !projectId) return
-    await invoke('discard_editor_recording', {
-      projectId,
-      recordingId: activeRecordingId,
-    }).catch(() => undefined)
+    await discardEditorRecording(projectId, activeRecordingId).catch(() => undefined)
   }
 
   function assertStartCurrent(generation: number, projectId: string) {
@@ -315,9 +305,7 @@ export function useEditorRecording(options: RecordingOptions) {
       assertStartCurrent(generation, projectId)
       audioContext = acquiredContext
       recordingSampleRate = Math.round(acquiredContext.sampleRate)
-      const pendingAllocation = invoke<RecordingHandle>('begin_editor_recording', {
-        projectId,
-      })
+      const pendingAllocation = beginEditorRecording(projectId)
       allocationPromise = pendingAllocation
       const handle = await pendingAllocation
       if (allocationPromise === pendingAllocation) allocationPromise = null
@@ -430,12 +418,7 @@ export function useEditorRecording(options: RecordingOptions) {
       const targetStillExists = editor.session === recordingSession && editor.session?.id === projectId
         && editor.session.tracks.some((track) => track.id === targetId)
       if (!targetId || !targetStillExists) throw new Error(message('editor.recordingTargetMissing'))
-      const result = await invoke<RecordingResult>('finish_editor_recording', {
-        projectId,
-        recordingId: activeRecordingId,
-        sampleRate: recordingSampleRate,
-        channels: 1,
-      })
+      const result = await finishEditorRecording(projectId, activeRecordingId, recordingSampleRate, 1)
       finalized = true
       const targetStillCurrent = editor.session === recordingSession && editor.session?.id === projectId
         && editor.session.tracks.some((track) => track.id === targetId)

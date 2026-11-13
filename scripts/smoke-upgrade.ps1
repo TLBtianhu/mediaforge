@@ -130,7 +130,7 @@ try {
     Write-Host "  B: $installerB"
 
     Write-Host "`n[1/4] 安装 A"
-    $a = Start-Process -FilePath $installerA -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"" -Wait -PassThru
+    $a = Start-Process -FilePath $installerA -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"" -Wait -PassThru -WindowStyle Hidden
     Check 'A 安装退出码为 0' ($a.ExitCode -eq 0) "exit=$($a.ExitCode)"
     Check 'A 程序已落盘' (Test-Path (Join-Path $installDir 'app\MediaForge.exe'))
     Check 'A 版本标记正确' ((Get-Content (Join-Path $installDir 'app\app-marker.txt') -Raw).Trim() -eq "version=$VersionA")
@@ -157,7 +157,7 @@ try {
     $foreignBefore = Snapshot-Tree $foreignTemp
 
     Write-Host "`n[3/4] 覆盖安装 B"
-    $b = Start-Process -FilePath $installerB -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"" -Wait -PassThru
+    $b = Start-Process -FilePath $installerB -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"" -Wait -PassThru -WindowStyle Hidden
     Check 'B 安装退出码为 0' ($b.ExitCode -eq 0) "exit=$($b.ExitCode)"
     Check 'B 版本标记已替换' ((Get-Content (Join-Path $installDir 'app\app-marker.txt') -Raw).Trim() -eq "version=$VersionB")
     Check '配置文件保留' ((Test-Path $settings) -and ((Hash-Of $settings) -eq $settingsHash))
@@ -180,7 +180,7 @@ try {
         Remove-Item Env:MEDIAFORGE_DATA_ROOT -ErrorAction SilentlyContinue
         $probeOut = Join-Path $WorkRoot 'probe.stdout.log'
         $probeErr = Join-Path $WorkRoot 'probe.stderr.log'
-        $probeProcess = Start-Process -FilePath (Join-Path $installDir 'app\MediaForge.exe') -ArgumentList '--smoke-print-data-root' -Wait -PassThru -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr
+        $probeProcess = Start-Process -FilePath (Join-Path $installDir 'app\MediaForge.exe') -ArgumentList '--smoke-print-data-root' -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr
         $env:MEDIAFORGE_DATA_ROOT = $dataRoot
         $expectedDataRoot = Join-Path $installDir 'data'
         $probeText = @((Get-Content $probeOut -Raw -ErrorAction SilentlyContinue), (Get-Content $probeErr -Raw -ErrorAction SilentlyContinue)) -join "`n"
@@ -194,7 +194,7 @@ try {
     $uninstaller = Join-Path $installDir 'unins000.exe'
     Check '卸载程序存在' (Test-Path $uninstaller)
     if (Test-Path $uninstaller) {
-        $un = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+        $un = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru -WindowStyle Hidden
         Check '卸载退出码为 0' ($un.ExitCode -eq 0) "exit=$($un.ExitCode)"
         Start-Sleep -Seconds 2
         Check '卸载后程序目录消失' (-not (Test-Path (Join-Path $installDir 'app\MediaForge.exe')))

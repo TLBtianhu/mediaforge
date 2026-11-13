@@ -7,6 +7,7 @@ const MAX_ITEMS: usize = 24;
 const MAX_TASKS: usize = 12;
 const MAX_TEXT: usize = 200;
 const MAX_ERROR: usize = 600;
+#[cfg(test)]
 const ACTIVE_TASK_STATUSES: &[&str] = &[
     "queued",
     "preparing",
@@ -981,6 +982,7 @@ pub(crate) fn summarize_request(command: &str, payload: &Value) -> Value {
     summary.finish(result)
 }
 
+#[cfg(test)]
 fn task_priority(task: &Value) -> (u8, std::cmp::Reverse<i64>) {
     let status = task
         .get("status")
@@ -1001,6 +1003,7 @@ fn task_priority(task: &Value) -> (u8, std::cmp::Reverse<i64>) {
     (priority, std::cmp::Reverse(time))
 }
 
+#[cfg(test)]
 pub(crate) fn summarize_task_history(store: &Value) -> Value {
     let mut summary = Summary::default();
     let tasks = store

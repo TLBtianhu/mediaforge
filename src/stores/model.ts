@@ -1,8 +1,8 @@
+import { cancelTask, startCustomModelImport } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { workerLogRecord, type LogRecord } from '@/utils/logRecord'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
 import { isMainTaskOwner } from '@/utils/taskOwner'
 import { matchesModelQuery } from '@/utils/modelSearch'
@@ -14,6 +14,19 @@ import { inferenceChunkSizeIssue, normalizeInferenceParamMeta, type InferencePar
 import { isTerminalDeleteTaskStatus, type DeleteTaskStatus, type DownloadStatus } from '@/features/downloads/lifecycle'
 import { startModelHubDownload } from '@/features/downloads/startModelHubDownload'
 import { waitForDeleteTask as waitForDeleteTaskCompletion } from '@/features/downloads/waitForDeleteTask'
+import {
+  deleteToolModel as deleteToolModelRequest,
+  listModels,
+  getModelInfo,
+  getModelStorageSummary,
+  inspectCustomModel as inspectCustomModelRequest,
+  relinkCustomModel as relinkCustomModelRequest,
+  startModelDelete,
+  startModelResidualCleanup,
+  unregisterCustomModel,
+} from '@/api/models'
+import { KnownObject } from '@/types/contracts'
+import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 
 /** How the model library lays its entries out. */
 export type ModelViewMode = 'card' | 'list'
@@ -21,84 +34,15 @@ import { useSettingsStore } from '@/stores/settings'
 
 const studioLog = createLogger('ui.stores.model')
 
-export type ModelEntry = {
-  name: string
-  aliases: string[]
-  capabilities?: string[]
-  roles?: string[]
-  modelType: string | null
-  architecture: string
-  supported: boolean
-  unsupportedReason: string
-  category: string
-  categoryCn: string
-  primaryCategory: string
-  primaryCategoryCn: string
-  secondaryCategory: string
-  secondaryCategoryCn: string
-  targetStem: string
-  configInstruments: string
-  configTargetInstrument: string
-  classificationConfidence: string
-  classificationBasis: string
-  sizeBytes: number
-  sha256: string
-  downloaded: boolean
-  missingPaths: string[]
-  modelPath: string
-  configPath: string | null
-  auxiliaryPaths: string[]
-  /**
-   * Where the model came from. 'user' models were imported from local files and are local-only:
-   * pymss refuses to download them, and their weights may live anywhere on disk, so they offer
-   * relink/remove where a catalog model offers download/delete.
-   * Absent on entries restored from an older persisted cache — treat a missing value as 'catalog'.
-   */
-  source?: 'catalog' | 'debug' | 'user'
-  baseConfigPath?: string | null
-  /**
-   * How an imported model got here — 'copy' means the app owns its files and removing it deletes
-   * them. Null for catalog models. Models registered outside the app read as 'reference', the
-   * mode under which nothing is deleted.
-   */
-  importMode?: 'copy' | 'reference' | null
-  defaultInferenceParams?: ModelDefaultInferenceParams
-  defaultInferenceParamsResolved?: boolean
-  defaultInferenceParamsSource?: 'config' | 'runtime_fallback'
-  inferenceParamMeta?: InferenceParamMeta
-  /**
-   * 槽位接口（后端按任务族生成）：只声明"支持哪些槽位、绑定到哪个原生键"。
-   * 界面的分组与顺序来自前端布局档，不在这里——见 src/litegraph/renderPlan.ts。
-   */
+type ModelEntryContract = KnownObject<NonNullable<WorkerCommandResult<'list_models'>['models']>[number]>
+
+export type ModelEntry = Omit<ModelEntryContract, 'slots' | 'defaultInferenceParams' | 'inferenceParamMeta'> & {
   slots?: Record<string, { bind: string; min?: number; max?: number; step?: number; default?: unknown; choices?: Array<string | number>; derive?: string }>
-  slotTask?: string
+  defaultInferenceParams?: ModelDefaultInferenceParams
+  inferenceParamMeta?: InferenceParamMeta
 }
 
-/** One architecture the worker thinks a weights file might be, with why it thinks so. */
-export type CustomModelSuggestion = {
-  modelType: string
-  confidence: 'high' | 'medium' | 'low'
-  /** Translated by the UI — the worker must not emit prose it cannot localise. */
-  basisCode: 'config_model_key' | 'config_kwargs_section' | 'state_dict_key' | string
-  basisDetail: string
-}
-
-export type CustomModelInspection = {
-  modelPath: string
-  configPath: string | null
-  sizeBytes: number
-  suggestions: CustomModelSuggestion[]
-  suggestedModelType: string | null
-  suggestedName: string
-  instruments: string[]
-  targetInstrument: string
-  knownModelTypes: string[]
-  configOptionalModelTypes: string[]
-  /** Null when nothing could be suggested — there is then no type to require a config for. */
-  configRequired: boolean | null
-  stateDictReadable: boolean
-  stateDictError: string | null
-}
+export type CustomModelInspection = KnownObject<WorkerCommandResult<'inspect_custom_model'>>
 
 export type CustomModelImportRequest = {
   name: string
@@ -121,15 +65,6 @@ export type CustomModelImportState = {
   message: string
 }
 
-export type CustomModelRemoval = {
-  name: string
-  filesDeleted: string[]
-  deletedFiles: boolean
-  /** False for referenced models, whose weights the app must never delete. */
-  fileDeletionSupported: boolean
-  errors: string[]
-}
-
 export type ModelDefaultInferenceParams = {
   batch_size?: number
   overlap_size?: number
@@ -144,14 +79,6 @@ export type ModelDefaultInferenceParams = {
   high_end_process?: boolean
 }
 
-type ModelsPayload = {
-  models: ModelEntry[]
-  categories: string[]
-  categoriesCn: string[]
-  count: number
-  modelDir: string
-  debugStatus?: ModelDebugStatus
-}
 
 export type ModelDebugStatus = {
   active: boolean
@@ -225,15 +152,12 @@ export type ModelStorageDeleteTarget = {
   tool?: ToolModelStorageItem['tool']
 }
 
-export type ModelStorageSummary = {
-  modelDir: string
-  totalBytes: number
-  toolModelsBytes?: number
-  downloadedCount: number
+type ModelStorageContract = KnownObject<WorkerCommandResult<'model_storage_summary'>>
+
+export type ModelStorageSummary = Omit<ModelStorageContract, 'models' | 'toolModels' | 'residualFiles'> & {
   models: ModelStorageItem[]
   toolModels: ToolModelStorageItem[]
   residualFiles: ModelStorageFile[]
-  residualBytes: number
 }
 
 export type ModelPreference = {
@@ -420,10 +344,29 @@ type NormalizeModelEntryOptions = {
  * 后端 worker 事件信封。payload 字段随 type 高度多变（下载/删除/清理各阶段），
  * 故保持宽松结构，仅收敛顶层信封以移除隐式 any。
  */
+type ModelWorkerPayload = {
+  aggregateDownloadedBytes?: number
+  aggregateTotalBytes?: number
+  completedFiles?: number
+  downloaded?: string[]
+  file?: string
+  fileIndex?: number
+  message?: string
+  model?: string
+  modelDir?: string
+  modelInfo?: ModelEntry | null
+  modelStorageSummary?: ModelStorageSummary
+  progress?: number
+  skipped?: string[]
+  speedBytesPerSecond?: number
+  stage?: string
+  totalFiles?: number
+}
+
 export type WorkerEvent = {
   type?: string
   taskId?: string
-  payload?: Record<string, any>
+  payload?: ModelWorkerPayload
 }
 
 export const useModelStore = defineStore('model', () => {
@@ -794,18 +737,18 @@ export const useModelStore = defineStore('model', () => {
     isLoading.value = true
     error.value = null
     try {
-      // 统一数据源：模型库（model_hub）是唯一真相，字段已与其对齐。
-      const result = await invoke<ModelsPayload>('model_hub', {
-        payload: {
-          modality: 'all',
-          modelDir: settings.modelDir || null,
-        },
+      // 主音频模型库走 list_models（完整 ModelEntry）；model_hub 只服务媒体模型页。
+      const result = await listModels({
+        includeLocalState: true,
+        includeCustom: true,
+        supportedOnly: true,
+        modelDir: settings.modelDir || null,
       })
-      models.value = result.models.map((model) => normalizeModelEntryWithOverrides(model))
-      categories.value = result.categories
-      categoriesCn.value = result.categoriesCn
-      modelDir.value = result.modelDir
-      debugStatus.value = result.debugStatus || null
+      models.value = result.models.map((model) => normalizeModelEntryWithOverrides(model as ModelEntry))
+      categories.value = result.categories || []
+      categoriesCn.value = result.categoriesCn || []
+      modelDir.value = result.modelDir || ''
+      debugStatus.value = (result.debugStatus as ModelDebugStatus) || null
       modelsLoaded.value = true
       const nextSelected = models.value.find((model) => model.name === selectedModel.value) || null
       if (nextSelected) selectedInfo.value = nextSelected
@@ -841,13 +784,11 @@ export const useModelStore = defineStore('model', () => {
     }
 
     detailLoading.value = true
-    return invoke<ModelEntry>('get_model_info', {
-      payload: {
-        model: name,
-        modelDir: settings.modelDir || null,
-      },
+    return getModelInfo({
+      model: name,
+      modelDir: settings.modelDir || null,
     }).then((info) => {
-      const normalizedInfo = normalizeModelEntryWithOverrides(info)
+      const normalizedInfo = normalizeModelEntryWithOverrides(info as ModelEntry)
       if (selectedModel.value === name) selectedInfo.value = normalizedInfo
       return normalizedInfo
     }).catch((err) => {
@@ -932,7 +873,7 @@ export const useModelStore = defineStore('model', () => {
         next.progress = 100
         next.speedBytesPerSecond = 0
         next.message = 'Done'
-        next.completedFiles = payload.downloaded?.length + payload.skipped?.length || next.completedFiles
+        next.completedFiles = (payload.downloaded?.length || 0) + (payload.skipped?.length || 0) || next.completedFiles
         next.totalFiles = Math.max(next.totalFiles, next.completedFiles || 1)
         if (payload.modelInfo) upsertModel(payload.modelInfo)
         // 事件里的 modelInfo 形状可能和列表条目不完全一致；重拉一次保证权威。
@@ -1112,7 +1053,7 @@ export const useModelStore = defineStore('model', () => {
     }
   }
 
-  async function downloadModel(name: string, force = false): Promise<boolean> {
+  async function downloadModel(name: string): Promise<boolean> {
     const app = useAppStore()
     const settings = useSettingsStore()
     const existingTask = downloadTasks.value[name]
@@ -1161,11 +1102,11 @@ export const useModelStore = defineStore('model', () => {
       })
       const startedTask = downloadTasks.value[name]
       if (!startedTask || startedTask.taskId !== taskId) {
-        await invoke<boolean>('cancel_task', { taskId }).catch(() => false)
+        await cancelTask(taskId).catch(() => false)
         return false
       }
       if (startedTask.status === 'cancelled' || startedTask.status === 'paused') {
-        await invoke<boolean>('cancel_task', { taskId }).catch(() => false)
+        await cancelTask(taskId).catch(() => false)
         return false
       }
       if (startedTask.status === 'preparing') {
@@ -1180,7 +1121,7 @@ export const useModelStore = defineStore('model', () => {
       if (!currentTask || currentTask.taskId !== taskId || ['paused', 'cancelled'].includes(currentTask.status)) return false
       // The command may have spawned the worker even if its IPC response was lost. A best-effort
       // cancellation prevents that worker from continuing after the UI has reported a failure.
-      await invoke<boolean>('cancel_task', { taskId }).catch(() => false)
+      await cancelTask(taskId).catch(() => false)
       const message = err instanceof Error ? err.message : String(err)
       downloadStates.value = { ...downloadStates.value, [name]: 'error' }
       downloadErrors.value = { ...downloadErrors.value, [name]: message }
@@ -1210,10 +1151,10 @@ export const useModelStore = defineStore('model', () => {
         [name]: { ...task, status: pause ? 'paused' : 'cancelled', message: pause ? 'Paused' : 'Cancelled', updatedAt: Date.now() },
       }
       downloadStates.value = { ...downloadStates.value, [name]: 'idle' }
-      await invoke<boolean>('cancel_task', { taskId: task.taskId }).catch(() => false)
+      await cancelTask(task.taskId).catch(() => false)
       return true
     }
-    const cancelled = await invoke<boolean>('cancel_task', { taskId: task.taskId })
+    const cancelled = await cancelTask(task.taskId)
     if (cancelled) {
       downloadTasks.value = {
         ...downloadTasks.value,
@@ -1248,12 +1189,10 @@ export const useModelStore = defineStore('model', () => {
     }
     deleteTaskIndex.value = { ...deleteTaskIndex.value, [taskId]: name }
     try {
-      await invoke<{ taskId: string; started: boolean }>('start_model_delete', {
-        payload: {
-          taskId,
-          model: name,
-          modelDir: settings.modelDir || null,
-        },
+      await startModelDelete({
+        taskId,
+        model: name,
+        modelDir: settings.modelDir || null,
       })
       if (source === 'single') {
         // Batch deletion already awaits each task; a single one used to fire and forget, so a
@@ -1327,15 +1266,13 @@ export const useModelStore = defineStore('model', () => {
 
   async function deleteToolModel(target: ModelStorageDeleteTarget) {
     const settings = useSettingsStore()
-    const result = await invoke<{ modelStorageSummary?: ModelStorageSummary }>('delete_tool_model', {
-      payload: {
-        id: target.id,
-        tool: target.tool,
-        modelDir: settings.modelDir || null,
-      },
+    const result = await deleteToolModelRequest({
+      id: target.id,
+      tool: target.tool,
+      modelDir: settings.modelDir || null,
     })
     if (result.modelStorageSummary) {
-      modelStorageSummary.value = result.modelStorageSummary
+      modelStorageSummary.value = result.modelStorageSummary as ModelStorageSummary
       modelStorageSummaryLoadedAt.value = Date.now()
     }
   }
@@ -1402,9 +1339,9 @@ export const useModelStore = defineStore('model', () => {
     if (!options?.force && hasFreshCache) return modelStorageSummary.value
     storageLoading.value = true
     try {
-      const result = await invoke<ModelStorageSummary>('get_model_storage_summary', {
-        payload: { modelDir: settings.modelDir || null },
-      })
+      const result = await getModelStorageSummary({
+        modelDir: settings.modelDir || null,
+      }) as ModelStorageSummary
       modelStorageSummary.value = result
       modelStorageSummaryLoadedAt.value = Date.now()
       return result
@@ -1428,9 +1365,7 @@ export const useModelStore = defineStore('model', () => {
       notified: false,
     }
     try {
-      await invoke<any>('start_cleanup_model_residual_files', {
-        payload: { taskId, modelDir: settings.modelDir || null },
-      })
+      await startModelResidualCleanup({ taskId, modelDir: settings.modelDir || null })
     } catch (err) {
       residualCleanupState.value = {
         ...residualCleanupState.value,
@@ -1498,9 +1433,7 @@ export const useModelStore = defineStore('model', () => {
 
   /** Inspect a weights file to suggest an architecture before the user has to pick one. */
   async function inspectCustomModel(modelPath: string, configPath?: string | null) {
-    return invoke<CustomModelInspection>('inspect_custom_model', {
-      payload: { modelPath, configPath: configPath || null },
-    })
+    return inspectCustomModelRequest({ modelPath, configPath: configPath || null })
   }
 
   /**
@@ -1521,9 +1454,7 @@ export const useModelStore = defineStore('model', () => {
     try {
       // The configured model directory travels with the request: copies must land beside the
       // catalog models, and the worker's MEDIAFORGE_MODEL_DIR only ever holds the default location.
-      await invoke('start_custom_model_import', {
-        payload: { ...request, taskId, modelDir: settings.modelDir || null },
-      })
+      await startCustomModelImport({ ...request, taskId, modelDir: settings.modelDir || null })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       customImportState.value = { ...customImportState.value, status: 'error', message }
@@ -1543,7 +1474,7 @@ export const useModelStore = defineStore('model', () => {
   async function cancelCustomModelImport() {
     const taskId = customImportState.value.taskId
     if (!taskId || customImportState.value.status !== 'importing') return false
-    return invoke<boolean>('cancel_task', { taskId })
+    return cancelTask(taskId)
   }
 
   function resetCustomImportState() {
@@ -1552,16 +1483,16 @@ export const useModelStore = defineStore('model', () => {
 
   async function removeCustomModel(name: string, deleteFiles = false) {
     const settings = useSettingsStore()
-    const result = await invoke<CustomModelRemoval>('unregister_custom_model', {
-      payload: { name, deleteFiles, modelDir: settings.modelDir || null },
+    const result = await unregisterCustomModel({
+      name, deleteFiles, modelDir: settings.modelDir || null,
     })
     await loadModels()
     return result
   }
 
   async function relinkCustomModel(name: string, modelPath: string, configPath?: string | null) {
-    const result = await invoke<{ name: string }>('relink_custom_model', {
-      payload: { name, modelPath, configPath: configPath || null },
+    const result = await relinkCustomModelRequest({
+      name, modelPath, configPath: configPath || null,
     })
     await loadModels()
     return result
@@ -1585,7 +1516,7 @@ export const useModelStore = defineStore('model', () => {
       taskIds.add(customImportState.value.taskId)
     }
     await Promise.all([...taskIds].map((taskId) =>
-      invoke<boolean>('cancel_task', { taskId }).catch(() => false),
+      cancelTask(taskId).catch(() => false),
     ))
   }, 70)
 

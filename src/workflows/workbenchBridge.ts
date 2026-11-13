@@ -19,7 +19,7 @@ type Request = WorkbenchAction & { requestId?: string; windowLabel: string }
 export type WorkbenchActionResult = { jobId?: string; taskId?: string; total?: number }
 type Response = { requestId?: string; state?: WorkbenchState; result?: WorkbenchActionResult; error?: string }
 type Transport = {
-  listen: (event: string, handler: (payload: any) => void) => Promise<() => void>
+  listen: <T>(event: string, handler: (payload: T) => void) => Promise<() => void>
   emitTo: (label: string, event: string, payload: unknown) => Promise<void>
 }
 type Host = {

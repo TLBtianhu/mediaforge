@@ -13,6 +13,7 @@ from . import image_ops, video_ops
 from . import capabilities
 from . import evaluation
 from . import failures
+from . import task_params
 
 
 def _request_id(payload: dict[str, Any]) -> str | None:
@@ -30,21 +31,10 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         output_dir = str(payload.get("outputDir") or "").strip()
         if not output_dir:
             return emit_error("MEDIA_VIDEO_INVALID", "No output directory", request_id=request_id)
-        mode = str(payload.get("mode") or "watermark_upscale").strip().lower()
-        if mode not in {"upscale", "watermark", "watermark_upscale", "interpolate", "video_sr", "video_super_resolution", "video_inpaint", "video_inpainting", "custom"}:
-            return emit_error("MEDIA_VIDEO_INVALID", f"Unknown video mode: {mode}", request_id=request_id)
-        detect_mode = str(payload.get("detectMode") or "fixed").strip().lower()
-        if detect_mode not in {"fixed", "per_frame"}:
-            return emit_error("MEDIA_VIDEO_INVALID", f"Unknown detection mode: {detect_mode}", request_id=request_id)
         model_dir = str(payload.get("modelDir") or "").strip()
         if model_dir:
             worker_paths.export_model_root(model_dir)
-        raw_steps = payload.get("steps")
-        if raw_steps:
-            steps = capabilities.normalize_steps(raw_steps)
-            mode = capabilities.mode_for_steps(steps)
-        else:
-            steps = capabilities.normalize_steps(capabilities.steps_from_mode(mode))
+        steps = task_params.normalize_steps(payload, modality="video")
         watermark_step = next((step for step in steps if step["capability"] == "watermark_removal"), None)
         upscale_step = next((step for step in steps if step["capability"] == "upscale"), None)
         if len(steps) != 1:
@@ -53,8 +43,11 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                 "One task may run exactly one capability/model. Use a workflow for multiple steps.",
                 request_id=request_id,
             )
-        if watermark_step:
-            detect_mode = str(watermark_step["params"].get("detectMode") or detect_mode)
+        step = steps[0]
+        params = step["params"]
+        bindings = step["bindings"]
+        mode = capabilities.mode_for_steps(steps)
+        detect_mode = str(task_params.value(params, "detectMode", "fixed"))
         preferred_scale = None
         model_paths: dict[str, str] = {}
         if watermark_step:
@@ -63,23 +56,9 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
         if upscale_step:
             upscaler_id = str(upscale_step["bindings"]["upscaler"])
             preferred_scale = capabilities.model_scale(upscaler_id)
-            # 绑定的模型权重可能不在本机（例如只装了 x4）。这种情况下退到任意一个
-            # 真有文件的 upscale 模型，而不是让整条视频管线因为缺一个用不到的倍率而失败。
-            bound_path = capabilities.model_path(upscaler_id)
-            if not Path(bound_path).exists():
-                for candidate in (capabilities.capability("upscale") or {}).get("modelIds") or []:
-                    try:
-                        if Path(capabilities.model_path(candidate)).exists():
-                            upscaler_id = candidate
-                            preferred_scale = capabilities.model_scale(candidate)
-                            break
-                    except Exception:  # noqa: BLE001
-                        continue
             model_paths["upscaler_x2" if preferred_scale == 2 else "upscaler_x4"] = str(capabilities.model_path(upscaler_id))
         if mode == "interpolate":
-            from . import capabilities as _capabilities
-            model_id = str(payload.get("modelId") or "").strip() or _capabilities.default_bindings("frame_interpolation")["interpolator"]
-            model_dir = _capabilities.model_path(model_id)
+            model_dir = capabilities.model_path(bindings["interpolator"])
             outputs = []
             failed = []
             for source in inputs:
@@ -87,8 +66,9 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                     outputs.append(
                         video_ops.interpolate_video(
                             model_dir, source, output_dir,
-                            factor=int(payload.get("factor") or 2),
-                            crf=int(payload.get("crf") or 18),
+                            factor=int(params["multiplier"]),
+                            crf=int(task_params.value(payload, "crf", 18)),
+                            preset=str(task_params.value(payload, "preset", "fast")),
                             progress=lambda f, m: emit("task.progress", {"fraction": f, "message": m}, request_id=request_id),
                         )
                     )
@@ -103,11 +83,8 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             return 0
 
         if mode in {"video_inpaint", "video_inpainting"}:
-            model_id = str(payload.get("modelId") or "").strip() or capabilities.default_bindings("video_inpainting")["primary"]
-            model_dir = capabilities.model_path(model_id)
-            step_params = next((step["params"] for step in steps if step["capability"] == "video_inpainting"), {})
-            detect_mode = str(step_params.get("detectMode") or detect_mode)
-            subvideo_length = int(step_params.get("subvideoLength") or payload.get("subvideoLength") or 80)
+            model_dir = capabilities.model_path(bindings["primary"])
+            subvideo_length = int(params["subvideoLength"])
             mask_path = str(payload.get("maskPath") or "").strip() or None
             detector_path = None
             if mask_path is None:
@@ -121,12 +98,12 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                             model_dir, source, output_dir,
                             mask_path=mask_path,
                             detector_path=detector_path,
-                            conf=float(payload.get("conf") or 0.25),
-                            expand=int(payload.get("expand") or 8),
+                            conf=float(task_params.value(params, "conf", 0.25)),
+                            expand=int(task_params.value(params, "expand", 8)),
                             detect_mode=detect_mode,
                             subvideo_length=subvideo_length,
                             preview_seconds=float(payload.get("previewSeconds") or 0),
-                            crf=int(payload.get("crf") or 18),
+                            crf=int(task_params.value(payload, "crf", 18)),
                             preset=str(payload.get("preset") or "fast"),
                             progress=lambda f, m: emit("task.progress", {"fraction": f, "message": m}, request_id=request_id),
                         )
@@ -142,8 +119,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             return 0
 
         if mode in {"video_sr", "video_super_resolution"}:
-            model_id = str(payload.get("modelId") or "").strip() or capabilities.default_bindings("video_super_resolution")["upscaler"]
-            model_path = capabilities.model_path(model_id)
+            model_path = capabilities.model_path(bindings["upscaler"])
             outputs = []
             failed = []
             for source in inputs:
@@ -152,7 +128,7 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                         video_ops.upscale_video(
                             model_path, source, output_dir,
                             preview_seconds=float(payload.get("previewSeconds") or 0),
-                            crf=int(payload.get("crf") or 18),
+                            crf=int(task_params.value(payload, "crf", 18)),
                             preset=str(payload.get("preset") or "fast"),
                             progress=lambda f, m: emit("task.progress", {"fraction": f, "message": m}, request_id=request_id),
                         )
@@ -167,11 +143,11 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
             )
             return 0
 
-        restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, model_paths=model_paths)
+        restorer = image_ops.ImageRestorer(device=str(payload.get("device") or "") or None, model_paths=model_paths, tile=int(task_params.value(params, "tile", 0)) or 512)
         target = image_ops.resolve_target(
-            str(payload.get("target") or "none"),
-            int(payload.get("width") or 0),
-            int(payload.get("height") or 0),
+            str(task_params.value(params, "target", "none")),
+            int(task_params.value(params, "width", 0)),
+            int(task_params.value(params, "height", 0)),
         )
         total = len(inputs)
         outputs: list[dict] = []
@@ -197,15 +173,15 @@ def cmd_media_video(payload: dict[str, Any]) -> int:
                         source,
                         output_dir,
                         mode=mode,
-                        scale=float(payload.get("scale") or 1.0),
+                        scale=float(task_params.value(params, "scale", 1.0)),
                         target=target,
-                        fit=str(payload.get("fit") or "contain"),
-                        conf=float(payload.get("conf") or 0.25),
-                        expand=int(payload.get("expand") or 8),
+                        fit=str(task_params.value(params, "fit", "contain")),
+                        conf=float(task_params.value(params, "conf", 0.25)),
+                        expand=int(task_params.value(params, "expand", 8)),
                         detect_mode=detect_mode,
                         preferred_scale=preferred_scale,
                         preview_seconds=float(payload.get("previewSeconds") or 0),
-                        crf=int(payload.get("crf") or 18),
+                        crf=int(task_params.value(payload, "crf", 18)),
                         preset=str(payload.get("preset") or "fast"),
                         restorer=restorer,
                         progress=report,

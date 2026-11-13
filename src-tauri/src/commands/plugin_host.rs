@@ -6,8 +6,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-#[cfg(test)]
-use std::process::Command;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::mpsc;

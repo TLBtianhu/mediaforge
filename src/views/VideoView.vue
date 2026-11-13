@@ -1,15 +1,15 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
+import { pickPreviewFiles, revealPath } from '@/api/native'
 import { useMediaDrop } from '../composables/useMediaDrop'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { computed, onMounted, ref } from 'vue'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
+
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { useRoute } from 'vue-router'
 import {
   CloseCircleOutline,
-  DocumentOutline,
   FolderOpenOutline,
   VideocamOutline,
   CubeOutline,
@@ -18,9 +18,9 @@ import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import WorkbenchSteps from '@/components/media/WorkbenchSteps.vue'
 import ProcessingPlan from '@/components/media/ProcessingPlan.vue'
 import WorkbenchCard from '@/components/media/WorkbenchCard.vue'
-import { journalJob, journalNow } from '@/utils/operationJournal'
+
 import { useSettingsStore } from '@/stores/settings'
-import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
+import { useMediaJob } from '@/composables/useMediaJob'
 
 defineOptions({ name: 'VideoView' })
 
@@ -42,21 +42,6 @@ type OutputFile = {
     elapsed?: number
   }
 }
-type WorkerPayload = {
-  fraction?: number
-  completed?: number
-  total?: number
-  current?: string
-  message?: string
-  outputs?: OutputFile[]
-  failed?: Array<{ path: string; error: string }>
-}
-type WorkerEvent = {
-  type: string
-  requestId?: string | null
-  taskId?: string | null
-  payload?: WorkerPayload
-}
 
 const { t } = useI18n()
 const message = useMessage()
@@ -69,13 +54,6 @@ const previewSeconds = ref(0)
 const modelDir = ref('')
 const crf = ref(18)
 const preset = ref('fast')
-const busy = ref(false)
-const progress = ref(0)
-const status = ref('')
-const failedCount = ref(0)
-const outputs = ref<OutputFile[]>([])
-const requestId = ref('')
-const journalCreatedAt = ref(0)
 type PlanStep = { capability: string; bindings: Record<string, string>; params: Record<string, unknown> }
 const planStep = ref<PlanStep>({
   capability: 'watermark_removal',
@@ -83,13 +61,25 @@ const planStep = ref<PlanStep>({
   params: { conf: 0.25, expand: 8, detectMode: 'fixed' },
 })
 const planAvailable = ref(true)
-let unlisten: UnlistenFn | undefined
+const { job, busy, progress, status, outputs, failedCount, start: startJob } = useMediaJob<OutputFile>(
+  'media_video', {
+    queued: () => t('tasks.waitingForResources'), running: () => t('factory.processing'), completed: () => t('factory.completed'),
+    failed: () => t('factory.failed'), cancelled: () => t('tasks.cancelSuccess'),
+  }, message, payload => {
+    if (Array.isArray(payload.inputs)) inputs.value = payload.inputs as string[]
+    if (typeof payload.outputDir === 'string') outputDir.value = payload.outputDir
+    if (typeof payload.modelDir === 'string') modelDir.value = payload.modelDir
+    if (Array.isArray(payload.steps) && payload.steps[0]) planStep.value = payload.steps[0] as PlanStep
+    if (typeof payload.previewSeconds === 'number') previewSeconds.value = payload.previewSeconds
+    if (typeof payload.crf === 'number') crf.value = payload.crf
+    if (typeof payload.preset === 'string') preset.value = payload.preset
+  })
 
 const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ label: value, value }))
 const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 const pipelineSteps = computed(() => [planStep.value])
 const firstOutput = computed(() => outputs.value[0] || null)
-const videoSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
+const videoSrc = computed(() => mediaPreviewUrl(firstOutput.value?.path || ''))
 const resultInfo = computed(() => {
   const info = firstOutput.value?.info
   if (!info) return []
@@ -122,12 +112,7 @@ useMediaDrop({
 
 async function pickFiles() {
   try {
-    const selected = await open({
-      multiple: true,
-      filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'flv', 'wmv', 'm4v'] }],
-    })
-    if (!selected) return
-    addInputs(Array.isArray(selected) ? selected : [selected])
+    addInputs(await pickPreviewFiles('video'))
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -155,31 +140,8 @@ function removeInput(path: string) {
   inputs.value = inputs.value.filter(item => item !== path)
 }
 
-function onProgress(payload: WorkerPayload) {
-  const fraction = Number(payload.fraction || 0)
-  const completed = Number(payload.completed || 0)
-  const total = Number(payload.total || 0)
-  const percentage = fraction > 0 ? fraction * 100 : (total > 0 ? (completed / total) * 100 : 0)
-  progress.value = Math.max(0, Math.min(99, Math.round(percentage)))
-  status.value = String(payload.current || t('factory.processing'))
-}
-
-function journal(status: 'running' | 'completed' | 'failed' | 'cancelled', fraction: number, text: string, result: Record<string, unknown> | null = null) {
-  void journalJob({
-    jobId: requestId.value,
-    command: 'media_video',
-    source: 'manual',
-    status,
-    fraction,
-    message: text,
-    createdAt: journalCreatedAt.value,
-    payload: { operation: 'media_video', inputs: inputs.value, outputDir: outputDir.value },
-    result,
-    error: status === 'failed' ? text : null,
-  })
-}
-
 async function run() {
+  if (busy.value) return
   if (!inputs.value.length) {
     message.warning(t('factory.selectFirst'))
     return
@@ -188,40 +150,18 @@ async function run() {
     message.warning(t('factory.selectOutput'))
     return
   }
-  busy.value = true
-  progress.value = 0
-  status.value = t('factory.processing')
-  failedCount.value = 0
-  outputs.value = []
-  requestId.value = `video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  journalCreatedAt.value = journalNow()
-  journal('running', 0, status.value)
-  try {
-    await invoke('start_audio_tool', {
-      payload: {
-        operation: 'media_video',
-        requestId: requestId.value,
-        inputs: inputs.value,
-        outputDir: outputDir.value,
-        steps: pipelineSteps.value,
-        previewSeconds: previewSeconds.value,
-        modelDir: modelDir.value,
-        crf: crf.value,
-        preset: preset.value,
-      },
-    })
-  } catch (error) {
-    busy.value = false
-    status.value = error instanceof Error ? error.message : String(error)
-    journal('failed', 0, status.value)
-    message.error(status.value)
-  }
+  await startJob({
+    operation: 'media_video', inputs: inputs.value, outputDir: outputDir.value,
+    modelDir: modelDir.value, steps: pipelineSteps.value,
+    previewSeconds: previewSeconds.value, crf: crf.value, preset: preset.value,
+  })
 }
 
 async function openOutput() {
-  if (!outputDir.value) return
+  const path = String(job.value?.payload?.outputDir || outputDir.value)
+  if (!path) return
   try {
-    await invoke('reveal_path', { path: outputDir.value })
+    await revealPath(path)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -230,55 +170,8 @@ async function openOutput() {
 onMounted(async () => {
   const requested = route.query.asset
   if (typeof requested === 'string' && requested) addInputs([requested])
-  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
-  try {
-    unlisten = await listen<WorkerEvent>('pymss://worker-event', event => {
-      const payload = event.payload
-      const id = payload?.requestId || payload?.taskId
-      if (!requestId.value || id !== requestId.value) return
-
-      if (isTaskProgress(payload?.type) && payload.payload) {
-        onProgress(payload.payload)
-        journal('running', Number(payload.payload.fraction || 0), String(payload.payload.current || status.value))
-        return
-      }
-      if (isTaskResult(payload?.type) && payload.payload) {
-        const result = payload.payload
-        outputs.value = result.outputs || []
-        failedCount.value = result.failed?.length || 0
-        busy.value = false
-        progress.value = 100
-        status.value = failedCount.value
-          ? `${t('factory.failed')} (${failedCount.value})`
-          : t('factory.completed')
-        journal(failedCount.value ? 'failed' : 'completed', 1, status.value, result as Record<string, unknown>)
-        if (failedCount.value) message.warning(status.value)
-        else message.success(status.value)
-        requestId.value = ''
-        return
-      }
-      if (payload?.type === 'error') {
-        busy.value = false
-        status.value = String(payload.payload?.message || 'Video processing failed')
-        journal('failed', 0, status.value)
-        message.error(status.value)
-        requestId.value = ''
-      }
-      if (payload?.type === 'task.cancelled') {
-        busy.value = false
-        status.value = 'Cancelled'
-        journal('cancelled', 0, status.value)
-        requestId.value = ''
-      }
-    })
-  } catch {
-    // Browser preview has no Tauri event bridge.
-  }
 })
 
-onBeforeUnmount(() => {
-  unlisten?.()
-})
 const workbenchSteps = computed(() => [
   { title: t('factory.input'), text: t('pipeline.stepInput') },
   { title: t('plan.title'), text: t('pipeline.stepCompose') },
@@ -402,7 +295,7 @@ const workbenchSteps = computed(() => [
 <style scoped>
 .video-page { display: flex; flex-direction: column; gap: 12px; }
 .video-picker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.video-count { color: var(--text-color-3); font-size: 12px; }
+.video-count { color: var(--on-surface-muted); font-size: 12px; }
 .video-file { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .video-label { display: block; margin-bottom: 6px; color: var(--on-surface-muted); font-size: 12px; font-weight: 600; }
 .video-path { display: flex; gap: 8px; align-items: center; }

@@ -18,7 +18,6 @@ test('workflow modals use shared width tokens', () => {
     ['src/components/workflow/WorkflowRunPanel.vue', '--modal-width-lg'],
     ['src/components/workflow/WorkflowNodeLog.vue', '--modal-width-lg'],
     ['src/views/WorkflowsView.vue', '--modal-width-md'],
-    ['src/views/PluginsView.vue', '--modal-width-md'],
   ]) {
     assert.match(read(path), new RegExp(token.replace('-', '\\-')))
   }

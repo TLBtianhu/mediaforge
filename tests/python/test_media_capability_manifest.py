@@ -101,7 +101,7 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertIn("unknown", str(caught.exception))
 
     def test_normalize_steps_accepts_the_live_capabilities(self) -> None:
-        steps = capabilities.steps_from_mode("watermark_upscale")
+        steps = [{"capability": name, "bindings": capabilities.default_bindings(name), "params": {}} for name in ("watermark_removal", "upscale")]
         normalized = capabilities.normalize_steps(steps)
         self.assertEqual([step["capability"] for step in normalized], ["watermark_removal", "upscale"])
 
@@ -145,13 +145,6 @@ class DefaultModelTests(unittest.TestCase):
         self.assertEqual(capabilities.default_model_by_scale("upscale", 4), "media:real-esrgan-x4")
         with self.assertRaises(KeyError):
             capabilities.default_model_by_scale("upscale", 3)
-
-    def test_steps_from_mode_reuses_the_same_defaults(self) -> None:
-        steps = capabilities.steps_from_mode("watermark_upscale")
-        bindings = {step["capability"]: step["bindings"] for step in steps}
-        self.assertEqual(bindings["upscale"], capabilities.default_bindings("upscale"))
-        self.assertEqual(bindings["watermark_removal"], capabilities.default_bindings("watermark_removal"))
-
 
 class SuffixConsistencyTests(unittest.TestCase):
     def test_video_ops_mode_suffix_matches_capability_suffixes(self) -> None:

@@ -16,7 +16,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,12 +25,15 @@ import numpy as np
 
 from . import ffmpeg
 from .image_ops import ImageRestorer
+from .stream_process import StreamProcess as _StreamProcess
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 
 def _run(command: list[str], label: str) -> subprocess.CompletedProcess:
     proc = subprocess.run(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding="utf-8", errors="replace",
+        **hidden_subprocess_kwargs(),
     )
     if proc.returncode != 0:
         tail = "\n".join((proc.stderr or "").strip().splitlines()[-12:])
@@ -42,7 +44,7 @@ def _run(command: list[str], label: str) -> subprocess.CompletedProcess:
 def _read_exact(stream, size: int) -> bytes | None:
     """从一个管道里读满 `size` 字节；对端关闭则返回 None。
 
-    管道会短读——`read(n)` 拿到多少算多少，帧边界靠我们自己拼。
+    管道会短读——`read(n)` 拿到多少算多少，帧边界靠我们自己拼；半帧 EOF 必须报错。
     """
     if size <= 0:
         return b""
@@ -51,68 +53,12 @@ def _read_exact(stream, size: int) -> bytes | None:
     while remaining > 0:
         chunk = stream.read(remaining)
         if not chunk:
+            if chunks:
+                raise RuntimeError(f"truncated video frame: expected {size} bytes, received {size - remaining}")
             return None
         chunks.append(chunk)
         remaining -= len(chunk)
     return chunks[0] if len(chunks) == 1 else b"".join(chunks)
-
-
-class _StreamProcess:
-    """跑一条 ffmpeg 管道，并用后台线程排空 stderr。
-
-    必须排空：编码器可能跑几分钟，stderr 管道（约 64KB）一满，ffmpeg 就会阻塞在写日志上，
-    而我们在等它的输入——典型的管道死锁。顺手保留最后几十行，失败时能给出真实原因。
-    """
-
-    def __init__(
-        self,
-        command: list[str],
-        label: str,
-        *,
-        want_stdin: bool = False,
-        want_stdout: bool = False,
-    ) -> None:
-        self.label = label
-        self._tail: list[str] = []
-        self._lock = threading.Lock()
-        self.proc = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE if want_stdin else subprocess.DEVNULL,
-            stdout=subprocess.PIPE if want_stdout else subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            bufsize=0,
-        )
-        self._drain = threading.Thread(target=self._drain_stderr, name=f"mf-{label}", daemon=True)
-        self._drain.start()
-
-    def _drain_stderr(self) -> None:
-        stream = self.proc.stderr
-        if stream is None:
-            return
-        try:
-            for raw in iter(stream.readline, b""):
-                line = raw.decode("utf-8", "replace").strip()
-                if not line:
-                    continue
-                with self._lock:
-                    self._tail.append(line)
-                    del self._tail[:-40]
-        except (OSError, ValueError):
-            return
-
-    def tail(self) -> str:
-        with self._lock:
-            return "\n".join(self._tail[-12:])
-
-    def error(self) -> str:
-        return f"{self.label} failed:\n{self.tail() or '(no ffmpeg output)'}"
-
-    def kill(self) -> None:
-        try:
-            if self.proc.poll() is None:
-                self.proc.kill()
-        except OSError:
-            pass
 
 
 def _extract_audio(source: Path, target: Path, seconds: float = 0.0) -> bool:
@@ -123,7 +69,7 @@ def _extract_audio(source: Path, target: Path, seconds: float = 0.0) -> bool:
     if seconds and seconds > 0:
         command += ["-t", f"{float(seconds):.3f}"]
     command.append(str(target))
-    proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **hidden_subprocess_kwargs())
     return proc.returncode == 0 and target.exists() and target.stat().st_size > 500
 
 
@@ -303,6 +249,8 @@ def _stream(
                 raise RuntimeError("frame decoder has no stdout pipe")
             first_raw = _read_exact(stream, frame_bytes)
             if first_raw is None:
+                if decoder.finish() != 0:
+                    raise RuntimeError(decoder.error())
                 raise RuntimeError("no video frames were decoded")
 
             first_rgb = np.frombuffer(first_raw, dtype=np.uint8).reshape(height, width, 3).copy()
@@ -383,19 +331,18 @@ def _stream(
 
             if progress:
                 progress(0.97, "封装视频（含音频）…")
-            sink.close()
-            encoder.proc.wait()
-            if encoder.proc.returncode != 0:
+            if encoder.finish() != 0:
                 raise RuntimeError(encoder.error())
-            decoder.proc.wait()
-            if decoder.proc.returncode not in (0, None):
+            if decoder.finish() != 0:
                 raise RuntimeError(decoder.error())
         except BrokenPipeError as error:
+            if encoder is not None:
+                encoder.close()
             raise RuntimeError(encoder.error() if encoder is not None else str(error)) from error
         finally:
             if encoder is not None:
-                encoder.kill()
-            decoder.kill()
+                encoder.close()
+            decoder.close()
 
         # 命名保持既有约定：单模态 `<stem>_video_<suffix>.mp4`，工作流 `<stem>_workflow_<suffix>.mp4`
         destination = output_root / f"{source.stem}_{layout}_{suffix}.mp4"
@@ -470,6 +417,7 @@ def interpolate_video(
             [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
              "-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")],
             check=True, capture_output=True,
+            **hidden_subprocess_kwargs(),
         )
         frames = sorted(frames_dir.glob("f_*.png"))
         if len(frames) < 2:
@@ -504,7 +452,7 @@ def interpolate_video(
             "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-shortest", str(target),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         if progress:
             progress(1.0, "完成")
         return {
@@ -572,7 +520,7 @@ def inpaint_video(
         if preview_seconds > 0:
             command.extend(["-t", str(float(preview_seconds))])
         command.extend(["-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")])
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         frames = sorted(frames_dir.glob("f_*.png"))
         if not frames:
             raise ValueError("视频没有可处理的帧")
@@ -615,7 +563,7 @@ def inpaint_video(
             "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-shortest", str(destination),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         if progress:
             progress(1.0, "完成")
         return {
@@ -666,7 +614,7 @@ def upscale_video(
         if preview_seconds > 0:
             command.extend(["-t", str(float(preview_seconds))])
         command.extend(["-i", str(src), "-fps_mode", "passthrough", str(frames_dir / "f_%06d.png")])
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         frames = sorted(frames_dir.glob("f_*.png"))
         if not frames:
             raise ValueError("视频没有可处理的帧")
@@ -688,7 +636,7 @@ def upscale_video(
             "-c:v", "libx264", "-crf", str(int(crf)), "-preset", preset, "-pix_fmt", "yuv420p",
             "-c:a", "copy", "-shortest", str(destination),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, **hidden_subprocess_kwargs())
         if progress:
             progress(1.0, "完成")
         return {

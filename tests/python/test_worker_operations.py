@@ -8,7 +8,9 @@ import io
 import json
 import os
 import shutil
+import sys
 import tempfile
+import types
 import unittest
 from contextlib import redirect_stdout
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +23,42 @@ else:
     import _bootstrap as _worker_test_bootstrap
 
 from core import worker_operations
+from shared.worker_protocol import bind_event_sink
+
+
+class CanonicalEventTests(unittest.TestCase):
+    def test_operation_progress_result_and_failure_use_only_current_task_events(self) -> None:
+        fake_package = types.ModuleType("pymss")
+        fake_package.__path__ = []
+        fake_operations = types.ModuleType("pymss.operations")
+        fake_operations.OperationContext = lambda **values: types.SimpleNamespace(**values)
+        with tempfile.TemporaryDirectory(prefix="operation-events-") as directory:
+            for failed in (False, True):
+                with self.subTest(failed=failed):
+                    runtime = mock.Mock()
+                    runtime.describe_operation.return_value = {"inputs": {}}
+                    def execute(operation, *, context, **kwargs):
+                        context.progress(0.5, "half")
+                        if failed:
+                            raise ValueError("fixture operation failure")
+                        return {"score": 42}
+                    runtime.run.side_effect = execute
+                    events = []
+                    with mock.patch.dict(sys.modules, {"pymss": fake_package, "pymss.operations": fake_operations}), \
+                            mock.patch.object(worker_operations, "_runtime", return_value=runtime), \
+                            mock.patch("core.worker_plugins.validate_operation"), \
+                            mock.patch.object(worker_operations, "_serialize_output", side_effect=lambda name, value, out: {"kind": "scalar", "value": value}), \
+                            bind_event_sink(lambda kind, payload, request_id, task_id: events.append((kind, payload, request_id))):
+                        code = worker_operations.cmd_run_operation({"operation": "fixture.score", "inputs": {}, "params": {},
+                                                                    "outputDir": directory, "requestId": "operation-fixture"})
+                    self.assertEqual(code, 1 if failed else 0)
+                    self.assertEqual([event[0] for event in events], ["task.progress", "error" if failed else "task.result"])
+                    self.assertTrue(all(event[2] == "operation-fixture" for event in events))
+                    if failed:
+                        self.assertEqual(events[-1][1]["code"], "OPERATION_FAILED")
+                        self.assertIn("fixture operation failure", events[-1][1]["message"])
+                    else:
+                        self.assertEqual(events[-1][1]["outputs"]["score"], {"kind": "scalar", "value": 42})
 
 def _loudnorm_fixture(root: Path) -> Path:
     """Self-contained audio operation for worker I/O and parameter transport."""
@@ -160,7 +198,7 @@ class RunOperationTests(unittest.TestCase):
                     })
                 events = [json.loads(line) for line in output.getvalue().splitlines() if line.strip()]
                 self.assertEqual(code, 0, events)
-                result_event = next(e for e in events if e["type"] == "operation_result")
+                result_event = next(e for e in events if e["type"] == "task.result")
                 audio_out = result_event["payload"]["outputs"]["audio"]
                 self.assertEqual(audio_out["kind"], "audio_file")
                 self.assertTrue(Path(audio_out["path"]).parent.samefile(out_dir))

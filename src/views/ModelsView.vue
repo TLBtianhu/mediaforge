@@ -1,36 +1,24 @@
 <script setup lang="ts">
+import { pickModelConfigFile, pickModelWeightsFile } from '@/api/native'
 import ModelSlotFields from '../components/ModelSlotFields.vue'
 import { makeModelStorage, type StorageListItem } from './models/storage'
+import { makeModelCardStatus } from './models/cardStatus'
 import { makeModelSorting } from './models/sorting'
 import { makeModelNotes } from './models/notes'
 import { makeInferenceEditor } from './models/inferenceEditor'
-import { fromWireParams, paramsFromInterface, toWireParams } from '../litegraph/inferenceParams.ts'
-import { layoutFor } from '../litegraph/layouts.ts'
-import { buildRenderPlan, type ModelInterface } from '../litegraph/renderPlan.ts'
 import { createLogger } from '@/utils/logger'
-import { isTutorialFrame } from '@/features/onboarding/demoContext'
 import { isActiveDownloadStatus } from '@/features/downloads/lifecycle'
 
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog, type DropdownOption } from 'naive-ui'
-import { invoke } from '@tauri-apps/api/core'
 import {
   SearchOutline,
-  DownloadOutline,
-  CheckmarkCircleOutline,
-  CloudDownloadOutline,
   RefreshOutline,
   CubeOutline,
-  TrashOutline,
-  FolderOpenOutline,
   ServerOutline,
-  Star,
-  StarOutline,
   AddCircleOutline,
-  EllipsisHorizontalOutline,
-  LinkOutline,
   GridOutline,
   ListOutline,
 } from '@vicons/ionicons5'
@@ -38,17 +26,15 @@ import {
   useModelStore,
   type ModelDefaultInferenceParams,
   type ModelEntry,
-  type ModelStorageDeleteTarget,
-  type ToolModelStorageItem,
 } from '@/stores/model'
 import { useSettingsStore } from '@/stores/settings'
 import { useTaskStore } from '@/stores/task'
 import { useAppStore } from '@/stores/app'
-import { formatBytes, formatSpeedMBps } from '@/utils/format'
-import { buildModelCategoryOptionsFromPairs, getModelCategoryLabel } from '@/utils/modelCategory'
+import { formatBytes } from '@/utils/format'
+import { buildModelCategoryOptionsFromPairs } from '@/utils/modelCategory'
 import { MODEL_LIBRARY_PAGE_SIZES } from '@/utils/pagination'
-import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '@/features/inference/sampleStep'
-import ModelProgressBlock from '@/components/ModelProgressBlock.vue'
+import ModelStorageDrawer from '@/components/models/ModelStorageDrawer.vue'
+import ModelDetailModal from '@/components/models/ModelDetailModal.vue'
 import DownloadDetailModal from '@/components/DownloadDetailModal.vue'
 import CustomModelImportDialog from '@/components/CustomModelImportDialog.vue'
 import AlignedInferenceInputNumber from '@/components/AlignedInferenceInputNumber.vue'
@@ -118,11 +104,10 @@ const showInferenceEditor = ref(false)
 const inferenceEditorModel = ref<ModelEntry | null>(null)
 const inferenceEditorParams = ref<Record<string, unknown>>({})
 const {
-  inferenceEditorMeta, inferenceEditorInterface, inferenceEditorPlan,
+  inferenceEditorPlan,
   inferenceEditorSampleStep, inferenceEditorOverlapStep, inferenceEditorChunkStep,
   inferenceEditorChunkConstraint, inferenceEditorChunkIssue,
-  updateInferenceDraftSize, inferenceValue, resolveInferenceDraft, syncInferenceDraft,
-  hasInferenceOverride, slotParamsChanged, hasInferenceDraftChanges, canResetInferenceDefaults,
+  updateInferenceDraftSize, canResetInferenceDefaults,
   saveInferenceDefaults, resetInferenceDefaults,
   openInferenceEditor, closeInferenceEditor, handleInferenceEditorUpdate,
 } = makeInferenceEditor({
@@ -167,7 +152,17 @@ const hasActiveFilter = computed(() =>
   Boolean(search.value || category.value || downloadedOnly.value || modelSource.value !== 'all'))
 
 const {
-  collator, compareModelName, isFavoriteModel, sortedModels, pagedModels,
+  categoryLabel, targetStemLabel, showModelTypeTag,
+  isPartiallyAvailable, modelStatusLabel, modelStatusType,
+  downloadStatusMessage, cardDownloadMessage, downloadProgressColor,
+  deleteStatusMessage, isDeletingModel, downloadSpeed, sizeLabel,
+  cardProgressPercent, cardProgressState, isModelBusy,
+} = makeModelCardStatus({
+  t, locale, downloadTasks, deleteTasks, isActiveDownloadStatus,
+})
+
+const {
+  collator, isFavoriteModel, sortedModels, pagedModels,
 } = makeModelSorting({
   computed, locale, filteredModels, downloadedOnly, modelSort, page, pageSize,
   modelPreferences, categoryLabel,
@@ -181,7 +176,7 @@ const {
 })
 
 const {
-  allStorageModels, storageModels, allStorageModelsByKey, selectedStorageBytes,
+  storageModels, allStorageModelsByKey, selectedStorageBytes,
   hasDeletingSelectedStorageModels, batchDeleteProgress, setStorageSelected,
 } = makeModelStorage({
   computed, modelStorageSummary, storageSearch, storageSort, storageDownloadedOnly,
@@ -196,158 +191,6 @@ watch(sortedModels, (list) => {
   const maxPage = Math.max(1, Math.ceil(list.length / pageSize.value))
   if (page.value > maxPage) page.value = maxPage
 })
-
-function categoryLabel(model: ModelEntry) {
-  return getModelCategoryLabel(model, locale.value, '—')
-}
-
-function targetStemLabel(model: ModelEntry | null | undefined) {
-  const direct = String(model?.targetStem || '').trim()
-  if (direct) return direct
-  const configTarget = String(model?.configTargetInstrument || '').trim()
-  if (configTarget) return configTarget
-  return String(model?.configInstruments || '')
-    .split('|')
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .join(' / ')
-}
-
-function normalizedTagValue(value: string | null | undefined) {
-  return String(value || '').trim().toLowerCase()
-}
-
-function showModelTypeTag(model: ModelEntry) {
-  if (!model.modelType) return false
-  return normalizedTagValue(model.modelType) !== normalizedTagValue(model.architecture)
-}
-
-function hasRequiredCompanionFiles(model: ModelEntry) {
-  return Boolean(model.configPath || (model.auxiliaryPaths && model.auxiliaryPaths.length > 0))
-}
-
-function requiredModelFileCount(model: ModelEntry) {
-  return 1 + (model.configPath ? 1 : 0) + (model.auxiliaryPaths?.length || 0)
-}
-
-function isPartiallyAvailable(model: ModelEntry) {
-  if (model.downloaded || !hasRequiredCompanionFiles(model) || !Array.isArray(model.missingPaths)) return false
-  const missingCount = model.missingPaths.length
-  const totalCount = requiredModelFileCount(model)
-  return missingCount > 0 && missingCount < totalCount
-}
-
-function modelStatusLabel(model: ModelEntry) {
-  if (!model.supported) return t('models.unsupported')
-  if (model.downloaded) return t('models.downloaded')
-  if (isPartiallyAvailable(model)) return t('models.partial')
-  return t('models.notDownloaded')
-}
-
-function modelStatusType(model: ModelEntry) {
-  if (!model.supported) return 'warning'
-  if (model.downloaded) return 'success'
-  if (isPartiallyAvailable(model)) return 'info'
-  return 'default'
-}
-
-function downloadStatusMessage(modelName: string) {
-  const task = downloadTasks.value[modelName]
-  if (!task) return ''
-  if (task.status === 'preparing') return t('models.downloadPreparing')
-  if (task.status === 'interrupted') return t('models.downloadInterrupted')
-  return task.message || task.status
-}
-
-function cardDownloadMessage(modelName: string) {
-  const task = downloadTasks.value[modelName]
-  if (!task) return ''
-  switch (task.status) {
-    case 'preparing':
-      return t('models.cardDownloadPreparing')
-    case 'downloading':
-      return task.totalFiles > 1
-        ? t('models.cardDownloadingFiles', { completed: task.completedFiles, total: task.totalFiles })
-        : t('models.cardDownloading')
-    case 'error':
-      return t('models.cardDownloadError')
-    case 'paused':
-      return t('models.cardDownloadPaused')
-    case 'cancelled':
-      return t('models.cardDownloadCancelled')
-    case 'interrupted':
-      return t('models.cardDownloadInterrupted')
-    case 'done':
-      return t('models.downloaded')
-    default:
-      return task.status
-  }
-}
-
-function downloadProgressColor(status: string) {
-  if (status === 'error') return 'var(--danger)'
-  if (status === 'interrupted') return 'var(--warning)'
-  return 'var(--primary)'
-}
-
-function deleteStatusMessage(modelName: string) {
-  const task = deleteTasks.value[modelName]
-  if (!task) return ''
-  return task.message || t('models.deleting')
-}
-
-function isDeletingModel(modelName: string) {
-  return deleteTasks.value[modelName]?.status === 'deleting'
-}
-
-/**
- * Whether the card is showing a progress block rather than an action button.
- *
- * The footer then needs the full width of the card: a progress bar squeezed into the narrow
- * action column is unreadable, and its status line has nowhere to go.
- */
-/**
- * The percentage to draw along the card's bottom edge, or null when nothing is running.
- *
- * Rendering progress as the card border rather than as a block inside it costs no height, which
- * is what stops a downloading card from towering over its neighbours and leaving the grid ragged.
- */
-/** Current rate, or '' when the download is not moving (paused, queued, finished). */
-function downloadSpeed(modelName: string) {
-  const task = downloadTasks.value[modelName]
-  if (!task || task.status !== 'downloading') return ''
-  return formatSpeedMBps(task.speedBytesPerSecond)
-}
-
-/**
- * The size cell. While downloading it becomes "done / total", which is the same number the
- * percentage refers to and answers "how much is left" without a second row.
- */
-function sizeLabel(model: ModelEntry) {
-  const task = downloadTasks.value[model.name]
-  if (task && task.status === 'downloading' && task.downloadedBytes && task.totalBytes) {
-    return `${formatBytes(task.downloadedBytes)} / ${formatBytes(task.totalBytes)}`
-  }
-  return formatBytes(model.sizeBytes)
-}
-
-function cardProgressPercent(model: ModelEntry): number | null {
-  if (isDeletingModel(model.name)) return deleteTasks.value[model.name]?.progress || 0
-  const task = downloadTasks.value[model.name]
-  if (task && task.status !== 'done') return task.progress || 0
-  return null
-}
-
-function cardProgressState(model: ModelEntry) {
-  if (isDeletingModel(model.name)) return 'downloading'
-  return downloadTasks.value[model.name]?.status || 'downloading'
-}
-
-function isModelBusy(model: ModelEntry) {
-  if (isDeletingModel(model.name)) return true
-  const task = downloadTasks.value[model.name]
-  return Boolean(task && isActiveDownloadStatus(task.status))
-}
 
 const modelMenuOptions = computed<DropdownOption[]>(() => {
   const model = contextModel.value
@@ -518,6 +361,54 @@ function handleDetailModalAfterLeave() {
   if (!showDetail.value) selectedInfo.value = null
 }
 
+const modelCardContext = {
+  modelNameParts,
+  modelNote,
+  modelUseCount,
+  isFavorite: (model: ModelEntry) => isFavoriteModel(model),
+  toggleFavorite: (model: ModelEntry, event: MouseEvent) => toggleFavorite(model, event),
+  selectModel: (model: ModelEntry) => selectModel(model),
+  openContextMenu: (event: MouseEvent, model: ModelEntry) => openModelContextMenu(event, model),
+  showModelTypeTag: (model: ModelEntry) => showModelTypeTag(model),
+  targetStemLabel: (model: ModelEntry) => targetStemLabel(model),
+  categoryLabel: (model: ModelEntry) => categoryLabel(model),
+  sizeLabel: (model: ModelEntry) => sizeLabel(model),
+  isDeletingModel: (name: string) => isDeletingModel(name),
+  deleteMessage: (name: string) => deleteStatusMessage(name),
+  deleteTask: (name: string) => deleteTasks.value[name],
+  isCustomModel: (model: ModelEntry) => isCustomModel(model),
+  relinkCustom: (model: ModelEntry, event?: MouseEvent) => relinkCustomModel(model, event),
+  downloadTask: (name: string) => downloadTasks.value[name],
+  cardDownloadMessage: (name: string) => cardDownloadMessage(name),
+  downloadSpeed: (name: string) => downloadSpeed(name),
+  openDownloadDetail: (name: string) => openDownloadDetail(name),
+  cancelDownload: (model: ModelEntry, event?: MouseEvent) => cancelDownloadModel(model, event),
+  downloadModel: (model: ModelEntry, event?: MouseEvent) => downloadModel(model, event),
+  isModelBusy: (model: ModelEntry) => isModelBusy(model),
+  cardProgressPercent: (model: ModelEntry) => cardProgressPercent(model),
+  cardProgressState: (model: ModelEntry) => cardProgressState(model),
+}
+
+const modelDetailContext = {
+  isFavorite: (model: ModelEntry) => isFavoriteModel(model),
+  statusType: (model: ModelEntry) => modelStatusType(model),
+  statusLabel: (model: ModelEntry) => modelStatusLabel(model),
+  targetStemLabel: (model: ModelEntry) => targetStemLabel(model),
+  categoryLabel: (model: ModelEntry) => categoryLabel(model),
+  isPartiallyAvailable: (model: ModelEntry) => isPartiallyAvailable(model),
+  isDeletingModel: (name: string) => isDeletingModel(name),
+  deleteMessage: (name: string) => deleteStatusMessage(name),
+  deleteTask: (name: string) => deleteTasks.value[name],
+  downloadMessage: (name: string) => downloadStatusMessage(name),
+  downloadTask: (name: string) => downloadTasks.value[name],
+  downloadColor: (status: string) => downloadProgressColor(status),
+  isModelBusy: (model: ModelEntry) => isModelBusy(model),
+  toggleFavorite: (model: ModelEntry, event: MouseEvent) => toggleFavorite(model, event),
+  downloadModel: (model: ModelEntry, event?: MouseEvent) => downloadModel(model, event),
+  cancelDownload: (model: ModelEntry, event?: MouseEvent) => cancelDownloadModel(model, event),
+  confirmDelete: (model: ModelEntry) => confirmDeleteModel(model),
+}
+
 async function downloadModel(model: ModelEntry, event?: MouseEvent) {
   event?.stopPropagation()
   try {
@@ -644,15 +535,11 @@ function confirmRemoveCustomModel(model: ModelEntry) {
 async function relinkCustomModel(model: ModelEntry, event?: MouseEvent) {
   event?.stopPropagation()
   try {
-    const picked = await invoke<string | null>('pick_model_weights_file', {
-      title: t('models.customPickWeightsTitle', { name: model.name }),
-    })
+    const picked = await pickModelWeightsFile(t('models.customPickWeightsTitle', { name: model.name }))
     if (!picked) return
     let configPicked: string | null = null
     if (model.configPath) {
-      configPicked = await invoke<string | null>('pick_model_config_file', {
-        title: t('models.customPickConfigTitle', { name: model.name }),
-      })
+      configPicked = await pickModelConfigFile(t('models.customPickConfigTitle', { name: model.name }))
       // Most architectures require a config, so relinking without one would fail deep inside
       // pymss with a confusing message. A cancelled picker means "abandon the relink".
       if (!configPicked) return
@@ -895,172 +782,14 @@ onMounted(() => {
       <!-- Model Grid -->
       <template v-else>
         <div :class="['model-grid', `model-grid--${modelViewMode}`]">
-          <div
+
+          <ModelCard
             v-for="model in pagedModels"
             :key="model.name"
-            :data-guide="model.supported ? 'model-library' : undefined"
-            :class="['model-card', {
-              'model-card--selected': selectedModel === model.name,
-              'model-card--unsupported': !model.supported,
-              'model-card--busy': isModelBusy(model)
-            }]"
-            tabindex="0"
-            :aria-label="t('models.viewDetailAria', { name: model.name })"
-            :aria-current="selectedModel === model.name ? 'true' : undefined"
-            @click="selectModel(model)"
-            @contextmenu.stop.prevent="openModelContextMenu($event, model)"
-            @keydown.enter.self.prevent="selectModel(model)"
-            @keydown.space.self.prevent="selectModel(model)"
-          >
-          <!-- Card Header -->
-          <div class="mc-header">
-            <div class="mc-title">
-              <span class="mc-name" :title="model.name"><template v-for="(part, index) in modelNameParts(model.name)" :key="index">{{ part }}<wbr /></template></span>
-              <span v-if="modelNote(model)" class="mc-note" :title="modelNote(model)">{{ modelNote(model) }}</span>
-            </div>
-            <div class="mc-controls">
-              <n-button
-                quaternary
-                circle
-                size="tiny"
-                :type="isFavoriteModel(model) ? 'warning' : 'default'"
-                :title="isFavoriteModel(model) ? t('models.unfavorite') : t('models.favorite')"
-                :aria-label="isFavoriteModel(model) ? t('models.unfavorite') : t('models.favorite')"
-                class="mc-favorite"
-                @click.stop="toggleFavorite(model, $event)"
-              >
-                <template #icon>
-                  <n-icon :component="isFavoriteModel(model) ? Star : StarOutline" />
-                </template>
-              </n-button>
-              <n-button
-                quaternary
-                circle
-                size="tiny"
-                class="mc-more"
-                :title="t('models.moreActions')"
-                :aria-label="t('models.moreActions')"
-                @click.stop="openModelContextMenu($event, model)"
-              >
-                <template #icon><n-icon :component="EllipsisHorizontalOutline" /></template>
-              </n-button>
-            </div>
-          </div>
-          <!-- Meta Tags -->
-          <div class="mc-tags">
-            <n-tag v-if="model.architecture" :bordered="false" size="tiny" type="info" round :title="model.architecture">
-              {{ model.architecture }}
-            </n-tag>
-            <n-tag v-if="showModelTypeTag(model)" :bordered="false" size="tiny" round :title="model.modelType || undefined">
-              {{ model.modelType }}
-            </n-tag>
-          </div>
-
-          <!-- Stable field positions keep models comparable across each card row. -->
-          <div class="mc-meta">
-            <div class="mc-meta-item mc-meta-item--target">
-              <span class="mc-label">{{ t('models.targetStem') }}</span>
-              <span class="mc-value" :title="targetStemLabel(model)">{{ targetStemLabel(model) || '—' }}</span>
-            </div>
-            <div class="mc-meta-item mc-meta-item--category">
-              <span class="mc-label">{{ t('models.category') }}</span>
-              <span class="mc-value" :title="categoryLabel(model) || undefined">{{ categoryLabel(model) || '—' }}</span>
-            </div>
-            <div class="mc-meta-item mc-meta-item--usage">
-              <span class="mc-label">{{ t('models.useCountLabel') }}</span>
-              <span class="mc-value">{{ t('models.useCountValue', { count: modelUseCount(model) }) }}</span>
-            </div>
-          </div>
-
-          <!-- Bottom bar: size on the left, whatever the model needs on the right. Keeping
-               them in one element means a state change swaps its contents instead of
-               re-choreographing the card grid. -->
-          <!-- Action row: one line in every state, so a downloading card is the same height as
-               its neighbours. The progress itself becomes the card's bottom edge. -->
-          <div class="mc-bottom">
-            <span class="mc-size">{{ sizeLabel(model) }}</span>
-
-            <template v-if="isDeletingModel(model.name)">
-              <span class="mc-state mc-state--downloading">
-                <span class="mc-state__dot" />
-                {{ deleteStatusMessage(model.name) || t('models.deleting') }}
-              </span>
-              <span class="mc-pct">{{ deleteTasks[model.name]?.progress || 0 }}%</span>
-            </template>
-
-            <!-- Imported models are local-only: a missing file means "relink", not "download". -->
-            <template v-else-if="isCustomModel(model)">
-              <span :class="['mc-state', model.downloaded ? 'mc-state--ok' : 'mc-state--warn']">
-                <n-icon :component="model.downloaded ? CheckmarkCircleOutline : LinkOutline" />
-                {{ model.downloaded ? t('models.customReady') : t('models.customFilesMissing') }}
-               </span>
-               <div class="mc-actions">
-                 <n-button size="tiny" quaternary @click.stop="relinkCustomModel(model, $event)">
-                   <template #icon><n-icon :component="LinkOutline" /></template>
-                 </n-button>
-               </div>
-            </template>
-
-            <template v-else-if="!model.downloaded && downloadTasks[model.name] && downloadTasks[model.name].status !== 'done'">
-              <span :class="['mc-state', `mc-state--${downloadTasks[model.name].status}`]">
-                <span class="mc-state__dot" />
-                {{ cardDownloadMessage(model.name) }}
-              </span>
-              <span v-if="downloadSpeed(model.name)" class="mc-speed">{{ downloadSpeed(model.name) }}</span>
-              <span class="mc-pct">{{ downloadTasks[model.name].progress }}%</span>
-              <div class="mc-actions">
-                <n-button size="tiny" quaternary @click.stop="openDownloadDetail(model.name)">
-                  {{ t('models.downloadDetail') }}
-                </n-button>
-                <n-button
-                  v-if="['preparing', 'downloading'].includes(downloadTasks[model.name].status)"
-                  size="tiny"
-                  quaternary
-                  @click.stop="cancelDownloadModel(model, $event)"
-                >
-                  {{ t('common.cancel') }}
-                </n-button>
-                <n-button
-                  v-else-if="downloadTasks[model.name].status !== 'preparing'"
-                  size="tiny"
-                  quaternary
-                  type="primary"
-                  @click.stop="downloadModel(model, $event)"
-                >
-                  {{ downloadTasks[model.name]?.status === 'interrupted' ? t('models.continueDownload') : t('common.resume') }}
-                </n-button>
-              </div>
-            </template>
-
-            <template v-else-if="model.downloaded">
-              <span class="mc-state mc-state--ok">
-                <n-icon :component="CheckmarkCircleOutline" />
-                {{ t('models.downloaded') }}
-              </span>
-            </template>
-
-            <n-button
-              v-else-if="model.supported"
-              class="mc-download-button"
-              secondary
-              size="tiny"
-              :disabled="isModelBusy(model)"
-              @click.stop="downloadModel(model, $event)"
-            >
-              <template #icon><n-icon :component="DownloadOutline" /></template>
-              {{ t('common.download') }}
-            </n-button>
-          </div>
-
-          <!-- Progress as the card's bottom edge: findable at a glance across the grid, and it
-               costs no height, which is what made downloading cards tower over their neighbours. -->
-          <div
-            v-if="cardProgressPercent(model) !== null"
-            class="mc-progressbar"
-            :style="{ '--mc-progress': cardProgressPercent(model) + '%' }"
-            :data-state="cardProgressState(model)"
+            :model="model"
+            :selected="selectedModel === model.name"
+            :context="modelCardContext"
           />
-          </div>
         </div>
         <div class="pagination-row">
           <span class="text-sm text-muted">{{ t('models.pageSummary', { total: sortedModels.length }) }}</span>
@@ -1181,318 +910,40 @@ onMounted(() => {
       </n-card>
     </n-modal>
 
-    <!-- Detail Modal -->
-    <n-modal :show="showDetail" @update:show="handleDetailDrawerUpdate" @after-leave="handleDetailModalAfterLeave">
-      <n-card
-        class="model-detail-modal"
-        :title="t('models.detail')"
-        :bordered="false"
-        closable
-        role="dialog"
-        aria-modal="true"
-        @close="handleDetailDrawerUpdate(false)"
-      >
-        <template v-if="selectedInfo">
-          <div class="model-detail-modal__body">
-            <div class="detail-content">
-            <div class="detail-title-row">
-              <strong class="detail-name">{{ selectedInfo.name }}</strong>
-              <n-button
-                secondary
-                size="small"
-                :type="isFavoriteModel(selectedInfo) ? 'warning' : 'default'"
-                @click="toggleFavorite(selectedInfo, $event)"
-              >
-                <template #icon>
-                  <n-icon :component="isFavoriteModel(selectedInfo) ? Star : StarOutline" />
-                </template>
-                {{ isFavoriteModel(selectedInfo) ? t('models.favorited') : t('models.favorite') }}
-              </n-button>
-            </div>
+    <ModelDetailModal
+      :show="showDetail"
+      :model="selectedInfo"
+      :detail-loading="detailLoading"
+      :context="modelDetailContext"
+      @update:show="handleDetailDrawerUpdate"
+      @after-leave="handleDetailModalAfterLeave"
+    />
 
-            <div class="detail-badges">
-              <n-tag v-if="detailLoading" :bordered="false" size="small" type="info" round>
-                {{ t('common.refreshing') }}
-              </n-tag>
-              <n-tag v-if="selectedInfo.architecture" :bordered="false" size="small" type="info" round>
-                {{ selectedInfo.architecture }}
-              </n-tag>
-              <n-tag
-                :bordered="false"
-                size="small"
-                :type="modelStatusType(selectedInfo)"
-                round
-              >
-                {{ modelStatusLabel(selectedInfo) }}
-              </n-tag>
-            </div>
-
-            <n-divider style="margin:16px 0" />
-
-            <div class="detail-grid">
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.type') }}</span>
-                <span class="detail-val">{{ selectedInfo.modelType || '—' }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.targetStem') }}</span>
-                <span class="detail-val">{{ targetStemLabel(selectedInfo) || '—' }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.size') }}</span>
-                <span class="detail-val">{{ formatBytes(selectedInfo.sizeBytes) }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">{{ t('models.category') }}</span>
-                <span class="detail-val">{{ categoryLabel(selectedInfo) || '—' }}</span>
-              </div>
-              <div v-if="selectedInfo.aliases?.length" class="detail-row">
-                <span class="detail-label">{{ t('models.aliases') }}</span>
-                <span class="detail-val">{{ selectedInfo.aliases.join(', ') }}</span>
-              </div>
-            </div>
-
-            <n-divider style="margin:16px 0" />
-
-            <n-collapse class="detail-path-collapse" :default-expanded-names="[]">
-              <n-collapse-item :title="t('models.path')" name="model-path">
-                <div class="detail-path-block">
-                  <code class="detail-path">{{ selectedInfo.modelPath }}</code>
-                </div>
-                <div v-if="isPartiallyAvailable(selectedInfo) && selectedInfo.missingPaths?.length" class="detail-partial-block">
-                  <div class="detail-label" style="margin-bottom:6px">{{ t('models.partialHintTitle') }}</div>
-                  <div class="text-muted">{{ t('models.partialHint') }}</div>
-                  <ul class="detail-missing-list">
-                    <li v-for="path in selectedInfo.missingPaths" :key="path">
-                      <code class="detail-path">{{ path }}</code>
-                    </li>
-                  </ul>
-                </div>
-              </n-collapse-item>
-            </n-collapse>
-
-            </div>
-          </div>
-        </template>
-
-        <template #footer>
-          <div class="drawer-footer" v-if="selectedInfo">
-            <!-- 删除中：进度块 -->
-            <ModelProgressBlock
-              v-if="isDeletingModel(selectedInfo.name)"
-              status="downloading"
-              :message="deleteStatusMessage(selectedInfo.name) || t('models.deleting')"
-              :progress="deleteTasks[selectedInfo.name]?.progress || 0"
-              :files-text="t('models.deleteProgress', { completed: deleteTasks[selectedInfo.name]?.completedFiles || 0, total: deleteTasks[selectedInfo.name]?.totalFiles || 0 })"
-            />
-
-            <!-- 下载中：进度块 + 取消 -->
-            <ModelProgressBlock
-              v-else-if="['preparing', 'downloading'].includes(downloadTasks[selectedInfo.name]?.status || '')"
-              :status="downloadTasks[selectedInfo.name]!.status"
-              :message="downloadStatusMessage(selectedInfo.name)"
-              :progress="downloadTasks[selectedInfo.name]!.progress"
-              :files-text="downloadTasks[selectedInfo.name]!.totalFiles > 1 ? t('models.fileProgress', { completed: downloadTasks[selectedInfo.name]!.completedFiles, total: downloadTasks[selectedInfo.name]!.totalFiles }) : ''"
-              :color="downloadProgressColor(downloadTasks[selectedInfo.name]!.status)"
-            >
-              <template #actions>
-                <n-button block secondary @click="cancelDownloadModel(selectedInfo!, $event)">
-                  {{ t('common.cancel') }}
-                </n-button>
-              </template>
-            </ModelProgressBlock>
-
-            <!-- 暂停/取消/错误/中断：进度块 + 继续 + 删除 -->
-            <template v-else-if="!selectedInfo.downloaded && downloadTasks[selectedInfo.name] && ['paused','cancelled','error','interrupted'].includes(downloadTasks[selectedInfo.name]!.status)">
-              <ModelProgressBlock
-                :status="downloadTasks[selectedInfo.name]!.status"
-                :message="downloadStatusMessage(selectedInfo.name)"
-                :progress="downloadTasks[selectedInfo.name]!.progress"
-                :files-text="downloadTasks[selectedInfo.name]!.totalFiles > 1 ? t('models.fileProgress', { completed: downloadTasks[selectedInfo.name]!.completedFiles, total: downloadTasks[selectedInfo.name]!.totalFiles }) : ''"
-                :color="downloadProgressColor(downloadTasks[selectedInfo.name]!.status)"
-              />
-              <div class="drawer-footer-actions">
-                <n-button
-                  block
-                  type="primary"
-                  :disabled="isModelBusy(selectedInfo)"
-                  @click="downloadModel(selectedInfo!, $event)"
-                >
-                  {{ downloadTasks[selectedInfo.name]?.status === 'interrupted' ? t('models.continueDownload') : t('common.resume') }}
-                </n-button>
-                <n-button
-                  block
-                  type="error"
-                  secondary
-                  @click="confirmDeleteModel(selectedInfo!)"
-                >
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                  {{ t('models.delete') }}
-                </n-button>
-              </div>
-            </template>
-
-            <!-- 已下载：状态 + 删除 -->
-            <template v-else-if="selectedInfo.downloaded">
-              <n-button block secondary disabled>
-                <template #icon><n-icon :component="CheckmarkCircleOutline" /></template>
-                {{ t('models.downloaded') }}
-              </n-button>
-              <n-button
-                block
-                type="error"
-                secondary
-                @click="confirmDeleteModel(selectedInfo!)"
-              >
-                <template #icon><n-icon :component="TrashOutline" /></template>
-                {{ t('models.delete') }}
-              </n-button>
-            </template>
-
-            <!-- 未下载且无任务：下载（含不支持则不显示） -->
-            <n-button
-              v-else-if="selectedInfo.supported && !selectedInfo.downloaded"
-              block
-              type="primary"
-              @click="downloadModel(selectedInfo!, $event)"
-            >
-              <template #icon><n-icon :component="CloudDownloadOutline" /></template>
-              {{ t('common.download') }}
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <n-drawer v-model:show="showStorage" :width="760" placement="right" :z-index="isTutorialFrame() ? 3500 : undefined" :trap-focus="!isTutorialFrame()">
-      <n-drawer-content :title="t('models.storageTitle')" closable>
-        <div class="storage-panel">
-          <div class="storage-summary">
-            <div class="storage-stat">
-              <span>{{ t('models.storageTotal') }}</span>
-              <strong>{{ formatBytes(modelStorageSummary?.totalBytes || 0) }}</strong>
-            </div>
-            <div class="storage-stat">
-              <span>{{ t('models.storageDownloadedCount') }}</span>
-              <strong>{{ modelStorageSummary?.downloadedCount || 0 }}</strong>
-            </div>
-            <div class="storage-stat">
-              <span>{{ t('models.storageResidual') }}</span>
-              <strong>{{ formatBytes(modelStorageSummary?.residualBytes || 0) }}</strong>
-            </div>
-          </div>
-
-          <div class="storage-dir">
-            <span class="text-muted">{{ t('models.modelDir') }}:</span>
-            <code>{{ modelStorageSummary?.modelDir || modelDir || settings.modelDir || '?' }}</code>
-          </div>
-
-          <div class="storage-toolbar">
-            <n-input v-model:value="storageSearch" :placeholder="t('models.storageSearch')" clearable>
-              <template #prefix><n-icon :component="SearchOutline" /></template>
-            </n-input>
-            <n-select
-              v-model:value="storageSort"
-              :options="[
-                { label: t('models.storageSortSizeDesc'), value: 'size-desc' },
-                { label: t('models.storageSortSizeAsc'), value: 'size-asc' },
-                { label: t('models.storageSortNameAsc'), value: 'name-asc' },
-                { label: t('models.storageSortNameDesc'), value: 'name-desc' },
-              ]"
-              style="width:160px"
-            />
-            <n-switch v-model:value="storageDownloadedOnly" size="small" />
-            <span class="text-sm text-muted">{{ t('models.downloadedOnly') }}</span>
-          </div>
-
-          <div class="storage-actions">
-            <n-button size="small" secondary :loading="storageLoading" @click="modelStore.loadModelStorageSummary({ force: true })">
-              <template #icon><n-icon :component="RefreshOutline" /></template>
-              {{ t('models.storageRefresh') }}
-            </n-button>
-            <n-button size="small" secondary @click="openModelDir">
-              <template #icon><n-icon :component="FolderOpenOutline" /></template>
-              {{ t('models.openModelDir') }}
-            </n-button>
-            <n-button
-              size="small"
-              type="error"
-              secondary
-              :disabled="!selectedStorageModels.length || hasDeletingSelectedStorageModels || batchDeleteState.active || residualCleanupState.active"
-              @click="confirmBatchDelete"
-            >
-              {{ t('models.storageBatchDelete') }}
-              <span v-if="selectedStorageModels.length">（{{ selectedStorageModels.length }} / {{ formatBytes(selectedStorageBytes) }}）</span>
-            </n-button>
-            <n-button
-              size="small"
-              type="warning"
-              secondary
-              :disabled="!(modelStorageSummary?.residualFiles.length) || batchDeleteState.active || residualCleanupState.active"
-              @click="confirmCleanupResidual"
-            >
-              {{ t('models.storageCleanup') }}
-            </n-button>
-          </div>
-
-          <div v-if="batchDeleteState.active" class="storage-progress-card">
-            <strong>{{ t('models.batchDeleting', { count: batchDeleteState.totalModels }) }}</strong>
-            <span class="text-muted">{{ batchDeleteState.completedModels }} / {{ batchDeleteState.totalModels }}</span>
-            <div class="text-sm text-muted">{{ batchDeleteState.currentModel }}</div>
-            <div v-if="batchDeleteState.currentModel && deleteTasks[batchDeleteState.currentModel]" class="mc-dl-files">
-              {{ t('models.deleteProgress', { completed: deleteTasks[batchDeleteState.currentModel]?.completedFiles || 0, total: deleteTasks[batchDeleteState.currentModel]?.totalFiles || 0 }) }}
-            </div>
-            <n-progress
-              :percentage="batchDeleteProgress"
-              :show-indicator="false"
-              :height="8"
-              :border-radius="4"
-              type="line"
-              :rail-color="'var(--surface-3)'"
-            />
-          </div>
-
-          <div v-if="residualCleanupState.active" class="storage-progress-card">
-            <strong>{{ t('models.cleanupInProgress') }}</strong>
-            <span class="text-muted">{{ t('models.deleteProgress', { completed: residualCleanupState.completedFiles, total: residualCleanupState.totalFiles }) }}</span>
-            <n-progress
-              :percentage="residualCleanupState.progress"
-              :show-indicator="false"
-              :height="8"
-              :border-radius="4"
-              type="line"
-              :rail-color="'var(--surface-3)'"
-            />
-          </div>
-
-          <div class="storage-list">
-            <label
-              v-for="item in storageModels"
-              :key="item.selectionKey"
-              class="storage-row"
-            >
-              <n-checkbox
-                :checked="selectedStorageModels.includes(item.selectionKey)"
-                :disabled="item.sizeBytes <= 0 || (item.kind === 'catalog' && isDeletingModel(item.id)) || batchDeleteState.active || residualCleanupState.active"
-                @update:checked="(checked: boolean) => setStorageSelected(item.selectionKey, checked)"
-              />
-              <div class="storage-row__main">
-                <strong>{{ item.name }}</strong>
-                <span>{{ t('models.storageFileCount', { count: item.fileCount }) }}</span>
-              </div>
-              <n-tag size="small" :bordered="false" :type="item.kind === 'tool' ? 'info' : item.downloaded ? 'success' : 'default'">
-                {{ storageModelTypeLabel(item) }}
-              </n-tag>
-              <strong class="storage-row__size">{{ formatBytes(item.sizeBytes || item.expectedSizeBytes) }}</strong>
-            </label>
-            <div v-if="!storageModels.length" class="empty-state storage-empty">
-              <n-icon :component="CubeOutline" size="36" color="var(--on-surface-muted)" />
-              <span class="text-muted">{{ t('models.searchEmpty') }}</span>
-            </div>
-          </div>
-        </div>
-      </n-drawer-content>
-    </n-drawer>
+    <ModelStorageDrawer
+      v-model:show="showStorage"
+      v-model:search="storageSearch"
+      v-model:sort="storageSort"
+      v-model:downloaded-only="storageDownloadedOnly"
+      :summary="modelStorageSummary"
+      :model-dir="modelDir"
+      :settings-model-dir="settings.modelDir || ''"
+      :loading="storageLoading"
+      :models="storageModels"
+      :selected="selectedStorageModels"
+      :selected-bytes="selectedStorageBytes"
+      :has-deleting-selected="hasDeletingSelectedStorageModels"
+      :batch-delete-state="batchDeleteState"
+      :residual-cleanup-state="residualCleanupState"
+      :delete-tasks="deleteTasks"
+      :batch-delete-progress="batchDeleteProgress"
+      :storage-model-type-label="storageModelTypeLabel"
+      :is-deleting-model="isDeletingModel"
+      :set-storage-selected="setStorageSelected"
+      @refresh="modelStore.loadModelStorageSummary({ force: true })"
+      @open-model-dir="openModelDir"
+      @batch-delete="confirmBatchDelete"
+      @cleanup-residual="confirmCleanupResidual"
+    />
 
     <DownloadDetailModal
       v-model:show="showDownloadDetail"

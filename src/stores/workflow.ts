@@ -1,7 +1,7 @@
+import { getWorkflowEditors, mutateWorkflowStore } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
 import { isWorkflowEditorSnapshot, workflowEditorFor, WorkflowEditorInUseError, type WorkflowEditorSnapshot, type WorkflowEditorRecord } from '@/utils/workflowEditorState'
 import {
@@ -50,11 +50,13 @@ export type SaveWorkflowInput = {
 }
 
 type StoredWorkflowState = {
+  version: 1
   workflows?: Partial<WorkflowEntry>[]
   selectedWorkflowId?: string
 }
 
 type LoadedWorkflowState = {
+  version: 1
   workflows: WorkflowEntry[]
   selectedWorkflowId: string
 }
@@ -64,8 +66,6 @@ type WorkflowStoreMutation = {
   entry?: WorkflowEntry
   workflowId?: string
   expectedUpdatedAt?: number
-  legacyIndex?: number
-  legacyEntry?: Partial<WorkflowEntry>
   force?: boolean
 }
 
@@ -84,9 +84,6 @@ function createId(prefix = 'workflow') {
 }
 
 function normalizeDefinition(value: unknown): Record<string, unknown> {
-  // Workflows are now stored as native comfy-mss JSON (node editor) or pymss
-  // YAML dict (simple creator). Keep format compatibility migrations at this
-  // storage boundary so every consumer sees the current schema.
   const definition = value && typeof value === 'object' && !Array.isArray(value)
     ? JSON.parse(JSON.stringify(value)) as Record<string, unknown>
     : {}
@@ -95,25 +92,18 @@ function normalizeDefinition(value: unknown): Record<string, unknown> {
     : normalizeGraphWorkflowDefinition(definition)
 }
 
-function normalizeWorkflow(input: Partial<WorkflowEntry>): WorkflowEntry | null {
-  const name = String(input.name || '').trim()
-  const id = String(input.id || '').trim() || createId()
-  if (!name) return null
-  const now = Date.now()
-  const definition = normalizeDefinition(input.definition)
-  const detectedFormat = detectWorkflowFormat(definition)
-  return {
-    id,
-    name,
-    description: String(input.description || '').trim(),
-    definition,
-    format: detectedFormat === 'unknown' ? (input.format || 'unknown') : detectedFormat,
-    formatVersion: Number.isFinite(Number(input.formatVersion))
-      ? Number(input.formatVersion)
-      : WORKFLOW_FORMAT_VERSION,
-    createdAt: Number.isFinite(Number(input.createdAt)) ? Number(input.createdAt) : now,
-    updatedAt: Number.isFinite(Number(input.updatedAt)) ? Number(input.updatedAt) : 0,
+function normalizeWorkflow(input: Partial<WorkflowEntry>): WorkflowEntry {
+  if (!input || typeof input !== 'object' || typeof input.id !== 'string' || !input.id.trim()
+    || typeof input.name !== 'string' || !input.name.trim() || typeof input.description !== 'string'
+    || input.formatVersion !== WORKFLOW_FORMAT_VERSION || !Number.isFinite(input.createdAt) || Number(input.createdAt) <= 0
+    || !Number.isFinite(input.updatedAt) || Number(input.updatedAt) <= 0) {
+    throw new Error('Unsupported workflow record schema; the original file was preserved')
   }
+  const definition = normalizeDefinition(input.definition)
+  const format = detectWorkflowFormat(definition)
+  if (format === 'unknown' || format !== input.format) throw new Error('Unsupported workflow format')
+  return { id: input.id, name: input.name, description: input.description, definition, format,
+    formatVersion: WORKFLOW_FORMAT_VERSION, createdAt: input.createdAt!, updatedAt: input.updatedAt! }
 }
 
 export const useWorkflowStore = defineStore('workflow', () => {
@@ -137,7 +127,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   async function refreshEditorWindows() {
-    if (isTauriRuntime()) applyEditorSnapshot(await invoke('get_workflow_editors'))
+    if (isTauriRuntime()) applyEditorSnapshot(await getWorkflowEditors())
   }
 
   function recordEditorOpened(result: unknown, kind: 'simple' | 'advanced', workflowId: string) {
@@ -154,7 +144,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
   let pendingPersistCount = 0
   let mutationQueue = Promise.resolve()
   let selectionMutationGeneration = 0
-  let legacyWorkflowReferences = new Map<string, { index: number; entry: Partial<WorkflowEntry> }>()
   // Bootstrap and standalone node-editor windows can call initialize() at the
   // same time. Share one in-flight load so a slower second read cannot race
   // the first one and leave the editor with an empty/stale workflow list.
@@ -174,53 +163,28 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   function normalizeStoredState(stored: StoredWorkflowState | null | undefined): LoadedWorkflowState {
-    const nextLegacyReferences = new Map<string, { index: number; entry: Partial<WorkflowEntry> }>()
-    const loadedWorkflows = (stored?.workflows || [])
-      .map((item, index) => {
-        const normalized = normalizeWorkflow(item)
-        if (normalized && !String(item.id || '').trim()) {
-          nextLegacyReferences.set(normalized.id, {
-            index,
-            entry: JSON.parse(JSON.stringify(item)) as Partial<WorkflowEntry>,
-          })
-        }
-        return normalized
-      })
-      .filter((item): item is WorkflowEntry => Boolean(item))
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-    const storedSelectedId = String(stored?.selectedWorkflowId || '')
-    const loadedSelectedId = loadedWorkflows.some(item => item.id === storedSelectedId)
-      ? storedSelectedId
-      : loadedWorkflows[0]?.id || ''
-    legacyWorkflowReferences = nextLegacyReferences
-    return { workflows: loadedWorkflows, selectedWorkflowId: loadedSelectedId }
+    if (stored === null) return { version: 1, workflows: [], selectedWorkflowId: '' }
+    if (!stored || stored.version !== 1 || !Array.isArray(stored.workflows) || typeof stored.selectedWorkflowId !== 'string') {
+      throw new Error('Unsupported workflow-state schema; the original file was preserved')
+    }
+    const workflows = stored.workflows.map(normalizeWorkflow)
+    const ids = new Set(workflows.map(item => item.id))
+    if (ids.size !== workflows.length || stored.selectedWorkflowId && !ids.has(stored.selectedWorkflowId)) throw new Error('Invalid workflow-state identities')
+    return { version: 1, workflows: workflows.sort((a, b) => b.updatedAt - a.updatedAt), selectedWorkflowId: stored.selectedWorkflowId }
   }
 
-  async function readStoredState(throwOnError = false): Promise<LoadedWorkflowState> {
-    const stored = await loadAppStore<StoredWorkflowState>('workflow-state').catch((error) => {
-      if (throwOnError) throw error
-      return null
-    })
-    return normalizeStoredState(stored)
+  async function readStoredState(_throwOnError = false): Promise<LoadedWorkflowState> {
+    return normalizeStoredState(await loadAppStore<StoredWorkflowState>('workflow-state'))
   }
 
   function findMutationWorkflowIndex(workflowsToSearch: WorkflowEntry[], mutation: WorkflowStoreMutation) {
-    const workflowId = mutation.entry?.id || mutation.workflowId || ''
-    const exactIndex = workflowsToSearch.findIndex(item => item.id === workflowId)
-    if (exactIndex >= 0) return exactIndex
-    if (mutation.legacyIndex === undefined && !mutation.legacyEntry) return -1
-    const legacyId = [...legacyWorkflowReferences.entries()].find(([, reference]) => (
-      (mutation.legacyIndex === undefined || reference.index === mutation.legacyIndex)
-      && (!mutation.legacyEntry
-        || JSON.stringify(reference.entry) === JSON.stringify(mutation.legacyEntry))
-    ))?.[0]
-    return legacyId ? workflowsToSearch.findIndex(item => item.id === legacyId) : -1
+    return workflowsToSearch.findIndex(item => item.id === (mutation.entry?.id || mutation.workflowId || ''))
   }
 
   async function mutateStoredState(mutation: WorkflowStoreMutation): Promise<WorkflowMutationResponse> {
     if (isTauriRuntime()) {
       try {
-        const response = await invoke<WorkflowMutationResponse>('mutate_workflow_store', { payload: mutation })
+        const response = await mutateWorkflowStore<WorkflowMutationResponse>(mutation)
         if (response.editorSnapshot) applyEditorSnapshot(response.editorSnapshot)
         return response
       } catch (error) {
@@ -231,20 +195,18 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
     const current = await readStoredState(true)
     const next: LoadedWorkflowState = {
+      version: 1,
       workflows: current.workflows.map(item => JSON.parse(JSON.stringify(item)) as WorkflowEntry),
       selectedWorkflowId: current.selectedWorkflowId,
     }
     if (mutation.action === 'upsert' && mutation.entry) {
       const index = findMutationWorkflowIndex(next.workflows, mutation)
-      const legacyTargetMismatch = index < 0
-        && (mutation.legacyIndex !== undefined || Boolean(mutation.legacyEntry))
       const existing = index >= 0 ? next.workflows[index] : null
       const actualUpdatedAt = existing?.updatedAt || 0
       if (
         !mutation.force
-        && (legacyTargetMismatch
-          || (mutation.expectedUpdatedAt !== undefined
-            && mutation.expectedUpdatedAt !== actualUpdatedAt))
+        && mutation.expectedUpdatedAt !== undefined
+        && mutation.expectedUpdatedAt !== actualUpdatedAt
       ) {
         return {
           state: next,
@@ -268,9 +230,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
       const index = findMutationWorkflowIndex(next.workflows, mutation)
       const actualUpdatedAt = index >= 0 ? next.workflows[index].updatedAt : 0
       if (
-        (index < 0 && (mutation.legacyIndex !== undefined || mutation.legacyEntry))
-        || (mutation.expectedUpdatedAt !== undefined
-          && mutation.expectedUpdatedAt !== actualUpdatedAt)
+        mutation.expectedUpdatedAt !== undefined
+        && mutation.expectedUpdatedAt !== actualUpdatedAt
       ) {
         return {
           state: next,
@@ -292,16 +253,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
         next.selectedWorkflowId = ''
       } else {
         const index = findMutationWorkflowIndex(next.workflows, mutation)
-        if (index < 0 && (mutation.legacyIndex !== undefined || mutation.legacyEntry)) {
-          return {
-            state: next,
-            conflict: {
-              workflowId: mutation.workflowId,
-              expectedUpdatedAt: 0,
-              actualUpdatedAt: 0,
-            },
-          }
-        }
         if (index >= 0) {
           next.workflows[index].id = mutation.workflowId
           next.selectedWorkflowId = mutation.workflowId
@@ -382,10 +333,10 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   async function saveWorkflow(input: SaveWorkflowInput) {
     const selectionGenerationAtRequest = selectionMutationGeneration
-    const legacyReference = input.id ? legacyWorkflowReferences.get(input.id) : undefined
     return queueMutation(async () => {
       const existing = input.id ? workflows.value.find(item => item.id === input.id) : null
       const now = Math.max(Date.now(), (existing?.updatedAt || 0) + 1)
+      if (input.formatVersion !== undefined && input.formatVersion !== WORKFLOW_FORMAT_VERSION) throw new Error('Unsupported workflow format version')
       const definition = normalizeDefinition(input.definition)
       const detectedFormat = detectWorkflowFormat(definition)
       const entry: WorkflowEntry = {
@@ -396,9 +347,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
         format: detectedFormat === 'unknown'
           ? (input.format || existing?.format || 'unknown')
           : detectedFormat,
-        formatVersion: Number.isFinite(Number(input.formatVersion))
-          ? Number(input.formatVersion)
-          : existing?.formatVersion || WORKFLOW_FORMAT_VERSION,
+        formatVersion: WORKFLOW_FORMAT_VERSION,
         createdAt: existing?.createdAt || now,
         updatedAt: now,
       }
@@ -407,8 +356,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
         action: 'upsert',
         entry,
         expectedUpdatedAt: input.expectedUpdatedAt,
-        legacyIndex: legacyReference?.index,
-        legacyEntry: legacyReference?.entry,
         force: input.force,
       })
       const latest = normalizeMutationState(response.state, selectionGenerationAtRequest)
@@ -429,14 +376,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
   async function deleteWorkflow(id: string) {
     const selectionGenerationAtRequest = selectionMutationGeneration
     const expectedUpdatedAt = workflows.value.find(item => item.id === id)?.updatedAt
-    const legacyReference = legacyWorkflowReferences.get(id)
     await queueMutation(async () => {
       const response = await mutateStoredState({
         action: 'delete',
         workflowId: id,
         expectedUpdatedAt,
-        legacyIndex: legacyReference?.index,
-        legacyEntry: legacyReference?.entry,
       })
       applyStoredState(normalizeMutationState(response.state, selectionGenerationAtRequest))
       if (response.conflict) {
@@ -466,14 +410,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
   function selectWorkflow(id: string) {
     const nextId = workflows.value.some(item => item.id === id) ? id : ''
     const generation = ++selectionMutationGeneration
-    const legacyReference = legacyWorkflowReferences.get(nextId)
     selectedWorkflowId.value = nextId
     void queueMutation(async () => {
       const response = await mutateStoredState({
         action: 'select',
         workflowId: nextId,
-        legacyIndex: legacyReference?.index,
-        legacyEntry: legacyReference?.entry,
       })
       const latest = normalizeMutationState(response.state, generation)
       if (generation === selectionMutationGeneration && !nextId) latest.selectedWorkflowId = ''

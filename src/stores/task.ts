@@ -1,256 +1,93 @@
 import { createLogger } from '@/utils/logger'
-import { specFor, widgetValue } from '../litegraph/paramCodec.ts'
 import { defineStore } from 'pinia'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { cancelTask as cancelNativeTask } from '@/api/native'
+import {
+  pickInputFolder as pickInputFolderDialog,
+  pickMediaFiles,
+  scanMediaPaths,
+} from '@/api/native'
 import i18n from '@/i18n'
-import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
+import { loadAppStore, saveAppStore } from '@/utils/appStore'
 import { useSettingsStore } from '@/stores/settings'
 import { useModelStore, type ModelDefaultInferenceParams } from '@/stores/model'
 import { useAppStore } from '@/stores/app'
 import type { WorkflowEntry } from '@/stores/workflow'
-import { appendWorkflowNodeLogs, type WorkflowNodeLogs } from '@/workflows/nodeLogs'
-import { normalizeLogRecord, workerLogRecord, localLogRecord, type LogEntry } from '@/utils/logRecord'
 import { detectWorkflowFormat, WORKFLOW_FORMAT_VERSION } from '@/workflows/formats'
 import {
   prepareWorkflowDefinitionForRun,
   resolveWorkflowRuntimeDefaults,
 } from '@/workflows/runtimeDefinition'
 import {
-  isInterruptedTaskStatus,
   isTerminalTaskStatus,
-  selectQueuedJobGroups,
   taskJobId,
-  type TaskStatus,
 } from '@/features/tasks/lifecycle'
-import { normalizeStemOutputs, stemFromOutputPath, type StemOutput } from '@/utils/stemOutputs'
-import { normalizeOutputPath, resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment, outputsFromFiles, cleanupPath, parentDir, pathKey, samePath, cleanupDirChain } from '@/stores/taskOutputPaths'
-import { CURRENT_INFERENCE_PARAMS_VERSION, STAGE_META, normalizeOutputLayout, normalizeOutputNaming, normalizeRunConfig, normalizeStatus, normalizeTimestamp, normalizeDurationMs, normalizeTask } from '@/stores/taskNormalize'
-import { makeTaskWorkerEventHandler } from '@/stores/taskWorkerEvents'
+import { resolveOutputDirectory, joinOutputPath, createRunId, inputStemSegment } from '@/stores/taskOutputPaths'
+import { CURRENT_INFERENCE_PARAMS_VERSION, validateSeparateState, STAGE_META, normalizeOutputLayout, normalizeOutputNaming } from '@/stores/taskNormalize'
+import { useMediaJobsStore } from '@/stores/mediaJobs'
+import { audioTasksFromJobs, audioEnqueueFromTasks } from '@/features/tasks/audioJobs'
+import { enqueueAudioJobs, removeAudioJobs, type ResultRemovalResponse } from '@/features/tasks/journal'
 import { makeTaskRunConfig } from '@/stores/taskRunConfig'
 import { makeTaskQueue } from '@/stores/taskQueue'
-import { completeTaskBatch, finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
-import { validateSeparateWorkflowInput, validateWorkflowRunConfig, workflowDefinitionValidationError } from '@/stores/taskValidation'
+import { finalizeTaskBatch, prepareTaskBatch } from '@/stores/taskBatch'
+import { validateSeparateWorkflowInput, workflowDefinitionValidationError } from '@/stores/taskValidation'
 import { resolveRetryOutput } from '@/stores/taskRetry'
 import { buildInferenceParams as buildInferenceParamsFromValues, modelInferenceParamsFromState as modelInferenceParamsFromValues } from '@/stores/taskInferenceParams'
 import { buildJobs, findJobById } from '@/stores/taskJobs'
-import { primaryRevealPath, resultTrashEmptyDirs as resultTrashEmptyDirsForTask, resultTrashTargets } from '@/stores/taskResultCleanup'
-import { ZERO_AS_UNSET_FIELDS, normalizeEditableNumberValue, resolveNumberOverride, resolveBooleanOverride, preferCurrentOverride, applyModelDefaultsToUi, isVrModelType, isApolloModelType, type InferenceNumberField } from '@/stores/taskInference'
-import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
+import { makeTaskInputActions } from '@/stores/taskInputActions'
+import { makeTaskQueueScheduler } from '@/stores/taskQueueScheduler'
+import { makeTaskInferenceDefaults } from '@/stores/taskInferenceDefaults'
+import { makeTaskCancelActions } from '@/stores/taskCancelActions'
+import { makeTaskInferenceParams } from '@/stores/taskInferenceActions'
+import { makeTaskResultHelpers } from '@/stores/taskResultHelpers'
+import { normalizePersistedModelState, resolveTaskErrorMessage } from '@/stores/taskHelpers'
+import { getRemovalTasks as getRemovalTasksFromState, primaryRevealPath } from '@/stores/taskResultCleanup'
 import { isMainTaskOwner } from '@/utils/taskOwner'
-import { cloneWorkflow, prepareWorkbenchRun, workflowInputNodes, type WorkflowRuntimeBindings, type WorkflowWorkbenchSnapshot, type WorkflowNodeState } from '@/workflows/workbench'
+import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, type WorkflowRuntimeBindings } from '@/workflows/workbench'
 import { SEPARATE_MODEL_PAGE_SIZES, normalizePageSize } from '@/utils/pagination'
 
 const studioLog = createLogger('ui.stores.task')
 
+import {
+  type OutputLayout, type ModelListSortMode, type OutputNamingConfig,
+  type SeparationTask,
+  type PersistedSeparateModelState, type PersistedSeparateState,
+  type ModelInferenceUiDefaults,
+} from '@/stores/taskTypes'
+
+export type {
+  OutputLayout, ModelListSortMode, OutputNamingConfig, SeparationRunConfig,
+  SeparationTask, SeparationJob,
+} from '@/stores/taskTypes'
 export type { TaskStatus } from '@/features/tasks/lifecycle'
 export type { StemOutput } from '@/utils/stemOutputs'
 
-export type OutputLayout = 'folders' | 'flat'
-export type ModelListSortMode = 'usage' | 'recent' | 'favorite' | 'name-asc' | 'name-desc'
-
-export type OutputNamingConfig = {
-  enabled: boolean
-  template: string
-  stemOrder: string[]
-}
-
-export type SeparationRunConfig = {
-  runMode?: 'model' | 'workflow'
-  modelDir: string | null
-  downloadSource: string
-  downloadMethod: string
-  workflowId?: string
-  workflowName?: string
-  workflowDefinition?: Record<string, unknown>
-  workbench?: WorkflowWorkbenchSnapshot
-  modelType?: string | null
-  outputLayout: OutputLayout
-  outputNaming?: OutputNamingConfig
-  device: string
-  deviceIds: number[]
-  outputFormat: string
-  selectedStems: string[]
-  useTta: boolean
-  debug: boolean
-  audioParams: Record<string, string | number>
-  inferenceParamsVersion?: number
-  inferenceParams: Record<string, unknown>
-}
-
-
-type ScanMediaPathsResult = {
-  files: string[]
-  warnings: string[]
-}
-
-export type SeparationTask = {
-  id: string
-  jobId?: string
-  resultId?: string
-  batchId?: string
-  batchIndex?: number
-  model: string
-  input: string
-  jobOutput?: string
-  outputPrefix?: string
-  output: string
-  outputDirectories?: string[]
-  status: TaskStatus
-  message: string
-  createdAt: number
-  updatedAt: number
-  startedAt?: number
-  finishedAt?: number
-  durationMs?: number
-  progress: number
-  stageLabel: string
-  progressCurrent?: number
-  progressTotal?: number
-  progressDetail?: string
-  files: string[]
-  outputs: StemOutput[]
-  /** Plugin graph leaf values (ASR text, measurements, MIDI paths) by node. */
-  nodeValues?: { nodeId: number; nodeType: string; slot: number; value: string }[]
-  logs: LogEntry[]
-  nodeLogs?: WorkflowNodeLogs
-  error?: string
-  runConfig?: SeparationRunConfig
-  nodeStates?: Record<string, WorkflowNodeState>
-  nodeExecutionOrder?: string[]
-  currentNodeId?: string
-  taskHidden?: boolean
-  resultHidden?: boolean
-}
-
-export type SeparationJob = {
-  id: string
-  output: string
-  tasks: SeparationTask[]
-  primary: SeparationTask
-  model: string
-  inputCount: number
-  outputCount: number
-  createdAt: number
-  updatedAt: number
-  startedAt?: number
-  finishedAt?: number
-  durationMs?: number
-  status: TaskStatus
-  progress: number
-}
-
-type PersistedTaskState = {
-  tasks?: Partial<SeparationTask>[]
-}
-
-type PersistedSeparateModelState = {
-  batch_size?: number | null
-  overlap_size?: number | null
-  num_overlap?: number | null
-  chunk_size?: number | null
-  standardize?: boolean
-  normalize?: boolean
-  window_size?: number | null
-  aggression?: number | null
-  enable_post_process?: boolean
-  post_process_threshold?: number | null
-  high_end_process?: boolean
-  selectedStems?: string[]
-  selectedStemsCleared?: boolean
-}
-
-type PersistedSeparateState = {
-  version?: number
-  runMode?: 'model' | 'workflow'
-  ensembleEnabled?: boolean
-  ensembleModels?: string[]
-  ensembleStem?: string
-  ensembleModelStems?: Record<string, string>
-  ensembleType?: string
-  ensembleWeights?: Record<string, number>
-  outputLayout?: OutputLayout
-  outputNamingTemplate?: string
-  customStemOrder?: string[]
-  modelListViewMode?: 'card' | 'list'
-  modelListSortMode?: ModelListSortMode
-  modelListPageSize?: number
-  useTta?: boolean
-  inferenceParamsByModel?: Record<string, PersistedSeparateModelState>
-}
-
-type ModelInferenceUiDefaults = {
-  [K in keyof ModelDefaultInferenceParams]: ModelDefaultInferenceParams[K] | null
-}
-
-const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus']
-const VIDEO_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv']
-const NORMAL_LOG_LIMIT = 300
-const DEVELOPER_LOG_LIMIT = 1200
-
-
-function isSupportedInputPath(path: string) {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  return AUDIO_EXTENSIONS.includes(ext) || VIDEO_EXTENSIONS.includes(ext)
-}
-
-
-
-function normalizePersistedModelState(value: unknown): PersistedSeparateModelState {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  const raw = value as Record<string, unknown>
-  const numberFields = ['batch_size', 'overlap_size', 'num_overlap', 'chunk_size', 'window_size', 'aggression', 'post_process_threshold']
-  const next: PersistedSeparateModelState = {}
-  numberFields.forEach((key) => {
-    const item = raw[key]
-    if (item === null) (next as Record<string, unknown>)[key] = null
-    else if (typeof item === 'number' && Number.isFinite(item)) (next as Record<string, unknown>)[key] = item
-  })
-  ;['standardize', 'normalize', 'enable_post_process', 'high_end_process'].forEach((key) => {
-    if (typeof raw[key] === 'boolean') (next as Record<string, unknown>)[key] = raw[key]
-  })
-  if (Array.isArray(raw.selectedStems)) {
-    next.selectedStems = raw.selectedStems.map(item => String(item || '').trim()).filter(Boolean)
-  }
-  if (typeof raw.selectedStemsCleared === 'boolean') {
-    next.selectedStemsCleared = raw.selectedStemsCleared
-  }
-  return next
-}
-
-
-
-
-
-function getLogLimit(developerMode: boolean) {
-  return developerMode ? DEVELOPER_LOG_LIMIT : NORMAL_LOG_LIMIT
-}
-
-function markTaskStarted(task: SeparationTask, at = Date.now()) {
-  if (!task.startedAt) task.startedAt = at
-}
-
-function markTaskFinished(task: SeparationTask, at = Date.now()) {
-  task.finishedAt = at
-  const startedAt = task.startedAt || task.createdAt
-  task.durationMs = Math.max(0, at - startedAt)
-}
-
-function resolveTaskErrorMessage(code: unknown, message: unknown, input?: string) {
-  const detail = typeof message === 'string' ? message : ''
-  const path = typeof input === 'string' ? input : ''
-  if (code === 'INPUT_AUDIO_STREAM_MISSING') {
-    return i18n.global.t('separate.inputAudioStreamMissing', { path })
-  }
-  if (code === 'INPUT_MEDIA_UNSUPPORTED') {
-    return i18n.global.t('separate.inputMediaUnsupported', { path })
-  }
-  return detail || i18n.global.t('toast.taskFailed')
-}
-
 export const useTaskStore = defineStore('task', () => {
   const initialized = ref(false)
+  const loadError = ref('')
   const tasks = ref<SeparationTask[]>([])
+  const journal = useMediaJobsStore()
+  const acceptedGroupIds = new Set<string>()
+  const inFlightGroupIds = new Set<string>()
+  const retryDispatchAfter = new Map<string, number>()
+  function syncJournalTasks() {
+    const previous = new Map(tasks.value.map(task => [task.id,task]))
+    tasks.value = audioTasksFromJobs(journal.jobs, windowsPaths.value, resolveTaskErrorMessage).map(projected => {
+      const current = previous.get(projected.id)
+      if (!current) return projected
+      for (const key of Object.keys(current)) if (!(key in projected)) delete (current as unknown as Record<string, unknown>)[key]
+      return Object.assign(current,projected)
+    })
+    const activeGroups = new Set(tasks.value.filter(task => !isTerminalTaskStatus(task.status)).map(taskJobId))
+    for (const id of acceptedGroupIds) if (!activeGroups.has(id)) acceptedGroupIds.delete(id)
+    for (const id of retryDispatchAfter.keys()) if (!activeGroups.has(id)) retryDispatchAfter.delete(id)
+  }
+  watch(() => journal.jobs, () => {
+    if (!initialized.value) return
+    syncJournalTasks()
+    scheduleQueue()
+  }, { deep: true })
   const activeTaskId = ref<string | null>(null)
   // Session-only queue visibility. Persisted task/result history remains the
   // source for Results and recovery, while this set intentionally starts empty
@@ -259,6 +96,17 @@ export const useTaskStore = defineStore('task', () => {
   const focusedResultTaskId = ref<string | null>(null)
   const focusedTaskId = ref<string | null>(null)
   const inputFiles = ref<string[]>([])
+const {
+  addInputFiles, removeInputFile, clearInputFiles, moveInputFile,
+  pickFiles, pickInputFolder, addPaths, revealPath,
+} = makeTaskInputActions({
+  inputFiles,
+  native: {
+    pickMediaFiles,
+    scanMediaPaths,
+    pickInputFolder: pickInputFolderDialog,
+  },
+})
   const separateRunMode = ref<'model' | 'workflow'>('model')
   const ensembleEnabled = ref(false)
   const ensembleModels = ref<string[]>([])
@@ -308,19 +156,18 @@ export const useTaskStore = defineStore('task', () => {
   const runningTasks = computed(() => tasks.value.filter((task) => !isTerminalTaskStatus(task.status)))
   const activeWorkerTasks = computed(() => tasks.value.filter((task) => !isTerminalTaskStatus(task.status) && task.status !== 'queued'))
   // 任务页可见任务：排除已在任务页隐藏的记录（结果页隐藏不影响任务页）
-  const taskBoardTasks = computed(() => tasks.value.filter((task) => !task.taskHidden))
-  // 结果页可见结果：仅含有输出且未在结果页隐藏的任务（任务页隐藏不影响结果页）
-  const resultTasks = computed(() => completedTasks.value.filter((task) => !task.resultHidden && (task.outputs.length || task.files.length)))
+  const taskBoardTasks = computed(() => tasks.value)
+  // Terminal records remain visible even when a run produced no file.
+  const resultTasks = computed(() => tasks.value.filter(task => isTerminalTaskStatus(task.status)))
   const queuedTasks = computed(() => tasks.value.filter((task) => task.status === 'queued'))
   const failedTasks = computed(() => tasks.value.filter((task) => task.status === 'failed'))
   const allJobs = computed(() => buildJobs(tasks.value))
-  const resultJobs = computed(() => buildJobs(resultTasks.value))
+  // Keep every sibling so a partial batch cannot appear completed while another
+  // member is still active, or omit a failed member that produced no file.
+  const resultJobs = computed(() => allJobs.value.filter(job => job.tasks.some(task => isTerminalTaskStatus(task.status))))
   const sessionJobs = computed(() => buildJobs(tasks.value.filter(task => sessionTaskIds.value.has(task.id))))
 
-  let saveTimer: ReturnType<typeof setTimeout> | null = null
-  let progressPersistTimer: ReturnType<typeof setTimeout> | null = null
   let separateStateSaveTimer: ReturnType<typeof setTimeout> | null = null
-  let applyingModelDefaults = false
 
   function separateStateSnapshot(): PersistedSeparateState {
     return {
@@ -410,39 +257,31 @@ export const useTaskStore = defineStore('task', () => {
     return finishedJobIds.size
   }
 
-  async function persistTasks() {
-    if (!initialized.value) return
-    await saveAppStore('task-history', {
-      tasks: tasks.value.map((task) => ({ ...task, logs: task.logs.slice(-120) })),
-    } satisfies PersistedTaskState)
+  async function enqueueTasks(drafts: SeparationTask[]): Promise<SeparationTask[]> {
+    if (!drafts.length) return []
+    if (!initialized.value) await initialize()
+    if (loadError.value || journal.error) throw new Error(loadError.value || journal.error)
+    const accepted = await enqueueAudioJobs(audioEnqueueFromTasks(drafts))
+    journal.acceptJobs(accepted)
+    syncJournalTasks()
+    const ids = new Set(drafts.map(task => task.id))
+    const confirmed = tasks.value.filter(task => ids.has(task.id)).sort((a,b) => (a.batchIndex || 0) - (b.batchIndex || 0))
+    rememberSessionTasks(confirmed)
+    activeTaskId.value = confirmed[0]?.id || activeTaskId.value
+    return confirmed
   }
 
-  function queuePersist() {
-    if (!initialized.value) return
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => {
-      saveTimer = null
-      void persistTasks().catch(error => studioLog.warn('Failed to persist task history', error))
-    }, 120)
-  }
-
-  function queueProgressPersist() {
-    if (!initialized.value) return
-    if (progressPersistTimer) return
-    progressPersistTimer = setTimeout(() => {
-      progressPersistTimer = null
-      void persistTasks().catch(error => studioLog.warn('Failed to persist task history', error))
-    }, 800)
-  }
-
-  async function initialize() {
+  let initializationPromise: Promise<void> | null = null
+  async function initialize(): Promise<void> {
     if (initialized.value) return
-    const [stored, separateStored] = await Promise.all([
-      loadAppStore<PersistedTaskState>('task-history'),
-      loadAppStore<PersistedSeparateState>('separate-state'),
-    ])
-    // Older versions retained result-page deletions as hidden task records.
-    tasks.value = (stored?.tasks || []).filter(task => !task.resultHidden).map((task) => normalizeTask(task, windowsPaths.value))
+    if (initializationPromise) return initializationPromise
+    initializationPromise = (async () => {
+    try {
+    const [, separateStored] = await Promise.all([journal.initialize(), loadAppStore<PersistedSeparateState>('separate-state')])
+    if (journal.error) throw new Error(journal.error)
+    const currentTasks = audioTasksFromJobs(journal.jobs, windowsPaths.value, resolveTaskErrorMessage)
+    validateSeparateState(separateStored)
+    tasks.value = currentTasks
     activeTaskId.value = tasks.value[0]?.id || null
     separateRunMode.value = 'model'
     ensembleEnabled.value = separateStored?.ensembleEnabled === true
@@ -485,14 +324,20 @@ export const useTaskStore = defineStore('task', () => {
         }),
     )
     initialized.value = true
-    if (stored?.tasks?.some(task => task.resultHidden)) queuePersist()
+    loadError.value = ''
+    } catch (error) {
+      loadError.value = error instanceof Error ? error.message : String(error)
+      throw error
+    }
+    })().finally(() => { initializationPromise = null })
+    return initializationPromise
   }
 
   watch(
     [separateRunMode, ensembleEnabled, ensembleModels, ensembleStem, ensembleModelStems, ensembleType, ensembleWeights,
       separateOutputLayout, separateOutputNamingTemplate, separateCustomStemOrder, modelListViewMode, modelListSortMode, modelListPageSize, useTta],
     () => {
-      if (applyingModelDefaults) return
+      if (isApplyingModelDefaults()) return
       queueSeparateStatePersist()
     },
     { deep: true },
@@ -502,7 +347,7 @@ export const useTaskStore = defineStore('task', () => {
     [batch_size, overlap_size, num_overlap, chunk_size, standardize, normalize, window_size, aggression, enable_post_process,
       post_process_threshold, high_end_process],
     () => {
-      if (applyingModelDefaults) return
+      if (isApplyingModelDefaults()) return
       inferenceParamsDirty.value = true
       const modelStore = useModelStore()
       if (modelStore.selectedModel) saveCurrentModelState(modelStore.selectedModel)
@@ -512,7 +357,7 @@ export const useTaskStore = defineStore('task', () => {
   watch(
     [selectedStems, selectedStemsCleared],
     () => {
-      if (applyingModelDefaults) return
+      if (isApplyingModelDefaults()) return
       const modelStore = useModelStore()
       if (modelStore.selectedModel) saveCurrentModelState(modelStore.selectedModel)
       else queueSeparateStatePersist()
@@ -524,624 +369,54 @@ export const useTaskStore = defineStore('task', () => {
     scheduleQueue()
   })
 
-  function touch(task: SeparationTask) {
-    task.updatedAt = Date.now()
-  }
+  const {
+    applySelectedModelDefaults, restoreInferenceNumberFallback,
+    normalizeInferenceInputsBeforeSubmit, isApplyingModelDefaults,
+  } = makeTaskInferenceDefaults({
+    selectedModelDefaults, selectedModelOverrides, selectedModelType, selectedModelUiDefaults,
+    inferenceParamsDirty, batch_size, overlap_size, num_overlap, chunk_size, standardize,
+    normalize, window_size, aggression, enable_post_process, post_process_threshold,
+    high_end_process, selectedStems, selectedStemsCleared,
+  })
 
-  function applySelectedModelDefaults(
-    baseDefaults: ModelDefaultInferenceParams | undefined,
-    modelType?: string | null,
-    saved?: PersistedSeparateModelState,
-    modelOverrides?: ModelDefaultInferenceParams,
-    options: { force?: boolean } = {},
-  ) {
-    selectedModelDefaults.value = baseDefaults ? { ...baseDefaults } : {}
-    selectedModelOverrides.value = modelOverrides ? { ...modelOverrides } : {}
-    selectedModelType.value = modelType ?? null
-    const next = applyModelDefaultsToUi(baseDefaults, modelType)
-    const modelOverrideValue = <K extends keyof ModelDefaultInferenceParams>(key: K) => (
-      modelOverrides && Object.prototype.hasOwnProperty.call(modelOverrides, key) ? modelOverrides[key] : undefined
-    )
-    const modelDefaultValue = <K extends keyof ModelDefaultInferenceParams>(key: K) => (
-      baseDefaults && Object.prototype.hasOwnProperty.call(baseDefaults, key) ? baseDefaults[key] : undefined
-    )
-    const savedValue = <K extends keyof ModelDefaultInferenceParams & keyof PersistedSeparateModelState>(key: K, fallback: PersistedSeparateModelState[K]) => (
-      saved && Object.prototype.hasOwnProperty.call(saved, key) ? saved[key] : fallback
-    )
-    const modelOrSavedValue = <K extends keyof ModelDefaultInferenceParams & keyof PersistedSeparateModelState>(key: K) => {
-      const override = modelOverrideValue(key)
-      if (override !== undefined) return override
-      const modelDefault = modelDefaultValue(key)
-      if (modelDefault !== undefined) return modelDefault
-      return savedValue(key, next[key])
-    }
-    const valueOrDefault = <T>(value: T | undefined, fallback: T): T => value === undefined ? fallback : value
-    const resolvedDefaults = {
-      batch_size: valueOrDefault(modelOrSavedValue('batch_size'), 1),
-      overlap_size: valueOrDefault(modelOrSavedValue('overlap_size'), 0),
-      num_overlap: valueOrDefault(modelOrSavedValue('num_overlap'), 0),
-      chunk_size: valueOrDefault(modelOrSavedValue('chunk_size'), 0),
-      standardize: valueOrDefault(modelOrSavedValue('standardize'), false),
-      normalize: valueOrDefault(modelOrSavedValue('normalize'), false),
-      window_size: valueOrDefault(modelOrSavedValue('window_size'), 0),
-      aggression: valueOrDefault(modelOrSavedValue('aggression'), 0),
-      enable_post_process: valueOrDefault(modelOrSavedValue('enable_post_process'), false),
-      post_process_threshold: valueOrDefault(modelOrSavedValue('post_process_threshold'), 0),
-      high_end_process: valueOrDefault(modelOrSavedValue('high_end_process'), false),
-    }
-    selectedModelUiDefaults.value = { ...resolvedDefaults }
-    if (inferenceParamsDirty.value && !options.force) return
-
-    applyingModelDefaults = true
-    batch_size.value = resolvedDefaults.batch_size
-    overlap_size.value = resolvedDefaults.overlap_size
-    num_overlap.value = resolvedDefaults.num_overlap
-    chunk_size.value = resolvedDefaults.chunk_size
-    standardize.value = resolvedDefaults.standardize
-    normalize.value = resolvedDefaults.normalize
-    window_size.value = resolvedDefaults.window_size
-    aggression.value = resolvedDefaults.aggression
-    enable_post_process.value = resolvedDefaults.enable_post_process
-    post_process_threshold.value = resolvedDefaults.post_process_threshold
-    high_end_process.value = resolvedDefaults.high_end_process
-    selectedStems.value = Array.isArray(saved?.selectedStems) ? [...saved.selectedStems] : []
-    selectedStemsCleared.value = saved?.selectedStemsCleared === true
-    inferenceParamsDirty.value = false
-    void nextTick(() => {
-      applyingModelDefaults = false
-    })
-  }
-
-  function getCurrentUiInferenceDefaults() {
-    const defaults = Object.fromEntries(
-      Object.entries(selectedModelUiDefaults.value).map(([key, value]) => [key, value === null ? undefined : value]),
-    ) as ModelDefaultInferenceParams
-    return applyModelDefaultsToUi(defaults, selectedModelType.value)
-  }
-
-  function restoreInferenceNumberFallback(field: InferenceNumberField) {
-    if (!ZERO_AS_UNSET_FIELDS.has(field)) return
-    const defaults = getCurrentUiInferenceDefaults()
-    const nextValue = defaults[field]
-    if (typeof nextValue !== 'number' || !Number.isFinite(nextValue)) return
-    switch (field) {
-      case 'batch_size':
-        if (normalizeEditableNumberValue(batch_size.value, { zeroMeansUnset: true }) === null) batch_size.value = nextValue
-        break
-      case 'overlap_size':
-        if (normalizeEditableNumberValue(overlap_size.value, { zeroMeansUnset: true }) === null) overlap_size.value = nextValue
-        break
-      case 'num_overlap':
-        if (normalizeEditableNumberValue(num_overlap.value, { zeroMeansUnset: true }) === null) num_overlap.value = nextValue
-        break
-      case 'chunk_size':
-        if (normalizeEditableNumberValue(chunk_size.value, { zeroMeansUnset: true }) === null) chunk_size.value = nextValue
-        break
-      case 'window_size':
-        if (normalizeEditableNumberValue(window_size.value, { zeroMeansUnset: true }) === null) window_size.value = nextValue
-        break
-      case 'aggression':
-      case 'post_process_threshold':
-        break
-    }
-  }
-
-  function normalizeInferenceInputsBeforeSubmit() {
-    restoreInferenceNumberFallback('batch_size')
-    restoreInferenceNumberFallback('overlap_size')
-    restoreInferenceNumberFallback('num_overlap')
-    restoreInferenceNumberFallback('chunk_size')
-    restoreInferenceNumberFallback('window_size')
-  }
-
-  function appendTaskLogs(task: SeparationTask, lines: LogEntry | LogEntry[]) {
-    const settings = useSettingsStore()
-    const values = Array.isArray(lines) ? lines : [lines]
-    const normalized = values
-      .flatMap<LogEntry>((line) => typeof line === 'string' ? line.split(/\r?\n/).map(value => value.trimEnd()).filter(Boolean) : [line])
-      .filter(line => typeof line === 'string' || line.legacy || !task.logs.some(previous => typeof previous !== 'string' && previous.id === line.id))
-    if (!normalized.length) return
-    task.logs.push(...normalized)
-    task.logs = task.logs.slice(-getLogLimit(settings.developerMode))
-    touch(task)
-    queuePersist()
-  }
-
-  function maxConcurrentSeparations() {
-    const settings = useSettingsStore()
-    return normalizeConcurrentSeparations(settings.maxConcurrentSeparations)
-  }
-
-  const { buildRunConfig, workflowModelInferenceParams, buildWorkflowRunConfig } = makeTaskRunConfig({
+  const { buildRunConfig, buildWorkflowRunConfig } = makeTaskRunConfig({
     useSettingsStore, useAppStore, useModelStore, selectedStems, useTta,
     normalizeOutputNaming, CURRENT_INFERENCE_PARAMS_VERSION,
     detectWorkflowFormat, resolveWorkflowRuntimeDefaults, prepareWorkflowDefinitionForRun,
   })
-  const { resolveTaskOutputPath, createQueuedTask, createQueuedWorkflowTask } = makeTaskQueue({
+  const { createQueuedTask, createQueuedWorkflowTask } = makeTaskQueue({
     useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath,
-    inputStemSegment, createRunId, STAGE_META, localLogRecord,
-    buildRunConfig, buildWorkflowRunConfig, tasks, rememberSessionTasks,
-    activeTaskId, queuePersist,
+    inputStemSegment, createRunId, STAGE_META,
+    buildRunConfig, buildWorkflowRunConfig,
   })
-  async function startQueuedTask(taskId: string) {
-    const task = tasks.value.find((item) => item.id === taskId)
-    if (!task || task.status !== 'queued') return false
-    rememberSessionTasks([task])
-    const settings = useSettingsStore()
-    const config = task.runConfig || buildRunConfig({})
-    setTaskStatus(task.id, 'preparing', 'Preparing task')
-    try {
-      if (config.runMode === 'workflow') {
-        validateWorkflowRunConfig(config)
-        await invoke<{ taskId: string; started: boolean }>('start_workflow_inference', {
-          payload: {
-            taskId: task.id,
-            workflowName: config.workflowName || task.model,
-            workflow: config.workflowDefinition || {},
-            input: task.input || null,
-            ...(config.workbench && !config.workbench.nativeGraph ? { workbench: true, inputs: config.workbench.inputs, workbenchOutputs: config.workbench.outputs } : {}),
-            output: config.outputLayout === 'folders' ? (task.jobOutput || task.output) : task.output,
-            modelDir: config.modelDir ?? (settings.modelDir || null),
-            source: config.downloadSource || settings.downloadSource,
-            downloadMethod: config.downloadMethod || settings.downloadMethod,
-            device: config.device,
-            deviceIds: config.deviceIds,
-            outputFormat: config.outputFormat,
-            outputLayout: config.outputLayout,
-            outputNaming: config.outputNaming,
-            useTta: config.useTta,
-            debug: config.debug,
-            audioParams: config.audioParams,
-          },
-        })
-        return true
-      }
-      await invoke<{ taskId: string; started: boolean }>('start_separation', {
-        payload: {
-          taskId: task.id,
-          model: task.model,
-          input: task.input,
-          output: config.outputLayout === 'folders' ? (task.jobOutput || task.output) : task.output,
-          modelDir: config.modelDir ?? (settings.modelDir || null),
-          download: true,
-          source: config.downloadSource || settings.downloadSource,
-          downloadMethod: config.downloadMethod || settings.downloadMethod,
-          endpoint: null,
-          device: config.device,
-          deviceIds: config.deviceIds,
-          outputFormat: config.outputFormat,
-          outputLayout: config.outputLayout,
-          outputNaming: config.outputNaming,
-          selectedStems: config.selectedStems || [],
-          useTta: config.useTta,
-          debug: config.debug,
-          audioParams: config.audioParams,
-          inferenceParamsVersion: config.inferenceParamsVersion ?? CURRENT_INFERENCE_PARAMS_VERSION,
-          inferenceParams: config.inferenceParams || {},
-        },
-      })
-      return true
-    } catch (err) {
-      task.status = 'failed'
-      task.error = err instanceof Error ? err.message : String(err)
-      task.message = task.error
-      task.stageLabel = STAGE_META.failed.label
-      task.progress = 100
-      appendTaskLogs(task, `error: ${task.error}`)
-      markTaskFinished(task)
-      queuePersist()
-      scheduleQueue()
-      return false
-    }
-  }
 
-  async function startBatchWorker(batchTasks: SeparationTask[]) {
-    if (!batchTasks.length || batchTasks.some(task => task.status !== 'queued')) return false
-    rememberSessionTasks(batchTasks)
-    const settings = useSettingsStore()
-    const primary = batchTasks[0]
-    const config = primary.runConfig || buildRunConfig({})
-    batchTasks.forEach((task) => {
-      setTaskStatus(task.id, 'preparing', 'Preparing batch task')
-    })
-    try {
-      await invoke<{ taskId: string; started: boolean }>('start_separation', {
-        payload: {
-          taskId: primary.id,
-          model: primary.model,
-          output: primary.jobOutput || primary.output,
-          tasks: batchTasks.map((task, index) => ({
-            taskId: task.id,
-            input: task.input,
-            output: task.output,
-            inputIndex: index + 1,
-          })),
-          modelDir: config.modelDir ?? (settings.modelDir || null),
-          download: true,
-          source: config.downloadSource || settings.downloadSource,
-          downloadMethod: config.downloadMethod || settings.downloadMethod,
-          endpoint: null,
-          device: config.device,
-          deviceIds: config.deviceIds,
-          outputFormat: config.outputFormat,
-          outputLayout: config.outputLayout,
-          outputNaming: config.outputNaming,
-          selectedStems: config.selectedStems || [],
-          useTta: config.useTta,
-          debug: config.debug,
-          audioParams: config.audioParams,
-          inferenceParamsVersion: config.inferenceParamsVersion ?? CURRENT_INFERENCE_PARAMS_VERSION,
-          inferenceParams: config.inferenceParams || {},
-        },
-      })
-      return true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      batchTasks.forEach((task) => {
-        task.status = 'failed'
-        task.error = message
-        task.message = message
-        task.stageLabel = STAGE_META.failed.label
-        task.progress = 100
-        appendTaskLogs(task, `error: ${message}`)
-        markTaskFinished(task)
-      })
-      queuePersist()
-      scheduleQueue()
-      return false
-    }
-  }
-
-  async function startWorkflowBatchWorker(batchTasks: SeparationTask[]) {
-    if (!batchTasks.length || batchTasks.some(task => task.status !== 'queued')) return false
-    rememberSessionTasks(batchTasks)
-    const settings = useSettingsStore()
-    const primary = batchTasks[0]
-    const config = primary.runConfig || buildRunConfig({})
-    batchTasks.forEach((task) => {
-      setTaskStatus(task.id, 'preparing', 'Preparing workflow batch task')
-    })
-    try {
-      for (const task of batchTasks) validateWorkflowRunConfig(task.runConfig || config)
-      await invoke<{ taskId: string; started: boolean }>('start_workflow_inference', {
-        payload: {
-          taskId: primary.id,
-          workflowName: config.workflowName || primary.model,
-          workflow: config.workflowDefinition || {},
-          output: primary.jobOutput || primary.output,
-          ...(config.workbench && !config.workbench.nativeGraph ? { workbench: true } : {}),
-          tasks: batchTasks.map((task, index) => ({
-            taskId: task.id,
-            input: task.input,
-            output: task.output,
-            inputIndex: index + 1,
-            ...(task.runConfig?.workbench && !task.runConfig.workbench.nativeGraph ? { inputs: task.runConfig.workbench.inputs, workbenchOutputs: task.runConfig.workbench.outputs } : {}),
-          })),
-          modelDir: config.modelDir ?? (settings.modelDir || null),
-          source: config.downloadSource || settings.downloadSource,
-          downloadMethod: config.downloadMethod || settings.downloadMethod,
-          device: config.device,
-          deviceIds: config.deviceIds,
-          outputFormat: config.outputFormat,
-          outputLayout: config.outputLayout,
-          outputNaming: config.outputNaming,
-          useTta: config.useTta,
-          debug: config.debug,
-          audioParams: config.audioParams,
-        },
-      })
-      return true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      batchTasks.forEach((task) => {
-        task.status = 'failed'
-        task.error = message
-        task.message = message
-        task.stageLabel = STAGE_META.failed.label
-        task.progress = 100
-        appendTaskLogs(task, `error: ${message}`)
-        markTaskFinished(task)
-      })
-      queuePersist()
-      scheduleQueue()
-      return false
-    }
-  }
-
-  let schedulingQueue = false
-  let queueScheduleRequested = false
-
-  function scheduleQueue() {
-    // Browser-only previews cannot start a Rust worker. Keep restored queue items
-    // intact until the desktop runtime is available instead of failing them on boot.
-    if (!isTauriRuntime()) return
-    if (!isMainTaskOwner()) return
-    if (schedulingQueue) {
-      queueScheduleRequested = true
-      return
-    }
-    schedulingQueue = true
-    try {
-      do {
-        queueScheduleRequested = false
-        const nextJobs = selectQueuedJobGroups(tasks.value, maxConcurrentSeparations())
-        nextJobs.forEach((jobTasks) => {
-          if (jobTasks.length === 1) {
-            void startQueuedTask(jobTasks[0].id)
-            return
-          }
-          if (jobTasks[0].runConfig?.runMode === 'workflow') {
-            void startWorkflowBatchWorker(jobTasks)
-          } else {
-            void startBatchWorker(jobTasks)
-          }
-        })
-        // Synchronous validation failures request another pass after the current selection is consumed.
-      } while (queueScheduleRequested)
-    } finally {
-      schedulingQueue = false
-    }
-  }
-
-  function setTaskStatus(id: string, status: TaskStatus, message?: string, progress?: number) {
-    const settings = useSettingsStore()
-    const task = tasks.value.find((item) => item.id === id)
-    if (!task) return
-    if (isTerminalTaskStatus(task.status) && !isTerminalTaskStatus(status)) return
-    const meta = STAGE_META[status]
-    if (status !== 'queued') markTaskStarted(task)
-    task.status = status
-    task.stageLabel = meta.label
-    task.message = message || meta.label
-    if (status !== 'separating') {
-      task.progressCurrent = undefined
-      task.progressTotal = undefined
-      task.progressDetail = undefined
-    }
-    const nextProgress = progress ?? meta.progress
-    const normalizedProgress = Math.min(99, Math.max(0, nextProgress))
-    task.progress = isTerminalTaskStatus(status)
-      ? 100
-      : status === 'separating'
-        ? normalizedProgress
-        : Math.max(task.progress || 0, normalizedProgress)
-    task.logs.push(localLogRecord(task.message, `task.${status}`, status === 'failed' ? 'error' : 'info', { taskId: task.id }))
-    task.logs = task.logs.slice(-getLogLimit(settings.developerMode))
-    touch(task)
-    if (isTerminalTaskStatus(status)) markTaskFinished(task, task.updatedAt)
-    queuePersist()
-  }
-
-  const handleWorkerEvent = makeTaskWorkerEventHandler({
-    tasks, setTaskStatus, normalizeStatus, STAGE_META, isTerminalTaskStatus,
-    markTaskStarted, markTaskFinished, touch, queueProgressPersist, queuePersist, scheduleQueue,
-    appendWorkflowNodeLogs, localLogRecord, workerLogRecord, normalizeLogRecord, appendTaskLogs,
-    useSettingsStore, normalizeStemOutputs, outputsFromFiles, windowsPaths, resolveTaskErrorMessage,
+  const { scheduleQueue, suppressScheduling, resumeScheduling } = makeTaskQueueScheduler({
+    tasks, initialized, loadError, journal, acceptedGroupIds, inFlightGroupIds,
+    retryDispatchAfter, invoke, syncJournalTasks, studioLog,
   })
-  function addInputFiles(paths: string[]) {
-    const valid = paths.filter((p) => p?.trim() && isSupportedInputPath(p))
-    if (!valid.length) return 0
-    const existing = new Set(inputFiles.value)
-    const additions = valid.filter((p) => !existing.has(p))
-    if (additions.length) inputFiles.value = [...inputFiles.value, ...additions]
-    return additions.length
-  }
+  const {
+    getTaskById, focusResultTask, focusTask, hasResultPresence, getRemovalTasks, checkRemoval, removeResult,
+  } = makeTaskResultHelpers({
+    tasks, focusedTaskId, focusedResultTaskId, getRemovalTasksFromState, i18n, removeAudioJobs,
+    removeResults: (ids) => removeResults(ids),
+  })
 
-  function removeInputFile(path: string) {
-    inputFiles.value = inputFiles.value.filter((p) => p !== path)
-  }
-
-  function clearInputFiles() {
-    inputFiles.value = []
-  }
-
-  function moveInputFile(fromIndex: number, toIndex: number) {
-    const from = Math.trunc(Number(fromIndex))
-    const to = Math.trunc(Number(toIndex))
-    if (from === to || from < 0 || to < 0 || from >= inputFiles.value.length || to >= inputFiles.value.length) return false
-    const next = [...inputFiles.value]
-    const [item] = next.splice(from, 1)
-    next.splice(to, 0, item)
-    inputFiles.value = next
-    return true
-  }
-
-  async function pickFiles() {
-    const files = await invoke<string[]>('pick_media_files')
-    addInputFiles(files || [])
-    return files?.length || 0
-  }
-
-  async function scanAndAddPaths(paths: string[]) {
-    if (!paths?.length) return { added: 0, warnings: [] as string[] }
-    const result = await invoke<ScanMediaPathsResult>('scan_media_paths', { paths })
-    return { added: addInputFiles(result.files || []), warnings: result.warnings || [] }
-  }
-
-  async function pickInputFolder() {
-    const folder = await invoke<string | null>('pick_input_folder')
-    if (!folder) return 0
-    const result = await scanAndAddPaths([folder])
-    return result.added
-  }
-
-  async function addPaths(paths: string[]) {
-    const result = await scanAndAddPaths(paths)
-    return result.added
-  }
-
-  async function revealPath(path: string) {
-    await invoke('reveal_path', { path })
-  }
-
-  async function trashPaths(paths: string[]) {
-    const valid = paths.filter((p) => p?.trim())
-    if (!valid.length) return { trashed: [] as string[], failed: [] as string[] }
-    return invoke<{ trashed: string[]; failed: string[] }>('move_paths_to_trash', { paths: valid, emptyDirs: [] })
-  }
-
-  async function trashResultPaths(paths: string[], emptyDirs: string[] = []) {
-    const valid = paths.filter((p) => p?.trim())
-    const validEmptyDirs = emptyDirs.filter((p) => p?.trim())
-    if (!valid.length && !validEmptyDirs.length) return { trashed: [] as string[], failed: [] as string[] }
-    return invoke<{ trashed: string[]; failed: string[] }>('move_paths_to_trash', { paths: valid, emptyDirs: validEmptyDirs })
-  }
-
-  // 删除结果时始终仅回收当前结果对应的输出文件，避免误删共享目录、
-  // 任务目录中的附加文件或后续派生产物。
-  function resultTrashEmptyDirs(task: SeparationTask): string[] {
-    return resultTrashEmptyDirsForTask(task, windowsPaths.value)
-  }
-
-  function resultTrashTargetsForTasks(items: SeparationTask[]): { paths: string[]; retained: number } {
-    const removing = getRemovalTasks(items.map(item => item.id))
-    const removingIds = new Set(removing.map(item => item.id))
-    const windows = windowsPaths.value
-    const protectedPaths = new Set<string>()
-    const protectedDirectories = new Set<string>()
-    for (const item of tasks.value) {
-      if (item.input) protectedPaths.add(pathKey(item.input, windows))
-      for (const input of Object.values(item.runConfig?.workbench?.inputs || {})) {
-        if (input) protectedPaths.add(pathKey(input, windows))
-      }
-      const definition = item.runConfig?.workflowDefinition || item.runConfig?.workbench?.sourceDefinition
-      if (definition) {
-        for (const node of workflowInputNodes(definition)) {
-          if (node.embeddedPath) protectedPaths.add(pathKey(node.embeddedPath, windows))
-        }
-        if (!removingIds.has(item.id)) {
-          for (const node of Array.isArray(definition.nodes) ? definition.nodes : []) {
-            const batchFolder = node?.type === 'pymss_load_audio_batch'
-              ? widgetValue(specFor('pymss_load_audio_batch'), node, 'folder')
-              : undefined
-            if (node?.type === 'pymss_load_audio_batch' && typeof batchFolder === 'string') {
-              const directory = pathKey(batchFolder, windows)
-              if (directory) protectedDirectories.add(directory.endsWith('/') ? directory : `${directory}/`)
-            }
-          }
-        }
-      }
-      if (!removingIds.has(item.id)) {
-        for (const output of item.outputs) protectedPaths.add(pathKey(output.path, windows))
-      }
-    }
-    const seen = new Set<string>()
-    let retained = 0
-    const directories = [...protectedDirectories]
-    const paths = removing.flatMap(resultTrashTargets).filter(path => {
-      const key = pathKey(path, windows)
-      if (seen.has(key)) return false
-      seen.add(key)
-      if (protectedPaths.has(key) || directories.some(directory => key.startsWith(directory))) {
-        retained += 1
-        return false
-      }
-      return true
-    })
-    return { paths, retained }
-  }
-
-  function getTaskById(id: string) {
-    return tasks.value.find((task) => task.id === id) || null
-  }
-
-  function focusResultTask(id: string | null) {
-    focusedResultTaskId.value = id
-  }
-
-  function focusTask(id: string | null) {
-    focusedTaskId.value = id
-  }
-
-  // 任务是否还会出现在结果页（done + 有输出 + 未被结果页隐藏）。
-  // 不会出现在结果页的任务，其“结果维度”视为已不存在。
-  function hasResultPresence(task: SeparationTask) {
-    return task.status === 'done'
-      && !task.resultHidden
-      && (task.outputs.length > 0 || task.files.length > 0)
-  }
-
-  // 当一个任务在任务页与结果页都不再可见时，从底层数组彻底回收，避免无限堆积。
-  function reclaimHiddenTasks() {
-    tasks.value = tasks.value.filter((task) => !task.taskHidden || hasResultPresence(task))
-    const retainedIds = new Set(tasks.value.map(task => task.id))
-    const nextSessionIds = new Set([...sessionTaskIds.value].filter(id => retainedIds.has(id)))
-    if (nextSessionIds.size !== sessionTaskIds.value.size) sessionTaskIds.value = nextSessionIds
-  }
-
-  function removeTask(id: string) {
-    const target = tasks.value.find((task) => task.id === id)
-    if (!target) return
-    // 任务页删除仅隐藏日志记录，不影响结果页与磁盘文件
-    target.taskHidden = true
-    if (activeTaskId.value === id) activeTaskId.value = taskBoardTasks.value[0]?.id || null
-    if (focusedTaskId.value === id) focusedTaskId.value = null
-    reclaimHiddenTasks()
-    queuePersist()
-  }
-
-  function removeTasks(ids: string[]) {
-    const removeSet = new Set(ids)
-    if (!removeSet.size) return 0
-    let removed = 0
-    tasks.value.forEach((task) => {
-      if (removeSet.has(task.id) && !task.taskHidden) {
-        task.taskHidden = true
-        removed += 1
-      }
-    })
-    if (!removed) return 0
-    if (activeTaskId.value && removeSet.has(activeTaskId.value)) {
-      activeTaskId.value = taskBoardTasks.value[0]?.id || null
-    }
-    if (focusedTaskId.value && removeSet.has(focusedTaskId.value)) {
-      focusedTaskId.value = null
-    }
-    reclaimHiddenTasks()
-    queuePersist()
-    return removed
-  }
-
-  function getRemovalTasks(ids: string[]) {
-    const selected = new Set(ids)
-    const jobs = new Set(tasks.value.filter(task => selected.has(task.id)).map(taskJobId))
-    const related = tasks.value.filter(task => jobs.has(taskJobId(task)))
-    if (related.some(task => !isTerminalTaskStatus(task.status))) {
-      throw new Error(i18n.global.t('results.removeRunningBatch'))
-    }
-    return related
-  }
-
-  // Result deletion owns the complete run record, including failed siblings.
-  // Editor projects and optional file recycling are handled before this call.
-  function removeResult(id: string) {
-    return removeResults([id])
-  }
-
-  async function removeResults(ids: string[]) {
+  // The native transaction owns the complete group and optional file recycling.
+  async function removeResults(ids: string[], options: { deleteFiles?: boolean } = {}): Promise<ResultRemovalResponse> {
     const related = getRemovalTasks(ids)
-    if (!related.length) return 0
-    const removedIds = new Set(related.map(task => task.id))
-    const previous = [...tasks.value]
-    tasks.value = tasks.value.filter(task => !removedIds.has(task.id))
-    try {
-      await persistTasks()
-    } catch (error) {
-      // Preserve concurrent progress and newly queued work when restoring records.
-      const current = new Map(tasks.value.map(task => [task.id, task]))
-      const previousIds = new Set(previous.map(task => task.id))
-      tasks.value = [
-        ...tasks.value.filter(task => !previousIds.has(task.id)),
-        ...previous.flatMap(task => current.has(task.id) ? [current.get(task.id)!] : removedIds.has(task.id) ? [task] : []),
-      ]
-      queuePersist()
-      throw error
-    }
+    if (!related.length) return { schemaVersion: 2, checkedJobIds: [], removedJobIds: [], trashed: [], failed: [], retained: [] }
+    const response = await removeAudioJobs(related.map(task => task.id), options)
+    if (response.checkedJobIds.length !== related.length || related.some(task => !response.checkedJobIds.includes(task.id))) throw new Error('Result removal did not confirm the exact group')
+    const removed = response.removedJobIds
+    if (!removed.length) return response
+    journal.forget(removed)
+    syncJournalTasks()
+    const removedIds = new Set(removed)
     sessionTaskIds.value = new Set([...sessionTaskIds.value].filter(id => !removedIds.has(id)))
-    if (activeTaskId.value && removedIds.has(activeTaskId.value)) activeTaskId.value = taskBoardTasks.value[0]?.id || null
+    if (activeTaskId.value && removedIds.has(activeTaskId.value)) activeTaskId.value = tasks.value[0]?.id || null
     if (focusedTaskId.value && removedIds.has(focusedTaskId.value)) focusedTaskId.value = null
     if (focusedResultTaskId.value && removedIds.has(focusedResultTaskId.value)) focusedResultTaskId.value = null
-    return related.length
+    return response
   }
 
   async function removeWorkflowRun(workflowId: string, jobId: string) {
@@ -1159,115 +434,35 @@ export const useTaskStore = defineStore('task', () => {
     const related = tasks.value.filter(task => selected.has(taskJobId(task)))
     if (related.some(task => task.runConfig?.workbench)) throw new Error(i18n.global.t('workbench.runNotFound'))
     if (related.some(hasResultPresence)) throw new Error(i18n.global.t('workbench.removeRunHasResults'))
-    return removeResults(related.map(task => task.id))
-  }
-
-  function clearHistory() {
-    // 仅清空任务页的历史记录（标记 taskHidden），保留结果页数据
-    tasks.value.forEach((task) => {
-      if (isTerminalTaskStatus(task.status)) task.taskHidden = true
-    })
-    reclaimHiddenTasks()
-    queuePersist()
+    return (await removeResults(related.map(task => task.id))).removedJobIds.length
   }
 
   // Empty selections must not turn into a request to remove all results.
-  function clearResults(ids?: string[]) {
-    return removeResults(ids ?? resultTasks.value.map(task => task.id))
+  async function clearResults(ids?: string[]) {
+    const terminalGroups = resultJobs.value.filter(job => job.tasks.every(task => isTerminalTaskStatus(task.status)))
+    return (await removeResults(ids ?? terminalGroups.flatMap(job => job.tasks.map(task => task.id)))).removedJobIds.length
   }
 
-  async function cancelAllTasks() {
-    const currentRunning = [...runningTasks.value]
-    if (!currentRunning.length) return { total: 0, cancelled: 0 }
-    let cancelled = 0
-    for (const item of currentRunning) {
-      // 串行取消，避免同时调用底层取消造成竞态
-      // eslint-disable-next-line no-await-in-loop
-      const ok = await cancelTask(item.id)
-      if (ok) cancelled += 1
-    }
-    return { total: currentRunning.length, cancelled }
-  }
+  const {
+    cancelAllTasks, cancelTask, cancelWorkbenchJob,
+  } = makeTaskCancelActions({
+    tasks, runningTasks, journal, cancelTaskRequest: cancelNativeTask, syncJournalTasks, scheduleQueue,
+    suppressScheduling, resumeScheduling,
+  })
 
-  async function cancelTask(id: string) {
-    const task = tasks.value.find((item) => item.id === id)
-    if (!task) return false
-    if (task.status === 'queued') {
-      task.status = 'cancelled'
-      task.message = 'Cancelled'
-      task.stageLabel = STAGE_META.cancelled.label
-      task.progress = 100
-      markTaskFinished(task)
-      appendTaskLogs(task, 'Cancelled before execution')
-      queuePersist()
-      scheduleQueue()
-      return true
-    }
-    const cancelled = await invoke<boolean>('cancel_task', { taskId: id })
-    if (cancelled) {
-      if (task.currentNodeId && task.nodeStates?.[task.currentNodeId]) task.nodeStates[task.currentNodeId].status = 'cancelled'
-      appendWorkflowNodeLogs(task, task.currentNodeId, '[info] Cancelled')
-      task.status = 'cancelled'
-      task.message = 'Cancelled'
-      task.stageLabel = STAGE_META.cancelled.label
-      task.progress = 100
-      touch(task)
-      markTaskFinished(task, task.updatedAt)
-      queuePersist()
-      scheduleQueue()
-    }
-    return cancelled
-  }
-
-  async function cancelWorkbenchJob(jobId: string) {
-    const targets = tasks.value.filter(task => (task.jobId || task.id) === jobId && !isTerminalTaskStatus(task.status))
-    // Remove the entire queued remainder before any cancellation can resume scheduling.
-    for (const target of targets.filter(task => task.status === 'queued')) setTaskStatus(target.id, 'cancelled', 'Cancelled')
-    for (const target of targets) {
-      if (!isTerminalTaskStatus(target.status)) await cancelTask(target.id)
-    }
-    scheduleQueue()
-  }
-
-  function buildInferenceParams(modelType?: string | null): Record<string, unknown> {
-    return buildInferenceParamsFromValues({
-      modelType,
-      defaults: selectedModelDefaults.value,
-      modelOverrides: selectedModelOverrides.value,
-      dirty: inferenceParamsDirty.value,
-      values: {
-        batch_size: batch_size.value,
-        overlap_size: overlap_size.value,
-        num_overlap: num_overlap.value,
-        chunk_size: chunk_size.value,
-        window_size: window_size.value,
-        aggression: aggression.value,
-        enable_post_process: enable_post_process.value,
-        post_process_threshold: post_process_threshold.value,
-        high_end_process: high_end_process.value,
-        standardize: standardize.value,
-        normalize: normalize.value,
-      },
-    })
-  }
-
-  function modelInferenceParamsFromState(modelName: string, modelType?: string | null): Record<string, unknown> {
-    const modelStore = useModelStore()
-    if (modelStore.selectedModel === modelName) return buildInferenceParams(modelType)
-    const entry = modelStore.models.find(item => item.name === modelName) || null
-    const defaults = modelStore.hasKnownModelInferenceBase(modelName)
-      ? (modelStore.getModelBaseInferenceDefaults(modelName) || {})
-      : (entry?.defaultInferenceParams || {})
-    const overrides = modelStore.getModelInferenceOverrides(modelName) || {}
-    const saved = getSavedModelState(modelName) || {}
-    return modelInferenceParamsFromValues({ modelType, defaults, overrides, saved })
-  }
+  const { buildInferenceParams } = makeTaskInferenceParams({
+    selectedModelDefaults, selectedModelOverrides, inferenceParamsDirty,
+    batch_size, overlap_size, num_overlap, chunk_size, window_size, aggression,
+    enable_post_process, post_process_threshold, high_end_process, standardize, normalize,
+    getSavedModelState, useModelStore, buildInferenceParamsFromValues, modelInferenceParamsFromValues,
+  })
 
   function submitOne(input: string, model: string, inferenceParams: Record<string, unknown>, modelType?: string | null, jobId?: string, jobOutput?: string, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig, batchIndex?: number) {
     return createQueuedTask(input, model, inferenceParams, modelType, jobId, jobOutput, outputLayout, outputNaming, batchIndex)
   }
 
   async function startSeparation(options: { outputDir?: string; outputLayout?: OutputLayout; outputNaming?: OutputNamingConfig } = {}) {
+    if (loadError.value) throw new Error(loadError.value)
     const modelStore = useModelStore()
     if (!inputFiles.value.length) {
       throw new Error('Input file is required')
@@ -1296,10 +491,11 @@ export const useTaskStore = defineStore('task', () => {
       batchIndex,
     ))
     modelStore.recordModelUse(model)
-    return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
+    return finalizeTaskBatch(batch, await enqueueTasks(createdTasks), { schedule: scheduleQueue })
   }
 
   async function startWorkflowInference(workflow: WorkflowEntry, options: { outputDir?: string; outputLayout?: OutputLayout; outputNaming?: OutputNamingConfig } = {}) {
+    if (loadError.value) throw new Error(loadError.value)
     if (!workflow?.id) {
       throw new Error('Workflow is required')
     }
@@ -1320,9 +516,10 @@ export const useTaskStore = defineStore('task', () => {
       batch.outputNaming,
       batchIndex,
     ))
-    return finalizeTaskBatch(batch, createdTasks, { schedule: scheduleQueue })
+    return finalizeTaskBatch(batch, await enqueueTasks(createdTasks), { schedule: scheduleQueue })
   }
   async function startWorkbenchInference(workflow: WorkflowEntry, bindings: WorkflowRuntimeBindings) {
+    if (loadError.value) throw new Error(loadError.value)
     if (!isMainTaskOwner()) throw new Error('workbench.mainWindowOnly')
     const validationError = workflowDefinitionValidationError(workflow.definition)
     if (validationError) throw new Error(validationError)
@@ -1337,20 +534,21 @@ export const useTaskStore = defineStore('task', () => {
     const runtimeEntry = { ...workflow, definition: prepared.definition }
     const createdTasks = prepared.runs.map((run, batchIndex) => {
       const created = createQueuedWorkflowTask(run.input, runtimeEntry, batch.jobId, directory, nativeGraph ? 'flat' : bindings.outputLayout, undefined, batchIndex)
-      const config = tasks.value.find(task => task.id === created.id)!.runConfig!
+      const config = created.runConfig!
       config.useTta = false
       if (nativeGraph) config.workflowDefinition = cloneWorkflow(workflow.definition)
-      config.workbench = {
-        version: 1, ...(nativeGraph ? { nativeGraph: true as const } : {}), sourceUpdatedAt: workflow.updatedAt,
-        sourceDefinition: cloneWorkflow(workflow.definition), bindings: cloneWorkflow(bindings),
+      const snapshot = {
+        version: 2 as const, sourceUpdatedAt: workflow.updatedAt, bindings: cloneWorkflow(bindings),
         inputs: cloneWorkflow(run.inputs), outputs: cloneWorkflow(run.outputs),
       }
+      config.workbench = { ...snapshot, nativeGraph }
       return created
     })
-    return finalizeTaskBatch(batch, createdTasks, { persist: queuePersist, schedule: scheduleQueue })
+    return finalizeTaskBatch(batch, await enqueueTasks(createdTasks), { schedule: scheduleQueue })
   }
 
   async function retryTask(taskId: string) {
+    if (loadError.value) throw new Error(loadError.value)
     const existing = tasks.value.find((t) => t.id === taskId)
     if (!existing) return
     if (existing.runConfig?.workbench && existing.runConfig.workflowDefinition) {
@@ -1358,14 +556,15 @@ export const useTaskStore = defineStore('task', () => {
       const snapshot = config.workbench!
       const created = createQueuedWorkflowTask(existing.input, {
         id: config.workflowId!, name: config.workflowName || existing.model, description: '',
-        definition: snapshot.sourceDefinition, format: detectWorkflowFormat(snapshot.sourceDefinition),
+        definition: workflowSourceDefinition(config), format: detectWorkflowFormat(workflowSourceDefinition(config)),
         formatVersion: WORKFLOW_FORMAT_VERSION, createdAt: existing.createdAt, updatedAt: snapshot.sourceUpdatedAt,
       }, undefined, existing.jobOutput || existing.output, config.outputLayout, config.outputNaming)
-      const queued = tasks.value.find(task => task.id === created.id)!
+      const queued = created
       queued.runConfig = config
       queued.output = existing.output
+      const [confirmed] = await enqueueTasks([created])
       scheduleQueue()
-      return created
+      return confirmed
     }
     const { jobOutput, outputLayout } = resolveRetryOutput(existing, windowsPaths.value, i18n.global.t('separate.retryOutputDirectoryUnknown'))
     if (existing.runConfig?.runMode === 'workflow' && existing.runConfig.workflowId && existing.runConfig.workflowName && existing.runConfig.workflowDefinition) {
@@ -1380,8 +579,10 @@ export const useTaskStore = defineStore('task', () => {
         createdAt: existing.createdAt,
         updatedAt: existing.updatedAt,
       }, undefined, jobOutput, outputLayout, existing.runConfig.outputNaming)
+      task.runConfig = cloneWorkflow(existing.runConfig!)
+      const [confirmed] = await enqueueTasks([task])
       scheduleQueue()
-      return task
+      return confirmed
     }
     const modelStore = useModelStore()
     modelStore.selectedModel = existing.model
@@ -1390,14 +591,17 @@ export const useTaskStore = defineStore('task', () => {
     const modelEntry = modelStore.models.find((item) => item.name === existing.model) || null
     const modelType = modelEntry?.modelType || persistedModelType || null
     const task = createQueuedTask(existing.input, existing.model, retryParams, modelType, undefined, jobOutput, outputLayout, existing.runConfig?.outputNaming)
+    task.runConfig = cloneWorkflow(existing.runConfig!)
+    const [confirmed] = await enqueueTasks([task])
     scheduleQueue()
-    return task
+    return confirmed
   }
 
   return {
     cancelWorkbenchJob,
     startWorkbenchInference,
     initialized,
+    loadError,
     tasks,
     activeTaskId,
     activeTask,
@@ -1446,7 +650,6 @@ export const useTaskStore = defineStore('task', () => {
     high_end_process,
     restoreInferenceNumberFallback,
     initialize,
-    handleWorkerEvent,
     pickFiles,
     pickInputFolder,
     addPaths,
@@ -1455,28 +658,21 @@ export const useTaskStore = defineStore('task', () => {
     removeInputFile,
     clearInputFiles,
     revealPath,
-    trashPaths,
-    trashResultPaths,
-    resultTrashEmptyDirs,
-    resultTrashTargets,
-    resultTrashTargetsForTasks,
     primaryRevealPath,
     getTaskById,
     getJobById,
     taskJobId,
     focusResultTask,
     focusTask,
-    removeTask,
-    removeTasks,
     removeSessionJob,
     clearFinishedSessionJobs,
-    removeResult,
     removeResults,
+    removeResult,
+    checkRemoval,
     getRemovalTasks,
     removeWorkflowRun,
     removeSeparationRuns,
     clearResults,
-    clearHistory,
     cancelTask,
     cancelAllTasks,
     startSeparation,

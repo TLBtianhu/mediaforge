@@ -881,45 +881,36 @@ test('queued parameter writes allow opaque state captured by the same controller
  assert.equal(env.editor.session.pluginChain[0].state,'sha256:captured-live')
 })
 
-test('legacy track effects survive editing, undo, autosave and reopen without reaching the plugin host',async t=>{
+test('unsupported persisted editor schemas leave the live project and original document untouched',async t=>{
  const env=environment(t)
- const effects={reverb:0.2,delay:0.3,delayTime:0.4,clarity:0.5,compressor:0.6,extra:{values:[0.1,0.2]}}
- env.controls.persisted={...JSON.parse(JSON.stringify(env.editor.session)),version:3,pluginChain:undefined,
-  tracks:[{id:'track',sourceId:'source',role:'stem',name:'Track',volume:1,pan:0,muted:false,solo:false,fadeIn:0,fadeOut:0,
-   effects:JSON.parse(JSON.stringify(effects))}]}
- await env.editor.loadProject('project')
- assert.equal(env.editor.session.tracks.length,1)
- assert.deepEqual(JSON.parse(JSON.stringify(env.editor.session.tracks[0].effects)),effects)
- env.controls.persisted.tracks[0].effects.extra.values[0]=99
- env.editor.renameTrack('track','Renamed')
- env.editor.session.tracks[0].effects.extra.values[0]=88
- env.editor.undo()
- assert.deepEqual(JSON.parse(JSON.stringify(env.editor.session.tracks[0].effects)),effects)
- env.editor.setTrackVolume('track',0.75)
- await env.tick(420)
- assert.equal(env.saved().at(-1).args.project.tracks[0].volume,0.75)
- assert.deepEqual(env.saved().at(-1).args.project.tracks[0].effects,effects)
- await env.editor.loadProject('project')
- assert.deepEqual(JSON.parse(JSON.stringify(env.editor.session.tracks[0].effects)),effects)
- await host.ensurePluginSession(env.editor.session)
- const load=env.calls.find(call=>call.args?.request?.op==='load').args.request
- assert.equal(load.project.tracks.length,1)
- assert.equal('effects' in load.project.tracks[0],false)
+ const original=JSON.parse(JSON.stringify(env.editor.session))
+ for(const version of [undefined,0,1,2,3,5,99]){
+  env.controls.persisted={...original,version}
+  const raw=JSON.stringify(env.controls.persisted)
+  await assert.rejects(env.editor.loadProject('project'),/Unsupported editor project schema/)
+  assert.deepEqual(JSON.parse(JSON.stringify(env.editor.session)),original)
+  assert.equal(JSON.stringify(env.controls.persisted),raw)
+ }
+ env.controls.persisted={...original,version:4,tracks:[{id:'track',autoName:true,clips:[],effects:{reverb:0.5}}]}
+ const raw=JSON.stringify(env.controls.persisted)
+ await assert.rejects(env.editor.loadProject('project'),/Unsupported editor project schema/)
+ await env.tick(1000)
+ assert.equal(JSON.stringify(env.controls.persisted),raw)
+ assert.equal(env.saved().length,0)
 })
 
 for(const native of [false,true]){
- test(`legacy effects stay persisted but are excluded from ${native?'native':'dry'} export`,async t=>{
+ test(`current plugin-free tracks export through the ${native?'native':'dry'} path`,async t=>{
   const env=environment(t)
   if(!native)env.editor.session.pluginChain=undefined
-  env.editor.session.tracks=[{id:'track',sourceId:'source',role:'stem',name:'Track',volume:1,pan:0,muted:false,solo:false,fadeIn:0,fadeOut:0,
-   effects:{reverb:0.5,delay:0.2}}]
+  env.editor.session.tracks=[{id:'track',sourceId:'source',role:'stem',name:'Track',autoName:false,clips:[],volume:1,pan:0,muted:false,solo:false,fadeIn:0,fadeOut:0}]
   await env.editor.exportMix({format:'wav'})
   const rendered=env.calls.find(call=>call.command==='plugin_host_render')
   assert.equal(Boolean(rendered),native)
-  if(rendered)assert.equal('effects' in rendered.args.project.tracks[0],false)
   const encoded=env.calls.find(call=>call.command==='start_editor_mix_export').args.payload.project
+  assert.equal(encoded.version,4)
   assert.equal('effects' in encoded.tracks[0],false)
-  assert.deepEqual(JSON.parse(JSON.stringify(env.editor.session.tracks[0].effects)),{reverb:0.5,delay:0.2})
+  assert.equal(env.editor.session.tracks[0].name,'Track')
  })
 }
 

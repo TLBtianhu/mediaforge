@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { debugRuntimePointers } from '@/api/native'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand } from '@/api/worker'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
@@ -28,8 +29,10 @@ import { buildDiagnosticChecks, isDiagnosticIssueEvent, summarizeDiagnosticCheck
 import { detectRuntimePlatform } from '@/utils/runtime'
 import { isTauriRuntime } from '@/utils/appStore'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
+import DebugLogsPanel from '@/components/debug/DebugLogsPanel.vue'
+import DebugEventsPanel from '@/components/debug/DebugEventsPanel.vue'
 import { formatBytes } from '@/utils/format'
-import { normalizeLogRecord, formatLogRecord, logContextPreview, logMessagePreview, locationLabel, logClock, sourceLabel, type LogRecord } from '@/utils/logRecord'
+import { normalizeLogRecord, formatLogRecord } from '@/utils/logRecord'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -45,11 +48,18 @@ const { developerMode, dataRoot, modelDir, outputDir, settingsDir, editorProject
 const { activeWorkerTasks, runningTasks } = storeToRefs(task)
 const { downloadTasks } = storeToRefs(modelStore)
 
+const logs = useDebugLogs({ t, message, developerMode, revealPath })
+const {
+  debugLogLoading, debugLogClearing, debugLogReportLoading,
+  debugLogInfo, debugLogContent, debugLogTask,
+  loadDebugLog, createDebugLogReport,
+  clearDebugLogFilters, scrollDebugLogToLatest,
+} = logs
+
 import type {
-  CatalogEditMode, DebugCatalogInfo, DebugLogCategoryFilter, DebugLogContent, DebugLogInfo,
-  DebugLogLevelFilter, DebugLogReport, DebugModelConfig, DebugRuntimePointers,
-  DebugTab, DebugWorkerEvent, DebugWorkerEventGroup, ParsedDebugLogLine, RuntimeDebugEnvironmentRow,
-  RuntimeTreeChild, RuntimeTreeNode,
+  DebugModelConfig, DebugRuntimePointers,
+  DebugTab, DebugWorkerEvent, DebugWorkerEventGroup, RuntimeDebugEnvironmentRow,
+  RuntimeTreeNode,
 } from './debug_types'
 const {
   updateEndpointEditing, updateEndpointDraft, effectiveUpdateEndpoint, updateEndpointMode,
@@ -58,8 +68,9 @@ const {
 import { useCatalogEditor } from './debug/useCatalogEditor'
 import { makeExecutionLog } from './debug/executionLog'
 import { makeRuntimeDebugFiles } from './debug/runtimeDebugFiles'
+import { useDebugLogs } from './debug/useDebugLogs'
 import { useUpdateEndpoint } from './debug/useUpdateEndpoint'
-import { groupWorkerEvents, isNewerTimestamp } from './debug/workerEvents'
+import { groupWorkerEvents } from './debug/workerEvents'
 
 const {
   debugCatalogLoading,
@@ -103,26 +114,12 @@ const runtimeDebugEditingContent = ref('')
 const runtimeOverrideBackend = ref('cuda')
 const runtimeOverridePythonPath = ref('')
 const runtimeOverrideDirty = ref(false)
-const debugLogLoading = ref(false)
-const debugLogClearing = ref(false)
-const debugLogReportLoading = ref(false)
-const debugLogInfo = ref<DebugLogInfo | null>(null)
-const debugLogContent = ref<DebugLogContent | null>(null)
-const debugLogScroller = ref<HTMLElement | null>(null)
-const debugLogQuery = ref('')
-const debugLogLevel = ref<DebugLogLevelFilter>('all')
-const debugLogSource = ref('all')
-const debugLogCategory = ref<DebugLogCategoryFilter>('all')
-const debugLogTask = ref('all')
-const expandedDebugLogLines = ref<Record<string, boolean>>({})
-
 const checkingDiagnostics = ref(false)
 const optionalChecking = ref(false)
 const lastCheckedAt = ref<number | null>(null)
 const activityLoadError = ref('')
 const eventQuery = ref('')
 const eventIssuesOnly = ref(false)
-const debugLogError = ref('')
 const executionLogBody = ref<HTMLElement | null>(null)
 const failedTaskPage = ref(1)
 const failedTaskPageSize = 5
@@ -138,8 +135,8 @@ const diagnostics = computed(() => buildDiagnosticChecks({
   optionalPackage: funAsr.status.value, optionalError: funAsr.error.value, isMac: isMac.value,
 }))
 const {
-  diagnosticDetailsOpen, executionLogVisible, executionLogTaskId, executionDownloadSnapshot,
-  executionLogTask, liveExecutionDownload, executionLogDownload, executionLogName, executionLogs,
+  diagnosticDetailsOpen, executionLogVisible, executionLogTaskId,
+  executionLogTask, executionLogDownload, executionLogName, executionLogs,
   executionNodeLogs, executionLogError, canReturnToTask, diagnosticSummary, showExecutionLogs,
 } = makeExecutionLog({
   task, downloadTasks, modelStore, developerMode, diagnostics, computed, ref, watch, normalizeLogRecord, summarizeDiagnosticChecks,
@@ -294,75 +291,6 @@ const currentRuntimeOverrideDefaults = computed(() => ({
   backend: String(app.runtimeInfo?.installedBackend || app.runtimeInfo?.installState?.backend || runtimeOverrideBackend.value || 'cuda'),
   pythonPath: String(app.runtimeInfo?.installState?.pythonPath || ''),
 }))
-const debugLogRows = computed(() => [
-  { label: t('debug.currentLogPath'), value: debugLogInfo.value?.path || '' },
-  { label: t('debug.currentLogSize'), value: `${formatBytes(debugLogInfo.value?.sizeBytes || 0)} / ${formatBytes(debugLogInfo.value?.maxBytes || 0)}` },
-  { label: t('debug.persistentLogPath'), value: debugLogInfo.value?.persistentPath || debugLogContent.value?.path || '' },
-  { label: t('debug.persistentLogSize'), value: `${formatBytes(debugLogInfo.value?.persistentSizeBytes || debugLogContent.value?.sizeBytes || 0)} / ${formatBytes(debugLogInfo.value?.persistentMaxBytes || 0)}` },
-  { label: t('debug.reportPath'), value: debugLogInfo.value?.reportPath || '' },
-  { label: t('debug.reportSize'), value: debugLogInfo.value?.reportExists ? formatBytes(debugLogInfo.value?.reportSizeBytes || 0) : '-' },
-  { label: t('debug.logMode'), value: developerMode.value ? t('debug.logModeVerbose') : t('debug.logModeRelease') },
-])
-const parsedDebugLogLines = computed(() => (debugLogContent.value?.content || '')
-  .split(/\r?\n/)
-  .filter(Boolean)
-  .map((line, index) => parseDebugLogLine(line, index)))
-const debugLogLevelOptions = computed(() => [
-  { label: t('debug.logFilterAllLevels'), value: 'all' },
-  { label: 'ERROR', value: 'error' },
-  { label: 'WARN', value: 'warn' },
-  { label: 'INFO', value: 'info' },
-  { label: 'DEBUG', value: 'debug' },
-  { label: t('debug.logUnclassified'), value: 'unclassified' },
-] as Array<{ label: string; value: DebugLogLevelFilter }>)
-const debugLogSourceOptions = computed(() => {
-  const sources = Array.from(new Set(parsedDebugLogLines.value.map((line) => line.sourceKind).filter(Boolean))).sort()
-  return [
-    { label: t('debug.logFilterAllSources'), value: 'all' },
-    ...sources.map((source) => ({ label: logSourceLabel(source), value: source })),
-  ]
-})
-const debugLogCategoryOptions = computed(() => [
-  { label: t('debug.logCategoryAll'), value: 'all' },
-  { label: t('debug.logCategoryIssues'), value: 'issues' },
-  { label: t('debug.logCategoryTraceback'), value: 'traceback' },
-  { label: 'pymss', value: 'pymss' },
-  { label: 'Worker', value: 'worker' },
-  { label: 'App', value: 'app' },
-  { label: t('debug.logCategoryRuntime'), value: 'runtime' },
-  { label: t('debug.logCategoryStore'), value: 'store' },
-  { label: t('debug.logCategoryOther'), value: 'other' },
-] as Array<{ label: string; value: DebugLogCategoryFilter }>)
-const debugLogTaskOptions = computed(() => {
-  const tasks = Array.from(new Set(parsedDebugLogLines.value.flatMap((line) => [line.taskId, ...(Array.isArray(line.record.context.taskIds) ? line.record.context.taskIds.filter((id): id is string => typeof id === 'string') : [])]).filter(Boolean))).sort()
-  if (debugLogTask.value !== 'all' && !tasks.includes(debugLogTask.value)) tasks.unshift(debugLogTask.value)
-  return [
-    { label: t('debug.logFilterAllTasks'), value: 'all' },
-    ...tasks.map((taskId) => ({ label: shortTaskId(taskId), value: taskId })),
-  ]
-})
-const filteredDebugLogLines = computed(() => {
-  const query = debugLogQuery.value.trim().toLowerCase()
-  return parsedDebugLogLines.value.filter((line) => {
-    if (debugLogLevel.value !== 'all' && line.severity !== debugLogLevel.value) return false
-    if (debugLogSource.value !== 'all' && line.sourceKind !== debugLogSource.value) return false
-    if (debugLogTask.value !== 'all' && line.taskId !== debugLogTask.value && !(Array.isArray(line.record.context.taskIds) && line.record.context.taskIds.includes(debugLogTask.value))) return false
-    if (debugLogCategory.value === 'issues' && !line.hasIssue) return false
-    if (debugLogCategory.value === 'traceback' && !line.traceback) return false
-    if (!['all', 'issues', 'traceback'].includes(debugLogCategory.value) && line.category !== debugLogCategory.value) return false
-    if (!query) return true
-    return [line.timestamp, line.level, line.source, line.taskId, line.command, line.stage, line.message, line.details, line.location, line.traceback, line.raw]
-      .join('\n')
-      .toLowerCase()
-      .includes(query)
-  })
-})
-const debugLogIssueCounts = computed(() => {
-  const errors = parsedDebugLogLines.value.filter((line) => line.severity === 'error').length
-  const warnings = parsedDebugLogLines.value.filter((line) => line.severity === 'warn').length
-  const tracebacks = parsedDebugLogLines.value.filter((line) => line.traceback).length
-  return { errors, warnings, tracebacks }
-})
 const statusCards = computed(() => [
   { label: t('debug.envStatus'), value: t(diagnosticStateLabels[diagnosticSummary.value.state as DiagnosticState]), tone: diagnosticSummary.value.state, detail: t('debug.checkCounts', { ok: diagnosticSummary.value.ok, total: diagnostics.value.length }), tab: 'overview' as DebugTab },
   { label: t('debug.runningTasks'), value: String(runningTasks.value.length), tone: 'neutral', detail: [t('debug.workflowCount', { count: runningTasks.value.filter(item => item.runConfig?.runMode === 'workflow').length }), t('debug.queuedCount', { count: task.queuedTasks.length })].join(' · '), tab: 'activity' as DebugTab },
@@ -558,9 +486,9 @@ async function loadDebugModelConfig() {
   if (!selectedDebugModel.value) return false
   debugConfigLoading.value = true
   try {
-    const result = await invoke<DebugModelConfig>('debug_model_config', {
-      payload: { action: 'read', model: selectedDebugModel.value, modelDir: settings.modelDir || null },
-    })
+    const result = (await invokeWorkerCommand('debug_model_config', {
+      action: 'read', model: selectedDebugModel.value, modelDir: settings.modelDir || null,
+    })) as unknown as DebugModelConfig
     debugModelConfig.value = result
     debugConfigText.value = result.effectiveContent || ''
     return true
@@ -576,14 +504,12 @@ async function saveDebugModelConfig() {
   if (!selectedDebugModel.value || debugModelConfig.value?.readOnly) return
   debugConfigSaving.value = true
   try {
-    const result = await invoke<DebugModelConfig>('debug_model_config', {
-      payload: {
-        action: 'save',
-        model: selectedDebugModel.value,
-        modelDir: settings.modelDir || null,
-        content: debugConfigText.value,
-      },
-    })
+    const result = (await invokeWorkerCommand('debug_model_config', {
+      action: 'save',
+      model: selectedDebugModel.value,
+      modelDir: settings.modelDir || null,
+      content: debugConfigText.value,
+    })) as unknown as DebugModelConfig
     debugModelConfig.value = result
     debugConfigText.value = result.effectiveContent || ''
     await modelStore.loadModels()
@@ -609,74 +535,6 @@ async function revealPath(path: string) {
   }
 }
 
-async function scrollDebugLogToLatest() {
-  await nextTick()
-  const scroller = debugLogScroller.value
-  if (scroller) scroller.scrollTop = scroller.scrollHeight
-}
-
-async function loadDebugLog() {
-  if (!developerMode.value || debugLogLoading.value) return
-  const scroller = debugLogScroller.value
-  const followLatest = !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48
-  debugLogLoading.value = true
-  debugLogError.value = ''
-  try {
-    const [info, content] = await Promise.all([
-      invoke<DebugLogInfo>('debug_log_info'),
-      invoke<DebugLogContent>('debug_log_read'),
-    ])
-    debugLogInfo.value = info
-    debugLogContent.value = content
-    if (followLatest) await scrollDebugLogToLatest()
-  } catch (error) {
-    debugLogError.value = error instanceof Error ? error.message : String(error)
-  } finally {
-    debugLogLoading.value = false
-  }
-}
-
-async function clearDebugLog() {
-  if (!developerMode.value) return
-  debugLogClearing.value = true
-  try {
-    debugLogInfo.value = await invoke<DebugLogInfo>('debug_log_clear')
-    debugLogContent.value = await invoke<DebugLogContent>('debug_log_read')
-    await scrollDebugLogToLatest()
-    message.success(t('debug.logCleared'))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    debugLogClearing.value = false
-  }
-}
-
-async function copyDebugLog() {
-  const content = filteredDebugLogLines.value.map(line => formatLogRecord(line.record)).join('\n')
-  if (!content) return
-  try {
-    await navigator.clipboard.writeText(content)
-    message.success(t('debug.logCopied'))
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  }
-}
-
-async function createDebugLogReport() {
-  if (!developerMode.value || debugLogReportLoading.value || debugLogClearing.value) return
-  debugLogReportLoading.value = true
-  try {
-    const report = await invoke<DebugLogReport>('debug_log_create_report')
-    message.success(t('debug.reportCreated'))
-    await loadDebugLog()
-    await revealPath(report.path)
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
-  } finally {
-    debugLogReportLoading.value = false
-  }
-}
-
 function setRuntimeDebugInfo(info: DebugRuntimePointers) {
   runtimeDebugInfo.value = info
   if (runtimeDebugEditingPath.value && !info.files.some((file) => file.path === runtimeDebugEditingPath.value)) {
@@ -694,69 +552,13 @@ async function loadRuntimeDebugPointers() {
   runtimeDebugLoading.value = true
   runtimeDebugError.value = ''
   try {
-    const info = await invoke<DebugRuntimePointers>('debug_runtime_pointers')
+    const info = await debugRuntimePointers<DebugRuntimePointers>()
     setRuntimeDebugInfo(info)
   } catch (error) {
     runtimeDebugError.value = error instanceof Error ? error.message : String(error)
   } finally {
     runtimeDebugLoading.value = false
   }
-}
-
-function parseDebugLogLine(raw: string, index: number): ParsedDebugLogLine {
-  const record = normalizeLogRecord(raw, index)
-  const severity: DebugLogLevelFilter = record.level === 'fatal' ? 'error'
-    : record.level === 'trace' ? 'debug' : record.level || 'unclassified'
-  const fields = Object.fromEntries(Object.entries({ ...record.context, taskId: record.taskId, nodeId: record.nodeId, jobId: record.jobId, requestId: record.requestId }).filter(([, value]) => value != null).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]))
-  const details = Object.entries(fields).map(([key, value]) => `${key}=${value}`).join('\n')
-  return {
-    record, id: record.id, timestamp: logClock(record.timestamp), severity,
-    level: record.level?.toUpperCase() || t('debug.logUnclassified'),
-    source: (record.logger === 'logger' && record.location?.file ? record.location.file.replaceAll('\\', '/').split('/').pop() : record.logger) || record.event, sourceKind: record.source,
-    category: inferLogCategory(record.event, record.source, '', fields),
-    taskId: record.taskId || record.jobId || '', command: fields.command || '', stage: fields.stage || '',
-    message: record.message, messageContext: logContextPreview(record), details, location: locationLabel(record),
-    traceback: record.detail || '', hasIssue: severity === 'error' || severity === 'warn', fields, raw,
-  }
-}
-
-function inferLogCategory(source: string, sourceKind: string, message: string, fields: Record<string, string>): DebugLogCategoryFilter {
-  const text = `${source} ${sourceKind} ${message} ${fields.command || ''} ${fields.stage || ''}`.toLowerCase()
-  if (sourceKind === 'pymss' || text.includes('pymss') || text.includes('separator.py')) return 'pymss'
-  if (text.includes('runtime') || text.includes('env_info') || text.includes('pythonpath')) return 'runtime'
-  if (text.includes('app.store') || text.includes('store.')) return 'store'
-  if (sourceKind === 'worker' || text.includes('worker.')) return 'worker'
-  if (sourceKind === 'studio' || sourceKind === 'app' || text.includes('app.')) return 'app'
-  return 'other'
-}
-
-function logSourceLabel(source: string) {
-  return source === 'third_party' ? t('debug.logSourceExternal') : sourceLabel(source as LogRecord['source'])
-}
-
-function canExpandDebugLogLine(line: ParsedDebugLogLine) {
-  return Boolean(line.raw || line.traceback || line.location || line.details)
-}
-
-function logCategoryLabel(category: DebugLogCategoryFilter) {
-  const option = debugLogCategoryOptions.value.find((item) => item.value === category)
-  return option?.label || category
-}
-
-function toggleDebugLogLine(line: ParsedDebugLogLine) {
-  if (!canExpandDebugLogLine(line)) return
-  expandedDebugLogLines.value = {
-    ...expandedDebugLogLines.value,
-    [line.id]: !expandedDebugLogLines.value[line.id],
-  }
-}
-
-function clearDebugLogFilters() {
-  debugLogQuery.value = ''
-  debugLogLevel.value = 'all'
-  debugLogCategory.value = 'all'
-  debugLogSource.value = 'all'
-  debugLogTask.value = 'all'
 }
 
 function syncRuntimeOverrideFromCurrent(force = false) {
@@ -1453,7 +1255,7 @@ watch(developerMode, (enabled) => {
             <div class="debug-task-entry__meta">
               <span>{{ t(item.runConfig?.runMode === 'workflow' ? 'debug.workflowTasks' : 'debug.modelTask') }}</span>
               <code :title="item.id">{{ shortTaskId(item.id) }}</code>
-              <span v-if="item.batchId">{{ t('debug.batchTask') }}{{ item.batchIndex != null ? ` #${item.batchIndex + 1}` : '' }}</span>
+              <span v-if="item.jobId">{{ t('debug.batchTask') }}{{ item.batchIndex != null ? ` #${item.batchIndex + 1}` : '' }}</span>
             </div>
             <code class="debug-task-entry__input" :title="item.input">{{ item.input }}</code>
             <p v-if="item.stageLabel || item.progressDetail">{{ item.stageLabel }} {{ item.progressDetail }}</p>
@@ -1551,186 +1353,37 @@ watch(developerMode, (enabled) => {
       </div>
     </n-modal>
 
-    <n-card v-if="activeTab === 'events'" class="debug-card debug-card--events" :bordered="true" size="small">
-      <template #header>
-        <div class="debug-section-title">
-          <n-icon :component="TerminalOutline" />
-          <span>{{ t('debug.workerEvents') }}</span>
-        </div>
-      </template>
-      <div class="debug-event-toolbar">
-        <n-input v-model:value="eventQuery" clearable :placeholder="t('debug.eventSearch')" :input-props="{ 'aria-label': t('debug.eventSearch') }" />
-        <n-checkbox v-model:checked="eventIssuesOnly">{{ t('debug.logCategoryIssues') }}</n-checkbox>
-        <span>{{ t('debug.eventGroupCount', { shown: recentWorkerEventGroups.length, total: workerEventGroups.length }) }}</span>
-      </div>
-      <div v-if="eventQuery === executionLogTaskId && canReturnToTask" class="debug-task-context">
-        <span>{{ t('debug.logScope', { id: executionLogTaskId }) }}</span>
-        <n-button size="tiny" tertiary @click="showExecutionLogs(executionLogTaskId)">{{ t('debug.returnToTask') }}</n-button>
-      </div>
-      <div class="worker-event-list">
-        <button
-          v-for="group in recentWorkerEventGroups"
-          :key="group.key"
-          type="button"
-          class="worker-event-row"
-          @click="openWorkerEvent(group)"
-        >
-          <code>{{ group.taskId ? t('debug.workerEventTaskGroup') : group.latestType }}</code>
-          <span>{{ shortTaskId(group.taskId) }}</span>
-          <span>{{ workerEventGroupSummary(group) }}</span>
-          <time>{{ eventTime(group.lastTimestamp) }}</time>
-          <strong>{{ group.eventCount }}</strong>
-        </button>
-        <n-empty v-if="!recentWorkerEventGroups.length" :description="t('settings.developerNoWorkerEvents')" />
-      </div>
-      <n-modal
-        v-model:show="workerEventDialogVisible"
-        preset="card"
-        :title="workerEventGroupTitle(selectedWorkerEvent)"
-        :style="{ width: 'min(920px, calc(100vw - 48px))' }"
-      >
-        <div class="worker-event-modal-meta">
-          <span>{{ shortTaskId(selectedWorkerEvent?.taskId) }}</span>
-          <span>{{ t('debug.workerEventCount', { count: selectedWorkerEvent?.eventCount || 0 }) }}</span>
-          <span>{{ workerEventGroupSummary(selectedWorkerEvent) }}</span>
-          <time>{{ eventTime(selectedWorkerEvent?.lastTimestamp) }}</time>
-          <n-button size="tiny" tertiary @click="copyText(workerEventGroupPayload(selectedWorkerEvent), 'debug.eventCopied')">{{ t('common.copy') }}</n-button>
-        </div>
-        <pre class="worker-event-modal-payload">{{ workerEventGroupPayload(selectedWorkerEvent) }}</pre>
-      </n-modal>
-    </n-card>
+    <DebugEventsPanel
+      v-if="activeTab === 'events'"
+      v-model:query="eventQuery"
+      v-model:issues-only="eventIssuesOnly"
+      v-model:dialog-visible="workerEventDialogVisible"
+      :groups="workerEventGroups"
+      :recent-groups="recentWorkerEventGroups"
+      :selected="selectedWorkerEvent"
+      :execution-log-task-id="executionLogTaskId"
+      :can-return-to-task="canReturnToTask"
+      :open-event="openWorkerEvent"
+      :show-execution-logs="showExecutionLogs"
+      :copy-text="copyText"
+      :group-summary="workerEventGroupSummary"
+      :group-title="workerEventGroupTitle"
+      :group-payload="workerEventGroupPayload"
+      :event-time="eventTime"
+    />
 
-    <n-card v-if="activeTab === 'logs'" class="debug-card debug-card--logs" :bordered="true" size="small">
-      <template #header>
-        <div class="debug-section-title">
-          <n-icon :component="TerminalOutline" />
-          <span>{{ t('debug.sessionLog') }}</span>
-        </div>
-      </template>
-      <n-alert v-if="debugLogError" type="error" class="debug-log-read-error">{{ debugLogError }}</n-alert>
-      <div class="debug-log-console-head">
-        <div class="debug-log-toolbar">
-          <n-button size="small" secondary :loading="debugLogLoading" @click="loadDebugLog">
-            {{ t('common.refresh') }}
-          </n-button>
-          <n-button size="small" secondary :disabled="!debugLogInfo?.logsDir" @click="revealPath(debugLogInfo?.logsDir || logsDir)">
-            {{ t('debug.openLogsDir') }}
-          </n-button>
-          <n-button size="small" secondary :disabled="!filteredDebugLogLines.length" @click="copyDebugLog">
-            {{ t('debug.copyLog') }}
-          </n-button>
-          <span class="debug-log-toolbar__spacer" />
-          <n-popconfirm @positive-click="clearDebugLog">
-            <template #trigger><n-button size="small" secondary type="warning" :disabled="debugLogReportLoading" :loading="debugLogClearing">{{ t('debug.clearLog') }}</n-button></template>
-            {{ t('debug.confirmClearLog') }}
-          </n-popconfirm>
-        </div>
-        <details class="debug-log-meta-panel">
-          <summary>{{ t('debug.logFileDetails') }}</summary>
-          <div class="kv-list debug-log-meta">
-            <div v-for="row in debugLogRows" :key="row.label" class="kv-row">
-              <span>{{ row.label }}</span>
-              <code :title="row.value || '-'">{{ row.value || '-' }}</code>
-            </div>
-          </div>
-        </details>
-      </div>
-      <n-alert v-if="debugLogContent?.truncated" type="warning" :show-icon="true">
-        {{ t('debug.logTailHint') }}
-      </n-alert>
-      <div v-if="debugLogTask !== 'all'" class="debug-task-context">
-        <span>{{ t('debug.logScope', { id: debugLogTask }) }}</span>
-        <n-button v-if="debugLogTask === executionLogTaskId && canReturnToTask" size="tiny" tertiary @click="showExecutionLogs(executionLogTaskId)">{{ t('debug.returnToTask') }}</n-button>
-      </div>
-      <section v-if="parsedDebugLogLines.length" class="debug-log-insights">
-        <button class="debug-log-insight debug-log-insight--error" type="button" @click="debugLogLevel = 'error'; debugLogCategory = 'all'">
-          <span>{{ t('debug.logErrors') }}</span>
-          <strong>{{ debugLogIssueCounts.errors }}</strong>
-        </button>
-        <button class="debug-log-insight debug-log-insight--warn" type="button" @click="debugLogLevel = 'warn'; debugLogCategory = 'all'">
-          <span>{{ t('debug.logWarnings') }}</span>
-          <strong>{{ debugLogIssueCounts.warnings }}</strong>
-        </button>
-        <button class="debug-log-insight debug-log-insight--traceback" type="button" @click="debugLogCategory = 'traceback'; debugLogLevel = 'all'">
-          <span>{{ t('debug.logTracebacks') }}</span>
-          <strong>{{ debugLogIssueCounts.tracebacks }}</strong>
-        </button>
-      </section>
-      <section v-if="parsedDebugLogLines.length" class="debug-log-viewer">
-        <div class="debug-log-filters">
-          <n-input v-model:value="debugLogQuery" size="small" clearable :placeholder="t('debug.logSearchPlaceholder')" />
-          <n-select v-model:value="debugLogLevel" size="small" :options="debugLogLevelOptions" />
-          <n-select v-model:value="debugLogCategory" size="small" :options="debugLogCategoryOptions" />
-          <n-select v-model:value="debugLogTask" size="small" filterable :options="debugLogTaskOptions" />
-          <n-select v-model:value="debugLogSource" size="small" :options="debugLogSourceOptions" />
-          <n-button size="small" secondary @click="clearDebugLogFilters">
-            {{ t('debug.logClearFilters') }}
-          </n-button>
-        </div>
-        <div class="debug-log-viewer__head">
-          <span>{{ t('debug.logFilteredCount', { shown: filteredDebugLogLines.length, total: parsedDebugLogLines.length }) }}</span>
-          <span>{{ t('debug.logLatestHint') }}</span>
-        </div>
-        <div v-if="filteredDebugLogLines.length" ref="debugLogScroller" class="debug-log-stream" role="log" aria-live="polite">
-          <div class="debug-log-table__head" aria-hidden="true">
-            <span>{{ t('debug.logColumnTime') }}</span>
-            <span>{{ t('debug.logColumnLevel') }}</span>
-            <span>{{ t('debug.logColumnSource') }}</span>
-            <span>{{ t('debug.logColumnModule') }}</span>
-            <span>{{ t('debug.logColumnScope') }}</span>
-            <span>{{ t('debug.logColumnMessage') }}</span>
-          </div>
-          <article
-            v-for="line in filteredDebugLogLines"
-            :key="line.id"
-            class="debug-log-row"
-            :class="[`debug-log-row--${line.severity}`, `log-source--${line.sourceKind}`, { 'debug-log-row--expandable': canExpandDebugLogLine(line) }]"
-            :title="logMessagePreview(line.record)"
-            tabindex="0"
-            :aria-expanded="Boolean(expandedDebugLogLines[line.id])"
-            @keydown.enter.prevent="toggleDebugLogLine(line)"
-            @keydown.space.prevent="toggleDebugLogLine(line)"
-            @click="toggleDebugLogLine(line)"
-          >
-            <code class="debug-log-row__time">{{ line.timestamp || '-' }}</code>
-            <span class="debug-log-row__level">{{ line.level || line.severity }}</span>
-            <code class="debug-log-row__source" :title="line.source || '-'">{{ logSourceLabel(line.sourceKind) }}</code>
-            <code class="debug-log-row__module" :title="line.source">{{ line.source || '—' }}</code>
-            <code class="debug-log-row__location" :title="[line.taskId, line.record.nodeId].filter(Boolean).join(' / ')">{{ line.record.nodeId || shortTaskId(line.taskId) || '—' }}</code>
-            <span class="debug-log-row__message"><span class="debug-log-row__message-text">{{ line.message || line.record.event || line.raw }}</span><span v-if="line.messageContext" class="debug-log-row__message-context"> · {{ line.messageContext }}</span></span>
-            <div v-if="expandedDebugLogLines[line.id]" class="debug-log-row__detail" @click.stop @keydown.stop>
-              <div v-if="line.message" class="debug-log-row__full-message">
-                <span>{{ t('debug.logColumnMessage') }}</span>
-                <pre>{{ line.message }}</pre>
-              </div>
-              <div v-if="line.location" class="debug-log-row__location-detail">
-                <span>{{ t('debug.logLocation') }}</span>
-                <code>{{ line.location }}</code>
-              </div>
-              <pre v-if="line.traceback">{{ line.traceback }}</pre>
-              <pre v-if="line.details">{{ line.details }}</pre>
-              <div class="debug-log-row__raw">
-                <div class="debug-log-row__raw-head">
-                  <span>{{ t('debug.logRawLine') }}</span>
-                  <n-button size="tiny" quaternary @click.stop="copyText(line.raw, 'debug.logCopied')">{{ t('common.copy') }}</n-button>
-                </div>
-                <pre>{{ line.raw }}</pre>
-              </div>
-            </div>
-          </article>
-        </div>
-        <n-empty v-else :description="t('debug.logNoFilteredResults')">
-          <template #extra>
-            <n-button size="small" secondary @click="clearDebugLogFilters">
-              {{ t('debug.logClearFilters') }}
-            </n-button>
-          </template>
-        </n-empty>
-      </section>
-      <n-empty v-else :description="t('debug.logEmpty')" />
-    </n-card>
+    <DebugLogsPanel
+      v-if="activeTab === 'logs'"
+      :logs="logs"
+      :execution-log-task-id="executionLogTaskId"
+      :can-return-to-task="canReturnToTask"
+      :logs-dir="logsDir"
+      :show-execution-logs="showExecutionLogs"
+      :reveal-path="revealPath"
+      :copy-text="copyText"
+    />
     </div>
   </div>
 </template>
 
-<style scoped src="./DebugView.css"></style>
+<style src="./DebugView.css"></style>

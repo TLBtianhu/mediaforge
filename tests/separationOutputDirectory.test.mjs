@@ -1,12 +1,13 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after, afterEach } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia, setActivePinia } from 'pinia'
 import { createServer } from 'vite'
+import { JOB_KEY, recordsFromEnqueue, readJobs, putJobs, storageShim } from './_audioJournalFixture.mjs'
 
 const vite = await createServer({
   configFile: false,
-  server: { middlewareMode: true, hmr: false, watch: null },
+  server: { middlewareMode: true, hmr: false, watch: null, ws: false },
   appType: 'custom',
   optimizeDeps: { noDiscovery: true },
   resolve: { alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) } },
@@ -40,6 +41,10 @@ const { useTaskStore } = await vite.ssrLoadModule('/src/stores/task.ts')
 const { useModelStore } = await vite.ssrLoadModule('/src/stores/model.ts')
 const { useAppStore } = await vite.ssrLoadModule('/src/stores/app.ts')
 const { selectQueuedJobGroups } = await vite.ssrLoadModule('/src/features/tasks/lifecycle.ts')
+const { useMediaJobsStore } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
+const { audioEnqueueFromTasks, audioJobEvent } = await vite.ssrLoadModule('/src/features/tasks/audioJobs.ts')
+const journalByTask = new WeakMap()
+let persistedValues
 const stores = []
 const waitForSave = () => new Promise(resolve => setTimeout(resolve, 180))
 
@@ -54,13 +59,11 @@ afterEach(async () => {
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial).map(([key, value]) => [
-    `pymss-studio:${key}`, JSON.stringify(value),
+    `pymss-studio:${key}`, JSON.stringify(key === 'separate-state' ? {version:1,...value} : value),
   ]))
   globalThis.window = {}
-  globalThis.localStorage = {
-    getItem: key => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, value),
-  }
+  globalThis.localStorage = storageShim(values)
+  persistedValues = values
   return values
 }
 
@@ -71,11 +74,42 @@ async function newStore(platform = 'win32') {
   const model = useModelStore(pinia)
   const app = useAppStore(pinia)
   app.envInfo = { platform }
-  stores.push(task, model, app)
+  const journal = useMediaJobsStore(pinia)
+  journalByTask.set(task, journal)
+  stores.push(task, model, app, journal)
   await Promise.all([task.initialize(), model.initialize()])
   model.selectedModel = 'model-a'
   task.addInputFiles(['D:/Audio/song.wav'])
   return task
+}
+
+
+// Simulate the backend observer writing the only durable record before its live event.
+async function emitWorkerEvent(task, event) {
+  const jobs = readJobs(persistedValues)
+  const current = jobs.find(job => job.jobId === event.taskId)
+  assert.ok(current, `missing canonical job ${event.taskId}`)
+  const next = audioJobEvent(current, jobs, event)
+  if (next.status === 'running' && next.owner === null) next.owner = { kind: 'tauri-worker', pid: 12345 }
+  putJobs(persistedValues, [next])
+  journalByTask.get(task).handleWorkerEvent(event)
+  await Promise.resolve()
+  await journalByTask.get(task).refresh()
+  await Promise.resolve()
+}
+
+function seedQueuedJobs(drafts) {
+  const groups = Map.groupBy(drafts, item => item.jobId || item.id)
+  for (const tasks of groups.values()) {
+    const prepared = tasks.map(task => ({ ...task, runConfig: {
+      modelDir: null, downloadSource: 'modelscope', downloadMethod: 'aria2c',
+      deviceIds: [], selectedStems: [], useTta: false, debug: false, audioParams: {},
+      inferenceParams: {}, inferenceParamsVersion: 3, outputFormat: 'wav', device: 'cpu',
+      ...task.runConfig,
+    } }))
+    const request = audioEnqueueFromTasks(prepared)
+    putJobs(persistedValues, recordsFromEnqueue(request, Math.max(1, tasks[0].createdAt) / 1000))
+  }
 }
 
 const workflow = {
@@ -130,9 +164,10 @@ for (const selectedDirectory of [undefined, 'E:/WorkflowOutput']) {
     storage()
     const task = await newStore()
     const definition = {
+      version: 0.4,
       nodes: [
         { id: 1, type: 'pymss_load_audio_batch', widgets_values: ['D:/Music', true, false, ''] },
-        { id: 2, type: 'pymss_save_audio', widgets_values: ['', 'stems', '44100'] },
+        { id: 2, type: 'pymss_save_audio', widgets_values: ['', '44100', 'FLOAT', 'PCM_24', '320k'] },
       ], links: [[1, 1, 0, 2, 0, 'AUDIO']],
     }
     const saved = structuredClone(definition)
@@ -153,7 +188,8 @@ for (const selectedDirectory of [undefined, 'E:/WorkflowOutput']) {
     assert.deepEqual(original.runConfig.workflowDefinition, saved)
     assert.deepEqual(original.runConfig.workbench.outputs, {})
     definition.nodes[0].widgets_values[0] = 'D:/Changed'
-    assert.deepEqual(original.runConfig.workbench.sourceDefinition, saved)
+    assert.equal(Object.hasOwn(original.runConfig.workbench,'sourceDefinition'),false)
+    assert.deepEqual(original.runConfig.workflowDefinition,saved)
     original.status = 'failed'
     settings.outputDir = 'F:/NextRun'
     bindings.outputDirectory = 'G:/NextSelection'
@@ -166,7 +202,7 @@ for (const selectedDirectory of [undefined, 'E:/WorkflowOutput']) {
 test('clearing the native graph directory restores the current default for new runs', async () => {
   storage()
   const task = await newStore()
-  const graph = { ...workflow, definition: { nodes: [{ id: 1, type: 'pymss_save_audio' }], links: [] } }
+  const graph = { ...workflow, definition: { version: 0.4, nodes: [{ id: 1, type: 'pymss_save_audio' }], links: [] } }
   const bindings = { inputs: {}, outputs: {}, primaryInput: '', outputLayout: 'flat', outputDirectory: 'E:/Selected' }
   const first = await task.startWorkbenchInference(graph, bindings)
   delete bindings.outputDirectory
@@ -225,9 +261,11 @@ test('simple workbench batches retain the selected file order when tasks share a
     assert.deepEqual(jobs[0].tasks.map(item => item.input), expected)
     assert.equal(jobs[0].primary.input, expected[0])
   }
-  for (const item of task.tasks) {
-    item.status = 'done'
-    item.files = [item.input]
+  for (const item of [...task.tasks]) {
+    await emitWorkerEvent(task, { type: 'task.result', taskId: item.id, payload: {
+      outputRoot: item.jobOutput, outputDir: item.output,
+      outputs: [{ stem: 'Vocals', path: `D:/Generated/${item.id}.wav` }],
+    } })
   }
   assert.deepEqual(task.resultJobs[0].tasks.map(item => item.input), expected)
   assert.equal(task.resultJobs[0].primary.input, expected[0])
@@ -282,29 +320,29 @@ for (const mode of ['model', 'workflow']) {
     })
   }
 
-  test(`${mode} retry recovers the root of legacy folder tasks without adding another input folder`, async () => {
+  test(`${mode} retry rejects a view without the required canonical output root`, async () => {
     storage()
     const task = await newStore()
     const submitted = await submit(task, { outputDir: 'E:/', outputLayout: 'folders' })
     const original = submitted.tasks[0]
     delete original.jobOutput
     original.status = 'failed'
-    const retried = await task.retryTask(original.id)
-    assert.equal(retried.jobOutput, 'E:/')
-    assert.equal(retried.output, 'E:/song')
+    const before = task.tasks.length
+    await assert.rejects(task.retryTask(original.id), /separate.retryOutputDirectoryUnknown/)
+    assert.equal(task.tasks.length, before)
   })
 
-  test(`${mode} retry keeps a historical absolute folder path after restart`, async () => {
+  test(`${mode} retry keeps the backend absolute output root after restart`, async () => {
     storage()
     const task = await newStore()
     const submitted = await submit(task, { outputDir: 'delivery', outputLayout: 'folders' })
     const original = submitted.tasks[0]
     const savedDirectory = 'E:/OldWorkingDirectory/delivery/song'
-    task.handleWorkerEvent({
+    await emitWorkerEvent(task, {
       type: 'task.result', taskId: original.id,
-      payload: { outputDir: savedDirectory, files: [], outputs: [] },
+      payload: { outputRoot: 'E:/OldWorkingDirectory/delivery', outputDir: savedDirectory, files: [], outputs: [] },
     })
-    assert.equal(original.jobOutput, 'delivery')
+    assert.equal(original.jobOutput, 'E:/OldWorkingDirectory/delivery')
     await waitForSave()
 
     settings.outputDir = 'F:/NewDefault'
@@ -319,7 +357,7 @@ for (const mode of ['model', 'workflow']) {
     const task = await newStore()
     const submitted = await submit(task, { outputDir: 'D:/OutputAlias', outputLayout: 'folders' })
     const original = submitted.tasks[0]
-    task.handleWorkerEvent({
+    await emitWorkerEvent(task, {
       type: 'task.result', taskId: original.id,
       payload: { outputRoot: 'E:/PhysicalOutput', outputDir: 'E:/PhysicalOutput/song', files: [], outputs: [] },
     })
@@ -344,9 +382,9 @@ for (const mode of ['model', 'workflow']) {
         : `${root}${separator}song`
       const submitted = await submit(task, { outputDir: 'delivery', outputLayout: 'folders' })
       const original = submitted.tasks[0]
-      task.handleWorkerEvent({
+      await emitWorkerEvent(task, {
         type: 'task.result', taskId: original.id,
-        payload: { outputDir: joined, files: [], outputs: [] },
+        payload: { outputRoot: root, outputDir: joined, files: [], outputs: [] },
       })
       const retried = await task.retryTask(original.id)
       assert.equal(retried.jobOutput, root)
@@ -362,13 +400,13 @@ for (const mode of ['model', 'workflow']) {
       const original = submitted.tasks[0]
       const payload = { outputDir: 'E:/Archive/renamed-song', files: [], outputs: [] }
       if (reportRoot) payload.outputRoot = 'E:/Outputs'
-      task.handleWorkerEvent({ type: 'task.result', taskId: original.id, payload })
+      await emitWorkerEvent(task, { type: 'task.result', taskId: original.id, payload })
       await waitForSave()
       const restarted = await newStore()
       const retried = await restarted.retryTask(original.id)
       assert.equal(retried.jobOutput, 'E:/Outputs')
       assert.equal(retried.output, 'E:/Outputs/song')
-      restarted.handleWorkerEvent({ type: 'task.result', taskId: retried.id, payload })
+      await emitWorkerEvent(restarted, { type: 'task.result', taskId: retried.id, payload })
       assert.equal(retried.output, original.output)
     })
   }
@@ -377,7 +415,7 @@ for (const mode of ['model', 'workflow']) {
     storage()
     const task = await newStore()
     const original = (await submit(task, { outputDir: 'delivery', outputLayout: 'folders' })).tasks[0]
-    task.handleWorkerEvent({
+    await emitWorkerEvent(task, {
       type: 'task.result', taskId: original.id,
       payload: { outputDir: 'E:/Archive/renamed-song', files: [], outputs: [] },
     })
@@ -397,14 +435,14 @@ for (const mode of ['model', 'workflow']) {
         const outputRoot = '/tmp/physical-root '
         const outputDir = outputLayout === 'folders' ? `${outputRoot}/ song ` : outputRoot
         const output = { stem: 'vocals', path: `${outputDir}/vocals.wav` }
-        task.handleWorkerEvent({
+        await emitWorkerEvent(task, {
           type: 'task.result', taskId: original.id,
           payload: { outputRoot, outputDir, files: [output.path], outputs: [output] },
         })
         await waitForSave()
-        const stored = JSON.parse(values.get('pymss-studio:task-history')).tasks.find(item => item.id === original.id)
-        assert.equal(stored.output, outputDir)
-        assert.equal(stored.jobOutput, outputRoot)
+        const stored = JSON.parse(values.get(JOB_KEY + original.id))
+        assert.equal(stored.result.outputDir, outputDir)
+        assert.equal(stored.result.outputRoot, outputRoot)
         const restarted = await newStore(platform)
         const restored = restarted.getTaskById(original.id)
         assert.equal(restored.output, outputDir)
@@ -427,7 +465,7 @@ for (const mode of ['model', 'workflow']) {
         const original = submitted.tasks[0]
         const savedDirectory = `${root}/${stem}`
         assert.equal(original.output, savedDirectory)
-        task.handleWorkerEvent({
+        await emitWorkerEvent(task, {
           type: 'task.result', taskId: original.id,
           payload: { outputDir: savedDirectory, files: [], outputs: [] },
         })
@@ -437,7 +475,7 @@ for (const mode of ['model', 'workflow']) {
       }
     })
 
-    test(`${mode} ${platform} historical POSIX output keeps its directory after restart`, async () => {
+    test(`${mode} ${platform} backend POSIX output keeps its directory after restart`, async () => {
       storage()
       const task = await newStore(platform)
       const separator = String.fromCharCode(92)
@@ -446,9 +484,9 @@ for (const mode of ['model', 'workflow']) {
       const submitted = await submit(task, { outputDir: 'delivery', outputLayout: 'folders' })
       const original = submitted.tasks[0]
       const savedDirectory = `/tmp/results/AC${separator}DC`
-      task.handleWorkerEvent({
+      await emitWorkerEvent(task, {
         type: 'task.result', taskId: original.id,
-        payload: { outputDir: savedDirectory, files: [], outputs: [] },
+        payload: { outputRoot: '/tmp/results', outputDir: savedDirectory, files: [], outputs: [] },
       })
       await waitForSave()
       const restarted = await newStore(platform)
@@ -463,7 +501,7 @@ for (const count of [0, 2]) {
   test(`separation rejects a graph with ${count} inputs before creating tasks`, async () => {
     storage()
     const task = await newStore()
-    const definition = { nodes: [
+    const definition = { version: 0.4, nodes: [
       ...Array.from({ length: count }, (_, index) => ({ id: index + 1, type: 'pymss_load_audio', widgets_values: ['input.wav', 'same'] })),
       { id: 10, type: 'pymss_save_audio' },
     ], links: [] }
@@ -477,7 +515,7 @@ for (const count of [0, 2]) {
 test('multi-input graphs retain native execution through the workflow workbench', async () => {
   storage()
   const task = await newStore()
-  const definition = { nodes: [
+  const definition = { version: 0.4, nodes: [
     { id: 1, type: 'pymss_load_audio', widgets_values: ['D:/first.wav', ''] },
     { id: 2, type: 'pymss_load_audio', widgets_values: ['D:/second.wav', ''] },
     { id: 3, type: 'pymss_save_audio' },
@@ -490,7 +528,7 @@ test('multi-input graphs retain native execution through the workflow workbench'
   assert.deepEqual(result.tasks[0].runConfig.workflowDefinition, definition)
 })
 
-test('retry cannot bypass the separation input restriction in older task snapshots', async () => {
+test('retry validates the projected workflow before enqueuing a new job', async () => {
   storage()
   const task = await newStore()
   const queued = await task.startWorkflowInference(workflow)
@@ -509,21 +547,22 @@ function queuedWorkflowSnapshots(count, inputCounts, workbench = false) {
   return Array.from({ length: count }, (_, index) => ({
     id: `restored-${index}`, jobId: 'restored-workflow', model: 'Workflow',
     input: `D:/Audio/${index}.wav`, jobOutput: 'D:/Outputs', output: `D:/Outputs/${index}`,
-    status: 'queued', createdAt: index + 1, updatedAt: index + 1, files: [], outputs: [], logs: [],
+    status: 'queued', createdAt: index + 1, updatedAt: index + 1, outputs: [], logs: [],
     runConfig: {
       runMode: 'workflow', workflowId: workflow.id, workflowName: workflow.name,
-      workflowDefinition: { nodes: [
+      workflowDefinition: { version: 0.4, nodes: [
         ...Array.from({ length: inputCounts[index] }, (_, node) => ({ id: node + 1, type: 'pymss_load_audio' })),
         { id: 10, type: 'pymss_save_audio' },
       ], links: [] },
-      outputLayout: 'folders', device: 'cpu', outputFormat: 'wav', inferenceParams: {},
-      ...(workbench ? { workbench: { version: 1, nativeGraph: true } } : {}),
+      outputLayout: 'folders', device: 'cpu', outputFormat: 'wav', inferenceParamsVersion:3, inferenceParams: {},
+      ...(workbench ? { workbench: { version: 2, nativeGraph: true, inputs:{},outputs:{},bindings:{},sourceUpdatedAt:1 } } : {}),
     },
   }))
 }
 
 async function resumeRestoredQueue(snapshots, concurrency = 1) {
-  storage({ 'task-history': { tasks: snapshots } })
+  storage()
+  seedQueuedJobs(snapshots)
   const task = await newStore()
   settings.maxConcurrentSeparations = concurrency
   const calls = []
@@ -531,10 +570,26 @@ async function resumeRestoredQueue(snapshots, concurrency = 1) {
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
     async invoke(command, args) {
+      if (command === 'agent_jobs') return { schemaVersion: 3, full: true, removed: [], jobs: readJobs(persistedValues), dataRoot: '', jobsDir: '' }
       if (command === 'start_workflow_inference' || command === 'start_separation') {
-        calls.push({ command, ...args.payload })
-        if (startedIds.has(args.payload.taskId)) throw new Error(`task already exists: ${args.payload.taskId}`)
-        startedIds.add(args.payload.taskId)
+        assert.deepEqual(Object.keys(args.payload), ['jobId'])
+        const job = readJobs(persistedValues).find(job => job.jobId === args.payload.jobId)
+        const jobs = readJobs(persistedValues)
+        const primary = jobs.find(item => item.jobId === job.audio.primaryJobId)
+        const active = jobs.filter(item => item.audio?.primaryJobId === primary.jobId && item.status === 'queued')
+        const nodes = primary.payload.workflow?.nodes
+        const inputCount = nodes?.filter(node => ['input_audio', 'pymss_load_audio', 'LoadAudio', 'pymss_load_audio_batch'].includes(node.type)).length
+        const rejected = command === 'start_workflow_inference' && !primary.presentation?.workbench && nodes && inputCount !== 1
+        const now = Date.now() / 1000
+        putJobs(persistedValues, active.map(item => ({ ...item, status: rejected ? 'failed' : 'running',
+          updatedAt: now, startedAt: now, finishedAt: rejected ? now : null,
+          owner: { kind: 'tauri-worker', pid: 12345 },
+          error: rejected ? (inputCount ? 'separate.workflowMultipleInputs' : 'separate.workflowNoInput') : null,
+          runtime: { ...item.runtime, stage: rejected ? 'failed' : 'preparing' } })))
+        if (rejected) throw new Error('backend validation rejected workflow')
+        calls.push({ command, ...args.payload, memberJobIds: active.map(item => item.jobId) })
+        if (startedIds.has(args.payload.jobId)) throw new Error(`task already exists: ${args.payload.jobId}`)
+        startedIds.add(args.payload.jobId)
       }
       return { started: true }
     },
@@ -550,7 +605,7 @@ async function restoreWorkflowQueue(count, inputCounts, workbench = false) {
 
 for (const count of [1, 2]) {
   for (const inputs of [0, 2]) {
-    test(`restoring ${count} queued workflow task(s) rejects ${inputs} inputs before dispatch`, async () => {
+    test(`restored ${count} queued workflow task(s) adopt backend rejection of ${inputs} inputs`, async () => {
       const { task, calls } = await restoreWorkflowQueue(count, Array(count).fill(inputs))
       assert.equal(calls.length, 0)
       assert.equal(task.tasks.length, count)
@@ -562,7 +617,7 @@ for (const count of [1, 2]) {
   test(`restoring ${count} queued single-input task(s) still dispatches normally`, async () => {
     const { task, calls } = await restoreWorkflowQueue(count, Array(count).fill(1))
     assert.equal(calls.length, 1)
-    assert.equal(Boolean(calls[0].tasks), count > 1)
+    assert.equal(calls[0].memberJobIds.length, count)
     assert.ok(task.tasks.every(item => item.status === 'preparing'))
   })
 
@@ -573,10 +628,13 @@ for (const count of [1, 2]) {
   })
 }
 
-test('a restored workflow batch validates every task before starting the worker', async () => {
-  const { task, calls } = await restoreWorkflowQueue(2, [1, 2])
-  assert.equal(calls.length, 0)
-  assert.ok(task.tasks.every(item => item.status === 'failed' && item.error === 'separate.workflowMultipleInputs'))
+test('a restored workflow batch uses one shared workflow for every leaf', async () => {
+  const { task, calls } = await restoreWorkflowQueue(2, [1, 1])
+  assert.equal(calls.length, 1)
+  const records = readJobs(persistedValues)
+  assert.equal(records.filter(job => job.payload).length, 1)
+  assert.equal(records.filter(job => job.payloadRef).length, 1)
+  assert.ok(task.tasks.every(item => item.status === 'preparing'))
 })
 
 function queuedBatch(id, inputCount, mode = 'workflow', createdAt = 1) {
@@ -593,27 +651,27 @@ for (const mode of ['workflow', 'model']) {
     ], 2)
     assert.equal(calls.length, 1)
     assert.equal(calls[0].command, mode === 'workflow' ? 'start_workflow_inference' : 'start_separation')
-    assert.equal(calls[0].taskId, 'valid-0')
+    assert.equal(calls[0].jobId, 'valid-0')
     assert.ok(task.tasks.filter(item => item.jobId === 'invalid').every(item => item.status === 'failed'))
     assert.ok(task.tasks.filter(item => item.jobId === 'valid').every(item => item.status === 'preparing' && !item.error))
   })
 }
 
-test('rejected batches free Worker slots without duplicate starts or starving later jobs', async () => {
+test('rejected batches cannot duplicate or prevent handoff of later groups to backend admission', async () => {
   const invalid = Array.from({ length: 25 }, (_, index) => queuedBatch(`invalid-${index}`, 2, 'workflow', index * 2 + 1)).flat()
   const { task, calls } = await resumeRestoredQueue([
     ...invalid, ...queuedBatch('first', 1, 'workflow', 100),
     ...queuedBatch('second', 1, 'model', 110), ...queuedBatch('third', 1, 'workflow', 120),
   ], 2)
-  assert.deepEqual(calls.map(call => call.taskId), ['first-0', 'second-0'])
+  assert.deepEqual(calls.map(call => call.jobId), ['first-0', 'second-0', 'third-0'])
   assert.ok(task.tasks.filter(item => item.jobId.startsWith('invalid-')).every(item => item.status === 'failed'))
-  assert.ok(task.tasks.filter(item => item.jobId === 'third').every(item => item.status === 'queued'))
+  assert.ok(task.tasks.filter(item => item.jobId === 'third').every(item => item.status === 'preparing'))
   task.scheduleQueue()
-  assert.equal(calls.length, 2)
+  assert.equal(calls.length, 3)
   for (const id of ['first-0', 'first-1']) {
-    task.handleWorkerEvent({ type: 'task.result', taskId: id, payload: { outputDir: 'D:/Outputs', files: [], outputs: [] } })
+    await emitWorkerEvent(task, { type: 'task.result', taskId: id, payload: { outputDir: 'D:/Outputs', files: [], outputs: [] } })
   }
-  assert.deepEqual(calls.map(call => call.taskId), ['first-0', 'second-0', 'third-0'])
+  assert.deepEqual(calls.map(call => call.jobId), ['first-0', 'second-0', 'third-0'])
   assert.ok(task.tasks.filter(item => item.jobId === 'third').every(item => item.status === 'preparing'))
 })
 
@@ -653,27 +711,12 @@ for (const platform of ['linux', 'darwin']) {
     assert.deepEqual(retried.runConfig.workbench.outputs, original.runConfig.workbench.outputs)
   })
 
-  test(`legacy ${platform} files-only responses preserve native paths and filenames`, async () => {
-    const values = storage()
-    const task = await newStore(platform)
-    task.clearInputFiles()
-    task.addInputFiles(['/audio/song.mix.wav'])
-    const root = '/tmp/results\\'
-    const original = (await task.startWorkflowInference(workflow, { outputDir: root, outputLayout: 'folders' })).tasks[0]
-    original.outputPrefix = undefined
-    task.handleWorkerEvent({ type: 'task.result', taskId: original.id,
-      payload: { outputDir: root, outputRoot: root, files: ['vocals.wav', 'parts/voice.flac', 'tail.wav ', 'AC\\DC.wav', 'song.mix_vocals.wav', '../input.wav'], outputs: [] } })
-    const expected = [`${root}/vocals.wav`, `${root}/parts/voice.flac`, `${root}/tail.wav `, `${root}/AC\\DC.wav`, `${root}/song.mix_vocals.wav`]
-    assert.deepEqual(original.outputs.map(output => output.path), expected)
-    assert.equal(original.outputs.at(-1).stem, 'vocals')
-    assert.deepEqual(task.resultTrashTargets(original), expected)
-    await waitForSave()
-    const restored = (await newStore(platform)).getTaskById(original.id)
-    assert.deepEqual(restored.outputs.map(output => output.path), expected)
-    const data = JSON.parse(values.get('pymss-studio:task-history'))
-    data.tasks.find(item => item.id === original.id).outputs = []
-    globalThis.localStorage.setItem('pymss-studio:task-history', JSON.stringify(data))
-    const legacyRestored = (await newStore(platform)).getTaskById(original.id)
-    assert.deepEqual(legacyRestored.outputs.map(output => output.path), expected)
+  test(`obsolete ${platform} files-only responses do not manufacture canonical output descriptors`, async () => {
+    storage()
+    const task=await newStore(platform)
+    const original=(await task.startWorkflowInference(workflow)).tasks[0]
+    await emitWorkerEvent(task, {type:'task.result',taskId:original.id,payload:{files:['vocals.wav'],outputs:[]}})
+    assert.deepEqual(original.outputs,[])
+    assert.deepEqual(original.files,[])
   })
 }

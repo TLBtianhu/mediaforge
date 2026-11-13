@@ -1,4 +1,4 @@
-.results-page {
+﻿.results-page {
   display: grid;
   gap: 12px;
 }
@@ -6,6 +6,8 @@
 .results-page__header {
   margin-bottom: 4px;
 }
+
+.results-section-title { margin: 4px 0 0; color: var(--on-surface-heading); font-size: 14px; }
 
 .results-page__header-actions {
   display: flex;
@@ -102,7 +104,7 @@
     color-mix(in srgb, var(--surface-1) 74%, transparent);
 }
 
-.result-row__type { padding: 1px 6px; border-radius: 5px; background: color-mix(in srgb, var(--primary-soft) 50%, transparent); color: var(--primary-strong); font-size: 10px; white-space: nowrap; }
+.result-row__type { padding: 1px 6px; border-radius: 5px; background: color-mix(in srgb, var(--primary-soft) 50%, transparent); color: var(--primary-ink); font-size: 10px; white-space: nowrap; }
 
 .result-row--selected:hover {
   border-color: color-mix(in srgb, var(--primary-border) 88%, transparent);
@@ -133,7 +135,7 @@
   display: grid;
   place-items: center;
   border-radius: 11px;
-  color: color-mix(in srgb, var(--primary-strong) 78%, var(--on-surface-muted));
+  color: color-mix(in srgb, var(--primary-ink) 78%, var(--on-surface-muted));
   background: color-mix(in srgb, var(--primary-soft) 34%, var(--surface-2));
 }
 
@@ -150,9 +152,9 @@
 }
 
 .result-row__selection-marker--checked {
-  border-color: var(--primary-strong);
-  color: var(--on-primary, #fff);
-  background: var(--primary-strong);
+  border-color: var(--primary);
+  color: var(--on-primary);
+  background: var(--primary);
 }
 
 .result-row__body {
@@ -215,7 +217,7 @@
 }
 
 .result-row__toggle--open {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
   transform: rotate(180deg);
 }
@@ -312,12 +314,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   font-weight: 700;
 }
 
 .node-value-line__header {
-  color: var(--text-muted, #969eae);
+  color: var(--on-surface-muted);
   font-size: 12px;
   margin: 4px 0 2px;
 }
@@ -331,7 +333,7 @@
 }
 
 .node-value-line__label {
-  color: var(--text-muted, #969eae);
+  color: var(--on-surface-muted);
   min-width: 120px;
 }
 

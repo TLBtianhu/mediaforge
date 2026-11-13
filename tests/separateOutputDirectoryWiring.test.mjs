@@ -8,6 +8,7 @@ test('SeparateView passes Vue computed into makeOutputDirectory', () => {
   assert.ok(match, 'makeOutputDirectory call not found')
   assert.match(match[1], /\bcomputed\b/, 'computed must be provided to makeOutputDirectory')
   assert.match(match[1], /\blaunchTask\b/, 'launchTask must be provided to makeOutputDirectory')
+  assert.match(match[1], /\bmessage\b/, 'message must be provided to makeOutputDirectory')
   const outputDirectorySource = readFileSync(new URL('../src/views/separate/outputDirectory.ts', import.meta.url), 'utf8')
   assert.match(outputDirectorySource, /computed: typeof computed/, 'computed must be an explicit required dependency')
   assert.match(outputDirectorySource, /launchTask: typeof launchTask/, 'launchTask must be an explicit required dependency')

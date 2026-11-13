@@ -12,6 +12,20 @@ const { descriptor } = parse(readFileSync(path, 'utf8'))
 const template = descriptor.template?.content || ''
 const style = descriptor.styles.map(item => item.content
   || (item.src ? readFileSync(new URL(item.src, path), 'utf8') : '')).join('\n')
+const advancedPath = new URL('../src/components/separate/SeparateAdvancedPanel.vue', import.meta.url)
+const queuePath = new URL('../src/components/separate/SeparateQueueModal.vue', import.meta.url)
+const readyPath = new URL('../src/components/separate/SeparateLaunchBar.vue', import.meta.url)
+const readyTemplate = parse(readFileSync(readyPath, 'utf8')).descriptor.template?.content || ''
+const taskPath = new URL('../src/components/separate/SeparateTaskStage.vue', import.meta.url)
+const taskTemplate = parse(readFileSync(taskPath, 'utf8')).descriptor.template?.content || ''
+const runningActionsTemplate = parse(readFileSync(new URL('../src/components/separate/SeparateTaskRunningActions.vue', import.meta.url), 'utf8')).descriptor.template?.content || ''
+const terminalActionsTemplate = parse(readFileSync(new URL('../src/components/separate/SeparateTaskTerminalActions.vue', import.meta.url), 'utf8')).descriptor.template?.content || ''
+const railPath = new URL('../src/components/separate/SeparateConsoleRail.vue', import.meta.url)
+const railTemplate = parse(readFileSync(railPath, 'utf8')).descriptor.template?.content || ''
+const stageState = readFileSync(new URL('../src/views/separate/stageState.ts', import.meta.url), 'utf8')
+const actionsSource = readFileSync(new URL('../src/views/separate/separateActions.ts', import.meta.url), 'utf8')
+const queueTemplate = parse(readFileSync(queuePath, 'utf8')).descriptor.template?.content || ''
+const advancedTemplate = parse(readFileSync(advancedPath, 'utf8')).descriptor.template?.content || ''
 const modelsPath = new URL('../src/views/ModelsView.vue', import.meta.url)
 const modelsTemplate = parse(readFileSync(modelsPath, 'utf8')).descriptor.template?.content || ''
 const scriptSource = descriptor.scriptSetup.content
@@ -234,17 +248,17 @@ test('running batches can move to the background while a new batch is composed',
   assert.ok(scriptSource.includes('const composingNewJob = ref(false)'))
   assert.ok(scriptSource.includes('const showQueueModal = ref(false)'))
   assert.ok(queueModuleSource.includes('composingNewJob.value ? null : (focusedJob.value || newestRunningJob.value)'))
-  assert.ok(scriptSource.includes('function beginNextSeparation()'))
+  assert.ok(actionsSource.includes('function beginNextSeparation()'))
   assert.ok(queueModuleSource.includes('function focusQueueJob(target: SeparationJob)'))
   assert.ok(queueModuleSource.includes('const recentFailedJobs'))
-  assert.ok(scriptSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
+  assert.ok(actionsSource.includes('function viewQueueJobLogs(target: SeparationJob)'))
   assert.ok(queueModuleSource.includes('clearFinishedSessionJobs(separationSessionJobs.value.map'))
-  assert.ok(template.includes("t('separate.addNextBatch')"))
-  assert.ok(template.includes('v-if="hasQueueEntries"'))
+  assert.ok(runningActionsTemplate.includes("t('separate.addNextBatch')"))
+  assert.ok(taskTemplate.includes('v-if="props.hasQueueEntries"'))
   assert.ok(template.includes('v-model:show="showQueueModal"'))
-  assert.ok(template.includes('v-for="job in queueJobs"'))
-  assert.ok(template.includes("job.status === 'failed'"))
-  assert.ok(template.includes(':loading="submittingJob"'))
+  assert.ok(queueTemplate.includes('v-for="job in props.jobs"'))
+  assert.ok(queueTemplate.includes("job.status === 'failed'"))
+  assert.ok(readyTemplate.includes(':loading="props.submittingJob"'))
 })
 
 test('separation task views and queue actions exclude editor workflows while retaining quick Ensemble', async () => {
@@ -287,13 +301,13 @@ test('separation task views and queue actions exclude editor workflows while ret
 })
 
 test('terminal task actions use state-specific hierarchy', () => {
-  assert.ok(scriptSource.includes('const completedActionOptions = computed<DropdownOption[]>'))
-  assert.ok(template.includes('v-if="taskPanelState === \'done\'"'))
-  assert.ok(template.includes("t('separate.moreActions')"))
-  assert.ok(template.includes("t('separate.viewResults')"))
-  assert.ok(template.includes("t('separate.runAgain')"))
-  assert.ok(template.includes('class="result-path"'))
-  assert.ok(template.includes("@click.stop=\"task.revealPath(currentTask.outputs[0]?.path || currentTask.output)\""))
+  assert.ok(stageState.includes('const completedActionOptions = computed('))
+  assert.ok(taskTemplate.includes('v-if="props.taskPanelState === \'done\'"'))
+  assert.ok(terminalActionsTemplate.includes("t('separate.moreActions')"))
+  assert.ok(terminalActionsTemplate.includes("t('separate.viewResults')"))
+  assert.ok(terminalActionsTemplate.includes("t('separate.runAgain')"))
+  assert.ok(taskTemplate.includes('class="result-path"'))
+  assert.ok(taskTemplate.includes('@click.stop="props.revealOutput"'))
 })
 
 test('output stem picker uses the app scrollbar instead of native browser controls', () => {
@@ -304,11 +318,11 @@ test('output stem picker uses the app scrollbar instead of native browser contro
 })
 
 test('large output stem lists expose compact bulk selection actions', () => {
-  assert.ok(template.includes('availableStemNames.length > 3'))
-  assert.ok(template.includes('@click="selectAllOutputStems"'))
-  assert.ok(template.includes('@click="clearOutputStems"'))
-  assert.ok(template.includes("t('separate.selectAllStems')"))
-  assert.ok(template.includes("t('separate.clearStemSelection')"))
+  assert.ok(railTemplate.includes('props.availableStemNames.length > 3'))
+  assert.ok(railTemplate.includes("emit('selectAllStems')"))
+  assert.ok(railTemplate.includes("emit('clearStems')"))
+  assert.ok(railTemplate.includes("t('separate.selectAllStems')"))
+  assert.ok(railTemplate.includes("t('separate.clearStemSelection')"))
   assert.ok(readFileSync(new URL('../src/views/separate/stemSelection.ts', import.meta.url), 'utf8').includes('outputStemSelectionCleared.value = true'))
   assert.ok(outputDirectorySource.includes('&& deps.hasOutputStemSelection.value'))
 })
@@ -350,10 +364,10 @@ test('output stem bulk actions distinguish all stems from an empty selection', (
 })
 
 test('advanced inference settings expose model-scoped save and reset actions', async () => {
-  assert.ok(template.includes('@click="saveCurrentModelInferenceDefaults"'))
-  assert.ok(template.includes('@click="resetCurrentModelInferenceDefaults"'))
-  assert.ok(template.includes("t('separate.saveInferenceDefaults')"))
-  assert.ok(template.includes("t('separate.resetInferenceDefaults')"))
+  assert.ok(advancedTemplate.includes('@click="props.saveCurrentModelInferenceDefaults"'))
+  assert.ok(advancedTemplate.includes('@click="props.resetCurrentModelInferenceDefaults"'))
+  assert.ok(advancedTemplate.includes("t('separate.saveInferenceDefaults')"))
+  assert.ok(advancedTemplate.includes("t('separate.resetInferenceDefaults')"))
 
   const calls = []
   const info = {

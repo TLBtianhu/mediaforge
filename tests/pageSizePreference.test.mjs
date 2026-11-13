@@ -1,14 +1,16 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test, { after, afterEach } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createPinia, setActivePinia } from 'pinia'
 import { createServer } from 'vite'
+import { JOB_KEY, readJobs, putJobs, storageShim } from './_audioJournalFixture.mjs'
 
 const vite = await createServer({
   configFile: false,
   server: {
     middlewareMode: true,
     hmr: false,
+    ws: false,
     watch: { ignored: ['**/*'] },
   },
   appType: 'custom',
@@ -42,6 +44,7 @@ after(() => vite.close())
 
 const { useModelStore } = await vite.ssrLoadModule('/src/stores/model.ts')
 const { useTaskStore } = await vite.ssrLoadModule('/src/stores/task.ts')
+const { useMediaJobsStore } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
 
 const stores = []
 
@@ -58,20 +61,16 @@ function browserStorage(initial = {}, options = {}) {
   const values = new Map(
     Object.entries(initial).map(([name, value]) => [
       `pymss-studio:${name}`,
-      JSON.stringify(value),
+      JSON.stringify(name === 'separate-state' ? {version:1,...value} : value),
     ]),
   )
   const writes = []
   globalThis.window = {}
-  globalThis.localStorage = {
-    getItem: key => values.get(key) ?? null,
-    setItem(key, value) {
-      if (options.failWrites) throw new Error('storage write failed')
-      values.set(key, value)
-      writes.push({ key, value: JSON.parse(value) })
-    },
-  }
-  return { writes }
+  globalThis.localStorage = storageShim(values, (key, value) => {
+    if (options.failWrites) throw new Error('storage write failed')
+    writes.push({ key, value: JSON.parse(value) })
+  })
+  return { writes, values }
 }
 
 function newModelStore() {
@@ -87,6 +86,22 @@ function newTaskStore() {
 }
 
 const waitForDebouncedSave = () => new Promise(resolve => setTimeout(resolve, 180))
+
+test('unsupported job records are preserved and cannot be replaced by default state or a new run', async () => {
+  for (const raw of ['{broken', JSON.stringify({ tasks: [] }), JSON.stringify({ version: 2, tasks: [] })]) {
+    const storage = browserStorage()
+    storage.values.set(JOB_KEY + 'bad-record', raw)
+    const store = newTaskStore()
+    await assert.rejects(store.initialize())
+    assert.equal(store.initialized, false)
+    assert.ok(store.loadError)
+    await assert.rejects(store.startSeparation())
+    await waitForDebouncedSave()
+    assert.equal(storage.values.get(JOB_KEY + 'bad-record'), raw)
+    assert.equal(storage.writes.length, 0)
+    store.$dispose()
+  }
+})
 
 test('model library restores and persists its page size preference', async () => {
   const storage = browserStorage({ 'model-state': { modelPageSize: 48 } })
@@ -117,7 +132,7 @@ test('separation model list restores and persists its page size preference', asy
 })
 
 test('session task queue resets on restart without deleting persisted task history', async () => {
-  browserStorage()
+  const storage = browserStorage()
   const pinia = createPinia()
   const taskStore = useTaskStore(pinia)
   const modelStore = useModelStore(pinia)
@@ -131,10 +146,14 @@ test('session task queue resets on restart without deleting persisted task histo
   assert.equal(taskStore.sessionJobs.length, 1)
   assert.equal(taskStore.sessionJobs[0].inputCount, 2)
 
-  taskStore.tasks.forEach((item) => {
-    item.status = 'done'
-    item.outputs = [{ stem: 'Vocals', path: `D:/Outputs/${item.id}.wav` }]
-  })
+  // Completion belongs to the backend journal, never a UI snapshot write.
+  const now = Date.now() / 1000
+  const completed = readJobs(storage.values).map(job => ({ ...job, status: 'completed', fraction: 1,
+    updatedAt: now, startedAt: job.createdAt, finishedAt: now,
+    result: { outputs: [{ stem: 'Vocals', path: `D:/Outputs/${job.jobId}.wav` }] } }))
+  putJobs(storage.values, completed)
+  useMediaJobsStore(pinia).adoptSnapshot({ schemaVersion: 3, full: true, removed: [], jobs: completed, dataRoot: '', jobsDir: '' })
+  await Promise.resolve()
   assert.equal(taskStore.sessionJobs[0].status, 'done')
   assert.equal(taskStore.resultJobs.length, 1)
   assert.equal(taskStore.clearFinishedSessionJobs(), 1)

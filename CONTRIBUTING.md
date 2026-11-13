@@ -27,7 +27,8 @@ Python 侧测试用开发运行时：
 没有这个目录时，用任意 Python 装依赖：
 
 ```bash
-pip install -r python/requirements.txt -r python/requirements-media.txt
+uv venv
+uv pip install -r python/requirements.txt -r python/requirements-media.txt
 # 另需 torch（cu128 或 CPU 版）
 ```
 

@@ -4,20 +4,34 @@
  * 槽位接口来自后端（list_models 的 slots），布局来自前端布局档；
  * 这里只把两者合成渲染计划，不决定任何控件长什么样。
  */
-import type { ComputedRef } from 'vue'
+import type { ComputedRef, Ref, watch } from 'vue'
+import type { MessageApi } from 'naive-ui'
+import type { ModelDefaultInferenceParams, ModelEntry, useModelStore } from '@/stores/model'
+import type { useTaskStore } from '@/stores/task'
 import { fromWireParams, paramsFromInterface, toWireParams } from '../../litegraph/inferenceParams.ts'
 import { layoutFor } from '../../litegraph/layouts.ts'
 import { buildRenderPlan, type ModelInterface } from '../../litegraph/renderPlan.ts'
 import { inferenceChunkSizeIssue, resolveInferenceChunkStep, resolveInferenceSampleStep } from '../../features/inference/sampleStep.ts'
 
-type Deps = Record<string, any> & {
+type Deps = {
   computed: <T>(source: () => T) => ComputedRef<T>
+  watch: typeof watch
+  modelStore: ReturnType<typeof useModelStore>
+  taskStore: ReturnType<typeof useTaskStore>
+  inferenceEditorModel: Ref<ModelEntry | null>
+  inferenceEditorParams: Ref<Record<string, unknown>>
+  inferenceDraft: Ref<{ batch_size: number; overlap_size: number; chunk_size: number }>
+  selectedModel: Ref<string>
+  message: MessageApi
+  t: (key: string, named?: Record<string, unknown>) => string
+  studioLog: { error: (message: string, error: unknown) => void }
+  showInferenceEditor: Ref<boolean>
 }
 
 export function makeInferenceEditor(deps: Deps) {
   const { computed, modelStore, taskStore } = deps
 
-  const inferenceEditorMeta = computed(() => modelStore.models.find((item: any) => item.name === deps.inferenceEditorModel.value?.name)?.inferenceParamMeta
+  const inferenceEditorMeta = computed(() => modelStore.models.find((item: ModelEntry) => item.name === deps.inferenceEditorModel.value?.name)?.inferenceParamMeta
     || deps.inferenceEditorModel.value?.inferenceParamMeta)
 
   const inferenceEditorInterface = computed<ModelInterface | null>(() => {
@@ -52,12 +66,12 @@ export function makeInferenceEditor(deps: Deps) {
     deps.inferenceDraft.value[key] = value as number
   }
 
-  function inferenceValue(model: any, key: string, fallback: number) {
+  function inferenceValue(model: ModelEntry | null | undefined, key: keyof ModelDefaultInferenceParams, fallback: number) {
     const value = model?.defaultInferenceParams?.[key]
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback
   }
 
-  function resolveInferenceDraft(model: any) {
+  function resolveInferenceDraft(model: ModelEntry | null | undefined) {
     return {
       batch_size: inferenceValue(model, 'batch_size', 1),
       overlap_size: inferenceValue(model, 'overlap_size', 0),
@@ -65,15 +79,15 @@ export function makeInferenceEditor(deps: Deps) {
     }
   }
 
-  function syncInferenceDraft(model: any) {
+  function syncInferenceDraft(model: ModelEntry | null | undefined) {
     deps.inferenceDraft.value = resolveInferenceDraft(model)
   }
 
-  function hasInferenceOverride(model: any) {
+  function hasInferenceOverride(model: ModelEntry | null | undefined) {
     return Boolean(model?.name && modelStore.getModelInferenceOverrides(model.name))
   }
 
-  function slotParamsChanged(model: any) {
+  function slotParamsChanged(model: ModelEntry | null | undefined) {
     const current = inferenceEditorInterface.value
     if (!current) return false
     const base = (model?.defaultInferenceParams || {}) as Record<string, unknown>
@@ -81,7 +95,7 @@ export function makeInferenceEditor(deps: Deps) {
       .some(([key, value]) => base[key] !== value)
   }
 
-  function hasInferenceDraftChanges(model: any) {
+  function hasInferenceDraftChanges(model: ModelEntry | null | undefined) {
     const defaults = resolveInferenceDraft(model)
     return deps.inferenceDraft.value.batch_size !== defaults.batch_size
       || deps.inferenceDraft.value.overlap_size !== defaults.overlap_size
@@ -89,11 +103,11 @@ export function makeInferenceEditor(deps: Deps) {
       || slotParamsChanged(model)
   }
 
-  function canResetInferenceDefaults(model: any) {
+  function canResetInferenceDefaults(model: ModelEntry | null | undefined) {
     return hasInferenceOverride(model) || hasInferenceDraftChanges(model)
   }
 
-  function applyDefaultsToActiveTask(model: any, selected: any) {
+  function applyDefaultsToActiveTask(model: ModelEntry, selected: ModelEntry) {
     if (deps.selectedModel.value !== model.name) return
     taskStore.applySelectedModelDefaults(
       modelStore.getModelBaseInferenceDefaults(model.name) || selected.defaultInferenceParams,
@@ -134,7 +148,7 @@ export function makeInferenceEditor(deps: Deps) {
       if (hasInferenceOverride(model)) {
         await modelStore.resetModelInferenceOverrides(model.name)
       }
-      const latest = modelStore.models.find((item: any) => item.name === model.name) || model
+      const latest = modelStore.models.find((item: ModelEntry) => item.name === model.name) || model
       syncInferenceDraft(latest)
       const selected = modelStore.selectedInfo?.name === model.name ? modelStore.selectedInfo : latest
       applyDefaultsToActiveTask(model, selected)
@@ -145,7 +159,7 @@ export function makeInferenceEditor(deps: Deps) {
     }
   }
 
-  function openInferenceEditor(model: any) {
+  function openInferenceEditor(model: ModelEntry) {
     deps.inferenceEditorModel.value = model
     syncInferenceDraft(model)
     deps.showInferenceEditor.value = true

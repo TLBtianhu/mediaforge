@@ -1,9 +1,36 @@
 // SeparateView 的推理默认值：收集、应用、保存、重置。
 // 通过 deps 注入组件的 ref 与 store，便于在 VM 里用桩数据直接测试。
+import type { Ref } from 'vue'
+import type { MessageApi } from 'naive-ui'
 import type { ModelDefaultInferenceParams, ModelEntry } from '@/stores/model'
+import type { useModelStore } from '@/stores/model'
+import type { useTaskStore } from '@/stores/task'
 
 type Logger = { error: (message: string, error: unknown) => void }
-type Deps = Record<string, any>
+type Deps = {
+  currentModelDefaults: Ref<ModelDefaultInferenceParams>
+  currentModelInfo: Ref<ModelEntry | null>
+  currentChunkIssue: Ref<Record<string, unknown> | null | undefined>
+  batch_size: Ref<number | null>
+  overlap_size: Ref<number | null>
+  num_overlap: Ref<number | null>
+  chunk_size: Ref<number | null>
+  window_size: Ref<number | null>
+  aggression: Ref<number | null>
+  post_process_threshold: Ref<number | null>
+  isApolloModel: Ref<boolean>
+  enable_post_process: Ref<boolean>
+  high_end_process: Ref<boolean>
+  standardize: Ref<boolean>
+  normalize: Ref<boolean>
+  showStandardizeField: Ref<boolean>
+  showNormalizeField: Ref<boolean>
+  model: ReturnType<typeof useModelStore>
+  task: ReturnType<typeof useTaskStore>
+  message: MessageApi
+  t: (key: string, named?: Record<string, unknown>) => string
+  studioLog: Logger
+}
 
 export function makeInferenceDefaults(deps: Deps) {
   function collectCurrentModelInferenceDefaults(): ModelDefaultInferenceParams {

@@ -51,8 +51,10 @@ jobs:
       - name: Prepare standalone bootstrap and clean resources
         run: |
           bash scripts/prepare-python-runtime.sh minimal
-          mkdir -p src-tauri/resources/python
-          rsync -a --exclude '__pycache__' --exclude '*.pyc' python/ src-tauri/resources/python/
+          test ! -e python-runtime/runtime-envs
+          PYTHONDONTWRITEBYTECODE=1 python-runtime/bin/python3 -c "import importlib.util; assert importlib.util.find_spec('torch') is None; assert importlib.util.find_spec('pymss') is None"
+          python3 scripts/posix-release.py stage src-tauri/resources
+          rm -rf src-tauri/resources/python-runtime src-tauri/resources/bin
           cp -a python-runtime src-tauri/resources/python-runtime
           bash scripts/prepare-linux-bundled-tools.sh src-tauri/resources/bin
       - name: Build AppImage
@@ -69,31 +71,19 @@ jobs:
           PYMSS_BUILD_UPDATE_SUPPORTED: 'true'
           PYMSS_BUILD_TARGET: linux-x64
           PYMSS_BUILD_VARIANT: linux-x64-appimage
-          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'pymss-project/pymss-studio' && github.repository_owner == 'pymss-project' && 'true' || 'false' }}
+          PYMSS_BUILD_OFFICIAL: ${{ github.repository == 'TLBtianhu/mediaforge' && github.repository_owner == 'TLBtianhu' && 'true' || 'false' }}
         run: |
           set -o pipefail
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          resources = Path('src-tauri/resources').resolve()
-          config = {'bundle': {
-              'resources': {str(resources / name): name for name in ('python', 'python-runtime', 'bin')},
-              'linux': {'appimage': {
-                  'bundleMediaFramework': True,
-              }},
-          }}
-          config['bundle']['resources'][str(resources / 'plugin-sdk')] = 'resources/plugin-sdk'
-          Path('src-tauri/tauri.bundle.resources.json').write_text(json.dumps(config))
-          PY
-          mkdir -p "$RUNNER_TEMP/pymss-linux-build"
+          python3 scripts/posix-release.py config src-tauri/resources --platform linux > src-tauri/tauri.bundle.resources.json
+          mkdir -p "$RUNNER_TEMP/mediaforge-linux-build"
           pnpm plugins:build --verbose --bundles appimage --config src-tauri/tauri.bundle.resources.json 2>&1 \
-            | tee "$RUNNER_TEMP/pymss-linux-build/appimage-build.log"
+            | tee "$RUNNER_TEMP/mediaforge-linux-build/appimage-build.log"
       - name: Upload AppImage failure log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: linux-appimage-build-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/pymss-linux-build/appimage-build.log
+          path: ${{ runner.temp }}/mediaforge-linux-build/appimage-build.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Verify packaged interpreter, tools, and first environment installation

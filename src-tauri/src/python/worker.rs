@@ -1,6 +1,8 @@
 use crate::error::{AppError, AppResult};
+use crate::runtime_lease::RuntimeLease;
 use crate::log_record::{legacy_stderr, LogRecord};
 use crate::python::protocol::WorkerEnvelope;
+use crate::python::task_journal::{self, JournalHandle};
 use crate::session_log;
 use crate::state::AppState;
 use crate::storage;
@@ -9,7 +11,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -25,13 +27,14 @@ pub(crate) fn recover_audio_output_temps(app: &AppHandle) {
 }
 
 fn needs_audio_output_scope(command: &str, payload: &Value) -> bool {
-    command == "run_operation" || command == "audio_tools" && payload.get("operation").and_then(Value::as_str).is_some_and(|operation| {
-        ["convert", "merge", "slicer"].iter().any(|name| operation.trim().eq_ignore_ascii_case(name))
-    })
+    super::protocol::needs_audio_output_scope(
+        command,
+        payload.get("operation").and_then(Value::as_str),
+    )
 }
 
 fn requires_background_result(command: &str) -> bool {
-    matches!(command, "audio_tools" | "export_editor_mix" | "manage_plugin" | "run_operation")
+    super::protocol::requires_background_result(command)
 }
 
 fn operation_output_directory(payload: &Value, default: &Path) -> AppResult<PathBuf> {
@@ -51,20 +54,13 @@ fn operation_output_directory(payload: &Value, default: &Path) -> AppResult<Path
     Ok(std::path::absolute(directory)?)
 }
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 pub(crate) fn kill_process_tree(pid: u32) {
     #[cfg(windows)]
-    let _ = Command::new("taskkill")
+    let _ = crate::process_command::hidden_command("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .creation_flags(CREATE_NO_WINDOW)
         .status();
     #[cfg(not(windows))]
-    let _ = Command::new("pkill").args(["-TERM", "-P", &pid.to_string()]).status();
+    let _ = crate::process_command::hidden_command("pkill").args(["-TERM", "-P", &pid.to_string()]).status();
 }
 
 const PYTHON_TERMINAL_LOG_PREFIX: &str = "__PYMSS_STUDIO_TERMINAL_LOG__";
@@ -145,28 +141,11 @@ impl Drop for RuntimeAccessGuard<'_> {
 }
 
 fn requires_bootstrap_python(command: &str) -> bool {
-    matches!(
-        command,
-        "health"
-            | "runtime_info"
-            | "runtime_env_sizes"
-            | "runtime_core_versions"
-            | "install_runtime"
-            | "activate_runtime"
-            | "delete_runtime"
-            | "update_runtime_core"
-    )
+    super::protocol::is_bootstrap_command(command)
 }
 
 fn allows_bootstrap_without_runtime(command: &str) -> bool {
-    matches!(
-        command,
-        "media_library"
-            | "list_models"
-            | "env_info"
-            | "model_hub"
-            | "model_download"
-    )
+    super::protocol::bootstrap_allowed_without_runtime(command)
 }
 
 fn select_worker_python(
@@ -193,7 +172,7 @@ fn acquire_runtime_access<'a>(
     access: &'a Mutex<RuntimeAccess>,
     command: &str,
 ) -> AppResult<Option<RuntimeAccessGuard<'a>>> {
-    let updating = matches!(command, "update_runtime_core" | "manage_plugin" | "activate_runtime" | "delete_runtime" | "install_runtime");
+    let updating = super::protocol::command_updates_runtime(command);
     if !updating && requires_bootstrap_python(command) {
         return Ok(None);
     }
@@ -213,6 +192,22 @@ fn acquire_runtime_access<'a>(
     Ok(Some(RuntimeAccessGuard { access, updating }))
 }
 
+/// Cross-process companion to `RuntimeAccess`. Bootstrap-only commands do not
+/// touch runtime-envs and therefore do not take a lease.
+fn acquire_runtime_file_lease(app: &AppHandle, command: &str) -> AppResult<Option<RuntimeLease>> {
+    let envs = match storage::runtime_envs_dir(app) {
+        Ok(path) => path,
+        Err(_) => return Ok(None),
+    };
+    if super::protocol::command_updates_runtime(command) {
+        return RuntimeLease::exclusive(&envs).map(Some);
+    }
+    if requires_bootstrap_python(command) || allows_bootstrap_without_runtime(command) {
+        return Ok(None);
+    }
+    RuntimeLease::shared(&envs).map(Some)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ActiveRuntimeRecord {
@@ -225,6 +220,14 @@ struct ActiveRuntimeRecord {
     overlay_path: Option<String>,
     #[serde(default)]
     debug_override: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ActiveRuntimeSelection {
+    pub(crate) python: String,
+    source: Option<String>,
+    pub(crate) asset_id: Option<String>,
+    pub(crate) backend: Option<String>,
 }
 
 fn worker_path(app: &AppHandle) -> AppResult<PathBuf> {
@@ -376,12 +379,28 @@ fn runtime_python_command_path(python: &Path) -> Option<PathBuf> {
     )
 }
 
-fn resolve_active_runtime_record(file: &PathBuf) -> Option<(String, Option<String>)> {
-    if !file.is_file() {
-        return None;
-    }
-    let content = std::fs::read_to_string(file).ok()?;
-    let record: ActiveRuntimeRecord = serde_json::from_str(&content).ok()?;
+/// Resolve `active-runtime.json`.
+///
+/// A missing file is a legitimate "no runtime activated". A file that exists but
+/// cannot be read, parsed, or resolved is an error: silently falling back to
+/// another interpreter would run work on a runtime the user did not activate.
+fn resolve_active_runtime_record(file: &Path) -> AppResult<Option<ActiveRuntimeSelection>> {
+    let content = match std::fs::read_to_string(file) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(AppError::Worker(format!(
+                "active runtime pointer {} cannot be read: {error}",
+                file.display()
+            )))
+        }
+    };
+    let record: ActiveRuntimeRecord = serde_json::from_str(&content).map_err(|error| {
+        AppError::Worker(format!(
+            "active runtime pointer {} is not a valid runtime record: {error}",
+            file.display()
+        ))
+    })?;
     let python = PathBuf::from(&record.python_path);
     // Resolve the directory, but retain the interpreter filename. On Unix a venv
     // python is usually a symlink to the base interpreter; canonicalizing that
@@ -389,10 +408,47 @@ fn resolve_active_runtime_record(file: &PathBuf) -> Option<(String, Option<Strin
     let resolved = if python.is_absolute() {
         python
     } else {
-        file.parent()?.join(python)
+        file.parent()
+            .ok_or_else(|| AppError::Worker(format!(
+                "active runtime pointer {} has no parent directory",
+                file.display()
+            )))?
+            .join(python)
     };
-    let executable = resolved.parent()?.canonicalize().ok()?.join(resolved.file_name()?);
-    executable.is_file().then(|| (executable.to_string_lossy().to_string(), record.source))
+    let filename = resolved.file_name().ok_or_else(|| {
+        AppError::Worker(format!(
+            "active runtime pointer {} has an invalid python path: {}",
+            file.display(),
+            resolved.display()
+        ))
+    })?;
+    let directory = resolved.parent().ok_or_else(|| {
+        AppError::Worker(format!(
+            "active runtime pointer {} has an invalid python path: {}",
+            file.display(),
+            resolved.display()
+        ))
+    })?;
+    let executable = directory.canonicalize().map_err(|error| {
+        AppError::Worker(format!(
+            "active runtime pointer {} has an unresolvable python directory {}: {error}",
+            file.display(),
+            directory.display()
+        ))
+    })?.join(filename);
+    if !executable.is_file() {
+        return Err(AppError::Worker(format!(
+            "active runtime pointer {} points to a missing interpreter: {}",
+            file.display(),
+            executable.display()
+        )));
+    }
+    Ok(Some(ActiveRuntimeSelection {
+        python: executable.to_string_lossy().to_string(),
+        source: record.source,
+        asset_id: record.asset_id.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+        backend: record.backend.map(|value| value.trim().to_ascii_lowercase()).filter(|value| !value.is_empty()),
+    }))
 }
 
 fn bundled_runtime_envs_dir(app: &AppHandle) -> AppResult<Option<PathBuf>> {
@@ -458,29 +514,34 @@ fn python_under_envs_dir(envs_dir: &Path, python_path: &str) -> bool {
 ///
 /// 抽成纯函数是为了能测：这里的"空壳目录"曾经让开发态连续四轮报
 /// "没有安装运行时"——单测比真机点四次便宜得多。
-fn select_active_record(candidates: &[PathBuf], development: bool) -> Option<String> {
+fn select_active_record(candidates: &[PathBuf], development: bool) -> AppResult<Option<ActiveRuntimeSelection>> {
     for envs_dir in candidates {
         let file = envs_dir.join("active-runtime.json");
-        if !file.is_file() {
-            continue;
-        }
-        let Some((path, _source)) = resolve_active_runtime_record(&file) else {
+        let Some(selection) = resolve_active_runtime_record(&file)? else {
             continue;
         };
-        let managed = python_under_envs_dir(envs_dir, &path);
-        let debug_override = active_debug_override_path_allowed(&file, &path, development);
-        if (managed || debug_override) && active_path_backend_matches(&file, &path) {
-            return Some(path);
+        let managed = python_under_envs_dir(envs_dir, &selection.python);
+        let debug_override = active_debug_override_path_allowed(&file, &selection.python, development);
+        if (managed || debug_override) && active_path_backend_matches(&file, &selection.python) {
+            return Ok(Some(selection));
         }
     }
-    None
+    Ok(None)
 }
 
-fn active_runtime_python_path(app: &AppHandle) -> AppResult<Option<String>> {
-    Ok(select_active_record(
+pub(crate) fn active_runtime_selection(app: &AppHandle) -> AppResult<Option<ActiveRuntimeSelection>> {
+    select_active_record(
         &runtime_envs_candidates(app),
         storage::is_development_executable(),
-    ))
+    )
+}
+
+fn runtime_asset_for_worker(active: Option<&ActiveRuntimeSelection>, desired: Option<String>) -> String {
+    match active {
+        // An explicit empty value tells Python there is no selected managed asset.
+        Some(selection) => selection.asset_id.clone().unwrap_or_default(),
+        None => desired.unwrap_or_default(),
+    }
 }
 
 #[cfg(test)]
@@ -519,9 +580,9 @@ mod runtime_record_tests {
         fs::write(shell.join(".runtime-management.lock"), b"").unwrap();
 
         let real = make_envs(&root.join("data"), "cuda");
-        let picked = select_active_record(&[shell, real.clone()], true);
+        let picked = select_active_record(&[shell, real.clone()], true).unwrap();
         assert!(picked.is_some(), "空壳目录应被跳过，改用后面那个有记录的");
-        assert!(picked.unwrap().contains("python.exe"));
+        assert!(picked.unwrap().python.contains("python.exe"));
     }
 
     #[test]
@@ -534,7 +595,7 @@ mod runtime_record_tests {
             "backend": "cuda",
         });
         fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
-        assert_eq!(select_active_record(&[envs], false), None);
+        assert_eq!(select_active_record(&[envs], false).unwrap(), None);
     }
 
     #[test]
@@ -551,7 +612,8 @@ mod runtime_record_tests {
             "assetId": "runtime-cuda-2026.10.2",
         });
         fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
-        assert!(select_active_record(&[envs.clone()], false).is_some());
+        let selected = select_active_record(&[envs.clone()], false).unwrap().unwrap();
+        assert_eq!(selected.asset_id.as_deref(), Some("runtime-cuda-2026.10.2"));
 
         // 指针说 A、目录却是 B → 必须拒绝
         let record = serde_json::json!({
@@ -560,12 +622,24 @@ mod runtime_record_tests {
             "assetId": "runtime-cuda-2026.10.1",
         });
         fs::write(envs.join("active-runtime.json"), record.to_string()).unwrap();
-        assert_eq!(select_active_record(&[envs], false), None);
+        assert_eq!(select_active_record(&[envs], false).unwrap(), None);
+    }
+
+    #[test]
+    fn worker_asset_identity_comes_from_the_active_record_not_the_desired_update() {
+        let active = ActiveRuntimeSelection {
+            python: "active-python".into(), source: None, asset_id: Some("runtime-a".into()), backend: Some("cuda".into()),
+        };
+        assert_eq!(runtime_asset_for_worker(Some(&active), Some("runtime-b".into())), "runtime-a");
+        let without_asset = ActiveRuntimeSelection { asset_id: None, ..active };
+        assert_eq!(runtime_asset_for_worker(Some(&without_asset), Some("runtime-b".into())), "");
+        assert_eq!(runtime_asset_for_worker(None, Some("runtime-b".into())), "runtime-b");
+        assert_eq!(runtime_asset_for_worker(None, None), "");
     }
 
     #[test]
     fn returns_none_without_candidates() {
-        assert_eq!(select_active_record(&[], true), None);
+        assert_eq!(select_active_record(&[], true).unwrap(), None);
     }
 }
 
@@ -576,7 +650,7 @@ fn resolve_runtime_overlay_for_record(
 ) -> Option<PathBuf> {
     let content = std::fs::read_to_string(file).ok()?;
     let record: ActiveRuntimeRecord = serde_json::from_str(&content).ok()?;
-    let (record_python, _) = resolve_active_runtime_record(&file.to_path_buf())?;
+    let record_python = resolve_active_runtime_record(file).ok().flatten()?.python;
     let expected = runtime_python_command_path(Path::new(active_python))?;
     let recorded = runtime_python_command_path(Path::new(&record_python))?;
     if expected != recorded {
@@ -865,17 +939,20 @@ fn build_worker_command(
     payload_file: Option<&PathBuf>,
     task_id: Option<&str>,
     operation_id: &str,
+    fence_path: Option<&Path>,
+    owner_fences: &[PathBuf],
 ) -> AppResult<Command> {
     let worker = worker_path(app)?;
     let bootstrap_python = bootstrap_python_path(app)?;
     // Runtime management must never run inside the environment it is managing: the bootstrap
     // interpreter is the only one guaranteed to exist while an environment is being built,
     // switched, or deleted.
-    let active_runtime_python = if requires_bootstrap_python(command) {
+    let active_runtime = if requires_bootstrap_python(command) {
         None
     } else {
-        active_runtime_python_path(app)?
+        active_runtime_selection(app)?
     };
+    let active_runtime_python = active_runtime.as_ref().map(|selection| selection.python.clone());
     let active_overlay = active_runtime_python
         .as_deref()
         .map(|python| active_runtime_overlay_path(app, python))
@@ -899,15 +976,10 @@ fn build_worker_command(
     })?;
     let python_for_log = python.clone();
     let worker_for_log = worker.clone();
-    let mut cmd = Command::new(&python);
-    #[cfg(unix)]
-    if command == "manage_plugin" {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
+    let mut cmd = crate::process_command::hidden_command(&python);
+    let supervisor = worker.parent().expect("worker script has a directory").join("core/worker_supervisor.py");
+    configure_worker_supervisor(&mut cmd, &supervisor, fence_path, owner_fences);
     isolate_python_environment(&mut cmd, &storage::temp_dir(app)?);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.arg(worker)
         .arg(command)
         .env("PYTHONIOENCODING", "utf-8")
@@ -927,11 +999,14 @@ fn build_worker_command(
             "PYMSS_STUDIO_DEFAULT_OUTPUT_DIR",
             default_output_dir(app)?.to_string_lossy().to_string(),
         );
-    // runtime.json 的解析只发生在 Rust 侧：把解析结果传给 worker，
-    // Python 不再自己推导 active pointer。
-    if let Ok(descriptor) = crate::runtime_assets::desired_runtime(app) {
-        cmd.env("MEDIAFORGE_RUNTIME_ASSET", descriptor.asset_id);
-    }
+    cmd.env_remove("MEDIAFORGE_RUNTIME_ASSET");
+    let desired_asset = if active_runtime.is_none() {
+        // Queries that intentionally run without an active runtime may describe the desired asset.
+        crate::runtime_assets::desired_runtime(app, None).ok().map(|descriptor| descriptor.asset_id)
+    } else {
+        None
+    };
+    cmd.env("MEDIAFORGE_RUNTIME_ASSET", runtime_asset_for_worker(active_runtime.as_ref(), desired_asset));
     if let Some(overlay) = active_overlay {
         cmd.env("PYTHONPATH", overlay.to_string_lossy().to_string());
     }
@@ -990,7 +1065,7 @@ fn build_worker_command(
     }
     if let Ok(models_dir) = storage::models_dir(app) {
         cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
-        cmd.env("MEDIAFORGE_MODEL_DIR", models_dir.to_string_lossy().to_string());
+        cmd.env("PYMSS_MODEL_DIR", models_dir.to_string_lossy().to_string());
     }
     if let Ok(data_root) = storage::data_root_dir(app) {
         cmd.env("MEDIAFORGE_DATA_DIR", data_root.to_string_lossy().to_string());
@@ -1106,7 +1181,7 @@ fn forward_python_terminal_log(app: &AppHandle, line: &str) -> bool {
     true
 }
 
-fn emit_batch_stderr(app: &AppHandle, task_ids: &[String], line: String) {
+fn emit_batch_stderr(app: &AppHandle, task_ids: &[String], line: String, journal: &Option<JournalHandle>) {
     let mut record = legacy_stderr(&line);
     if task_ids.len() == 1 {
         record.task_id = task_ids.first().cloned();
@@ -1118,6 +1193,9 @@ fn emit_batch_stderr(app: &AppHandle, task_ids: &[String], line: String) {
     }
     let record = session_log::append_record(app, record);
     for task_id in task_ids {
+        let envelope = WorkerEnvelope { event_type: "task.log".into(), task_id: Some(task_id.clone()), request_id: None,
+            timestamp: None, payload: serde_json::json!({"logRecord": record}) };
+        update_task_journal(app, journal, |journal| journal.observe(&envelope));
         let _ = app.emit(
             "pymss://worker-event",
             serde_json::json!({
@@ -1437,58 +1515,16 @@ fn log_worker_parse_error(
 }
 
 fn is_background_terminal_event(command: &str, event_type: &str) -> bool {
-    match command {
-        "model_download" => matches!(event_type, "error" | "asset.done" | "task.cancelled"),
-        "delete_model" => matches!(
-            event_type,
-            "error" | "model_delete_done" | "model_delete_failed"
-        ),
-        "cleanup_model_residual_files" => matches!(
-            event_type,
-            "error" | "model_residual_cleanup_done" | "model_residual_cleanup_failed"
-        ),
-            "install_runtime" => matches!(
-            event_type,
-            "error" | "runtime_install_finished" | "task.cancelled"
-        ),
-        "update_runtime_core" => matches!(
-            event_type,
-            "error"
-                | "runtime_core_update_finished"
-                | "runtime_core_update_plan"
-                | "task.cancelled"
-        ),
-        "manage_optional_package" => {
-            matches!(
-                event_type,
-                "error" | "optional_package_status" | "task.cancelled"
-            )
-        }
-        "manage_plugin" => {
-            matches!(event_type, "error" | "plugin_manage_result" | "task.cancelled")
-        }
-        "import_custom_model" => matches!(
-            event_type,
-            "error" | "custom_model_import_finished" | "task.cancelled"
-        ),
-        "infer" | "infer_workflow" => {
-            matches!(event_type, "error" | "task.result" | "task.cancelled")
-        }
-        "audio_tools" | "media_tool" => {
-            matches!(event_type, "error" | "task.result" | "task.cancelled")
-        }
-        "run_operation" => {
-            matches!(event_type, "error" | "operation_result" | "task.cancelled")
-        }
-        "list_nodes" => matches!(event_type, "error" | "nodes_list"),
-        "export_editor_mix" => {
-            matches!(
-                event_type,
-                "error" | "editor_mix_exported" | "task.cancelled"
-            )
-        }
-        _ => matches!(event_type, "error"),
+    super::protocol::is_background_terminal_event(command, event_type)
+}
+
+fn is_supervisor_terminal_event(command: &str, envelope: &WorkerEnvelope) -> bool {
+    if envelope.event_type == "error"
+        && envelope.payload.get("recoverable").and_then(Value::as_bool) == Some(true)
+    {
+        return false;
     }
+    is_background_terminal_event(command, &envelope.event_type)
 }
 
 fn mark_task_terminal(app: &AppHandle, task_id: &str) {
@@ -1555,6 +1591,96 @@ fn read_lossy_lines<R: Read>(reader: R, mut on_line: impl FnMut(String)) {
     }
 }
 
+const SUPERVISOR_READY: &[u8] = b"MEDIAFORGE_SUPERVISOR_READY\n";
+
+fn configure_worker_supervisor(command: &mut Command, script: &Path, fence: Option<&Path>, owner_fences: &[PathBuf]) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // The supervisor survives the application's group and owns a separate worker group.
+        command.process_group(0);
+    }
+    command.args(["-B", "-S"]).arg(script);
+    if let Some(path) = fence {
+        command.arg("--fence").arg(path);
+    }
+    for path in owner_fences {
+        command.arg("--owner-fence").arg(path);
+    }
+    command.arg("--").env_remove("MEDIAFORGE_PARENT_PIPE");
+}
+
+/// The supervisor stays alive until the worker and its descendants are gone.
+/// Closing its control pipe requests a stop without terminating the process
+/// that owns the reaping fences.
+pub(crate) struct WorkerProcess {
+    child: Mutex<Child>,
+    control: Mutex<Option<ChildStdin>>,
+}
+
+impl WorkerProcess {
+    fn spawn(command: &mut Command) -> std::io::Result<Self> {
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        let control = child.stdin.take();
+        let process = Self { child: Mutex::new(child), control: Mutex::new(control) };
+        if process.control.lock().unwrap_or_else(|error| error.into_inner()).is_none() {
+            return Err(std::io::Error::other("missing worker supervisor control pipe"));
+        }
+        Ok(process)
+    }
+
+    fn child(&self) -> std::sync::MutexGuard<'_, Child> {
+        self.child.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn ready_stdout(mut stdout: ChildStdout) -> std::io::Result<ChildStdout> {
+        let mut ready = [0; SUPERVISOR_READY.len()];
+        stdout.read_exact(&mut ready)?;
+        if ready != SUPERVISOR_READY {
+            return Err(std::io::Error::other("invalid worker supervisor readiness frame"));
+        }
+        Ok(stdout)
+    }
+
+    fn start(&self) -> std::io::Result<()> {
+        if let Some(control) = self.control.lock().unwrap_or_else(|error| error.into_inner()).as_mut() {
+            control.write_all(b"\x01")?;
+        }
+        Ok(())
+    }
+
+    fn request_stop(&self) {
+        drop(self.control.lock().unwrap_or_else(|error| error.into_inner()).take());
+    }
+
+    pub(crate) fn cancel(&self, state: &AppState, ids: &[String]) -> bool {
+        let mut cancelled = state.cancelled_tasks.lock().unwrap_or_else(|error| error.into_inner());
+        if matches!(self.child().try_wait(), Ok(Some(_))) || ids.iter().all(|id| cancelled.contains(id)) {
+            return false;
+        }
+        cancelled.extend(ids.iter().cloned());
+        self.request_stop();
+        true
+    }
+}
+
+impl Drop for WorkerProcess {
+    fn drop(&mut self) {
+        self.request_stop();
+        wait_reaped_child(self, |error| session_log::early("ERROR", "worker.supervisor_reap", &error.to_string()));
+    }
+}
+
+struct WorkerPayload(Option<PathBuf>);
+
+impl Drop for WorkerPayload {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.as_ref() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 fn emit_worker_stdout(app: &AppHandle, line: String) {
     let _ = app.emit(
         "pymss://worker-event",
@@ -1604,21 +1730,15 @@ fn run_worker_with_payload_inner(
     payload: Option<Value>,
     operation_id: &str,
 ) -> AppResult<Value> {
+    let mut reference_mutation = storage::model_reference_mutation(command);
     let _application_access = acquire_application_operation()?;
     let _runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
-    let payload_file = match payload {
+    let _runtime_file_lease = acquire_runtime_file_lease(app, command)?;
+    let payload_file = WorkerPayload(match payload {
         Some(value) => Some(make_payload_file(command, None, value)?),
         None => None,
-    };
-    let mut cmd = match build_worker_command(app, command, payload_file.as_ref(), None, operation_id) {
-        Ok(command) => command,
-        Err(error) => {
-            if let Some(path) = payload_file.as_ref() {
-                let _ = std::fs::remove_file(path);
-            }
-            return Err(error);
-        }
-    };
+    });
+    let mut cmd = build_worker_command(app, command, payload_file.0.as_ref(), None, operation_id, None, &[])?;
     let started_at = std::time::Instant::now();
     session_log::append(
         app,
@@ -1626,21 +1746,12 @@ fn run_worker_with_payload_inner(
         "worker.spawn",
         vec![("command", command.to_string())],
     );
-    let mut child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            if let Some(path) = payload_file.as_ref() {
-                let _ = std::fs::remove_file(path);
-            }
-            return Err(error.into());
-        }
+    let process = WorkerProcess::spawn(&mut cmd)?;
+    if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
+    let (stdout, stderr) = {
+        let mut child = process.child();
+        (child.stdout.take(), child.stderr.take())
     };
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
-    let stderr = child.stderr.take();
     let stderr_app = app.clone();
     let stderr_operation_id = operation_id.to_string();
     let stderr_command = command.to_string();
@@ -1664,47 +1775,54 @@ fn run_worker_with_payload_inner(
     });
     let mut last_payload = Value::Null;
     let mut worker_error: Option<AppError> = None;
-    read_lossy_lines(stdout, |line| {
-        if line.trim().is_empty() || worker_error.is_some() {
-            return;
-        }
-        match serde_json::from_str::<WorkerEnvelope>(&line) {
-            Ok(mut envelope) => {
-                let is_log = is_log_envelope(&envelope);
-                if !is_log {
-                    last_payload = envelope.payload.clone();
+    let startup = stdout.ok_or_else(|| std::io::Error::other("missing worker stdout"))
+        .and_then(WorkerProcess::ready_stdout)
+        .and_then(|stdout| { process.start()?; Ok(stdout) });
+    match startup {
+        Ok(stdout) => read_lossy_lines(stdout, |line| {
+            if line.trim().is_empty() || worker_error.is_some() {
+                return;
+            }
+            match serde_json::from_str::<WorkerEnvelope>(&line) {
+                Ok(mut envelope) => {
+                    let is_log = is_log_envelope(&envelope);
+                    if !is_log {
+                        last_payload = envelope.payload.clone();
+                    }
+                    log_worker_event_with_scope(app, command, &mut envelope, Some(operation_id), None);
+                    // Environment probes return through IPC or a correlated background event.
+                    // An untagged broadcast would bypass the caller's request ordering.
+                    if command != "env_info" || is_log {
+                        let _ = app.emit("pymss://worker-event", &envelope);
+                    }
+                    if envelope.event_type == "error" {
+                        worker_error = Some(AppError::Worker(envelope.payload.get("message")
+                            .and_then(Value::as_str).unwrap_or("worker error").to_string()));
+                    }
                 }
-                log_worker_event_with_scope(app, command, &mut envelope, Some(operation_id), None);
-                // Environment probes return through IPC or a correlated background event.
-                // An untagged broadcast would bypass the caller's request ordering.
-                if command != "env_info" || is_log {
-                    let _ = app.emit("pymss://worker-event", &envelope);
-                }
-                if envelope.event_type == "error" {
-                    worker_error = Some(AppError::Worker(
-                        envelope
-                            .payload
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("worker error")
-                            .to_string(),
-                    ));
+                Err(err) => {
+                    if is_rocm_offload_arch_diagnostic(&line) {
+                        session_log::append_record(app, worker_stdout_diagnostic(command, operation_id, &line));
+                        emit_worker_stdout(app, line);
+                    } else {
+                        log_worker_parse_error(app, command, None, operation_id, &err, &line);
+                        worker_error = Some(AppError::Worker(format!(
+                            "Invalid worker event: {err}; raw={line}"
+                        )));
+                    }
                 }
             }
-            Err(err) => {
-                if is_rocm_offload_arch_diagnostic(&line) {
-                    session_log::append_record(app, worker_stdout_diagnostic(command, operation_id, &line));
-                    emit_worker_stdout(app, line);
-                } else {
-                    log_worker_parse_error(app, command, None, operation_id, &err, &line);
-                    worker_error = Some(AppError::Worker(format!(
-                        "Invalid worker event: {err}; raw={line}"
-                    )));
-                }
-            }
-        }
+        }),
+        Err(error) => worker_error = Some(error.into()),
+    }
+    process.request_stop();
+    let status = wait_reaped_child(&process, |error| {
+        session_log::append(app, "ERROR", "worker.reap_pending", vec![("message", error.to_string())]);
     });
-    let status = child.wait()?;
+    if let Some(handle) = stderr_handle {
+        let _ = handle.join();
+    }
+    if let Some(mutation) = reference_mutation.as_mut() { mutation.reaped(); }
     session_log::append(
         app,
         if status.success() {
@@ -1720,12 +1838,6 @@ fn run_worker_with_payload_inner(
             ("durationMs", started_at.elapsed().as_millis().to_string()),
         ],
     );
-    if let Some(handle) = stderr_handle {
-        let _ = handle.join();
-    }
-    if let Some(path) = payload_file.as_ref() {
-        let _ = std::fs::remove_file(path);
-    }
     if let Some(err) = worker_error {
         return Err(err);
     }
@@ -1748,13 +1860,325 @@ pub fn spawn_worker_background(
     task_id: String,
     payload: Value,
 ) -> AppResult<()> {
+    if super::execution_quota::applies(command)? {
+        let root = storage::data_root_dir(&app)?;
+        if matches!(command, "infer" | "infer_workflow") {
+            if !payload.as_object().is_some_and(|map| map.len() == 1 && map.get("jobId").and_then(Value::as_str) == Some(&task_id)) {
+                return Err(AppError::Worker("audio start requires only the persisted queued jobId".into()));
+            }
+        } else {
+            task_journal::enqueue_manual(&root, command, &task_id, &payload)?;
+        }
+        let Some((key, created_at)) = task_journal::pending_identity(&root, command, &task_id)? else { return Ok(()); };
+        register_pending_workers(&app, &state, vec![PendingWorker { root, command: command.into(), requested: key, created_at }])?;
+        return Ok(());
+    }
+    let journal = None;
     let operation_id = session_log::record_operation_request(&app, command, &payload, Some(&task_id));
     let log_app = app.clone();
-    let result = spawn_worker_background_inner(app, state, command, task_id, payload, operation_id.clone());
+    let result = spawn_worker_background_inner(app, state, command, task_id, payload, operation_id.clone(), journal.clone());
     if let Err(error) = &result {
+        update_task_journal(&log_app, &journal, |journal| journal.fail_all(&error.to_string()));
         session_log::record_operation_failure(&log_app, command, &operation_id, &error.to_string());
     }
     result
+}
+
+#[derive(Clone)]
+pub(crate) struct PendingWorker {
+    root: PathBuf,
+    command: String,
+    requested: String,
+    created_at: f64,
+}
+
+fn select_pending_manual_workers(root: &Path, jobs: &[Value]) -> AppResult<Vec<PendingWorker>> {
+    let mut candidates = Vec::new();
+    for job in jobs {
+        super::job_schema::validate(job)?;
+        let command = job["command"].as_str().unwrap();
+        if job["source"] == "manual" && job["status"] == "queued" && job["owner"].is_null()
+            && job.get("audio").is_none() && !matches!(command, "infer" | "infer_workflow")
+            && super::execution_quota::applies(command)?
+        {
+            candidates.push(PendingWorker { root: root.into(), command: command.into(),
+                requested: job["jobId"].as_str().unwrap().into(), created_at: job["createdAt"].as_f64().unwrap() });
+        }
+    }
+    Ok(candidates)
+}
+
+fn merge_pending_workers(pending: &mut HashMap<String, PendingWorker>, candidates: Vec<PendingWorker>) -> usize {
+    let before = pending.len();
+    for candidate in candidates { pending.entry(candidate.requested.clone()).or_insert(candidate); }
+    pending.len() - before
+}
+
+fn register_pending_workers(app: &AppHandle, state: &AppState, candidates: Vec<PendingWorker>) -> AppResult<usize> {
+    let mut pending = state.pending_jobs.lock().map_err(|_| AppError::Worker("pending task registry lock poisoned".into()))?;
+    let added = merge_pending_workers(&mut pending, candidates);
+    if !pending.is_empty() && !state.job_dispatcher_running.swap(true, Ordering::AcqRel) {
+        let dispatcher_app = app.clone();
+        if let Err(error) = std::thread::Builder::new().name("mediaforge-worker-dispatch".into()).spawn(move || dispatch_pending_workers(dispatcher_app)) {
+            state.job_dispatcher_running.store(false, Ordering::Release);
+            return Err(error.into());
+        }
+    }
+    Ok(added)
+}
+
+/// Recover only generic manual waiters at application startup. Audio is handed
+/// off after its frontend enqueue/cancel coordination; Agent jobs belong to Kernel.
+fn load_pending_manual_workers(root: &Path) -> AppResult<Vec<PendingWorker>> {
+    let _catalog = task_journal::catalog_lock(root)?;
+    select_pending_manual_workers(root, &task_journal::read_all_unlocked(root)?)
+}
+
+pub(crate) fn restore_pending_manual_workers(app: &AppHandle) -> AppResult<usize> {
+    let root = storage::data_root_dir(app)?;
+    register_pending_workers(app, &app.state::<AppState>(), load_pending_manual_workers(&root)?)
+}
+
+struct DispatcherRunningGuard<'a> {
+    running: &'a std::sync::atomic::AtomicBool,
+    pending: &'a Mutex<HashMap<String, PendingWorker>>,
+    armed: bool,
+}
+
+impl DispatcherRunningGuard<'_> {
+    fn stopped_under_registry_lock(&mut self) {
+        self.running.store(false, Ordering::Release);
+        self.armed = false;
+    }
+}
+
+impl Drop for DispatcherRunningGuard<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let _registry = self.pending.lock().unwrap_or_else(|error| error.into_inner());
+            self.running.store(false, Ordering::Release);
+        }
+    }
+}
+
+fn remove_pending_after(
+    pending: &Mutex<HashMap<String, PendingWorker>>,
+    id: &str,
+    persist: impl FnOnce() -> AppResult<()>,
+) -> AppResult<()> {
+    persist()?;
+    pending.lock().unwrap_or_else(|error| error.into_inner()).remove(id);
+    Ok(())
+}
+
+fn dispatch_pending_workers(app: AppHandle) {
+    let dispatcher_state = app.state::<AppState>();
+    let mut running_guard = DispatcherRunningGuard {
+        running: &dispatcher_state.job_dispatcher_running, pending: &dispatcher_state.pending_jobs, armed: true,
+    };
+    let mut last_errors = HashMap::<String, String>::new();
+    loop {
+        let mut candidates = {
+            let state = app.state::<AppState>();
+            let mut pending = match state.pending_jobs.lock() {
+                Ok(pending) => pending,
+                Err(error) => error.into_inner(),
+            };
+            if pending.is_empty() {
+                // Under the same registry lock as insertion: no lost wakeup.
+                running_guard.stopped_under_registry_lock();
+                return;
+            }
+            pending.values_mut().map(|candidate| candidate.clone()).collect::<Vec<_>>()
+        };
+        candidates.sort_by(|a, b| a.created_at.total_cmp(&b.created_at).then(a.requested.cmp(&b.requested)));
+        for candidate in candidates {
+            let attempt = task_journal::try_claim_pending(&candidate.root, &candidate.command, &candidate.requested);
+            if matches!(&attempt, Ok(task_journal::ClaimAttempt::Waiting)) { break; }
+            match attempt {
+                Ok(task_journal::ClaimAttempt::Ready(journal, payload, task_id)) => {
+                    let _ = remove_pending_after(&dispatcher_state.pending_jobs, &candidate.requested, || Ok(()));
+                    last_errors.remove(&candidate.requested);
+                    let operation_id = session_log::record_operation_request(&app, &candidate.command, &payload, Some(&task_id));
+                    let result = spawn_worker_background_inner(app.clone(), app.state::<AppState>(), &candidate.command,
+                        task_id, payload, operation_id.clone(), Some(journal.clone()));
+                    if let Err(error) = result {
+                        update_task_journal(&app, &Some(journal), |journal| journal.fail_all(&error.to_string()));
+                        session_log::record_operation_failure(&app, &candidate.command, &operation_id, &error.to_string());
+                    }
+                }
+                Ok(task_journal::ClaimAttempt::Finished) => {
+                    let _ = remove_pending_after(&dispatcher_state.pending_jobs, &candidate.requested, || Ok(()));
+                    last_errors.remove(&candidate.requested);
+                }
+                Ok(task_journal::ClaimAttempt::Waiting) => unreachable!(),
+                Err(error) => {
+                    let persisted = remove_pending_after(&dispatcher_state.pending_jobs, &candidate.requested, ||
+                        task_journal::fail_unclaimed(&candidate.root, &candidate.command, &candidate.requested, &error.to_string()));
+                    let message = match persisted {
+                        Ok(()) => error.to_string(),
+                        Err(persist_error) => format!("{error}; unable to persist admission failure, retrying: {persist_error}"),
+                    };
+                    if last_errors.get(&candidate.requested) != Some(&message) {
+                        session_log::append(&app, "ERROR", "worker.admission_failed", vec![("taskId", candidate.requested.clone()), ("message", message.clone())]);
+                        last_errors.insert(candidate.requested, message);
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[cfg(test)]
+thread_local! { static THREAD_SPAWN_FAILURE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) }; }
+
+fn spawn_worker_thread<T: Send + 'static>(name: &str, run: impl FnOnce() -> T + Send + 'static) -> std::io::Result<std::thread::JoinHandle<T>> {
+    #[cfg(test)]
+    if THREAD_SPAWN_FAILURE.with(|failure| failure.borrow().as_deref() == Some(name)) {
+        // Match Builder's failure semantics: the submitted closure is dropped
+        // before spawn returns Err, including everything captured by it.
+        drop(run);
+        return Err(std::io::Error::other("injected worker thread creation failure"));
+    }
+    std::thread::Builder::new().name(name.into()).spawn(run)
+}
+
+fn update_task_journal(app: &AppHandle, journal: &Option<JournalHandle>, update: impl FnOnce(&mut task_journal::WorkerJournal) -> AppResult<()>) {
+    let Some(journal) = journal else { return; };
+    let result = journal.lock().map_err(|_| AppError::Worker("task journal lock poisoned".into())).and_then(|mut journal| update(&mut journal));
+    if let Err(error) = result {
+        session_log::append(app, "WARN", "worker.journal_failed", vec![("message", error.to_string())]);
+    }
+}
+
+struct ManualCancelWatch {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+impl Drop for ManualCancelWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Release);
+        if let Some(thread) = self.thread.take() { let _ = thread.join(); }
+    }
+}
+
+fn watch_manual_cancel(app: &AppHandle, process: &Arc<WorkerProcess>, ids: &[String], root: PathBuf, enabled: bool) -> AppResult<ManualCancelWatch> {
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let thread = if enabled {
+        let stopped = stop.clone(); let process = process.clone(); let ids = ids.to_vec(); let app = app.clone();
+        Some(spawn_worker_thread("mediaforge-worker-cancel", move || {
+            while !stopped.load(std::sync::atomic::Ordering::Acquire) {
+                if ids.iter().any(|id| root.join("agent-jobs").join(format!("{id}.cancel")).is_file()) {
+                    process.cancel(&app.state::<AppState>(), &ids);
+                    for id in &ids { let _ = std::fs::remove_file(root.join("agent-jobs").join(format!("{id}.cancel"))); }
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        })?)
+    } else { None };
+    Ok(ManualCancelWatch { stop, thread })
+}
+
+fn wait_reaped_child(process: &WorkerProcess, mut report: impl FnMut(&std::io::Error)) -> std::process::ExitStatus {
+    let mut reported = false;
+    loop {
+        // Do not hold the child mutex in a blocking wait: cancellation must still
+        // be able to terminate a worker that closed stdout before it exited.
+        let result = process.child().try_wait();
+        match result {
+            Ok(Some(status)) => return status,
+            Ok(None) => {}
+            Err(error) if !reported => { report(&error); reported = true; }
+            Err(_) => {}
+        }
+        // A wait error is not proof of exit. Keep both owner and quota leases,
+        // as well as the cancellation watcher, until the child is really reaped.
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+struct WorkerStartResources {
+    reference_mutation: Option<storage::ModelReferenceMutation>,
+    audio_scope: Option<audio_output::AudioOutputScope>,
+    runtime_access: Option<RuntimeAccessGuard<'static>>,
+    runtime_file_lease: Option<RuntimeLease>,
+    application_access: Option<Box<dyn Send>>,
+    stderr: Option<std::thread::JoinHandle<()>>,
+    cancel: Option<ManualCancelWatch>,
+}
+
+impl WorkerStartResources {
+    fn finish(&mut self) {
+        drop(self.cancel.take());
+        if let Some(stderr) = self.stderr.take() { let _ = stderr.join(); }
+        if let Some(mut scope) = self.audio_scope.take() { scope.finish(); }
+        if let Some(mut mutation) = self.reference_mutation.take() { mutation.reaped(); }
+        drop(self.runtime_access.take());
+        drop(self.runtime_file_lease.take());
+        drop(self.application_access.take());
+    }
+}
+
+#[derive(Clone)]
+struct WorkerStartCleanup {
+    app: AppHandle,
+    ids: Vec<String>,
+    payload: PathBuf,
+}
+
+/// Both the spawning side and the submitted supervisor closure own a guard.
+/// Builder drops its closure on failure before returning Err, so resources must
+/// stay shared until whichever guard handles failure has killed and reaped Child.
+struct WorkerStartGuard {
+    child: Arc<WorkerProcess>,
+    resources: Arc<Mutex<WorkerStartResources>>,
+    _journal: Option<JournalHandle>,
+    cleanup: Option<WorkerStartCleanup>,
+    reaped: bool,
+    owns_cleanup: bool,
+}
+
+impl WorkerStartGuard {
+    fn fork(&self) -> Self {
+        Self { child: self.child.clone(), resources: self.resources.clone(), _journal: self._journal.clone(),
+            cleanup: self.cleanup.clone(), reaped: false, owns_cleanup: true }
+    }
+
+    fn handoff(&mut self) { self.owns_cleanup = false; }
+
+    fn finish_reaped(&mut self) {
+        self.reaped = true;
+        self.child.request_stop();
+        self.resources.lock().unwrap_or_else(|error| error.into_inner()).finish();
+    }
+}
+
+impl Drop for WorkerStartGuard {
+    fn drop(&mut self) {
+        if !self.owns_cleanup { return; }
+        if !self.reaped {
+            self.child.request_stop();
+            wait_reaped_child(&self.child, |error| session_log::early("ERROR", "worker.startup_reap", &error.to_string()));
+        }
+        // These guards cannot leave scope before a real successful reap, even
+        // when thread creation or the supervisor closure itself fails.
+        self.resources.lock().unwrap_or_else(|error| error.into_inner()).finish();
+        if let Some(cleanup) = &self.cleanup {
+            let state = cleanup.app.state::<AppState>();
+            let mut tasks = state.tasks.lock().unwrap_or_else(|error| error.into_inner());
+            let owned = cleanup.ids.iter().filter(|id| tasks.get(*id).is_some_and(|child| Arc::ptr_eq(child, &self.child))).cloned().collect::<Vec<_>>();
+            for id in &owned { tasks.remove(id); }
+            drop(tasks);
+            let mut terminal = state.terminal_tasks.lock().unwrap_or_else(|error| error.into_inner());
+            for id in &owned { terminal.remove(id); }
+            drop(terminal);
+            let mut cancelled = state.cancelled_tasks.lock().unwrap_or_else(|error| error.into_inner());
+            for id in &owned { cancelled.remove(id); }
+            let _ = std::fs::remove_file(&cleanup.payload);
+        }
+    }
 }
 
 fn spawn_worker_background_inner(
@@ -1764,19 +2188,13 @@ fn spawn_worker_background_inner(
     task_id: String,
     mut payload: Value,
     operation_id: String,
+    journal: Option<JournalHandle>,
 ) -> AppResult<()> {
+    let mut reference_mutation = storage::model_reference_mutation(command);
     let mut application_access = Some(acquire_application_operation()?);
     let mut runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
-    let mut registered_task_ids = vec![task_id.clone()];
-    if let Some(tasks) = payload.get("tasks").and_then(Value::as_array) {
-        for item in tasks {
-            if let Some(child_task_id) = item.get("taskId").and_then(Value::as_str) {
-                if !registered_task_ids.iter().any(|id| id == child_task_id) {
-                    registered_task_ids.push(child_task_id.to_string());
-                }
-            }
-        }
-    }
+    let runtime_file_lease = acquire_runtime_file_lease(&app, command)?;
+    let registered_task_ids = task_journal::registered_ids(&task_id, &payload);
     {
         let tasks = state
             .tasks
@@ -1819,14 +2237,16 @@ fn spawn_worker_background_inner(
                 .map(PathBuf::from)
         })
         .flatten();
-    let payload_file = make_payload_file(command, Some(&task_id), payload)?;
-    let mut cmd = match build_worker_command(&app, command, Some(&payload_file), Some(&task_id), &operation_id) {
-        Ok(command) => command,
-        Err(error) => {
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(error);
-        }
+    let mut payload_file = WorkerPayload(Some(make_payload_file(command, Some(&task_id), payload)?));
+    let (fence, owner_fences) = if let Some(journal) = &journal {
+        let journal = journal.lock().map_err(|_| AppError::Worker("task journal lock poisoned".into()))?;
+        let (fence, owner_fences) = journal.reap_fences();
+        (fence.map(Path::to_path_buf), owner_fences)
+    } else {
+        (None, Vec::new())
     };
+    let mut cmd = build_worker_command(&app, command, payload_file.0.as_ref(), Some(&task_id), &operation_id,
+        fence.as_deref(), &owner_fences)?;
     if let Some(scope) = &audio_scope { scope.configure(&mut cmd); }
     let started_at = std::time::Instant::now();
     session_log::append(
@@ -1838,50 +2258,63 @@ fn spawn_worker_background_inner(
             ("taskId", task_id.clone()),
         ],
     );
-    let mut child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(error.into());
-        }
-    };
-    if let Some(scope) = &mut audio_scope {
-        if let Err(error) = scope.attach(child.id()) {
-            kill_process_tree(child.id());
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(error.into());
-        }
+    // Check the registry before spawning so a lock failure cannot strand a live
+    // child after its owner and quota guards have already been released.
+    let mut task_registry = state.tasks.lock()
+        .map_err(|_| AppError::Worker("task registry lock poisoned".into()))?;
+    for id in &registered_task_ids {
+        if task_registry.contains_key(id) { return Err(AppError::Worker(format!("task already running: {id}"))); }
     }
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
-    let stderr = child.stderr.take();
+    let shared_child = Arc::new(WorkerProcess::spawn(&mut cmd)?);
+    if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
+    for registered_task_id in &registered_task_ids {
+        task_registry.insert(registered_task_id.clone(), shared_child.clone());
+    }
+    drop(task_registry);
+    let mut startup_guard = WorkerStartGuard {
+        child: shared_child.clone(), _journal: journal.clone(), reaped: false, owns_cleanup: true,
+        resources: Arc::new(Mutex::new(WorkerStartResources {
+            reference_mutation,
+            audio_scope: audio_scope.take(), runtime_access: runtime_access.take(), runtime_file_lease,
+            application_access: application_access.take().map(|guard| Box::new(guard) as Box<dyn Send>), stderr: None, cancel: None,
+        })),
+        cleanup: Some(WorkerStartCleanup { app: app.clone(), ids: registered_task_ids.clone(), payload: payload_file.0.take().unwrap() }),
+    };
+    let worker_pid = shared_child.child().id();
+    {
+        let mut resources = startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(scope) = resources.audio_scope.as_mut() { scope.attach(worker_pid)?; }
+    }
+    if let Some(journal) = &journal {
+        journal.lock().map_err(|_| AppError::Worker("task journal lock poisoned".into()))?.running(worker_pid)?;
+    }
+    let (stdout, stderr) = {
+        let mut child = shared_child.child();
+        (child.stdout.take(), child.stderr.take())
+    };
+    let stdout = stdout.ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
     let stderr_app = app.clone();
     let stderr_task_ids = registered_task_ids.clone();
+    let stderr_journal = journal.clone();
     let stderr_handle = stderr.map(|stderr| {
-        std::thread::spawn(move || {
+        spawn_worker_thread("mediaforge-worker-stderr", move || {
             read_lossy_lines(stderr, |line| {
                 if forward_python_terminal_log(&stderr_app, &line) {
                     return;
                 }
-                emit_batch_stderr(&stderr_app, &stderr_task_ids, line);
+                emit_batch_stderr(&stderr_app, &stderr_task_ids, line, &stderr_journal);
             });
         })
-    });
-    let shared_child = Arc::new(Mutex::new(child));
-    {
-        let mut tasks = state
-            .tasks
-            .lock()
-            .map_err(|_| AppError::Worker("task registry lock poisoned".into()))?;
-        for registered_task_id in &registered_task_ids {
-            tasks.insert(registered_task_id.clone(), shared_child.clone());
-        }
-    }
-    std::thread::spawn(move || {
+    }).transpose()?;
+    startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner()).stderr = stderr_handle;
+    let cancel_root = journal.as_ref().and_then(|handle| handle.lock().ok().map(|journal| journal.data_root().to_path_buf()));
+    let cancel_enabled = cancel_root.is_some();
+    let cancel_watch = watch_manual_cancel(&app, &shared_child, &registered_task_ids, cancel_root.unwrap_or_default(), cancel_enabled)?;
+    startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner()).cancel = Some(cancel_watch);
+    let stdout = WorkerProcess::ready_stdout(stdout)?;
+    shared_child.start()?;
+    let mut supervisor_guard = startup_guard.fork();
+    spawn_worker_thread("mediaforge-worker-supervisor", move || {
         let mut terminal_task_ids: HashSet<String> = HashSet::new();
         let mut core_terminal_events = Vec::new();
         let mut core_terminal_error = None;
@@ -1891,10 +2324,13 @@ fn spawn_worker_background_inner(
             }
             match serde_json::from_str::<WorkerEnvelope>(&line) {
                 Ok(mut envelope) => {
+                    update_task_journal(&app, &journal, |journal| {
+                        journal.observe_with_result(&envelope, |row| super::result_jobs::remember_previews(&app, row))
+                    });
                     if envelope.event_type == "error" {
                         log_worker_event_with_scope(&app, &command_name, &mut envelope, Some(&operation_id), Some(&task_id));
                     }
-                    if is_background_terminal_event(&command_name, envelope.event_type.as_str()) {
+                    if is_supervisor_terminal_event(&command_name, &envelope) {
                         if let Some(envelope_task_id) = envelope.task_id.as_deref() {
                             if registered_task_ids.iter().any(|id| id == envelope_task_id) {
                                 terminal_task_ids.insert(envelope_task_id.to_string());
@@ -1930,7 +2366,7 @@ fn spawn_worker_background_inner(
                         }
                     }
                     if matches!(command_name.as_str(), "update_runtime_core" | "manage_plugin")
-                        && is_background_terminal_event(&command_name, envelope.event_type.as_str())
+                        && is_supervisor_terminal_event(&command_name, &envelope)
                     {
                         core_terminal_events.push(envelope);
                         return;
@@ -1940,8 +2376,9 @@ fn spawn_worker_background_inner(
                 }
                 Err(err) => {
                     if is_rocm_offload_arch_diagnostic(&line) {
-                        emit_batch_stderr(&app, &registered_task_ids, line.clone());
+                        emit_batch_stderr(&app, &registered_task_ids, line.clone(), &journal);
                     } else {
+                        update_task_journal(&app, &journal, |journal| journal.fail_all(&format!("Invalid worker event: {err}")));
                         let record = log_worker_parse_error(
                             &app,
                             &command_name,
@@ -1962,21 +2399,28 @@ fn spawn_worker_background_inner(
                 }
             }
         });
-        let exit_status = if let Ok(mut child) = shared_child.lock() {
-            child.wait().ok()
-        } else {
-            None
-        };
+        let exit_status = wait_reaped_child(&shared_child, |error| {
+            session_log::append(&app, "ERROR", "worker.reap_pending", vec![("taskId", task_id.clone()), ("message", error.to_string())]);
+        });
         if let Some(directory) = editor_export_directory.as_deref() {
             cleanup_editor_export_temp_files(directory, &task_id);
         }
-        if let Some(mut scope) = audio_scope.take() {
-            // Dropping here also handles a failed wait while both leases are held.
-            if exit_status.is_some() { scope.finish(); }
-        }
-        drop(runtime_access.take());
-        drop(application_access.take());
-        // Finish Python cleanup before the terminal event starts the UI's environment refresh.
+        supervisor_guard.finish_reaped();
+        let cancelled_task_ids = {
+            let state = app.state::<AppState>();
+            let mut cancelled = state.cancelled_tasks.lock().unwrap_or_else(|error| error.into_inner());
+            registered_task_ids.iter().filter(|id| cancelled.remove(*id)).cloned().collect::<Vec<_>>()
+        };
+        let was_cancelled = !cancelled_task_ids.is_empty();
+        let cancelled_events = cancelled_task_ids.into_iter()
+            .filter(|id| terminal_task_ids.insert(id.clone())).collect::<Vec<_>>();
+        update_task_journal(&app, &journal, |journal| journal.exited(
+            exit_status.success(), was_cancelled, &format!("worker exited with {exit_status}"),
+        ));
+        drop(journal);
+        drop(supervisor_guard);
+        // Deferred events may start another operation immediately. All process,
+        // pipe, journal and runtime ownership has finished before dispatching them.
         if let Some((message, record)) = core_terminal_error {
             broadcast_existing_task_error(&app, &registered_task_ids, message, record.as_ref());
         }
@@ -1984,50 +2428,24 @@ fn spawn_worker_background_inner(
             log_worker_event_with_scope(&app, &command_name, &mut envelope, Some(&operation_id), Some(&task_id));
             let _ = app.emit("pymss://worker-event", &envelope);
         }
-        let mut was_cancelled = false;
-        if let Ok(mut cancelled) = app.state::<AppState>().cancelled_tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                if cancelled.remove(registered_task_id) {
-                    was_cancelled = true;
-                    terminal_task_ids.insert(registered_task_id.clone());
-                }
-            }
-        }
         session_log::append(
             &app,
-            match exit_status.as_ref() {
-                _ if was_cancelled => "INFO",
-                Some(status) if status.success() => worker_lifecycle_level(&command_name),
-                _ => "INFO",
-            },
+            if !was_cancelled && exit_status.success() { worker_lifecycle_level(&command_name) } else { "INFO" },
             "worker.exit",
             vec![
                 ("command", command_name.clone()),
                 ("operationId", operation_id.clone()),
                 ("taskId", task_id.clone()),
                 ("cancelled", was_cancelled.to_string()),
-                (
-                    "status",
-                    exit_status
-                        .as_ref()
-                        .map(|status| status.to_string())
-                        .unwrap_or_else(|| "missing".to_string()),
-                ),
+                ("status", exit_status.to_string()),
                 ("durationMs", started_at.elapsed().as_millis().to_string()),
             ],
         );
-        if let Ok(mut cancelled) = app.state::<AppState>().cancelled_tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                if cancelled.remove(registered_task_id) {
-                    terminal_task_ids.insert(registered_task_id.clone());
-                    if command_name == "manage_plugin" {
-                        let _ = app.emit("pymss://worker-event", serde_json::json!({
-                            "type": "task.cancelled", "taskId": registered_task_id,
-                            "payload": { "message": "Cancelled" }
-                        }));
-                    }
-                }
-            }
+        for id in cancelled_events {
+            session_log::append(&app, "INFO", "task.cancelled", vec![("taskId", id.clone()), ("message", "Task cancelled".into())]);
+            let _ = app.emit("pymss://worker-event", serde_json::json!({
+                "type": "task.cancelled", "taskId": id, "payload": { "message": "Cancelled" }
+            }));
         }
         let missing_terminal_task_ids = registered_task_ids
             .iter()
@@ -2035,56 +2453,14 @@ fn spawn_worker_background_inner(
             .cloned()
             .collect::<Vec<_>>();
         if !missing_terminal_task_ids.is_empty() {
-            match exit_status {
-                Some(status) if !status.success() => {
-                    emit_task_error_to_all(
-                        &app,
-                        &missing_terminal_task_ids,
-                        format!("worker exited with {status}"),
-                    );
-                }
-                None => {
-                    emit_task_error_to_all(
-                        &app,
-                        &missing_terminal_task_ids,
-                        "worker exited unexpectedly".to_string(),
-                    );
-                }
-                Some(status)
-                    if status.success()
-                        && requires_background_result(&command_name) =>
-                {
-                    emit_task_error_to_all(
-                        &app,
-                        &missing_terminal_task_ids,
-                        "worker exited without a result".to_string(),
-                    );
-                }
-                _ => {}
+            if !exit_status.success() {
+                emit_task_error_to_all(&app, &missing_terminal_task_ids, format!("worker exited with {exit_status}"));
+            } else if requires_background_result(&command_name) {
+                emit_task_error_to_all(&app, &missing_terminal_task_ids, "worker exited without a result".to_string());
             }
         }
-        if let Some(handle) = stderr_handle {
-            let _ = handle.join();
-        }
-        let _ = std::fs::remove_file(payload_file);
-        let cleanup_state = app.state::<AppState>();
-        if let Ok(mut tasks) = cleanup_state.tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                if tasks
-                    .get(registered_task_id)
-                    .map(|registered| Arc::ptr_eq(registered, &shared_child))
-                    .unwrap_or(false)
-                {
-                    tasks.remove(registered_task_id);
-                }
-            }
-        }
-        if let Ok(mut terminal) = cleanup_state.terminal_tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                terminal.remove(registered_task_id);
-            }
-        };
-    });
+    })?;
+    startup_guard.handoff();
 
     Ok(())
 }
@@ -2095,6 +2471,430 @@ mod tests {
     use serde_json::json;
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn worker_restart_recovers_only_queued_generic_manual_compute_and_merges_idempotently() {
+        let root = tempfile::tempdir().unwrap();
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/jobs/current-contract.json")).unwrap();
+        for row in fixture["records"].as_array().unwrap() {
+            crate::storage::write_json_file(&root.path().join("agent-jobs").join(format!("{}.json", row["jobId"].as_str().unwrap())), row).unwrap();
+        }
+        let compute = ["audio_tools", "run_operation", "media_tool", "export_editor_mix"];
+        for command in compute.into_iter().chain(["model_download", "health", "install_runtime", "infer", "infer_workflow"]) {
+            super::task_journal::enqueue_manual(root.path(), command, command, &json!({"operation":"fixture"})).unwrap();
+        }
+        let base = super::task_journal::read_job(&root.path().join("agent-jobs/run_operation.json")).unwrap().unwrap();
+        for (id, status, source, owner) in [
+            ("external-agent", "queued", "agent", serde_json::Value::Null),
+            ("running", "running", "manual", json!({"kind":"tauri-worker","pid":12345})),
+            ("owned-queued", "queued", "manual", json!({"kind":"tauri-worker","pid":12345})),
+            ("completed", "completed", "manual", serde_json::Value::Null),
+            ("failed", "failed", "manual", serde_json::Value::Null),
+            ("cancelled", "cancelled", "manual", serde_json::Value::Null),
+            ("interrupted", "interrupted", "manual", serde_json::Value::Null),
+        ] {
+            let mut row = base.clone();
+            row["jobId"] = json!(id); row["cancelTaskId"] = json!(id); row["status"] = json!(status); row["source"] = json!(source); row["owner"] = owner;
+            if status == "running" { row["startedAt"] = json!(1.0); }
+            if ["completed", "failed", "cancelled", "interrupted"].contains(&status) { row["finishedAt"] = json!(2.0); }
+            crate::storage::write_json_file(&root.path().join("agent-jobs").join(format!("{id}.json")), &row).unwrap();
+        }
+        let bytes = || fs::read_dir(root.path().join("agent-jobs")).unwrap().map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+            .map(|path| (path.clone(), fs::read(path).unwrap())).collect::<std::collections::BTreeMap<_, _>>();
+        let before = bytes();
+        let candidates = super::load_pending_manual_workers(root.path()).unwrap();
+        let mut ids = candidates.iter().map(|candidate| candidate.requested.as_str()).collect::<Vec<_>>(); ids.sort();
+        assert_eq!(ids, ["audio_tools", "export_editor_mix", "media_tool", "run_operation"]);
+        assert!(candidates.iter().all(|candidate| candidate.root == root.path() && candidate.created_at > 0.0));
+        let mut pending = std::collections::HashMap::new();
+        assert_eq!(super::merge_pending_workers(&mut pending, candidates), 4);
+        assert_eq!(super::merge_pending_workers(&mut pending, super::load_pending_manual_workers(root.path()).unwrap()), 0);
+        assert_eq!(pending.len(), 4);
+        assert_eq!(bytes(), before, "restoring waiters must not claim or rewrite queued records");
+    }
+
+    #[test]
+    fn worker_restart_rejects_invalid_catalog_without_restoring_a_partial_default_queue() {
+        let root = tempfile::tempdir().unwrap();
+        super::task_journal::enqueue_manual(root.path(), "run_operation", "valid", &json!({"operation":"fixture"})).unwrap();
+        let valid_path = root.path().join("agent-jobs/valid.json");
+        let before = fs::read(&valid_path).unwrap();
+        let bad = root.path().join("agent-jobs/bad.json");
+        fs::write(&bad, b"{\"schemaVersion\":1}").unwrap();
+        assert!(super::load_pending_manual_workers(root.path()).is_err());
+        assert_eq!(fs::read(valid_path).unwrap(), before);
+        assert_eq!(fs::read(bad).unwrap(), b"{\"schemaVersion\":1}");
+    }
+
+    struct StartupReleaseProbe {
+        child: std::sync::Arc<super::WorkerProcess>,
+        root: std::path::PathBuf,
+        reaped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        slot_held: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl Drop for StartupReleaseProbe {
+        fn drop(&mut self) {
+            use std::sync::atomic::Ordering;
+            self.reaped.store(matches!(self.child.child().try_wait(), Ok(Some(_))), Ordering::SeqCst);
+            self.slot_held.store(matches!(super::task_journal::try_claim_pending(&self.root, "run_operation", "next"),
+                Ok(super::task_journal::ClaimAttempt::Waiting)), Ordering::SeqCst);
+        }
+    }
+
+    fn admit_fixture(root: &Path) -> super::JournalHandle {
+        for id in ["owned", "next"] {
+            super::task_journal::enqueue_manual(root, "run_operation", id, &json!({"operation":"fixture"})).unwrap();
+        }
+        let super::task_journal::ClaimAttempt::Ready(journal, _, _) =
+            super::task_journal::try_claim_pending(root, "run_operation", "owned").unwrap() else { panic!("fixture not admitted") };
+        journal
+    }
+
+    fn launch_fixture(root: &Path, journal: &super::JournalHandle, script: &str) -> (
+        std::sync::Arc<super::WorkerProcess>, std::process::ChildStdout, std::process::ChildStderr,
+    ) {
+        let worker = root.join("fixture_worker.py");
+        fs::write(&worker, script).unwrap();
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut command = crate::process_command::isolated_test_python(root);
+        {
+            let journal = journal.lock().unwrap();
+            let (fence, owners) = journal.reap_fences();
+            super::configure_worker_supervisor(&mut command, &project.join("python/core/worker_supervisor.py"), fence, &owners);
+        }
+        command.arg(worker);
+        let child = std::sync::Arc::new(super::WorkerProcess::spawn(&mut command).unwrap());
+        let (pid, stdout, stderr) = {
+            let mut process = child.child();
+            (process.id(), process.stdout.take().unwrap(), process.stderr.take().unwrap())
+        };
+        journal.lock().unwrap().running(pid).unwrap();
+        let stdout = super::WorkerProcess::ready_stdout(stdout).unwrap();
+        child.start().unwrap();
+        (child, stdout, stderr)
+    }
+
+    fn owned_startup_fixture(delay: f64) -> (tempfile::TempDir, super::WorkerStartGuard,
+        std::sync::Arc<std::sync::atomic::AtomicBool>, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        use std::io::{BufRead, BufReader};
+        use std::sync::{Arc, Mutex};
+        let root = tempfile::tempdir().unwrap();
+        let journal = admit_fixture(root.path());
+        let script = format!("import sys,time; assert sys.version_info[:2]==(3,12), 'Python 3.12 required'; print('ready',flush=True); time.sleep({delay})");
+        let (child, stdout, stderr) = launch_fixture(root.path(), &journal, &script);
+        let reaped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let slot_held = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut scope = super::audio_output::AudioOutputScope::create(&root.path().join("receipts"), root.path().join("output")).unwrap();
+        scope.attach(child.child().id()).unwrap();
+        let mut reference_mutation = crate::storage::model_reference_mutation("import_custom_model").unwrap();
+        reference_mutation.spawned();
+        let guard = super::WorkerStartGuard { child: child.clone(), _journal: Some(journal), cleanup: None, reaped: false, owns_cleanup: true,
+            resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, runtime_file_lease: None,
+                stderr: Some(std::thread::spawn(move || super::read_lossy_lines(stderr, |_| {}))), cancel: None,
+                reference_mutation: Some(reference_mutation),
+                application_access: Some(Box::new(StartupReleaseProbe { child: child.clone(), root: root.path().into(), reaped: reaped.clone(), slot_held: slot_held.clone() })) })),
+        };
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let reader = super::spawn_worker_thread("mediaforge-startup-fixture-ready", move || {
+            let mut line = String::new();
+            let _ = sender.send(BufReader::new(stdout).read_line(&mut line).map(|_| line));
+        }).unwrap();
+        let ready = receiver.recv_timeout(std::time::Duration::from_secs(15));
+        if !matches!(&ready, Ok(Ok(line)) if line.trim() == "ready") {
+            drop(guard); let _ = reader.join(); panic!("owned Python 3.12 did not become ready: {ready:?}");
+        }
+        reader.join().unwrap();
+        (root, guard, reaped, slot_held)
+    }
+
+    #[test]
+    fn worker_startup_thread_failure_reaps_before_releasing_scope_or_quota() {
+        let _serial = crate::storage::model_reference_test_guard();
+        use std::sync::atomic::Ordering;
+        for name in ["mediaforge-worker-stderr", "mediaforge-worker-cancel", "mediaforge-worker-supervisor"] {
+            let (root, guard, reaped, slot_held) = owned_startup_fixture(60.0);
+            let child = guard.child.clone();
+            let submitted = guard.fork();
+            super::THREAD_SPAWN_FAILURE.with(|failure| *failure.borrow_mut() = Some(name.into()));
+            let spawned = super::spawn_worker_thread(name, move || drop(submitted));
+            super::THREAD_SPAWN_FAILURE.with(|failure| *failure.borrow_mut() = None);
+            assert!(spawned.is_err(), "{name}");
+            assert!(child.child().try_wait().unwrap().is_some());
+            assert!(reaped.load(Ordering::SeqCst), "resources released before reap: {name}");
+            assert!(slot_held.load(Ordering::SeqCst), "quota released before startup cleanup: {name}");
+            assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0, "mutation lease retained after reap: {name}");
+            assert_eq!(fs::read_dir(root.path().join("receipts")).unwrap().count(), 0);
+            drop(guard);
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(), super::task_journal::ClaimAttempt::Ready(_, _, _)));
+        }
+    }
+
+    #[test]
+    fn worker_startup_success_hands_off_without_killing_the_owned_child() {
+        let _serial = crate::storage::model_reference_test_guard();
+        use std::sync::atomic::Ordering;
+        let (_root, mut guard, reaped, slot_held) = owned_startup_fixture(0.15);
+        let mut supervisor = guard.fork();
+        let thread = super::spawn_worker_thread("mediaforge-worker-supervisor", move || {
+            let status = super::wait_reaped_child(&supervisor.child, |_| {});
+            supervisor.finish_reaped();
+            status
+        }).unwrap();
+        guard.handoff(); drop(guard);
+        assert!(thread.join().unwrap().success());
+        assert!(reaped.load(Ordering::SeqCst)); assert!(slot_held.load(Ordering::SeqCst));
+        assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0);
+    }
+
+    #[test]
+    fn worker_startup_supervisor_unwind_still_reaps_before_releasing_resources() {
+        let _serial = crate::storage::model_reference_test_guard();
+        use std::sync::atomic::Ordering;
+        let (_root, mut guard, reaped, slot_held) = owned_startup_fixture(60.0);
+        let child = guard.child.clone();
+        let supervisor = guard.fork();
+        let thread = super::spawn_worker_thread("mediaforge-worker-supervisor", move || {
+            let _supervisor = supervisor;
+            panic!("injected supervisor failure");
+        }).unwrap();
+        guard.handoff(); drop(guard);
+        assert!(thread.join().is_err());
+        assert!(child.child().try_wait().unwrap().is_some());
+        assert!(reaped.load(Ordering::SeqCst)); assert!(slot_held.load(Ordering::SeqCst));
+        assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0);
+    }
+
+    fn worker_tree_script(wait: bool) -> String {
+        let script = r#"
+import os, subprocess, sys, time
+from pathlib import Path
+
+grandchild = "from pathlib import Path; import os,time; Path('grandchild-pid').write_text(str(os.getpid())); time.sleep(45)"
+child = "from pathlib import Path; import os,subprocess,sys,time; Path('child-pid').write_text(str(os.getpid())); subprocess.Popen([sys.executable,'-B','-c',sys.argv[1]], creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0)); time.sleep(45)"
+Path('worker-pid').write_text(str(os.getpid()))
+subprocess.Popen([sys.executable, '-B', '-c', child, grandchild], creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+until = time.monotonic() + 12
+while not Path('grandchild-pid').exists():
+    if time.monotonic() > until:
+        raise RuntimeError('worker fixture did not launch its descendants')
+    time.sleep(.02)
+print('worker stdout', flush=True)
+print('worker stderr', file=sys.stderr, flush=True)
+"#;
+        if wait { format!("{script}\ntime.sleep(45)\n") } else { script.to_string() }
+    }
+
+    fn tree_pids(root: &Path) -> Vec<u32> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            let pids = ["worker-pid", "child-pid", "grandchild-pid"].iter().map(|name| {
+                fs::read_to_string(root.join(name)).ok()?.parse::<u32>().ok()
+            }).collect::<Option<Vec<_>>>();
+            if let Some(pids) = pids { return pids; }
+            assert!(std::time::Instant::now() < deadline, "worker fixture never started its process tree");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    fn assert_fixture_tree_reaped(pids: &[u32]) {
+        for &pid in pids {
+            assert!(!super::audio_output::process_alive(pid), "worker fixture process {pid} is still running");
+        }
+    }
+
+    #[test]
+    fn supervised_audio_worker_preserves_and_cleans_its_output_scope() {
+        use std::io::{BufRead, BufReader, Read};
+
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("output");
+        let receipts = root.path().join("receipts");
+        fs::create_dir(&output).unwrap();
+        let mut scope = super::audio_output::AudioOutputScope::create(&receipts, output.clone()).unwrap();
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let worker = root.path().join("fixture_audio.py");
+        fs::write(&worker, r#"
+from pathlib import Path
+import sys
+import time
+
+sys.path.insert(0, sys.argv[1])
+from audio_tools.common import _render_output
+
+def render(path):
+    path.write_bytes(b'partial')
+    print('rendering', flush=True)
+    time.sleep(15)
+
+_render_output(Path(sys.argv[2]) / 'final.wav', render)
+"#).unwrap();
+        let mut command = crate::process_command::isolated_test_python(root.path());
+        super::configure_worker_supervisor(&mut command, &project.join("python/core/worker_supervisor.py"), None, &[]);
+        command.arg(worker).arg(project.join("python")).arg(&output);
+        scope.configure(&mut command);
+        let process = super::WorkerProcess::spawn(&mut command).unwrap();
+        let (pid, stdout, mut stderr) = {
+            let mut child = process.child();
+            (child.id(), child.stdout.take().unwrap(), child.stderr.take().unwrap())
+        };
+        scope.attach(pid).unwrap();
+        let mut stdout = BufReader::new(super::WorkerProcess::ready_stdout(stdout).unwrap());
+        process.start().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        process.request_stop();
+        let status = super::wait_reaped_child(&process, |_| {});
+        let mut diagnostics = String::new();
+        stderr.read_to_string(&mut diagnostics).unwrap();
+        assert_eq!(line.trim(), "rendering", "{diagnostics}");
+        assert!(!status.success());
+        assert_eq!(fs::read_dir(&output).unwrap().count(), 1);
+        scope.finish();
+        assert_eq!(fs::read_dir(output).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(receipts).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn worker_supervisor_normal_exit_and_cancel_close_inherited_pipes_before_quota_release() {
+        use std::io::Read;
+
+        for cancel in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let journal = admit_fixture(root.path());
+            let (process, mut stdout, mut stderr) = launch_fixture(root.path(), &journal, &worker_tree_script(cancel));
+            let pids = tree_pids(root.path());
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+                super::task_journal::ClaimAttempt::Waiting));
+            if cancel {
+                assert!(pids.iter().all(|pid| super::audio_output::process_alive(*pid)));
+                assert!(process.cancel(&crate::state::AppState::new(), &["owned".into()]));
+            }
+            let status = super::wait_reaped_child(&process, |_| {});
+            assert_eq!(status.success(), !cancel);
+            assert_fixture_tree_reaped(&pids);
+            let mut output = String::new();
+            stdout.read_to_string(&mut output).unwrap();
+            if !cancel { assert!(output.contains("worker stdout")); }
+            let mut errors = String::new();
+            stderr.read_to_string(&mut errors).unwrap();
+            if !cancel { assert!(errors.contains("worker stderr")); }
+            drop((stdout, stderr));
+            process.request_stop();
+            assert!(process.control.lock().unwrap().is_none());
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+                super::task_journal::ClaimAttempt::Waiting));
+            drop(journal);
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+                super::task_journal::ClaimAttempt::Ready(_, _, _)));
+        }
+    }
+
+    const WORKER_OWNER_FIXTURE: &str = "MEDIAFORGE_RUST_WORKER_OWNER_FIXTURE";
+
+    #[test]
+    fn worker_supervisor_fixture_owner() {
+        let Some(root) = std::env::var_os(WORKER_OWNER_FIXTURE) else { return; };
+        let root = Path::new(&root);
+        let journal = admit_fixture(root);
+        let (_process, _stdout, _stderr) = launch_fixture(root, &journal, &worker_tree_script(true));
+        std::thread::sleep(std::time::Duration::from_secs(45));
+    }
+
+    #[test]
+    fn worker_supervisor_reaps_after_rust_owner_crash_before_admitting_next_job() {
+        struct FixtureOwner(std::process::Child);
+        impl Drop for FixtureOwner {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        let root = tempfile::tempdir().unwrap();
+        let mut owner = FixtureOwner(crate::process_command::hidden_command(std::env::current_exe().unwrap())
+            .args(["--exact", "python::worker::tests::worker_supervisor_fixture_owner", "--nocapture"])
+            .env(WORKER_OWNER_FIXTURE, root.path()).stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap());
+        let pids = tree_pids(root.path());
+        assert!(pids.iter().all(|pid| super::audio_output::process_alive(*pid)));
+        owner.0.kill().unwrap();
+        assert!(!owner.0.wait().unwrap().success());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            match super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap() {
+                super::task_journal::ClaimAttempt::Ready(_, _, _) => break,
+                super::task_journal::ClaimAttempt::Waiting => {
+                    assert!(std::time::Instant::now() < deadline, "reaping fence did not release after parent death");
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                super::task_journal::ClaimAttempt::Finished => panic!("queued fixture disappeared"),
+            }
+        }
+        assert_fixture_tree_reaped(&pids);
+        let recovered = super::task_journal::list(root.path()).unwrap();
+        assert!(recovered.iter().any(|row| row["jobId"] == "owned" && row["status"] == "interrupted"));
+    }
+
+    #[test]
+    fn worker_startup_admission_keeps_pending_until_failure_is_durable() {
+        let root = tempfile::tempdir().unwrap();
+        super::task_journal::enqueue_manual(root.path(), "run_operation", "pending", &json!({"operation":"fixture"})).unwrap();
+        let pending = std::sync::Mutex::new(std::collections::HashMap::from([("pending".into(), super::PendingWorker {
+            root: root.path().into(), command: "run_operation".into(), requested: "pending".into(), created_at: 1.0,
+        })]));
+        assert!(super::remove_pending_after(&pending, "pending", || Err(crate::error::AppError::Worker("injected persistence failure".into()))).is_err());
+        assert!(pending.lock().unwrap().contains_key("pending"));
+        assert_eq!(super::task_journal::read_job(&root.path().join("agent-jobs/pending.json")).unwrap().unwrap()["status"], "queued");
+        super::remove_pending_after(&pending, "pending", || super::task_journal::fail_unclaimed(root.path(), "run_operation", "pending", "admission failed")).unwrap();
+        assert!(pending.lock().unwrap().is_empty());
+        assert_eq!(super::task_journal::read_job(&root.path().join("agent-jobs/pending.json")).unwrap().unwrap()["status"], "failed");
+    }
+
+    #[test]
+    fn worker_startup_dispatcher_unwind_resets_flag_without_clobbering_a_new_dispatcher() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let running = AtomicBool::new(true);
+        let pending = std::sync::Mutex::new(std::collections::HashMap::new());
+        let outcome = std::panic::catch_unwind(|| {
+            let _guard = super::DispatcherRunningGuard { running: &running, pending: &pending, armed: true };
+            panic!("injected dispatcher failure");
+        });
+        assert!(outcome.is_err()); assert!(!running.load(Ordering::Acquire));
+        let mut guard = super::DispatcherRunningGuard { running: &running, pending: &pending, armed: true };
+        {
+            let _registry = pending.lock().unwrap();
+            guard.stopped_under_registry_lock();
+            running.store(true, Ordering::Release);
+        }
+        drop(guard);
+        assert!(running.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn supervisor_terminal_decisions_preserve_recoverable_jobs() {
+        let mut envelope = super::WorkerEnvelope {
+            event_type: "error".into(), task_id: Some("fixture-task".into()), request_id: None,
+            timestamp: None, payload: json!({"recoverable": true, "message": "continuing with next input"}),
+        };
+        for command in ["infer", "infer_workflow", "audio_tools", "run_operation", "model_download", "manage_plugin"] {
+            // A recoverable error cannot populate the terminal registry that gates cancellation.
+            assert!(!super::is_supervisor_terminal_event(command, &envelope), "{command}");
+            envelope.payload = json!({"recoverable": false, "message": "fatal"});
+            assert!(super::is_supervisor_terminal_event(command, &envelope), "{command}");
+            envelope.payload = json!({"message": "fatal without an optional flag"});
+            assert!(super::is_supervisor_terminal_event(command, &envelope), "{command}");
+            envelope.payload = json!({"recoverable": true});
+        }
+        for (command, kind) in [("infer", "task.result"), ("infer_workflow", "task.cancelled"),
+            ("model_download", "asset.done"), ("manage_plugin", "plugin_manage_result")] {
+            envelope.event_type = kind.into();
+            assert!(super::is_supervisor_terminal_event(command, &envelope), "{command}/{kind}");
+        }
+        envelope.event_type = "task.progress".into();
+        assert!(!super::is_supervisor_terminal_event("infer", &envelope));
+    }
 
     #[test]
     fn audio_output_scopes_match_python_operation_normalization() {
@@ -2423,7 +3223,7 @@ mod tests {
 
     #[test]
     fn worker_python_environment_drops_host_python_and_conda_overrides() {
-        let mut command = std::process::Command::new("python");
+        let mut command = crate::process_command::hidden_command("python");
         for key in super::HOST_PYTHON_ENV_VARS {
             command.env(key, "host-runtime");
         }
@@ -2512,7 +3312,7 @@ mod tests {
             fs::write(&pointer, serde_json::to_vec(&json!({
                 "pythonPath": recorded, "backend": "mlx"
             })).unwrap()).unwrap();
-            let resolved = super::resolve_active_runtime_record(&pointer).unwrap().0;
+            let resolved = super::resolve_active_runtime_record(&pointer).unwrap().unwrap().python;
             let active = super::active_path_backend_matches(&pointer, &resolved).then_some(resolved);
             let selected = super::select_worker_python("plugin_marketplace", "bootstrap", active);
             assert!(selected.is_ok(), "an installed MLX venv was rejected: {selected:?}");
@@ -2536,11 +3336,13 @@ mod tests {
             .unwrap();
             fs::write(&pointer, &bytes).unwrap();
             assert_eq!(
-                super::resolve_active_runtime_record(&pointer),
-                Some((
-                    python.canonicalize().unwrap().to_string_lossy().to_string(),
-                    Some("bundled".into())
-                ))
+                super::resolve_active_runtime_record(&pointer).unwrap(),
+                Some(super::ActiveRuntimeSelection {
+                    python: python.canonicalize().unwrap().to_string_lossy().to_string(),
+                    source: Some("bundled".into()),
+                    asset_id: None,
+                    backend: Some("cpu".into()),
+                })
             );
             assert_eq!(fs::read(&pointer).unwrap(), bytes);
         }
@@ -2551,9 +3353,27 @@ mod tests {
             br#"{"pythonPath":"cpu"}"#,
         ] {
             fs::write(&pointer, bytes).unwrap();
-            assert_eq!(super::resolve_active_runtime_record(&pointer), None);
+            assert!(
+                super::resolve_active_runtime_record(&pointer).is_err(),
+                "corrupt pointer must not be treated as absent"
+            );
             assert_eq!(fs::read(&pointer).unwrap(), bytes);
         }
+        assert_eq!(
+            super::resolve_active_runtime_record(&fixture.0.join("missing.json")).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn corrupt_pointer_errors_name_the_file_and_keep_it() {
+        let fixture = ResourceFixture::new("pointer-error");
+        let pointer = fixture.0.join("active-runtime.json");
+        fs::write(&pointer, b"not json").unwrap();
+        let error = super::resolve_active_runtime_record(&pointer).unwrap_err().to_string();
+        assert!(error.contains("active-runtime.json"), "{error}");
+        assert!(error.contains("not a valid runtime record"), "{error}");
+        assert_eq!(fs::read(&pointer).unwrap(), b"not json");
     }
 
     #[cfg(unix)]
@@ -2583,7 +3403,7 @@ mod tests {
                 serde_json::to_vec(&json!({"backend": "cpu", "pythonPath": path})).unwrap(),
             )
             .unwrap();
-            let (resolved, _) = super::resolve_active_runtime_record(&pointer).unwrap();
+            let resolved = super::resolve_active_runtime_record(&pointer).unwrap().unwrap().python;
             assert_eq!(Path::new(&resolved), expected);
             assert_ne!(Path::new(&resolved), python.canonicalize().unwrap());
             assert!(super::active_path_backend_matches(&pointer, &resolved));
@@ -2674,7 +3494,8 @@ mod tests {
         .unwrap();
         let active_python = super::resolve_active_runtime_record(&bundled_pointer)
             .unwrap()
-            .0;
+            .unwrap()
+            .python;
         assert!(super::is_bundled_runtime_python_path(&bundled_pointer, &active_python).unwrap());
         assert_eq!(
             super::resolve_runtime_overlay_for_record(
@@ -2819,13 +3640,13 @@ mod tests {
     }
 
     #[test]
-    fn operation_result_is_a_background_terminal_event() {
-        assert!(is_background_terminal_event("run_operation", "operation_result"));
+    fn operation_task_result_is_a_background_terminal_event() {
+        assert!(is_background_terminal_event("run_operation", "task.result"));
         assert!(is_background_terminal_event("run_operation", "error"));
         assert!(is_background_terminal_event("run_operation", "task.cancelled"));
         assert!(!is_background_terminal_event(
             "run_operation",
-            "operation_progress"
+            "task.progress"
         ));
     }
 

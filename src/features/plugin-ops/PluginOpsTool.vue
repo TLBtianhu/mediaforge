@@ -6,16 +6,20 @@
  * file inputs, number/enum/boolean/string params generated from the
  * OperationSpec. One shared implementation — no per-plugin Vue code.
  */
-import { computed, onActivated, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
+import { revealPath } from '@/api/native'
 import { pluginRevision } from '../plugin-marketplace/composable'
 import { usePluginOps, type OperationParamSchema, type OperationSpec } from '../plugin-ops/composable'
 
 const { t } = useI18n()
 const message = useMessage()
-const { state, loading, error, refresh, run } = usePluginOps()
+const { state, loading, error, refresh, run, stop } = usePluginOps()
 watch(pluginRevision, refresh)
+// Leaving the page must end the local wait; the durable job keeps its own
+// lifecycle in the shared journal and stays visible on the queue page.
+onBeforeUnmount(stop)
 
 const selectedId = ref('')
 const selected = computed<OperationSpec | null>(
@@ -69,8 +73,7 @@ async function execute() {
 async function reveal(path?: string) {
   if (!path) return
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('reveal_path', { path })
+    await revealPath(path)
   } catch {
     // reveal is best-effort
   }

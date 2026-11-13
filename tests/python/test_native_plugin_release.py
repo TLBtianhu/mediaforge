@@ -151,6 +151,7 @@ class NativePluginReleaseTests(unittest.TestCase):
             capture_output=True,
             check=True,
             timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(
             [call["args"] for call in self.calls()],
@@ -238,10 +239,13 @@ class MacosPluginEntitlementsTests(unittest.TestCase):
                 MERGE.merge_entitlements(existing, REQUIRED, output)
             self.assertEqual(output.read_bytes(), b"preserved")
 
-    @unittest.skipUnless(
-        shutil.which("bash"), "Bash is required for the signing command test"
-    )
     def test_resigning_passes_merged_entitlements_to_the_final_bundle_signature(self):
+        git_bash = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+        if os.name == "nt" and not git_bash.is_file():
+            self.skipTest("Git Bash is required for native Windows fixture paths")
+        bash = str(git_bash) if os.name == "nt" else shutil.which("bash")
+        if not bash:
+            self.skipTest("Bash is required for the signing command test")
         with tempfile.TemporaryDirectory(prefix="macos-plugin-sign-test-") as temporary:
             root = Path(temporary)
             app = root / "Pymss Studio.app"
@@ -280,24 +284,25 @@ codesign() { "$TEST_PYTHON" "$SIGN_RECORDER" "$@"; }
             )
             environment = dict(
                 os.environ,
-                BASH_ENV=str(bash_env),
-                TEST_PYTHON=sys.executable,
-                SIGN_RECORDER=str(recorder),
-                SIGN_TRACE=str(trace),
-                SIGN_ORIGINAL=str(original),
+                BASH_ENV=bash_env.as_posix(),
+                TEST_PYTHON=Path(sys.executable).as_posix(),
+                SIGN_RECORDER=recorder.as_posix(),
+                SIGN_TRACE=trace.as_posix(),
+                SIGN_ORIGINAL=original.as_posix(),
                 SIGN_IDENTITY="Developer ID Application: Fixture",
-                TMPDIR=str(root),
+                TMPDIR=root.as_posix(),
             )
             completed = subprocess.run(
                 [
-                    shutil.which("bash"),
-                    str(ROOT / "scripts/resign-macos-app.sh"),
-                    str(app),
+                    bash,
+                    (ROOT / "scripts/resign-macos-app.sh").as_posix(),
+                    app.as_posix(),
                 ],
                 capture_output=True,
                 text=True,
                 env=environment,
                 timeout=20,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             commands = [
@@ -382,6 +387,7 @@ class NativePluginBuildEntryTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 timeout=20,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("--bundles", result.stdout)

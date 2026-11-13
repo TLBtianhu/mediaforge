@@ -1,7 +1,7 @@
+import { cancelModelDirMigration, confirmModelDirMigrationSwitch, getAppPaths, pickOutputFolder, prepareModelDirChange as prepareModelDirChangeRequest, recoverAppSettings, respondModelDirMigrationConflict, startModelDirMigration, updateProxySettings } from '@/api/native'
 import { createLogger } from '@/utils/logger'
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import {
   applyTheme,
   DEFAULT_THEME_ACCENT,
@@ -21,6 +21,7 @@ import {
 import { normalizeLocaleSetting, setLocale, type LocaleSetting } from '@/i18n'
 import { isTauriRuntime, loadAppStore, saveAppStore } from '@/utils/appStore'
 import { isMainTaskOwner } from '@/utils/taskOwner'
+import { remapCustomModelPaths } from '@/api/models'
 import { requestEditorExportPreference, type EditorExportPreference } from '@/utils/editorExportPreferences'
 import {
   DEFAULT_CONCURRENT_SEPARATIONS,
@@ -29,6 +30,7 @@ import {
 } from '@/features/tasks/concurrency'
 import type { EnvInfo } from '@/stores/app'
 import { normalizeBeginnerGuideProgress, type BeginnerGuideProgress } from '@/features/onboarding/guide'
+import { CURRENT_SETTINGS_VERSION, validateStoredSettings } from '@/stores/settingsSchema'
 
 const studioLog = createLogger('ui.stores.settings')
 
@@ -88,6 +90,7 @@ export type ModelDirMigrationState = {
 }
 
 type StoredSettings = {
+  version: 1
   themeMode?: ThemeMode
   themeAccent?: ThemeAccent
   scaleFactor?: number
@@ -108,7 +111,6 @@ type StoredSettings = {
   m4aBitRate?: string
   m4aCodec?: string
   startupOnboardingSeen?: boolean
-  startupOnboardingSeenVersion?: string
   beginnerGuideInvitationSeen?: boolean
   beginnerGuideProgress?: BeginnerGuideProgress
   proxyMode?: ProxyMode
@@ -206,14 +208,6 @@ function browserAppPaths(): AppPathsPayload {
   }
 }
 
-export type AudioParams = {
-  wavBitDepth: string
-  flacBitDepth: string
-  mp3BitRate: string
-  m4aBitRate: string
-  m4aCodec: string
-}
-
 /**
  * What the worker is told to run on. ROCm is deliberately absent: a ROCm torch build exposes
  * its GPUs through the same `cuda` device API, so it resolves to 'cuda' — sending 'rocm' would
@@ -243,6 +237,9 @@ function compatibleRuntimeDeviceSelection(selected: string, env?: EnvInfo | null
 
 export const useSettingsStore = defineStore('settings', () => {
   const initialized = ref(false)
+  /** Non-empty when the stored settings file could not be loaded. */
+  const loadError = ref('')
+  const recoveryState = ref<{ status: 'idle' | 'running' | 'recovered'; backupPath?: string }>({ status: 'idle' })
   const appPaths = ref<AppPathsPayload | null>(null)
   const themeMode = ref<ThemeMode>(DEFAULT_THEME_MODE)
   const themeAccent = ref<ThemeAccent>(DEFAULT_THEME_ACCENT)
@@ -283,6 +280,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const shouldShowStartupOnboarding = computed(() => initialized.value && !startupOnboardingSeen.value)
 
   const persistable = computed<StoredSettings>(() => ({
+    version: CURRENT_SETTINGS_VERSION,
     themeMode: themeMode.value,
     themeAccent: themeAccent.value,
     scaleFactor: scaleFactor.value,
@@ -344,10 +342,20 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function initialize() {
     if (initialized.value) return
-    const [paths, stored] = await Promise.all([
-      isTauriRuntime() ? invoke<AppPathsPayload>('get_app_paths') : Promise.resolve(browserAppPaths()),
-      loadAppStore<StoredSettings>('app-settings'),
-    ])
+    const paths = isTauriRuntime()
+      ? await getAppPaths<AppPathsPayload>()
+      : browserAppPaths()
+    let stored: StoredSettings | null = null
+    try {
+      stored = await loadAppStore<StoredSettings>('app-settings')
+      validateStoredSettings(stored)
+    } catch (cause) {
+      // The file stays on disk untouched; the settings page offers the only
+      // explicit way out (back up, then reset). Never migrate or overwrite.
+      loadError.value = cause instanceof Error ? cause.message : String(cause)
+      throw cause
+    }
+    loadError.value = ''
 
     appPaths.value = paths
     themeMode.value = stored?.themeMode || DEFAULT_THEME_MODE
@@ -378,20 +386,13 @@ export const useSettingsStore = defineStore('settings', () => {
     updateSource.value = stored?.updateSource === 'github' || stored?.updateSource === 'modelscope' ? stored.updateSource : 'auto'
     updateEndpointOverride.value = String(stored?.updateEndpointOverride || '').trim()
     startupOnboardingSeen.value = stored?.startupOnboardingSeen === true
-      || String(stored?.startupOnboardingSeenVersion || '').trim().length > 0
     beginnerGuideInvitationSeen.value = stored?.beginnerGuideInvitationSeen === true
     beginnerGuideProgress.value = normalizeBeginnerGuideProgress(stored?.beginnerGuideProgress)
-    const shouldPersistNormalizedSettings =
-      !stored
-      || typeof stored.startupOnboardingSeen !== 'boolean'
-      || String(stored.startupOnboardingSeenVersion || '').trim().length > 0
-      || (stored.mp3BitRate !== undefined && stored.mp3BitRate !== mp3BitRate.value)
 
     applyTheme(themeMode.value, themeAccent.value)
     await applyScaleFactor(scaleFactor.value).catch((error) => studioLog.warn('Failed to apply scale factor', error))
     setLocale(locale.value)
     initialized.value = true
-    if (shouldPersistNormalizedSettings) queuePersist()
     await syncProxyToBackend().catch((error) => studioLog.warn('Failed to sync proxy settings', error))
   }
 
@@ -461,12 +462,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function syncProxyToBackend() {
     if (!initialized.value || !isTauriRuntime() || !isMainTaskOwner()) return
-    await invoke('update_proxy_settings', {
-      payload: {
-        mode: proxyMode.value,
-        url: proxyUrl.value,
-        bypass: proxyBypass.value,
-      },
+    await updateProxySettings({
+      mode: proxyMode.value,
+      url: proxyUrl.value,
+      bypass: proxyBypass.value,
     })
   }
 
@@ -538,16 +537,16 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function pickModelDir() {
-    return invoke<string | null>('pick_output_folder')
+    return pickOutputFolder()
   }
 
   async function pickOutputDir() {
-    const folder = await invoke<string | null>('pick_output_folder')
+    const folder = await pickOutputFolder()
     if (folder) outputDir.value = folder
   }
 
   async function pickFolder() {
-    return invoke<string | null>('pick_output_folder')
+    return pickOutputFolder()
   }
 
   async function refreshModelDataAfterDirChange() {
@@ -589,11 +588,9 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function prepareModelDirChange(targetDir: string) {
-    const payload = normalizePrepareModelDirChangePayload(await invoke<PrepareModelDirChangePayload>('prepare_model_dir_change', {
-      payload: {
-        currentModelDir: modelDir.value,
-        targetModelDir: targetDir,
-      },
+    const payload = normalizePrepareModelDirChangePayload(await prepareModelDirChangeRequest<PrepareModelDirChangePayload>({
+      currentModelDir: modelDir.value,
+      targetModelDir: targetDir,
     }))
 
     if (payload.sameAsCurrent) {
@@ -644,12 +641,10 @@ export const useSettingsStore = defineStore('settings', () => {
       resolvingConflict: false,
     }
     try {
-      await invoke('start_model_dir_migration', {
-        payload: {
-          taskId,
-          currentModelDir: preparation.currentModelDir,
-          targetModelDir: preparation.targetModelDir,
-        },
+      await startModelDirMigration({
+        taskId,
+        currentModelDir: preparation.currentModelDir,
+        targetModelDir: preparation.targetModelDir,
       })
     } catch (error) {
       modelDirMigrationState.value = {
@@ -672,11 +667,9 @@ export const useSettingsStore = defineStore('settings', () => {
       resolvingConflict: true,
     }
     try {
-      await invoke('respond_model_dir_migration_conflict', {
-        payload: {
-          taskId,
-          resolution,
-        },
+      await respondModelDirMigrationConflict({
+        taskId,
+        resolution,
       })
       modelDirMigrationState.value = {
         ...modelDirMigrationState.value,
@@ -698,7 +691,25 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function finalizeModelDirSwitch(taskId: string, payload: any) {
+  type ModelDirMigrationEventPayload = {
+    sourceModelDir?: string
+    targetModelDir?: string
+    currentModelDir?: string
+    totalFiles?: number
+    completedFiles?: number
+    totalBytes?: number
+    copiedBytes?: number
+    currentPath?: string
+    message?: string
+    conflict?: ModelDirMigrationConflict | null
+    skippedFiles?: string[]
+    overwrittenFiles?: string[]
+    cleanupFailedFiles?: string[]
+    fileCount?: number
+    sameAsCurrent?: boolean
+  }
+
+  async function finalizeModelDirSwitch(taskId: string, payload: ModelDirMigrationEventPayload) {
     const previousModelDir = modelDirMigrationState.value.previousModelDir || modelDir.value
     const targetModelDir = displayModelDirPath(payload.targetModelDir || modelDirMigrationState.value.targetModelDir || '')
     modelDirMigrationState.value = {
@@ -713,13 +724,9 @@ export const useSettingsStore = defineStore('settings', () => {
     modelDir.value = targetModelDir
     try {
       await refreshModelDataAfterDirChange()
-      await invoke('confirm_model_dir_migration_switch', {
-        payload: { taskId },
-      })
+      await confirmModelDirMigrationSwitch({ taskId })
     } catch (error) {
-      await invoke('cancel_model_dir_migration', {
-        payload: { taskId },
-      }).catch(() => {})
+      await cancelModelDirMigration({ taskId }).catch(() => {})
       modelDir.value = previousModelDir
       await refreshModelDataAfterDirChange().catch(() => {})
       modelDirMigrationState.value = {
@@ -734,7 +741,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function handleWorkerEvent(event: any) {
+  async function handleWorkerEvent(event: { type?: string; taskId?: string; payload?: ModelDirMigrationEventPayload }) {
     const type = event?.type as string | undefined
     if (!type?.startsWith('model_dir_migration_')) return
     const payload = event?.payload || {}
@@ -843,8 +850,8 @@ export const useSettingsStore = defineStore('settings', () => {
       // Fire-and-forget: a failure here leaves those models showing as missing with a relink
       // action, which must not turn a completed migration into a failed one.
       if (isMainTaskOwner() && payload.sourceModelDir && payload.targetModelDir) {
-        void invoke('remap_custom_model_paths', {
-          payload: { fromRoot: payload.sourceModelDir, toRoot: payload.targetModelDir },
+        void remapCustomModelPaths({
+          fromRoot: payload.sourceModelDir, toRoot: payload.targetModelDir,
         }).then(() => import('@/stores/model'))
           .then(({ useModelStore }) => useModelStore().loadModels())
           .catch(() => {})
@@ -909,8 +916,35 @@ export const useSettingsStore = defineStore('settings', () => {
     await saveAppStore('app-settings', persistable.value)
   }
 
+  /**
+   * Explicit, user-confirmed recovery for a settings file this version rejects.
+   *
+   * The backend copies the original bytes to a sibling backup and only then
+   * removes the file; this store then reloads documented defaults. There is no
+   * automatic migration, and cancelling leaves the original file untouched.
+   */
+  async function recoverSettings(): Promise<{ ok: boolean; recovered: boolean; backupPath?: string }> {
+    if (!isTauriRuntime()) throw new Error('Settings recovery requires the desktop app')
+    if (recoveryState.value.status === 'running') return { ok: false, recovered: false }
+    recoveryState.value = { status: 'running' }
+    try {
+      const response = await recoverAppSettings<{ ok: boolean; recovered: boolean; backupPath?: string }>()
+      recoveryState.value = { status: 'recovered', backupPath: response.backupPath || '' }
+      loadError.value = ''
+      initialized.value = false
+      await initialize()
+      return response
+    } catch (cause) {
+      recoveryState.value = { status: 'idle' }
+      throw cause
+    }
+  }
+
   return {
     initialized,
+    loadError,
+    recoveryState,
+    recoverSettings,
     appPaths,
     dataRoot,
     settingsDir,

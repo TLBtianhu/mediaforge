@@ -12,7 +12,7 @@ args = parser.parse_args()
 args.output_dir.mkdir(parents=True, exist_ok=True)
 
 MOCK = """enabled => {
-  localStorage.setItem('pymss-studio:app-settings', JSON.stringify({startupOnboardingSeen:true,
+  localStorage.setItem('pymss-studio:app-settings', JSON.stringify({version:1,startupOnboardingSeen:true,
     beginnerGuideProgress:{status:'skipped',step:0},locale:'zh-CN',themeMode:'light'}));
   localStorage.setItem('pymss-vst-lab-search-paths',JSON.stringify(['E:/Old Development Fixtures/plugins']));
   window.__vstCalls=[]; window.__savedVstProjects=[]; window.__scanError=false; window.__scanDelay=0; window.__scanFailures=[]; window.__missingPaths=[]; window.__catalogOverride=null;
@@ -74,7 +74,7 @@ MOCK = """enabled => {
       if(command==='get_runtime_info') return {supported:false,installedEnvironments:[],coreUpdateSupported:false};
       if(command==='load_editor_project')return __savedVstProjects.filter(project=>project.id===args.projectId).at(-1);
       if(command==='save_editor_project'){__savedVstProjects.push(JSON.parse(JSON.stringify(args.project)));return args.project}
-      if(command==='pick_input_folder')return __pickedDirectory;
+      if(command==='plugin:dialog|open')return __pickedDirectory;
       if(command==='list_editor_projects'||command==='list_models'||command==='list_tasks') return [];
       return null;
     }

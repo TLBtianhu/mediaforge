@@ -9,13 +9,19 @@ mod diagnostic_report;
 mod error;
 mod log_record;
 mod model_dir_migration;
+mod media_workflows;
 mod plugin_views;
+mod preview_assets;
+mod process_command;
 mod python;
 mod rba;
 mod session_log;
 mod single_instance;
 mod state;
 mod runtime_assets;
+mod runtime_lease;
+#[cfg(windows)]
+mod process_job;
 mod version_check;
 mod storage;
 mod terminal;
@@ -64,6 +70,12 @@ fn main() {
         .register_uri_scheme_protocol("pymss-plugin", |ctx, request| {
             plugin_views::serve_view(ctx.app_handle(), &request)
         })
+        .register_asynchronous_uri_scheme_protocol("mediaforge-preview", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(preview_assets::serve(&app, &request));
+            });
+        })
         .on_page_load(|webview, _payload| {
             let window = webview.window();
             if !cfg!(target_os = "macos") {
@@ -73,6 +85,9 @@ fn main() {
             let _ = window.set_focus();
         })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                commands::app::scan::remember_input_selection(window.app_handle(), paths);
+            }
             if matches!(event, tauri::WindowEvent::Destroyed)
                 && (window.label().starts_with("workflow-node-editor")
                     || window.label().starts_with("workflow-simple-editor"))
@@ -86,11 +101,18 @@ fn main() {
                 let _ = window.app_handle().emit_to("main", event, serde_json::json!({ "label": window.label() }));
             }
         })
+        .on_webview_event(|webview, event| {
+            if let tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                commands::app::scan::remember_input_selection(webview.app_handle(), paths);
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(commands::plugin_host::PluginHostState::default())
+        .manage(preview_assets::PreviewAssets::default())
+        .manage(commands::app::scan::SelectedInputFolders::default())
         .manage(AppState::new())
         .manage(workflow_editors::WorkflowEditors::default());
 
@@ -104,6 +126,11 @@ fn main() {
     let app = builder
         .setup(|app| {
             let _ = session_log::init_session_log(app.handle());
+            if let Err(error) = python::worker::restore_pending_manual_workers(app.handle()) {
+                // Keep the app available for diagnostics. Strict loading also
+                // exposes this error in the task UI; no old files are rewritten.
+                session_log::append(app.handle(), "ERROR", "worker.restore_pending_failed", vec![("message", error.to_string())]);
+            }
             python::worker::recover_audio_output_temps(app.handle());
             Ok(())
         })
@@ -141,7 +168,7 @@ fn main() {
             commands::app::editor::list_open_editor_projects_for_tasks,
             commands::app::editor::list_orphaned_editor_projects,
             commands::app::editor::delete_orphaned_editor_projects,
-            commands::app::editor::editor_project_exists,
+            commands::app::editor::editor_project_ids_for_tasks,
             commands::app::editor::export::start_editor_mix_export,
             commands::app::editor::export::cancel_editor_mix_export,
             commands::app::tasks::media_library,
@@ -149,8 +176,10 @@ fn main() {
             commands::app::tasks::media_capabilities,
             commands::app::tasks::start_model_hub_download,
             commands::app::tasks::agent_jobs,
+            commands::app::tasks::enqueue_audio_jobs,
+            commands::app::tasks::remove_audio_jobs,
+            commands::app::tasks::remove_result_jobs,
             commands::app::tasks::cancel_agent_job,
-            commands::app::tasks::journal_job,
             commands::app::tasks::media_precheck,
         commands::app::tasks::start_audio_tool,
             commands::tempo_key::start_tempo_key_analysis,
@@ -171,6 +200,7 @@ fn main() {
             commands::app::editor::recording::discard_editor_recording,
             commands::app::session::get_build_info,
             commands::app::editor::preview::get_audio_metadata,
+            commands::app::models::list_models,
             commands::app::models::get_model_info,
             commands::app::models::get_model_storage_summary,
             commands::app::editor::import_editor_assets,
@@ -197,14 +227,18 @@ fn main() {
             commands::app::dialogs::pick_model_weights_file,
             commands::app::dialogs::pick_model_config_file,
             commands::app::session::load_app_store,
+            commands::app::session::recover_app_settings,
             commands::app::tasks::get_workflow_editors,
             commands::app::session::mutate_workflow_store,
+            commands::app::session::mutate_media_workflows,
             commands::app::editor::load_editor_project,
             commands::app::editor::relink_editor_sources,
             commands::app::editor::open_editor_window,
             commands::app::editor::open_workflow_node_editor_window,
             commands::app::editor::open_workflow_simple_editor_window,
             commands::app::dialogs::pick_media_files,
+            commands::app::dialogs::pick_preview_files,
+            commands::app::dialogs::pick_preview_folders,
             commands::app::dialogs::pick_audio_files,
             commands::app::dialogs::pick_single_audio_file,
             commands::app::dialogs::pick_input_folder,
@@ -212,7 +246,6 @@ fn main() {
             commands::app::dialogs::save_text_file_dialog,
             commands::app::migration::prepare_model_dir_change,
             commands::app::scan::reveal_path,
-            commands::app::trash::move_paths_to_trash,
             commands::app::migration::respond_model_dir_migration_conflict,
             commands::app::migration::confirm_model_dir_migration_switch,
             commands::app::migration::cancel_model_dir_migration,
@@ -246,13 +279,16 @@ fn main() {
 
     // 开发数据根冒烟：在真实进程里输出解析结果，不创建或改写用户数据。
     if std::env::args().any(|arg| arg == "--smoke-print-data-root") {
-        match storage::data_root_dir(&app.handle()) {
-            Ok(root) => {
+        match (storage::data_root_dir(&app.handle()), storage::models_dir(&app.handle()), storage::runtime_envs_dir(&app.handle()), runtime_assets::runtime_asset_status(app.handle().clone(), None)) {
+            (Ok(root), Ok(models), Ok(runtimes), Ok(asset)) => {
                 println!("SMOKE_DATA_ROOT={}", root.display());
+                println!("SMOKE_MODEL_ROOT={}", models.display());
+                println!("SMOKE_RUNTIME_ROOT={}", runtimes.display());
+                println!("SMOKE_RUNTIME_ASSET_DIR={}", asset["dir"].as_str().unwrap_or(""));
                 println!("SMOKE_DEVELOPMENT={}", storage::is_development_executable());
                 std::process::exit(0);
             }
-            Err(error) => {
+            (Err(error), _, _, _) | (_, Err(error), _, _) | (_, _, Err(error), _) | (_, _, _, Err(error)) => {
                 eprintln!("smoke-print-data-root: FAILED: {error}");
                 std::process::exit(1);
             }

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -67,21 +69,32 @@ def workflow(model_name: str) -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--model-dir", required=True)
+    parser.add_argument("--python", required=True, help="Explicit test runtime interpreter")
+    parser.add_argument("--data-root", required=True, help="Explicit isolated test data root")
     parser.add_argument("--model", default="melband_roformer_instvox_duality_v2.ckpt")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     project_root = Path(__file__).resolve().parents[2]
-    sys.path.insert(0, str(project_root / "python"))
-    from core.worker_workflows import _run_pymss
+    sys.path.insert(0, str(project_root / "scripts"))
+    from media_smoke_env import isolated_environment, model_paths, test_path
 
-    input_path = Path(args.input).resolve()
-    output_dir = Path(args.output).resolve()
+    try:
+        python, models, data = model_paths(args)
+        input_path = test_path(args.input, "--input")
+        output_dir = test_path(args.output, "--output")
+        if not input_path.is_file():
+            raise ValueError(f"test audio does not exist: {input_path}")
+        if output_dir == models or models in output_dir.parents:
+            raise ValueError("--output must be separate from the model directory")
+    except ValueError as error:
+        parser.error(str(error))
     output_dir.mkdir(parents=True, exist_ok=True)
+    env = isolated_environment(data, python, models, output_dir)
     payload = {
         "taskId": "advanced-workflow-real-smoke",
         "workflowName": "Advanced workflow real smoke",
@@ -90,20 +103,28 @@ def main() -> int:
         "output": str(output_dir),
         "outputLayout": "flat",
         "outputFormat": "wav",
-        "modelDir": str(Path(args.model_dir).resolve()),
+        "modelDir": str(models),
         "device": "cuda",
         "downloadMethod": "never",
         "source": "modelscope",
         "audioParams": {"wav_bit_depth": "FLOAT"},
     }
-    result = _run_pymss(
-        payload,
-        payload["taskId"],
-        input_path=str(input_path),
-        inputs=None,
-        output_dir=str(output_dir),
-        output_layout="flat",
-    )
+    # Run through a child with the complete sandbox environment; importing the
+    # engine in this launcher would inherit the caller's runtime/cache profile.
+    with tempfile.TemporaryDirectory(prefix="advanced-workflow-payload-", dir=env["TMPDIR"]) as temporary:
+        path = Path(temporary) / "payload.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        process = subprocess.run(
+            [str(python), "-B", str(project_root / "python/worker.py"), "infer_workflow", "--payload", str(path)],
+            cwd=project_root, env=env, capture_output=True, text=True, encoding="utf-8", timeout=900,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    events = [json.loads(line) for line in process.stdout.splitlines() if line.startswith("{")]
+    terminal = next((event for event in reversed(events) if event.get("type") in {"task.result", "error"}), {})
+    result = terminal.get("payload") or {}
+    if process.returncode != 0 or terminal.get("type") != "task.result":
+        print(process.stderr or json.dumps(result), file=sys.stderr)
+        return 1
     outputs = result.get("outputs") or []
     stems = {str(item.get("stem") or "").lower() for item in outputs}
     expected = {"vocals", "instrumental"}

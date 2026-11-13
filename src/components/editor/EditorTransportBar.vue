@@ -76,8 +76,6 @@ const { t } = useI18n()
 const optimisticVisualState = ref<TransportVisualState | null>(null)
 const renderedVisualState = computed<TransportVisualState>(() => optimisticVisualState.value || props.transportVisualState)
 const showPauseButton = computed(() => renderedVisualState.value === 'pause')
-const isStarting = computed(() => props.transportPendingAction === 'starting')
-const isPausing = computed(() => props.transportPendingAction === 'pausing')
 const transportLabel = computed(() => (showPauseButton.value ? t('common.pause') : t('common.resume')))
 const transportPressed = ref(false)
 const sessionMeta = computed(() => `${props.trackCount} ${t('editor.tracks')}`)
@@ -642,7 +640,7 @@ function clearTransportPressed() {
 }
 
 .transport-chip--active {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
 }
 

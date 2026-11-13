@@ -3,12 +3,18 @@
  *
  * Discovery uses one-shot worker commands (list_operations /
  * describe_operation). Execution runs as a background task through
- * `start_operation_task`; the terminal `operation_result` / `error` /
- * `task_cancelled` worker events resolve the pending promise.
+ * `start_operation_task`; canonical task events resolve the pending request.
+ *
+ * Every start is tracked per request id, so concurrent operations cannot
+ * overwrite one another, and every waiting caller ends on a terminal event:
+ * `task.result` (with an empty `failed[]`), `error`, or `task.cancelled`.
+ * `stop()` ends the waits that a closed page can no longer observe.
  */
+import { startOperationTask } from '@/api/native'
 import { reactive, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand, invokeWorkerQuery } from '@/api/worker'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 export type OperationParamSchema = {
   type: 'number' | 'integer' | 'string' | 'boolean'
@@ -49,6 +55,13 @@ type WorkerEvent = {
   payload?: Record<string, unknown>
 }
 
+type PendingRun = {
+  resolve: (value: OperationRunResult) => void
+  reject: (error: Error) => void
+  onProgress?: (progress: OperationProgress) => void
+  fraction: number
+}
+
 const state = reactive({
   available: false,
   unavailableReason: '' as string | undefined,
@@ -59,54 +72,96 @@ const error = ref<string | null>(null)
 
 let unlistenWorker: UnlistenFn | undefined
 let startInFlight: Promise<void> | undefined
-let pendingRun: { id: string; resolve: (r: OperationRunResult) => void; reject: (e: Error) => void } | undefined
-const progressHandlers = new Map<string, (p: OperationProgress) => void>()
+let requestSequence = 0
+const pendingRuns = new Map<string, PendingRun>()
+
+/** A closed page cannot observe results; its waiters must still settle. */
+export const PLUGIN_OPS_CLOSED = 'PLUGIN_OPS_CLOSED'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function failureMessages(payload: Record<string, unknown>): string[] {
+  const failed = payload.failed
+  if (!Array.isArray(failed)) return []
+  return failed.map((item) => {
+    if (isRecord(item)) return String(item.error || item.message || '')
+    return String(item ?? '')
+  }).filter(Boolean)
+}
+
+function handleWorkerEvent(workerEvent: WorkerEvent) {
+  if (!isRecord(workerEvent)) return
+  const eventId = workerEvent.requestId || workerEvent.taskId || ''
+  const pending = pendingRuns.get(eventId)
+  if (!pending) return
+  const payload = isRecord(workerEvent.payload) ? workerEvent.payload : {}
+  if (isTaskResult(workerEvent.type)) {
+    pendingRuns.delete(eventId)
+    // Media results may finish "successfully" with failed entries; reporting
+    // them as success would claim work the worker did not do.
+    const failures = failureMessages(payload)
+    if (failures.length) pending.reject(new Error(failures[0]))
+    else pending.resolve(payload as unknown as OperationRunResult)
+    return
+  }
+  if (workerEvent.type === 'error') {
+    if (payload.recoverable === true) {
+      // A recoverable diagnostic keeps the operation running, exactly like the
+      // durable journal: it is not the terminal result.
+      pending.onProgress?.({ fraction: pending.fraction, message: String(payload.message || '') })
+      return
+    }
+    pendingRuns.delete(eventId)
+    pending.reject(new Error(String(payload.message || 'Operation failed')))
+    return
+  }
+  if (workerEvent.type === 'task.cancelled') {
+    pendingRuns.delete(eventId)
+    pending.reject(new Error('cancelled'))
+    return
+  }
+  if (isTaskProgress(workerEvent.type)) {
+    const fraction = Number(payload.fraction)
+    const value = Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : pending.fraction
+    pending.fraction = value
+    pending.onProgress?.({ fraction: value, message: String(payload.message || '') })
+  }
+}
 
 async function start() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   if (unlistenWorker) return
   if (!startInFlight) {
-    startInFlight = listen<WorkerEvent>('pymss://worker-event', (event) => {
-      const workerEvent = event.payload
-      const eventId = workerEvent.requestId || workerEvent.taskId
-      const pending = pendingRun
-      if (!pending || eventId !== pending.id) return
-      if (workerEvent.type === 'operation_result') {
-        pendingRun = undefined
-        pending.resolve(workerEvent.payload as unknown as OperationRunResult)
-      } else if (workerEvent.type === 'error') {
-        pendingRun = undefined
-        pending.reject(new Error(String(workerEvent.payload?.message || 'Operation failed')))
-      } else if (workerEvent.type === 'task.cancelled') {
-        pendingRun = undefined
-        pending.reject(new Error('cancelled'))
-      } else if (workerEvent.type === 'operation_progress') {
-        progressHandlers.get(pending.id)?.({
-          fraction: Number(workerEvent.payload?.fraction || 0),
-          message: String(workerEvent.payload?.message || ''),
-        })
-      }
-    }).then((unlisten) => {
-      unlistenWorker = unlisten
-    }).finally(() => {
-      startInFlight = undefined
-    })
+    startInFlight = listen<WorkerEvent>('pymss://worker-event', ({ payload }) => handleWorkerEvent(payload))
+      .then((unlisten) => {
+        unlistenWorker = unlisten
+      })
+      .finally(() => {
+        startInFlight = undefined
+      })
   }
   await startInFlight
 }
 
-let requestSequence = 0
+/** End every waiting request; a later run still starts a fresh listener. */
+export function stopPluginOps(reason: string = PLUGIN_OPS_CLOSED) {
+  const waiting = [...pendingRuns.values()]
+  pendingRuns.clear()
+  for (const pending of waiting) pending.reject(new Error(reason))
+}
 
 export function usePluginOps() {
   async function refresh() {
     loading.value = true
     error.value = null
     try {
-      const response = await invoke<{
+      const response = (await invokeWorkerQuery('list_operations')) as unknown as {
         operations: OperationSpec[]
         pymssOperationsAvailable: boolean
         error?: string
-      }>('list_operations')
+      }
       state.available = response.pymssOperationsAvailable !== false
       state.unavailableReason = response.error
       state.specs = response.operations || []
@@ -121,7 +176,7 @@ export function usePluginOps() {
 
   async function describe(operationId: string): Promise<OperationSpec | null> {
     try {
-      return await invoke<OperationSpec>('describe_operation', { payload: { operation: operationId } })
+      return (await invokeWorkerCommand('describe_operation', { operation: operationId })) as unknown as OperationSpec
     } catch {
       return null
     }
@@ -137,25 +192,21 @@ export function usePluginOps() {
     await start()
     const requestId = `operation_${options.operation}_${Date.now()}_${++requestSequence}`
     const completion = new Promise<OperationRunResult>((resolve, reject) => {
-      pendingRun = { id: requestId, resolve, reject }
+      pendingRuns.set(requestId, { resolve, reject, onProgress: options.onProgress, fraction: 0 })
     })
-    if (options.onProgress) progressHandlers.set(requestId, options.onProgress)
     try {
-      await invoke('start_operation_task', {
-        payload: {
-          operation: options.operation,
-          params: options.params,
-          inputs: options.inputs,
-          outputDir: options.outputDir,
-          requestId,
-        },
+      await startOperationTask({
+        operation: options.operation,
+        params: options.params,
+        inputs: options.inputs,
+        outputDir: options.outputDir,
+        requestId,
       })
       return await completion
     } finally {
-      progressHandlers.delete(requestId)
-      if (pendingRun?.id === requestId) pendingRun = undefined
+      pendingRuns.delete(requestId)
     }
   }
 
-  return { state, loading, error, refresh, describe, run }
+  return { state, loading, error, refresh, describe, run, stop: stopPluginOps }
 }

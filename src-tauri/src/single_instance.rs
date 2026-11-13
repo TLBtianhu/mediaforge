@@ -233,11 +233,11 @@ mod handoff {
             let path = root.path().join("instance.lock");
             let guard = acquire_lock(&path).unwrap().unwrap();
             remember(&guard);
-            let mut failed = std::process::Command::new(root.path().join("missing-executable"));
+            let mut failed = crate::process_command::hidden_command(root.path().join("missing-executable"));
             configure_child(&mut failed).unwrap();
             assert!(failed.spawn().is_err());
             assert!(acquire_lock(&path).unwrap().is_none());
-            let mut command = std::process::Command::new("/bin/sleep");
+            let mut command = crate::process_command::hidden_command("/bin/sleep");
             command.arg("10");
             configure_child(&mut command).unwrap();
             let mut child = command.spawn().unwrap();

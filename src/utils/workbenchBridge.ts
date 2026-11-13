@@ -20,7 +20,7 @@ export function initializeWorkbenchBridge() {
   const label = getCurrentWindow().label
   bridge = createWorkbenchBridge({
     label,
-    transport: { listen: (name, handler) => listen(name, event => handler(event.payload)), emitTo },
+    transport: { listen: (name, handler) => listen(name, event => handler(event.payload as never)), emitTo },
     ...(isMainTaskOwner() ? { host: {
       snapshot: (key: string, includeSession: boolean) => cloneWorkflow({
         workflowKey: key,

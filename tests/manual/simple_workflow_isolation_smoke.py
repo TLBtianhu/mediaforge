@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='pymss-isolation-') as temporary, sync_p
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.add_init_script('localStorage.setItem("pymss-studio:app-settings", JSON.stringify(' + json.dumps({
-        'startupOnboardingSeen': True, 'locale': 'zh-CN', 'defaultDevice': 'cpu', 'outputDir': str(blocked),
+        'version': 1, 'startupOnboardingSeen': True, 'locale': 'zh-CN', 'defaultDevice': 'cpu', 'outputDir': str(blocked),
     }) + ')); localStorage.setItem("pymss-studio:workflow-state", JSON.stringify(' + json.dumps(workflows) + '));')
     page.goto(args.url + '/#/workflows')
     page.wait_for_load_state('networkidle')
@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='pymss-isolation-') as temporary, sync_p
         env = {**os.environ, 'PYTHONIOENCODING': 'utf-8',
                'PYTHONPATH': str(args.runtime.resolve()) if args.runtime else os.environ.get('PYTHONPATH', '')}
         completed = subprocess.run([sys.executable, str(root / 'python/worker.py'), 'infer_workflow', '--payload', str(payload_path)],
-                                   capture_output=True, text=True, encoding='utf-8', env=env, timeout=60)
+                                   capture_output=True, text=True, encoding='utf-8', env=env, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         assert completed.returncode == 0, completed.stdout + completed.stderr
         events = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith('{')]
         outputs = [output for event in events if event.get('type') == 'task.result' for output in event['payload']['outputs']]

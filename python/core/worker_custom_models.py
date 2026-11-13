@@ -19,14 +19,20 @@ import os
 import re
 import shutil
 import stat
+import sys
 import time
+from contextlib import ExitStack
+from functools import wraps
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import yaml
 
 from shared import worker_paths
+from shared.asset_references import asset_reference_lock
 from shared.worker_protocol import emit, emit_error
+from core.user_model_registry import read_registry
 
 # Weights are loaded with ``torch.load`` (see pymss_core/checkpoint.py), so only formats it reads
 # are offered. Notably absent: .safetensors — pymss has no safetensors path at all, and accepting
@@ -35,6 +41,38 @@ MODEL_FILE_EXTENSIONS = (".ckpt", ".pth", ".th", ".pt", ".bin")
 CONFIG_FILE_EXTENSIONS = (".yaml", ".yml")
 
 SIDECAR_FILENAME = "custom-models-meta.json"
+
+
+def _registry_mutation(handler):
+    """One cross-process lease covers verification/copy through commit or rollback.
+
+    Third-party pymss CLI writers do not participate in this app-owned protocol.
+    Registry scope must be configured before importing pymss, never by a temporary
+    process environment override inside a possibly concurrent inline request.
+    """
+    @wraps(handler)
+    def guarded(payload):
+        stack = ExitStack()
+        try:
+            root = worker_paths.data_root().absolute()
+            registry = worker_paths.user_models_file(root)
+            configured = os.environ.get("PYMSS_USER_MODELS")
+            if not configured or os.path.normcase(os.path.abspath(Path(configured).expanduser())) != os.path.normcase(str(registry)):
+                raise ValueError("Worker registry must be configured to the current data root before dispatch")
+            stack.enter_context(asset_reference_lock(root))
+            read_registry(registry)
+            loaded = sys.modules.get("pymss.user_models")
+            if isinstance(sys.modules.get("pymss"), ModuleType) and isinstance(loaded, ModuleType):
+                actual = Path(loaded.DEFAULT_USER_MODELS_PATH).expanduser().absolute()
+                if os.path.normcase(str(actual)) != os.path.normcase(str(registry)):
+                    raise ValueError("pymss was imported with a different registry root; use a correctly configured worker")
+                loaded.clear_user_model_caches()
+        except Exception as exc:
+            stack.close()
+            return emit_error("CUSTOM_MODEL_REGISTRY_UNAVAILABLE", f"{type(exc).__name__}: {exc}", task_id=payload.get("taskId"))
+        with stack:
+            return handler(payload)
+    return guarded
 
 
 def _sidecar_path() -> Path:
@@ -52,8 +90,8 @@ def _sidecar_path() -> Path:
     return Path.home() / ".cache" / "pymss" / SIDECAR_FILENAME
 
 
-def _read_sidecar() -> dict[str, Any]:
-    path = _sidecar_path()
+def _read_sidecar(path: Path | None = None) -> dict[str, Any]:
+    path = path if path is not None else _sidecar_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     except Exception:
@@ -75,8 +113,9 @@ def _write_sidecar(models: dict[str, Any]) -> None:
         pass
 
 
-def sidecar_entry(name: str) -> dict[str, Any]:
-    entry = _read_sidecar().get(str(name), {})
+def sidecar_entry(name: str, *, data_root: Path | None = None) -> dict[str, Any]:
+    path = worker_paths.user_models_file(data_root).parent / SIDECAR_FILENAME if data_root is not None else None
+    entry = _read_sidecar(path).get(str(name), {})
     return entry if isinstance(entry, dict) else {}
 
 
@@ -504,6 +543,7 @@ def _verify_model_loads(model_type: str, model_path: Path, config_path: Path | N
         pass
 
 
+@_registry_mutation
 def cmd_import_custom_model(payload: dict[str, Any]) -> int:
     """Register a local model, optionally copying it under app management and verifying it.
 
@@ -625,6 +665,7 @@ def cmd_import_custom_model(payload: dict[str, Any]) -> int:
         return emit_error("CUSTOM_MODEL_IMPORT_FAILED", f"{type(exc).__name__}: {exc}", task_id=task_id)
 
 
+@_registry_mutation
 def cmd_unregister_custom_model(payload: dict[str, Any]) -> int:
     """Remove a custom model from the registry, and its files only when the app owns them."""
     name = str(payload.get("name") or payload.get("model") or "").strip()
@@ -677,6 +718,7 @@ def cmd_unregister_custom_model(payload: dict[str, Any]) -> int:
     return 0
 
 
+@_registry_mutation
 def cmd_relink_custom_model(payload: dict[str, Any]) -> int:
     """Point an existing registration at moved files, keeping its name and type.
 
@@ -755,6 +797,7 @@ def _remapped_path(path: str, from_root: str, to_root: str) -> str | None:
     return str(Path(to_root) / relative)
 
 
+@_registry_mutation
 def cmd_remap_custom_model_paths(payload: dict[str, Any]) -> int:
     """Rebase registered custom models after the model directory moved.
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { invokeWorkerCommand } from '@/api/worker'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import ModelParameterField from '@/components/ModelParameterField.vue'
@@ -14,7 +14,7 @@ type PlanStep = {
   params: Record<string, unknown>
 }
 type RoleSpec = { label: string; task: string; required?: boolean }
-type ParamSpec = { type?: string; enum?: string[]; default?: unknown }
+type ParamSpec = { type?: string; enum?: string[]; default?: unknown; supported?: boolean; modalities?: string[] }
 type CapabilityModel = { id: string; label: string; roles: string[]; downloaded: boolean; implemented: boolean; params?: Record<string, ParamSpec> }
 type Capability = {
   id: string
@@ -27,6 +27,7 @@ type Capability = {
   /** 当前运行时是否声明支持；老 worker 不返回该字段，缺省视为支持 */
   runtimeSupported?: boolean
   models: CapabilityModel[]
+  workflow?: Partial<Record<'image' | 'video', { supported: boolean; maxSteps?: number; supportedParams: string[]; reason?: string }>>
 }
 
 const props = withDefaults(defineProps<{
@@ -35,9 +36,13 @@ const props = withDefaults(defineProps<{
   busy?: boolean
   /** 用户选的模型目录：可用性检查必须看它，否则永远显示"没有可用模型" */
   modelDir?: string
+  workflow?: boolean
+  stepCount?: number
 }>(), {
   busy: false,
   modelDir: '',
+  workflow: false,
+  stepCount: 1,
 })
 const emit = defineEmits<{ 'update:modelValue': [value: PlanStep]; availability: [value: boolean] }>()
 const { t } = useI18n()
@@ -50,8 +55,11 @@ const loadError = ref('')
 // runtimeSupported 缺省（老 worker）视为支持，避免握手期把选项全清空
 const available = computed(() => capabilities.value.filter(item => item.implemented
   && item.runtimeSupported !== false
-  && item.modalities.includes(props.modality)))
+  && item.modalities.includes(props.modality)
+  && (!props.workflow || item.workflow?.[props.modality]?.supported !== false)))
 const current = computed(() => capabilities.value.find(item => item.id === props.modelValue?.capability))
+const workflowSupport = computed(() => props.workflow ? current.value?.workflow?.[props.modality] : undefined)
+const tooManySteps = computed(() => Boolean(workflowSupport.value?.maxSteps && props.stepCount > workflowSupport.value.maxSteps))
 const displayRoles = ['inpainter', 'upscaler', 'face_restorer', 'interpolator', 'primary']
 const displayRole = computed(() => {
   const cap = current.value
@@ -65,31 +73,46 @@ const modelOptions = computed(() => {
     .filter(model => model.roles.includes(displayRole.value) && model.implemented)
     .map(model => ({ label: `${model.label}${model.downloaded ? '' : ' · ' + t('pipeline.notDownloaded')}`, value: model.id }))
 })
-const hasUsableModel = computed(() => Boolean(current.value?.models.some(model => model.downloaded && model.implemented && model.roles.includes(displayRole.value))))
-watch(hasUsableModel, value => emit('availability', value), { immediate: true })
+const hasUsableModel = computed(() => {
+  const cap = current.value
+  if (!cap || !available.value.includes(cap) || tooManySteps.value) return false
+  return Object.entries(cap.roles).every(([role, spec]) => {
+    const selected = props.modelValue?.bindings[role]
+    if (!selected && spec.required === false) return true
+    return cap.models.some(model => model.id === selected && model.downloaded && model.implemented && model.roles.includes(role))
+  })
+})
+watch([hasUsableModel, () => props.modelValue, () => props.modality, () => props.stepCount],
+  () => emit('availability', hasUsableModel.value), { immediate: true, deep: true })
 const selectedModel = computed(() => current.value && displayRole.value ? props.modelValue?.bindings[displayRole.value] || '' : '')
 const selectedModelSpec = computed(() => current.value?.models.find(model => model.id === selectedModel.value))
-const effectiveParams = computed<Record<string, ParamSpec>>(() => ({
+function availableParams(params: Record<string, ParamSpec>, cap = current.value) {
+  const supported = props.workflow ? cap?.workflow?.[props.modality]?.supportedParams : undefined
+  return Object.fromEntries(Object.entries(params).filter(([key, spec]) => spec.supported !== false
+    && (!spec.modalities || spec.modalities.includes(props.modality)) && (!supported || supported.includes(key))))
+}
+const effectiveParams = computed<Record<string, ParamSpec>>(() => availableParams({
   ...(current.value?.params || {}),
   ...(selectedModelSpec.value?.params || {}),
 }))
 const paramEntries = computed(() => Object.entries(effectiveParams.value))
 
 function modelForRole(cap: Capability, role: string, except?: string) {
-  const model = cap.models.find(item => item.roles.includes(role) && item.implemented && item.id !== except)
+  const candidates = cap.models.filter(item => item.roles.includes(role) && item.implemented && item.id !== except)
+  const model = candidates.find(item => item.downloaded) || candidates[0]
   return model?.id || ''
 }
 
 function buildStep(cap: Capability, modelId?: string): PlanStep {
   const role = displayRoles.find(item => cap.roles[item]) || Object.keys(cap.roles)[0] || ''
-  const chosen = modelId || cap.models.find(item => item.roles.includes(role) && item.implemented)?.id || ''
+  const chosen = modelId || modelForRole(cap, role)
   const bindings: Record<string, string> = {}
   for (const key of Object.keys(cap.roles)) {
     bindings[key] = key === role ? chosen : modelForRole(cap, key, chosen)
   }
   const params: Record<string, unknown> = {}
   const modelParams = cap.models.find(item => item.id === chosen)?.params || {}
-  for (const [key, spec] of Object.entries({ ...cap.params, ...modelParams })) params[key] = spec.default
+  for (const [key, spec] of Object.entries(availableParams({ ...cap.params, ...modelParams }, cap))) params[key] = spec.default
   return { capability: cap.id, bindings, params }
 }
 
@@ -122,9 +145,9 @@ async function load() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   loading.value = true
   try {
-    const result = await invoke<{ capabilities: Capability[] }>('media_capabilities', {
-      payload: { modelDir: props.modelDir || null },
-    })
+    const result = (await invokeWorkerCommand('media_capabilities', {
+      modelDir: props.modelDir || null,
+    })) as unknown as { capabilities: Capability[] }
     capabilities.value = result.capabilities || []
     loadError.value = ''
     if (!props.modelValue?.capability && available.value[0]) emit('update:modelValue', buildStep(available.value[0]))
@@ -145,6 +168,7 @@ function openModels() {
 }
 
 watch(() => props.modality, () => {
+  if (props.workflow) return
   if (!available.value.length) return
   if (!available.value.some(item => item.id === props.modelValue?.capability)) {
     emit('update:modelValue', buildStep(available.value[0]))
@@ -169,6 +193,8 @@ onMounted(load)
       @action="openModels"
     />
     <template v-else>
+      <n-alert v-if="workflowSupport?.supported === false" type="warning" :bordered="false">{{ t('mediaWorkflow.unsupportedStep') }}</n-alert>
+      <n-alert v-else-if="tooManySteps" type="warning" :bordered="false">{{ t('mediaWorkflow.singleStepOnly') }}</n-alert>
       <div class="processing-plan__head">
         <span>{{ t('plan.oneModel') }}</span>
         <n-tag size="small" type="success" :bordered="false">{{ modelOptions.length }} {{ t('plan.models') }}</n-tag>
@@ -203,7 +229,7 @@ onMounted(load)
       </div>
 
       <div class="processing-plan__note">
-        {{ t('plan.workflowHint') }}
+        {{ workflow ? t('mediaWorkflow.stepHint') : t('plan.workflowHint') }}
       </div>
     </template>
   </section>
@@ -213,7 +239,7 @@ onMounted(load)
 .processing-plan { display: grid; gap: 12px; }
 .processing-plan__loading { display: grid; min-height: 240px; place-items: center; }
 .plan-empty { display: flex; min-height: 280px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px; text-align: center; }
-.plan-empty__glyph { display: grid; width: 56px; height: 56px; margin-bottom: 4px; place-items: center; border-radius: 16px; color: var(--primary-strong); background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 26%, transparent); font-size: 26px; }
+.plan-empty__glyph { display: grid; width: 56px; height: 56px; margin-bottom: 4px; place-items: center; border-radius: 16px; color: var(--primary-ink); background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface-2)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-border) 26%, transparent); font-size: 26px; }
 .plan-empty strong { color: var(--on-surface-heading); font-size: 14px; }
 .plan-empty p { max-width: 320px; margin: 0; color: var(--on-surface-muted); font-size: 12px; line-height: 1.5; }
 .plan-empty :deep(.n-button) { margin-top: 8px; color: var(--on-surface-heading); background: var(--surface-2); }

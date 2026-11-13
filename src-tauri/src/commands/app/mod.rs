@@ -9,5 +9,5 @@ pub mod runtime;
 pub mod scan;
 pub mod session;
 pub mod tasks;
-pub mod trash;
+pub(crate) mod recycle;
 pub mod window;

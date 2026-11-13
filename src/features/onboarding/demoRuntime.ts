@@ -1,5 +1,7 @@
 import { createDemoAudio, createDemoModels, createDemoWorkflow } from './demoData.ts'
 import type { TutorialAdapter } from './demoContext'
+import { audioJobEvent } from '../tasks/audioJobs.ts'
+import type { JournalJob } from '../tasks/journal.ts'
 
 export type DemoConfig = { locale: string; themeMode: string; themeAccent: string; platform: string; progress: Record<string, unknown> }
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
@@ -20,23 +22,33 @@ export function createDemoRuntime(config: DemoConfig) {
   const now = Date.now()
   const task = { id: 'sample-separation', jobId: 'sample-job', model: models[0]!.name, input, output, status: 'done',
     progress: 100, createdAt: now, updatedAt: now, startedAt: now - 1200, finishedAt: now, durationMs: 1200,
-    message: 'Done', stageLabel: 'Done', logs: [], outputs, files: outputs.map(item => item.path),
+    message: 'Done', stageLabel: 'Done', logs: [], outputs,
     runConfig: { runMode: 'model', modelDir: prefix + '/Models', outputLayout: 'flat', device: 'auto',
-      outputFormat: 'wav', selectedStems: ['Vocals', 'Instrumental'], audioParams: {}, inferenceParams: {} } }
+      outputFormat: 'wav', selectedStems: ['Vocals', 'Instrumental'], audioParams: {}, inferenceParams: {}, inferenceParamsVersion: 3 } }
   const workflow = { id: 'sample-workflow', name: config.locale === 'en' ? 'Vocal separation' : '人声与伴奏分离',
     description: '', definition: createDemoWorkflow(models[0]!.name), format: 'simple', formatVersion: 1, createdAt: now, updatedAt: now }
-  const initialProject = { id: 'edit_sample-separation', name: config.locale === 'en' ? 'Sample audio' : '示例音频',
+  const initialProject = { version: 4, id: 'edit_sample-separation', name: config.locale === 'en' ? 'Sample audio' : '示例音频',
     sourceTaskId: task.id, sourceResultDir: output, masterVolume: 0.8, masterPan: 0,
     sources: waveform.sources.map((source, index) => ({ ...source, path: outputs[index]!.path })),
     tracks: waveform.tracks, createdAt: now, updatedAt: now }
   const stores = new Map<string, any>([
-    ['app-settings', { startupOnboardingSeen: true, locale: config.locale, themeMode: config.themeMode, themeAccent: config.themeAccent,
+    ['app-settings', { version: 1, startupOnboardingSeen: true, locale: config.locale, themeMode: config.themeMode, themeAccent: config.themeAccent,
       animationsEnabled: false, outputDir: output, modelDir: prefix + '/Models', defaultFormat: outputFormat,
       beginnerGuideProgress: { ...config.progress, status: 'active' } }],
     ['model-state', { models, categories: ['MSS'], categoriesCn: ['MSS'], modelDir: prefix + '/Models' }],
-    ['task-history', { tasks: [task] }],
-    ['workflow-state', { workflows: [workflow], selectedWorkflowId: workflow.id }],
+    ['workflow-state', { version: 1, workflows: [workflow], selectedWorkflowId: workflow.id }],
   ])
+  const jobs = new Map<string, JournalJob>([[task.id, {
+    schemaVersion: 2, jobId: task.id, command: 'infer', source: 'manual', status: 'completed', cancelTaskId: task.id,
+    fraction: 1, message: 'Done', error: null, result: { outputs, outputDir: output, outputRoot: output },
+    createdAt: now / 1000, updatedAt: now / 1000, startedAt: (now - 1200) / 1000, finishedAt: now / 1000, owner: null,
+    runtime: { stage: 'writing_output', progress: null, nodes: {}, order: [] }, logs: [],
+    payload: { model: task.model, modelDir: prefix + '/Models', output, source: 'modelscope', downloadMethod: 'aria2c',
+      outputLayout: 'flat', device: 'auto', deviceIds: [0], outputFormat: 'wav', selectedStems: ['Vocals','Instrumental'],
+      inferenceParamsVersion: 3, inferenceParams: {}, audioParams: {}, useTta: false, debug: false },
+    audio: { groupId: 'sample-job', primaryJobId: task.id, index: 0, memberJobIds: [task.id], request: { input, output, inputIndex: 1 } },
+  }]])
+  const journalResponse = (entries = [...jobs.values()]) => ({ schemaVersion: 3, full: true, removed: [], jobs: copy(entries), dataRoot: prefix, jobsDir: prefix + '/agent-jobs' })
   const projects = new Map<string, any>([[initialProject.id, initialProject]])
   const callbacks = new Map<number, { handler?: (value: any) => void; once: boolean }>()
   const listeners = new Map<number, { event: string; handler: number }>()
@@ -72,12 +84,23 @@ export function createDemoRuntime(config: DemoConfig) {
     const timer = setTimeout(() => { timers.delete(timer); action() }, delay)
     timers.add(timer)
   }
-  const worker = (type: string, taskId: string, payload: unknown) => emit('pymss://worker-event', { type, taskId, payload })
+  function worker(type: string, taskId: string, payload: Record<string, unknown>) {
+    const job = jobs.get(taskId)
+    if (job?.audio) jobs.set(taskId, audioJobEvent(job, [...jobs.values()], { type, taskId, payload }))
+    emit('pymss://worker-event', { type, taskId, payload })
+  }
   function startTask(payload: any) {
-    for (let index = 1; index <= 5; index++) later(() => worker('task.progress', payload.taskId,
-      { stage: 'separating', done: index, total: 5, unit: 'seconds' }), index * 180)
-    later(() => worker('task.result', payload.taskId, { outputDir: output, outputRoot: output, outputs, files: outputs.map(item => item.path) }), 1100)
-    return { taskId: payload.taskId, started: true }
+    const selected = jobs.get(payload.jobId)
+    if (!selected?.audio || selected.status !== 'queued') throw new Error('Unknown queued tutorial job')
+    const primary = jobs.get(selected.audio.primaryJobId)!
+    const active = [...jobs.values()].filter(job => job.audio?.primaryJobId === primary.jobId && job.status === 'queued')
+    active.forEach(job => {
+      job.owner = { kind: 'tauri-worker', pid: 1 }; job.status = 'running'; job.startedAt = Date.now() / 1000; job.updatedAt = Date.now() / 1000
+      for (let index = 1; index <= 5; index++) later(() => worker('task.progress', job.jobId,
+        { stage: 'separating', done: index, total: 5, unit: 'seconds' }), index * 180)
+      later(() => worker('task.result', job.jobId, { outputDir: job.audio!.request.output, outputRoot: primary.payload!.output, outputs }), 1100)
+    })
+    return { taskId: selected.jobId, started: true }
   }
   function projectFor(id: string) {
     if (!projects.has(id)) projects.set(id, { ...copy(initialProject), id })
@@ -122,15 +145,47 @@ export function createDemoRuntime(config: DemoConfig) {
     if (command === 'env_info' || command === 'get_env_info') return copy(envInfo)
     if (command === 'start_env_check') { later(() => emit('pymss://worker-event', { type: 'env_info', requestId: args.requestId, payload: envInfo }), 30); return }
     if (command === 'get_build_info') return { version: '0.0.12', variant: 'tutorial', official: false, updateSupported: false }
-      if (['pick_media_files', 'pick_audio_files'].includes(command)) return [input]
+    if (['pick_media_files', 'pick_audio_files', 'pick_preview_files'].includes(command)) return [input]
+    if (command === 'pick_preview_folders') return []
     if (['pick_single_audio_file'].includes(command)) return input
     if (command === 'scan_media_paths') return { files: [input], warnings: [] }
     if (['pick_input_folder', 'pick_output_folder', 'pick_output_dir', 'pick_model_dir'].includes(command)) return output
     if (command === 'start_separation' || command === 'start_workflow_inference') return startTask(payload)
-    if (command === 'cancel_task') { worker('task.cancelled', args.taskId, {}); return true }
+    if (command === 'agent_jobs') return journalResponse()
+    if (command === 'enqueue_audio_jobs') {
+      if (payload.schemaVersion !== 2) throw new Error('Unsupported tutorial job schema')
+      const accepted = payload.tasks.map((item: any, index: number) => {
+        if (jobs.has(item.jobId)) throw new Error('Tutorial task ID already exists')
+        const job: JournalJob = { schemaVersion: 2, jobId: item.jobId, command: payload.command, source: 'manual', status: 'queued',
+          cancelTaskId: payload.primaryJobId, fraction: 0, message: 'queued', error: null, result: null,
+          createdAt: Date.now()/1000, updatedAt: Date.now()/1000, startedAt: null, finishedAt: null, owner: null,
+          runtime: { stage: null, progress: null, nodes: {}, order: [] }, logs: [],
+          audio: { groupId: payload.groupId, primaryJobId: payload.primaryJobId, index, request: copy(item.request), ...(index === 0 ? {memberJobIds: payload.tasks.map((entry: any) => entry.jobId)} : {}) },
+          ...(index === 0 ? { payload: copy(payload.payload), ...(payload.presentation ? {presentation: copy(payload.presentation)} : {}) } : {payloadRef: payload.primaryJobId}) }
+        jobs.set(job.jobId,job); return job
+      })
+      return journalResponse(accepted)
+    }
+    if (command === 'remove_audio_jobs') {
+      const selected = new Set(args.jobIds)
+      if ([...selected].some(id => !jobs.get(String(id))?.audio)) throw new Error('Tutorial audio job is missing')
+      const groups = new Set([...jobs.values()].filter(job => selected.has(job.jobId)).map(job => job.audio?.groupId))
+      const removing = [...jobs.values()].filter(job => job.audio && groups.has(job.audio.groupId))
+      if (removing.some(job => !['completed','failed','cancelled','interrupted'].includes(job.status))) throw new Error('Tutorial audio job is active')
+      if (!args.checkOnly) removing.forEach(job => jobs.delete(job.jobId))
+      return { schemaVersion: 2, checkedJobIds: removing.map(job => job.jobId), removedJobIds: args.checkOnly ? [] : removing.map(job => job.jobId),
+        trashed: [], failed: [], retained: args.deleteFiles ? removing.flatMap(job => Array.isArray(job.result?.outputs) ? job.result.outputs
+          .filter((item: any) => typeof item?.path === 'string').map((item: any) => ({ path: item.path, reason: 'tutorial_asset' })) : []) : [] }
+    }
+    if (command === 'cancel_task') {
+      const selected = jobs.get(args.taskId)
+      if (!selected || ['completed','failed','cancelled','interrupted'].includes(selected.status)) return false
+      const targets = selected.status === 'queued' ? [selected] : [...jobs.values()].filter(job => job.audio?.primaryJobId === selected.audio?.primaryJobId && job.status === 'running')
+      targets.forEach(job => worker('task.cancelled', job.jobId, {})); return true
+    }
     if (command === 'get_workflow_editors') return { revision: 0, editors: [] }
     if (command === 'mutate_workflow_store') {
-      const state = copy(stores.get('workflow-state') || { workflows: [], selectedWorkflowId: '' })
+      const state = copy(stores.get('workflow-state') || { version: 1, workflows: [], selectedWorkflowId: '' })
       if (payload.action === 'upsert') {
         const entry = { ...payload.entry, updatedAt: Date.now() }
         state.workflows = [entry, ...state.workflows.filter((item: any) => item.id !== entry.id)]
@@ -147,7 +202,6 @@ export function createDemoRuntime(config: DemoConfig) {
       return { editorSnapshot: { revision: 0, editors: [] } }
     }
     if (command === 'open_editor_window') { openPopup('/editor?projectId=' + encodeURIComponent(payload.projectId)); return }
-    if (command === 'editor_project_exists') return true
     if (command === 'load_editor_project') return copy(projectFor(args.projectId))
     if (command === 'create_editor_project_from_task') return copy(projectFor('edit_' + (payload.taskId || task.id)))
     if (command === 'save_editor_project') { projects.set(args.project.id, copy(args.project)); return copy(args.project) }
@@ -183,7 +237,7 @@ export function createDemoRuntime(config: DemoConfig) {
     throw new Error(config.locale === 'en' ? 'This action is not available in the guided tutorial' : '此操作暂不适用于新手指引。')
   }
   return {
-    invoke, callback, assetUrl, emit, models, task, workflow, initialProject, runtimeInfo, envInfo, input, output, unknown, commands, stores,
+    invoke, nativeCall: invoke, callback, assetUrl, emit, models, task, workflow, initialProject, runtimeInfo, envInfo, input, output, unknown, commands, stores,
     connectWindows(open: (path: string) => void, close: () => void) { openPopup = open; closePopup = close },
     dispose() { timers.forEach(clearTimeout); timers.clear(); listeners.clear(); callbacks.clear(); URL.revokeObjectURL(audioUrl) },
   } satisfies TutorialAdapter & Record<string, unknown>

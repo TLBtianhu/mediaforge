@@ -3,7 +3,8 @@ export const isTutorialFrame = () => typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('tutorial-frame') === '1'
 
 export interface TutorialAdapter {
-  invoke: (command: string, args?: unknown) => Promise<unknown>
+  /** Tutorial-side stand-in for a native command; named apart from Tauri's `invoke`. */
+  nativeCall: (command: string, args?: unknown) => Promise<unknown>
   callback: (handler?: (value: any) => void, once?: boolean) => number
   assetUrl: (path: string) => string
 }

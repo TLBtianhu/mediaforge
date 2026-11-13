@@ -1,7 +1,13 @@
 // SeparateView 的输出 stem 选择：清空标记、可选 stem、数量与全选/清空。
-import type { computed, ref } from 'vue'
+import type { computed, ref, Ref } from 'vue'
 
-type StemSelectionDeps = Record<string, any> & { ref: typeof ref; computed: typeof computed }
+type StemSelectionDeps = {
+  ref: typeof ref
+  computed: typeof computed
+  selectedStems: Ref<string[]>
+  availableStemNames: Ref<string[]>
+  persistedOutputStemSelectionCleared: Ref<boolean>
+}
 
 export function makeStemSelection(deps: StemSelectionDeps) {
   const outputStemSelectionCleared = deps.ref(false)

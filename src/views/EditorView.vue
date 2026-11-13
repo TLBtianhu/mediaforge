@@ -1066,7 +1066,7 @@ watch(
   place-items: center;
   border-radius: 18px;
   font-size: 28px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: var(--primary-soft);
 }
 

@@ -1,7 +1,7 @@
 // DebugView 的调试模型目录编辑器：状态、校验、草稿与保存。
 import { computed, ref, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
-import type { CatalogEditMode, DebugCatalogInfo } from '../debug_types'
+import { invokeWorkerCommand, invokeWorkerQuery } from '@/api/worker'
+import type { CatalogEditMode, DebugCatalog, DebugCatalogInfo, DebugCatalogModel } from '../debug_types'
 
 type Options = {
   t: (key: string, params?: Record<string, unknown>) => string
@@ -16,16 +16,16 @@ const debugCatalogError = ref('')
 const debugCatalogSaving = ref(false)
 const debugCatalogInfo = ref<DebugCatalogInfo | null>(null)
 const debugCatalogText = ref('')
-const debugCatalogObject = ref<Record<string, any>>({ schema_version: 1, models: [] })
-const debugCatalogModels = ref<Record<string, any>[]>([])
+const debugCatalogObject = ref<DebugCatalog>({ schema_version: 1, models: [] })
+const debugCatalogModels = ref<DebugCatalogModel[]>([])
 const catalogEditMode = ref<CatalogEditMode>('simple')
 const catalogSearch = ref('')
 const selectedCatalogModelName = ref('')
-const catalogModelDraft = ref<Record<string, any>>({})
+const catalogModelDraft = ref<DebugCatalogModel>({ name: '' })
 const catalogModelDialogVisible = ref(false)
 
-function catalogForEditor(result: DebugCatalogInfo) {
-  return result.effectiveCatalog || result.baseCatalog || { schema_version: 1, models: [], removed: [] }
+function catalogForEditor(result: DebugCatalogInfo): DebugCatalog {
+  return (result.effectiveCatalog || result.baseCatalog || { schema_version: 1, models: [], removed: [] }) as unknown as DebugCatalog
 }
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -53,13 +53,13 @@ function safeCatalogRelpath(modelName: string, field: string, value: unknown, re
 
 function validateDebugCatalog(catalog: unknown) {
   if (!catalog || typeof catalog !== 'object' || Array.isArray(catalog)) throw new Error(t('debug.catalogPayloadMustBeObject'))
-  const source = catalog as Record<string, any>
+  const source = catalog as DebugCatalog
   if (!Array.isArray(source.models)) throw new Error(t('debug.catalogModelsMustBeArray'))
   if (source.removed != null && !Array.isArray(source.removed)) throw new Error(t('debug.catalogRemovedMustBeArray'))
   const seen = new Set<string>()
   const models = source.models.map((item: unknown, index: number) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(t('debug.catalogModelMustBeObject', { index }))
-    const model = item as Record<string, any>
+    const model = item as DebugCatalogModel
     const name = String(model.name || '').trim()
     if (!name) throw new Error(t('debug.catalogModelNameRequiredAt', { index }))
     if (seen.has(name)) throw new Error(t('debug.catalogModelDuplicate', { model: name }))
@@ -88,13 +88,13 @@ function parseDebugCatalogText() {
   }
 }
 
-function setCatalogEditor(catalog: Record<string, unknown>) {
-  const cloned = cloneJson(catalog || { schema_version: 1, models: [] }) as Record<string, any>
+function setCatalogEditor(catalog: DebugCatalog) {
+  const cloned = cloneJson(catalog || { schema_version: 1, models: [] }) as DebugCatalog
   const models = Array.isArray(cloned.models) ? cloned.models.filter((item: unknown) => item && typeof item === 'object') : []
   debugCatalogObject.value = { ...cloned, models }
   debugCatalogModels.value = models
   debugCatalogText.value = JSON.stringify(debugCatalogObject.value, null, 2)
-  if (!selectedCatalogModelName.value || !models.some((item: Record<string, any>) => item.name === selectedCatalogModelName.value)) {
+  if (!selectedCatalogModelName.value || !models.some(item => item.name === selectedCatalogModelName.value)) {
     selectedCatalogModelName.value = String(models[0]?.name || '')
   }
   loadCatalogDraft(selectedCatalogModelName.value)
@@ -117,11 +117,11 @@ const baseCatalogModelsByName = computed(() => {
   const models = debugCatalogInfo.value?.baseCatalog?.models
   const list = Array.isArray(models) ? models : []
   return new Map(list
-    .filter((item: unknown): item is Record<string, any> => Boolean(item && typeof item === 'object' && (item as Record<string, any>).name))
+    .filter((item: unknown): item is DebugCatalogModel => Boolean(item && typeof item === 'object' && (item as DebugCatalogModel).name))
     .map((item) => [String(item.name), item]))
 })
 
-function catalogModelStatus(model: Record<string, any>) {
+function catalogModelStatus(model: DebugCatalogModel) {
   const base = baseCatalogModelsByName.value.get(String(model.name || ''))
   if (!base) return 'added'
   return stableJson(model) === stableJson(base) ? 'normal' : 'modified'
@@ -136,7 +136,7 @@ function loadCatalogDraft(name: string) {
   const model = debugCatalogModels.value.find((item) => item.name === name)
   catalogModelDraft.value = model
     ? { ...cloneJson(model), aliasesText: Array.isArray(model.aliases) ? model.aliases.join(', ') : '' }
-    : {}
+    : { name: '' }
 }
 
 function selectCatalogModel(name: string) {
@@ -174,7 +174,7 @@ function addCatalogModel() {
 }
 
 function saveCatalogDraft() {
-  const draft = cloneJson(catalogModelDraft.value) as Record<string, any>
+  const draft = cloneJson(catalogModelDraft.value) as DebugCatalogModel
   const name = String(draft.name || '').trim()
   if (!name) {
     message.error(t('debug.catalogModelNameRequired'))
@@ -233,7 +233,7 @@ function currentCatalogDownloadUrl(relpath: unknown) {
   if (!path) return ''
   const repositories = (debugCatalogInfo.value?.effectiveCatalog?.source_repository
     || debugCatalogInfo.value?.baseCatalog?.source_repository
-    || {}) as Record<string, unknown>
+    || {}) as { huggingface?: string; modelscope?: string }
   const quotedPath = quoteCatalogRelpath(path)
   if (downloadSource.value === 'huggingface') {
     const base = String(repositories.huggingface || '').replace(/\/$/, '')
@@ -252,7 +252,7 @@ async function loadDebugCatalog() {
   debugCatalogLoading.value = true
   debugCatalogError.value = ''
   try {
-    const result = await invoke<DebugCatalogInfo>('debug_catalog_info')
+    const result = await invokeWorkerQuery('debug_catalog_info')
     debugCatalogInfo.value = result
     setCatalogEditor(catalogForEditor(result))
   } catch (error) {
@@ -267,7 +267,7 @@ async function saveDebugCatalog() {
   try {
     if (catalogEditMode.value === 'simple') syncCatalogTextFromSimple()
     const catalog = parseDebugCatalogText()
-    const result = await invoke<DebugCatalogInfo>('debug_catalog_save', { payload: { catalog, fullCatalog: true } })
+    const result = await invokeWorkerCommand('debug_catalog_save', { catalog, fullCatalog: true })
     debugCatalogInfo.value = result
     setCatalogEditor(catalogForEditor(result))
     await modelStore.loadModels()
@@ -282,7 +282,7 @@ async function saveDebugCatalog() {
 async function resetDebugCatalog() {
   debugCatalogSaving.value = true
   try {
-    const result = await invoke<DebugCatalogInfo>('debug_catalog_reset')
+    const result = await invokeWorkerQuery('debug_catalog_reset')
     debugCatalogInfo.value = result
     setCatalogEditor(catalogForEditor(result))
     await modelStore.loadModels()

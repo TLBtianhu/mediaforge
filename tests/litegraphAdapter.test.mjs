@@ -23,7 +23,7 @@ const PY = process.env.PYMSS_STUDIO_TEST_PYTHON
   || (process.platform === 'win32' ? 'python' : 'python3')
 let hasPymssGraph = false
 try {
-  execFileSync(PY, ['-c', 'import pymss.graph'], { stdio: 'ignore' })
+  execFileSync(PY, ['-c', 'import pymss.graph'], { stdio: 'ignore', windowsHide: true })
   hasPymssGraph = true
 } catch {
   // The adapter unit tests remain available without a pymss development environment.
@@ -84,7 +84,7 @@ function pymssParse(jsonPath) {
   const out = execFileSync(
     PY,
     ['-c', `import pymss.graph as g; d=g.load_comfy_file(${JSON.stringify(jsonPath)}); print('OK', len(d.nodes), sorted(n.type for n in d.nodes))`],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', windowsHide: true },
   ).trim()
   return out
 }

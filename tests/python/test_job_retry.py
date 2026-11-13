@@ -9,6 +9,7 @@ import sys
 import unittest
 from pathlib import Path
 from unittest import mock
+from ._job_fixtures import job_record, write_record
 
 PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
@@ -106,14 +107,8 @@ class JobRetryToolTests(unittest.TestCase):
         job = mock.Mock()
         job.job_id = job_id
         job.command = "audio_tools"
-        job.snapshot.return_value = {
-            "jobId": job_id,
-            "command": "audio_tools",
-            "status": "failed",
-            "payload": PAYLOAD,
-            "result": FAILED_RESULT,
-            "error": "CUDA out of memory",
-        }
+        job.snapshot.return_value = job_record(job_id, status="failed", payload=PAYLOAD, result=FAILED_RESULT, error="CUDA out of memory")
+        write_record(self.bridge.jobs.jobs_root, job.snapshot.return_value)
         return job
 
     def test_unknown_job_is_refused(self) -> None:
@@ -160,6 +155,22 @@ class JobRetryToolTests(unittest.TestCase):
             result = self.bridge.job_retry("job_ok")
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "job did not fail")
+
+    def test_partially_completed_audio_batch_is_not_retried_as_a_whole(self) -> None:
+        job_id = "job_partial_batch"
+        payload = {"model": "test", "tasks": [
+            {"taskId": job_id + "-t1", "input": str(Path(self.root) / "first.wav")},
+            {"taskId": job_id + "-t2", "input": str(Path(self.root) / "second.wav")},
+        ]}
+        result = {**FAILED_RESULT, "outputs": [{"path": str(Path(self.root) / "first_vocals.wav")}]}
+        write_record(self.bridge.jobs.jobs_root, job_record(job_id, command="infer", status="failed",
+                                                           payload=payload, result=result))
+        with mock.patch.object(self.bridge.jobs, "start") as start:
+            retried = self.bridge.job_retry(job_id)
+        self.assertFalse(retried["ok"], retried)
+        self.assertIn("submit only the failed inputs", retried["error"])
+        self.assertEqual(retried["attemptsUsed"], 0)
+        start.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { pickAudioFiles, pickInputFolder, pickOutputFolder, scanAudioPathsWithOptions } from '@/api/native'
 import { computed, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { CloseCircleOutline, DocumentOutline, FolderOpenOutline, SwapHorizontalOutline } from '@vicons/ionicons5'
@@ -9,7 +9,6 @@ import AudioToolPanel from '../../shared/AudioToolPanel.vue'
 import AudioToolHeader from '../../shared/AudioToolHeader.vue'
 import { useAudioToolRuntime } from '../../runtime'
 
-type ScanResult = { files: string[]; warnings: string[] }
 const { t } = useI18n()
 const message = useMessage()
 const settings = useSettingsStore()
@@ -34,17 +33,17 @@ const oggOptions = ['192k', '256k', '320k', '450k'].map(value => ({ label: value
 watch(() => settings.outputDir, value => { if (!outputDir.value) outputDir.value = value })
 function fileName(path: string) { return path.split(/[\\/]/).filter(Boolean).pop() || path }
 function addInputs(paths: string[]) { const values = new Set(inputs.value); inputs.value = [...inputs.value, ...paths.filter(path => path && !values.has(path))] }
-async function pickFiles() { addInputs(await invoke<string[]>('pick_audio_files') || []) }
+async function pickFiles() { addInputs(await pickAudioFiles() || []) }
 async function pickFolder() {
-  const folder = await invoke<string | null>('pick_input_folder'); if (!folder) return
-  const result = await invoke<ScanResult>('scan_audio_paths_with_options', { paths: [folder], recursive: true, sortFiles: true })
+  const folder = await pickInputFolder(); if (!folder) return
+  const result = await scanAudioPathsWithOptions([folder], { recursive: true, sortFiles: true })
   const before = inputs.value.length; addInputs(result.files || [])
   const added = inputs.value.length - before
   if (added) message.success(t('tools.folderScanned', { count: added }))
   else message.info(t(result.files?.length ? 'tools.folderAlreadyAdded' : 'tools.folderEmpty'))
   if (result.warnings?.length) message.warning(t('tools.folderScanWarnings', { count: result.warnings.length }))
 }
-async function pickOutput() { const value = await invoke<string | null>('pick_output_folder'); if (value) outputDir.value = value }
+async function pickOutput() { const value = await pickOutputFolder(); if (value) outputDir.value = value }
 function run() { void runtime.execute('convert', { inputs: inputs.value, outputDir: outputDir.value, outputFormat: outputFormat.value, sampleRate: sampleRate.value, channels: channels.value, wavBitDepth: wavBitDepth.value, flacBitDepth: flacBitDepth.value, mp3BitRate: mp3BitRate.value, oggBitRate: oggBitRate.value }) }
 </script>
 <template>

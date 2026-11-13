@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { createDemoRuntime } from '../src/features/onboarding/demoRuntime.ts'
 import { visibleParameterGuides } from '../src/features/onboarding/parameters.ts'
+import { validateStoredSettings } from '../src/stores/settingsSchema.ts'
 
 const config = { locale: 'en', themeMode: 'dark', themeAccent: 'blue', platform: 'win32', progress: { step: 0, stepId: 'workspace' } }
 
@@ -30,6 +31,16 @@ test('new tutorials and non-encoding progress retain the WAV default', async t =
   }
 })
 
+test('tutorial settings use the current schema the settings store validates', async t => {
+  const runtime = createDemoRuntime(config)
+  t.after(() => runtime.dispose())
+  const settings = await runtime.invoke('load_app_store', { name: 'app-settings' })
+  // The tutorial bootstraps the real settings store, so its fixture must pass
+  // the same strict schema as a user profile.
+  assert.doesNotThrow(() => validateStoredSettings(settings))
+  assert.equal(settings.version, 1)
+})
+
 test('tutorial data is private to each session and unknown operations never reach native services', async t => {
   const first = createDemoRuntime(config), second = createDemoRuntime(config)
   t.after(() => { first.dispose(); second.dispose() })
@@ -51,7 +62,10 @@ test('the real task lifecycle receives mock completion and usable audio data', a
   const events = []
   const handler = runtime.callback(event => events.push(event.payload))
   await runtime.invoke('plugin:event|listen', { event: 'pymss://worker-event', handler })
-  assert.equal((await runtime.invoke('start_separation', { payload: { taskId: 'sample-run' } })).started, true)
+  const current = (await runtime.invoke('agent_jobs')).jobs[0]
+  await runtime.invoke('enqueue_audio_jobs', { payload: { schemaVersion: 2, command: 'infer', groupId: 'sample-group', primaryJobId: 'sample-run',
+    payload: current.payload, tasks: [{ jobId: 'sample-run', request: { input: runtime.input, output: current.payload.output, inputIndex: 1 } }] } })
+  assert.equal((await runtime.invoke('start_separation', { payload: { jobId: 'sample-run' } })).started, true)
   await new Promise(resolve => setTimeout(resolve, 1200))
   const completed = events.find(event => event.type === 'task.result')
   assert.equal(completed.taskId, 'sample-run')

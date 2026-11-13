@@ -11,6 +11,8 @@ const vite = await createServer({
   optimizeDeps: { noDiscovery: true },
   resolve: { alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) } },
 })
+const i18n = await vite.ssrLoadModule('/src/i18n/index.ts')
+i18n.default.global.locale.value = 'zh-CN'
 const validation = await vite.ssrLoadModule('/src/stores/taskValidation.ts')
 
 test('workflow definition validation is shared outside the task store', () => {

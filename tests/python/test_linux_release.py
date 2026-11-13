@@ -20,7 +20,12 @@ SPEC.loader.exec_module(METADATA)
 
 class LinuxReleaseTests(unittest.TestCase):
     def _check_restart_probe_startup_files(self, *, wrapped_is_link: bool):
-        bash = shutil.which("bash")
+        # Windows' system32/bash.exe can be WSL, which cannot resolve native
+        # fixture paths. Use the installed Git Bash for this shell-only fixture.
+        git_bash = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+        if os.name == "nt" and not git_bash.is_file():
+            self.skipTest("Git Bash is required for native Windows fixture paths")
+        bash = str(git_bash) if os.name == "nt" else shutil.which("bash")
         if bash is None:
             self.skipTest("bash is required for the AppRun hook test")
         spec = importlib.util.spec_from_file_location(
@@ -73,9 +78,10 @@ class LinuxReleaseTests(unittest.TestCase):
                 destination.write_text(executable, encoding="utf-8")
                 destination.chmod(0o755)
                 result = run(
-                    [bash, str(miniature / "AppRun"), "startup-token"],
+                    [bash, (miniature / "AppRun").as_posix(), "startup-token"],
                     env={**os.environ, "APPDIR": miniature.as_posix()},
                     capture_output=True, text=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, "gtk:gstreamer:startup-token\n")

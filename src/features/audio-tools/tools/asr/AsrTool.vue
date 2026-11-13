@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { pickOutputFolder, pickSingleAudioFile } from '@/api/native'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { createLogger } from '@/utils/logger'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import { normalizeLogRecord } from '@/utils/logRecord'
 
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { deleteToolModel } from '@/api/models'
 import { open } from '@tauri-apps/plugin-shell'
 import { useI18n } from 'vue-i18n'
 import { useDialog, useMessage } from 'naive-ui'
@@ -108,18 +110,18 @@ const canRun = computed(() => (
 ))
 
 async function pickAudio() {
-  const path = await invoke<string | null>('pick_single_audio_file')
+  const path = await pickSingleAudioFile()
   if (path) inputPath.value = path
 }
 
 async function pickOutput() {
-  const path = await invoke<string | null>('pick_output_folder')
+  const path = await pickOutputFolder()
   if (path) outputDir.value = path
 }
 
 async function pickModel(target: ModelTarget) {
-  const path = await invoke<string | null>('pick_input_folder')
-  if (!path) return
+  const path = await openDialog({ directory: true, multiple: false })
+  if (typeof path !== 'string') return
   if (target === 'model') modelPath.value = path
   else if (target === 'vad') vadModelPath.value = path
   else puncModelPath.value = path
@@ -253,13 +255,11 @@ async function redownloadModelsAndRetry(recovery: AudioToolRecovery, payload: Re
   repairingModels.value = true
   try {
     for (const modelId of recovery.modelIds) {
-      await invoke('delete_tool_model', {
-        payload: {
-          id: modelId,
-          tool: recovery.tool,
-          modelDir: recovery.modelDir,
-          missingOk: true,
-        },
+      await deleteToolModel({
+        id: modelId,
+        tool: recovery.tool,
+        modelDir: recovery.modelDir,
+        missingOk: true,
       })
     }
     message.info(t('tools.asrModelRedownloadStarted'))

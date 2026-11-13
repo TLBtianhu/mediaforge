@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import venv
 import zipfile
 from pathlib import Path
 from unittest import mock
@@ -22,6 +21,7 @@ else:
     import _bootstrap as _worker_test_bootstrap
 
 from core import worker_optional_packages as optional_packages
+from shared.worker_subprocess import HiddenVenvBuilder
 
 
 class OptionalRuntimePackageTests(unittest.TestCase):
@@ -89,6 +89,33 @@ class OptionalRuntimePackageTests(unittest.TestCase):
         self.assertIsNone(status["issue"])
         environment_version.assert_not_called()
         run_process.assert_not_called()
+
+    def test_apple_silicon_funasr_requires_verified_managed_plugin_without_importing(self) -> None:
+        from core import worker_plugins
+
+        runtime = optional_packages._runtime_context()
+        manual = {"name": "asr", "managed": False, "loaded": True}
+        managed = {"name": "asr", "managed": True, "loaded": None, "verified": False}
+        with mock.patch.object(optional_packages, "_APPLE_SILICON", True), \
+             mock.patch.object(worker_plugins, "_inventory", return_value={"installed": [manual, managed]}) as inventory:
+            status = optional_packages._apple_silicon_plugin_status(runtime)
+            self.assertFalse(status["installed"])
+            self.assertTrue(status["present"])
+            self.assertEqual(status["issue"], "plugin_not_verified")
+            inventory.assert_called_once_with(mock.ANY, verify=False)
+            managed["verified"] = True
+            self.assertTrue(optional_packages._apple_silicon_plugin_status(runtime)["installed"])
+
+    def test_apple_silicon_repair_uses_only_catalog_name(self) -> None:
+        from core import worker_plugins
+
+        runtime = optional_packages._runtime_context()
+        with mock.patch.object(optional_packages, "_apple_silicon_plugin_status", return_value={"installed": False, "present": True}), \
+             mock.patch.object(optional_packages, "optional_package_status", return_value={}), \
+             mock.patch.object(worker_plugins, "cmd_manage_plugin", return_value=0) as manage, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(optional_packages._manage_funasr_via_plugin("install", {"target": "untrusted"}, "asr-task", runtime), 0)
+        manage.assert_called_once_with({"action": "repair", "name": "asr", "mirror": "auto", "locale": "", "taskId": "asr-task"})
 
     def test_status_marks_an_incompatible_version_for_repair(self) -> None:
         with mock.patch.object(optional_packages, "_sidecar_version", return_value=None), \
@@ -443,7 +470,7 @@ class OfflineOptionalPackageTests(unittest.TestCase):
     def check_offline_component(self, *, incompatible_torch: bool) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         base = root / "Installed.app/Contents/Resources/python-runtime"
-        venv.EnvBuilder(with_pip=True).create(base)
+        HiddenVenvBuilder(with_pip=True).create(base)
         python = base / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         wheels = root / "wheels"
         wheels.mkdir()
@@ -490,7 +517,7 @@ class OfflineOptionalPackageTests(unittest.TestCase):
         })
         subprocess.run([
             str(python), "-m", "pip", "install", "torch==2.7.1", "mlx==0.31.0",
-        ], env=environment, capture_output=True, text=True, timeout=60, check=True)
+        ], env=environment, capture_output=True, text=True, timeout=60, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
         def snapshot():
             return {
@@ -534,7 +561,7 @@ class OfflineOptionalPackageTests(unittest.TestCase):
                     "import funasr, component_helper, torchaudio, torch, mlx; "
                     "print(json.dumps({m.__name__: m.__file__ for m in (funasr, component_helper, torchaudio, torch, mlx)}))",
                     str(_worker_test_bootstrap.WORKER_DIR),
-                ], env=environment, capture_output=True, text=True, timeout=30, check=True)
+                ], env=environment, capture_output=True, text=True, timeout=30, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 paths = json.loads(loaded.stdout)
                 for name in ("funasr", "component_helper", "torchaudio"):
                     self.assertTrue(Path(paths[name]).resolve().is_relative_to(target.resolve()))

@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "repository": "pymss-project/pymss-plugins",
+  "commit": "84435a7e99deb7e98973133d0f46c4989e3d787c",
+  "archive": {
+    "sha256": "a01a05cfa1a0efa1de8c5ed4d7b9973ef04a3fa2c103a04346fc875e7e41aabf",
+    "sizeBytes": 79052
+  },
+  "plugins": [
+    {
+      "name": "analysis",
+      "subpath": "plugins/analysis",
+      "version": "0.1.0",
+      "treeSha256": "131ccdc6ff1330a5f970784c21f4309f5cb07ea72279eab2905df24df15201c1",
+      "description": "Measure loudness, true peak, RMS, dynamic range and spectrum.",
+      "tags": [
+        "analysis",
+        "measurement",
+        "lufs",
+        "spectrum"
+      ]
+    },
+    {
+      "name": "asr",
+      "subpath": "plugins/asr",
+      "version": "0.1.0",
+      "treeSha256": "f97aabfe639c67b3cedb5452d5fc49f7934514ecc80286135789a47901aa6e45",
+      "description": "Transcribe audio into text and timestamped subtitles.",
+      "tags": [
+        "asr",
+        "transcription",
+        "speech",
+        "funasr",
+        "mlx"
+      ]
+    },
+    {
+      "name": "dynamics",
+      "subpath": "plugins/dynamics",
+      "version": "0.1.0",
+      "treeSha256": "3d3c647c6c1b11c8592d0379c4df620b0f811d810eb4abb2887d79212c69ce41",
+      "description": "Compress, limit and de-ess audio.",
+      "tags": [
+        "dynamics",
+        "compressor",
+        "limiter",
+        "mastering"
+      ]
+    },
+    {
+      "name": "game",
+      "subpath": "plugins/game",
+      "version": "1.0.0",
+      "treeSha256": "675141809e47d8ba0717c4bfb6b14db990f11e16a068ce67a75c468b4c22ad35",
+      "description": "Transcribe singing into MIDI.",
+      "tags": [
+        "midi",
+        "transcription",
+        "vocal",
+        "openvpi",
+        "game"
+      ]
+    },
+    {
+      "name": "loudnorm",
+      "subpath": "plugins/loudnorm",
+      "version": "0.2.0",
+      "treeSha256": "9625bdb500bf0fa57bb073f030cdd16e6e5ed967591d46e0ed10cd833041e719",
+      "description": "Measure and normalize audio loudness.",
+      "tags": [
+        "loudness",
+        "normalize",
+        "lufs"
+      ]
+    },
+    {
+      "name": "spectral",
+      "subpath": "plugins/spectral",
+      "version": "0.1.0",
+      "treeSha256": "6d0654740440d390080f6fdd3574dad97d00a509f8a5055c4ae3775409354a9a",
+      "description": "Filter and equalize audio.",
+      "tags": [
+        "eq",
+        "filter",
+        "spectral",
+        "biquad"
+      ]
+    },
+    {
+      "name": "timing",
+      "subpath": "plugins/timing",
+      "version": "0.1.0",
+      "treeSha256": "32a3aa3dc4a53ef297336aa50c00be1748630978ed2f025c2b2f259677762692",
+      "description": "Change audio pitch and speed.",
+      "tags": [
+        "pitch",
+        "time",
+        "stretch"
+      ]
+    }
+  ]
+}

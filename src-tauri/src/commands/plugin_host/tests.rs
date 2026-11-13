@@ -187,11 +187,11 @@
         let state = PluginHostState::default();
         let task = register_render(&state, "running-task".into()).unwrap();
         #[cfg(unix)]
-        let mut command = Command::new("/bin/sh");
+        let mut command = crate::process_command::hidden_command("/bin/sh");
         #[cfg(unix)]
         command.args(["-c", "exec sleep 30"]);
         #[cfg(windows)]
-        let mut command = Command::new("cmd.exe");
+        let mut command = crate::process_command::hidden_command("cmd.exe");
         #[cfg(windows)]
         command.args(["/D", "/C", "ping -n 30 127.0.0.1 >nul"]);
         let process = HostProcess::spawn_command(command).unwrap();
@@ -215,7 +215,7 @@
     #[cfg(unix)]
     #[test]
     fn unix_helpers_have_an_owned_process_group_and_reaped_identity() {
-        let mut command = Command::new("/bin/sh");
+        let mut command = crate::process_command::hidden_command("/bin/sh");
         command.args(["-c", "exec sleep 30"]);
         let process = HostProcess::spawn_command(command).unwrap();
         let lease = ProcessLease::default();
@@ -869,7 +869,7 @@
     #[cfg(windows)]
     #[test]
     fn crashed_child_reports_failure_without_waiting_for_the_request_timeout() {
-        let mut command = Command::new("cmd.exe");
+        let mut command = crate::process_command::hidden_command("cmd.exe");
         command.args(["/D", "/C", "exit /b 23"]);
         let process = HostProcess::spawn_command(command).unwrap();
         assert!(process.receive(Duration::from_secs(2)).is_err());
@@ -878,7 +878,7 @@
     #[cfg(windows)]
     #[test]
     fn a_child_that_stops_reading_cannot_block_the_input_timeout() {
-        let mut command = Command::new("cmd.exe");
+        let mut command = crate::process_command::hidden_command("cmd.exe");
         command.args(["/D", "/C", "ping -n 30 127.0.0.1 >nul"]);
         let started = std::time::Instant::now();
         let mut process = HostProcess::spawn_command(command).unwrap();
@@ -925,7 +925,7 @@
         script.push_str("set /p fixture_input=");
         script.push(char::from(10));
         fs::write(&path, script).unwrap();
-        let mut command = Command::new("cmd.exe");
+        let mut command = crate::process_command::hidden_command("cmd.exe");
         command.args(["/D", "/Q", "/C"]).arg(&path);
         let process = HostProcess::spawn_command(command).unwrap();
         let pid = ProcessLease::default();
@@ -1100,7 +1100,7 @@
     #[test]
     fn blocked_or_crashed_child_clears_the_preview_session() {
         for action in ["ping -n 30 127.0.0.1 >nul", "exit /b 23"] {
-            let mut command = Command::new("cmd.exe");
+            let mut command = crate::process_command::hidden_command("cmd.exe");
             command.args(["/D", "/C", action]);
             let process = HostProcess::spawn_command(command).unwrap();
             let pid = ProcessLease::default();

@@ -7,7 +7,6 @@ const task = (overrides = {}) => ({
   input: '/input/song.wav',
   output: '/out/song/result.wav',
   jobOutput: '',
-  resultId: 'song',
   runConfig: { outputLayout: 'folders' },
   ...overrides,
 })
@@ -18,13 +17,12 @@ test('retry output keeps an absolute recorded job root', () => {
   assert.equal(result.outputLayout, 'folders')
 })
 
-test('folder retry derives the parent from the input stem', () => {
-  const result = resolveRetryOutput(task({ output: '/out/song' }), false, 'unknown')
-  assert.equal(result.jobOutput, '/out')
+test('retry rejects missing canonical roots instead of guessing from folder names', () => {
+  assert.throws(() => resolveRetryOutput(task({ output: '/out/song' }), false, 'unknown'), /unknown/)
 })
 
 test('flat retry keeps the recorded output directory', () => {
-  const result = resolveRetryOutput(task({ output: '/out', runConfig: { outputLayout: 'flat' } }), false, 'unknown')
+  const result = resolveRetryOutput(task({ jobOutput: '/out', output: '/out', runConfig: { outputLayout: 'flat' } }), false, 'unknown')
   assert.equal(result.jobOutput, '/out')
   assert.equal(result.outputLayout, 'flat')
 })

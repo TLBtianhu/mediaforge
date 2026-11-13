@@ -19,9 +19,18 @@ from core import worker_custom_models as ccm
 os_environ_target = ccm.os.environ
 
 
+def isolate_registry(test, root):
+    patch = mock.patch.dict(os_environ_target, {
+        "MEDIAFORGE_DATA_ROOT": str(root),
+        "PYMSS_USER_MODELS": str(root / "settings" / "user_models.json"),
+    }, clear=False)
+    patch.start()
+    test.addCleanup(patch.stop)
+
+
 def link_directory(link: Path, target: Path) -> None:
     if ccm.os.name == 'nt':
-        subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(link), str(target)], check=True, capture_output=True)
+        subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(link), str(target)], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     else:
         link.symlink_to(target, target_is_directory=True)
 
@@ -196,6 +205,7 @@ class InspectCommandTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+        isolate_registry(self, self.root)
         self.weights = self.root / "my model.ckpt"
         self.weights.write_bytes(b"x" * 4096)
         self.config = self.root / "my_model.yaml"
@@ -303,6 +313,7 @@ class ImportPipelineTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+        isolate_registry(self, self.root)
         self.weights = self.root / "src" / "my_model.ckpt"
         self.weights.parent.mkdir()
         self.weights.write_bytes(b"w" * (9 * 1024 * 1024))  # spans several copy blocks
@@ -610,6 +621,7 @@ class UnregisterTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+        isolate_registry(self, self.root)
         self.sidecar = self.root / "meta.json"
         self.stdout = io.StringIO()
         self.unregistered: list[str] = []
@@ -691,7 +703,8 @@ class UnregisterTests(unittest.TestCase):
         self.assertEqual(payload["code"], "CUSTOM_MODEL_NOT_FOUND")
 
     def test_a_missing_name_is_rejected(self):
-        with redirect_stdout(self.stdout):
+        with mock.patch.dict("sys.modules", {"pymss": mock.Mock(), "pymss.user_models": mock.Mock()}), \
+             redirect_stdout(self.stdout):
             self.assertEqual(ccm.cmd_unregister_custom_model({}), 1)
         self.assertEqual(
             json.loads(self.stdout.getvalue().strip().splitlines()[-1])["payload"]["code"],
@@ -744,6 +757,7 @@ class RelinkTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+        isolate_registry(self, self.root)
         self.moved = self.root / "moved.ckpt"
         self.moved.write_bytes(b"w")
         self.stdout = io.StringIO()
@@ -836,6 +850,7 @@ class RemapCommandTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+        isolate_registry(self, self.root)
         self.old_root = self.root / "old-models"
         self.new_root = self.root / "new-models"
         self.sidecar = self.root / "meta.json"
@@ -939,7 +954,8 @@ class RemapCommandTests(unittest.TestCase):
         self.assertIn("boom", payload["errors"][0])
 
     def test_missing_roots_are_rejected(self):
-        with redirect_stdout(self.stdout):
+        with mock.patch.dict("sys.modules", {"pymss": mock.Mock(), "pymss.user_models": mock.Mock()}), \
+             redirect_stdout(self.stdout):
             self.assertEqual(ccm.cmd_remap_custom_model_paths({"fromRoot": "", "toRoot": "/x"}), 1)
         self.assertEqual(
             json.loads(self.stdout.getvalue().strip().splitlines()[-1])["payload"]["code"],
@@ -951,6 +967,7 @@ class SidecarTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+        isolate_registry(self, self.root)
 
     def test_the_sidecar_sits_beside_the_registry_by_default(self):
         # So that both travel together when the data root moves.

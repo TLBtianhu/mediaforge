@@ -271,7 +271,7 @@ function finish() { guide.end('completed') }
 .beginner-guide-invite p { margin: 0; color: var(--on-surface-muted); font-size: 14px; line-height: 1.8; }
 .beginner-guide-invite__outline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin: 24px 0 18px; padding-left: 20px; font-size: 13px; }
 .beginner-guide-invite__outline li { padding-left: 6px; }
-.beginner-guide-invite__outline li::marker { color: var(--primary); font-variant-numeric: tabular-nums; }
+.beginner-guide-invite__outline li::marker { color: var(--primary-ink); font-variant-numeric: tabular-nums; }
 .beginner-guide-invite small { color: var(--on-surface-muted); font-size: 11px; }
 .beginner-guide-invite__actions { display: flex; justify-content: flex-end; align-items: center; gap: 24px; margin-top: 30px; }
 .beginner-guide-layer { position: fixed; inset: 0; pointer-events: none; z-index: 1000; }

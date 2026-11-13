@@ -62,6 +62,7 @@ class WorkerOutputPathTests(unittest.TestCase):
             subprocess.run(
                 [os.environ["COMSPEC"], "/c", "mklink", "/J", str(self.default), str(target)],
                 check=True, capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         else:
             self.default.symlink_to(target, target_is_directory=True)
@@ -131,6 +132,7 @@ class WorkerOutputPathTests(unittest.TestCase):
             subprocess.run(
                 [os.environ["COMSPEC"], "/c", "mklink", "/J", str(alias), str(target)],
                 check=True, capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         else:
             alias.symlink_to(target, target_is_directory=True)

@@ -5,7 +5,8 @@
     "唯一契约：命令表、事件表、以及历史命名到规范事件的映射。",
     "schemaVersion 2：handler 从“命令名字符串”改为“module:function”，",
     "dispatch 按这张表构建，worker 里不再有 if 链。",
-    "proxy 决定执行前如何配置网络：configured=读用户设置，payload=用本次参数，none=不配置。"
+    "proxy 决定执行前如何配置网络：configured=读用户设置，payload=用本次参数，none=不配置。",
+    "resultEvent 声明非通用 task.result 的命令成功终态；Agent 没有终态事件时不得按退出码0假报成功。"
   ],
   "domains": {
     "system": {
@@ -16,35 +17,377 @@
           "command": "health",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "workerVersion": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ok",
+              "workerVersion"
+            ]
+          },
+          "resultSchemaEvent": "health"
         },
         "env_info": {
           "handler": "core.worker_models:cmd_env_info",
           "command": "env_info",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "pythonVersion": {
+                "type": "string"
+              },
+              "expectedPython": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtimeMatchesManifest": {
+                "type": "boolean"
+              },
+              "runtimeManifestVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "platform": {
+                "type": "string"
+              },
+              "workerVersion": {
+                "type": "string"
+              },
+              "pymssAvailable": {
+                "type": "boolean"
+              },
+              "pymssPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pymssVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "customModelsSupported": {
+                "type": "boolean"
+              },
+              "torchAvailable": {
+                "type": "boolean"
+              },
+              "torchVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "torchBackend": {
+                "type": "string"
+              },
+              "hipVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cudaAvailable": {
+                "type": "boolean"
+              },
+              "cudaAvailableError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cudaDeviceCount": {
+                "type": "integer"
+              },
+              "cudaDevices": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "cudaDeviceCountError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cudaDeviceNamesError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mpsAvailable": {
+                "type": "boolean"
+              },
+              "mlxAvailable": {
+                "type": "boolean"
+              },
+              "avAvailable": {
+                "type": "boolean"
+              },
+              "librosaAvailable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "pythonVersion",
+              "expectedPython",
+              "runtimeMatchesManifest",
+              "runtimeManifestVersion",
+              "platform",
+              "workerVersion",
+              "pymssAvailable",
+              "pymssPath",
+              "pymssVersion",
+              "customModelsSupported",
+              "torchAvailable",
+              "torchVersion",
+              "torchBackend",
+              "hipVersion",
+              "cudaAvailable",
+              "cudaAvailableError",
+              "cudaDeviceCount",
+              "cudaDevices",
+              "cudaDeviceCountError",
+              "cudaDeviceNamesError",
+              "mpsAvailable",
+              "mlxAvailable",
+              "avAvailable",
+              "librosaAvailable"
+            ]
+          },
+          "resultSchemaEvent": "env_info"
         },
         "contract": {
           "handler": "surfaces.agent_contract:cmd_agent_contract",
           "command": "agent_contract",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "version": {
+                "type": "integer"
+              },
+              "mcpSchemaVersion": {
+                "type": "integer"
+              },
+              "approvalLevels": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "costLevels": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "slots": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "recoveryActions": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "taskSlots": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "audit": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "version",
+              "mcpSchemaVersion",
+              "tools",
+              "audit"
+            ]
+          },
+          "resultSchemaEvent": "agent_contract"
         },
         "failure_stats": {
           "handler": "core.commands:cmd_failure_stats",
           "command": "failure_stats",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scanned": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              },
+              "recoverable": {
+                "type": "integer"
+              },
+              "recoverableShare": {
+                "type": "number"
+              },
+              "byCode": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "byCommand": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "topIssues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "recommendations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "scanned",
+              "failed",
+              "recoverable",
+              "recoverableShare",
+              "byCode",
+              "byCommand",
+              "topIssues",
+              "recommendations"
+            ]
+          },
+          "resultSchemaEvent": "failure_stats"
         },
         "test_connection": {
           "handler": "core.worker_connection:cmd_test_connection",
           "command": "test_connection",
           "proxy": "payload",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "mode": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "bypass": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "status": {
+                "type": "integer"
+              },
+              "ip": {
+                "type": "string"
+              },
+              "filesCount": {
+                "type": "integer"
+              },
+              "elapsedMs": {
+                "type": "number"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "proxy": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ok",
+              "elapsedMs",
+              "mode",
+              "proxy"
+            ]
+          },
+          "resultSchemaEvent": "test_connection_result"
         }
       }
     },
@@ -56,35 +399,616 @@
           "command": "media_capabilities",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "modelDir": {
+                "type": "string"
+              },
+              "audit": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "runtime": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "capabilities",
+              "modelDir",
+              "audit",
+              "runtime"
+            ]
+          },
+          "resultSchemaEvent": "media_capabilities_result"
         },
         "precheck": {
           "handler": "core.commands:cmd_media_precheck",
           "command": "media_precheck",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "precheck": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "ok",
+              "steps",
+              "inputs",
+              "precheck"
+            ]
+          },
+          "resultSchemaEvent": "media_precheck_result"
         },
         "library": {
           "handler": "core.library_worker:cmd_media_library",
           "command": "media_library",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "dataRoot": {
+                "type": "string"
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "id": {
+                "type": "integer"
+              },
+              "tags": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "assets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "audio",
+                        "image",
+                        "video"
+                      ]
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "duration": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "integer"
+                    },
+                    "height": {
+                      "type": "integer"
+                    },
+                    "fps": {
+                      "type": "number"
+                    },
+                    "thumbnail": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "path",
+                    "name",
+                    "kind",
+                    "format",
+                    "size",
+                    "duration",
+                    "width",
+                    "height",
+                    "fps",
+                    "thumbnail",
+                    "tags",
+                    "created_at",
+                    "updated_at"
+                  ]
+                }
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "error"
+                  ]
+                }
+              },
+              "stats": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "kinds": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "count": {
+                          "type": "integer"
+                        },
+                        "bytes": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "count",
+                        "bytes"
+                      ]
+                    }
+                  },
+                  "total": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                      "count": {
+                        "type": "integer"
+                      },
+                      "bytes": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "bytes"
+                    ]
+                  },
+                  "database": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kinds",
+                  "total",
+                  "database"
+                ]
+              },
+              "total": {
+                "type": "integer"
+              },
+              "removed": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "operation",
+              "ok"
+            ]
+          },
+          "resultSchemaEvent": "media_library_result"
         },
         "run": {
           "handler": "media_ops.worker:cmd_media_tool",
           "command": "media_tool",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputDir": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_probe"
+                    ]
+                  },
+                  "probes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "probe": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {}
+                  }
+                },
+                "required": [
+                  "operation",
+                  "probes",
+                  "probe"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_image",
+                      "media_video"
+                    ]
+                  },
+                  "outputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "integer"
+                  },
+                  "completed": {
+                    "type": "integer"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "operation",
+                  "outputs",
+                  "failed",
+                  "skipped",
+                  "total",
+                  "completed",
+                  "warnings"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_workflow"
+                    ]
+                  },
+                  "modality": {
+                    "type": "string"
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "elapsed": {
+                    "type": "number"
+                  },
+                  "outputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "integer"
+                  },
+                  "completed": {
+                    "type": "integer"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "operation",
+                  "outputs",
+                  "failed",
+                  "skipped",
+                  "total",
+                  "completed",
+                  "warnings",
+                  "modality",
+                  "steps",
+                  "elapsed"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "media_convert"
+                    ]
+                  },
+                  "outputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "integer"
+                  },
+                  "completed": {
+                    "type": "integer"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "operation",
+                  "outputs",
+                  "failed",
+                  "skipped",
+                  "total",
+                  "completed",
+                  "warnings"
+                ]
+              }
+            ]
+          },
+          "resultSchemaEvent": "task.result"
         },
         "evaluate": {
           "handler": "core.media_eval:cmd_evaluate_media",
           "command": "evaluate_media",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reference": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "evaluations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "reference": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "evaluations"
+            ]
+          },
+          "resultSchemaEvent": "media_evaluation"
         }
       }
     },
@@ -96,28 +1020,416 @@
           "command": "audio_tools",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "convert"
+                    ]
+                  },
+                  "outputDir": {
+                    "type": "string"
+                  },
+                  "outputPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "succeeded": {
+                    "type": "integer"
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "inspect"
+                    ]
+                  },
+                  "inputPath": {
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "fileSize": {
+                    "type": "integer"
+                  },
+                  "format": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {}
+                  },
+                  "audioStreams": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "sdr"
+                    ]
+                  },
+                  "referencePath": {
+                    "type": "string"
+                  },
+                  "estimatedPath": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "type": "integer"
+                  },
+                  "sdr": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  },
+                  "averageSdr": {
+                    "type": "number"
+                  },
+                  "siSdr": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  },
+                  "averageSiSdr": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "slicer"
+                    ]
+                  },
+                  "outputDir": {
+                    "type": "string"
+                  },
+                  "outputPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sourceCount": {
+                    "type": "integer"
+                  },
+                  "segments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "keptDuration": {
+                    "type": "number"
+                  },
+                  "succeeded": {
+                    "type": "integer"
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "merge",
+                      "loudness",
+                      "midi",
+                      "asr",
+                      "media_image",
+                      "media_video",
+                      "media_workflow",
+                      "media_probe",
+                      "media_convert"
+                    ]
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              }
+            ]
+          },
+          "resultSchemaEvent": "task.result"
         },
         "metadata": {
           "handler": "core.worker_audio:cmd_audio_metadata",
           "command": "audio_metadata",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              },
+              "sampleRate": {
+                "type": "integer"
+              },
+              "channels": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "name",
+              "duration",
+              "sampleRate",
+              "channels"
+            ]
+          },
+          "resultSchemaEvent": "audio_metadata"
         },
         "waveform": {
           "handler": "core.worker_audio:cmd_waveform_peaks",
           "command": "waveform_peaks",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "dataRoot": {
+                "type": "string"
+              },
+              "cacheDir": {
+                "type": "string"
+              },
+              "resolution": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "peaksPath": {
+                "type": "string"
+              },
+              "peaks": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "channelPeaks": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "resolution": {
+                "type": "integer"
+              },
+              "duration": {
+                "type": "number"
+              },
+              "sampleRate": {
+                "type": "integer"
+              },
+              "channels": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "peaksPath",
+              "peaks",
+              "channelPeaks",
+              "resolution",
+              "duration",
+              "sampleRate",
+              "channels"
+            ]
+          },
+          "resultSchemaEvent": "waveform_peaks"
         },
         "export_mix": {
           "handler": "core.worker_audio:cmd_export_editor_mix",
           "command": "export_editor_mix",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "resultEvent": "editor_mix_exported",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "project": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "exportDir": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              },
+              "audioParams": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "project"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "number"
+              },
+              "sampleRate": {
+                "type": "integer"
+              },
+              "channels": {
+                "type": "integer"
+              },
+              "format": {
+                "type": "string"
+              },
+              "peakProtectionApplied": {
+                "type": "boolean"
+              },
+              "peakAdjustmentDb": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "path",
+              "duration",
+              "sampleRate",
+              "channels",
+              "format",
+              "peakProtectionApplied",
+              "peakAdjustmentDb"
+            ]
+          },
+          "resultSchemaEvent": "editor_mix_exported"
         }
       }
     },
@@ -129,126 +1441,1713 @@
           "command": "list_models",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "includeCustom": {
+                "type": "boolean"
+              },
+              "includeInterfaces": {
+                "type": "boolean"
+              },
+              "includeLocalState": {
+                "type": "boolean"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "supportedOnly": {
+                "type": "boolean"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "aliases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "modelType": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "architecture": {
+                      "type": "string"
+                    },
+                    "supported": {
+                      "type": "boolean"
+                    },
+                    "unsupportedReason": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "categoryCn": {
+                      "type": "string"
+                    },
+                    "primaryCategory": {
+                      "type": "string"
+                    },
+                    "primaryCategoryCn": {
+                      "type": "string"
+                    },
+                    "secondaryCategory": {
+                      "type": "string"
+                    },
+                    "secondaryCategoryCn": {
+                      "type": "string"
+                    },
+                    "targetStem": {
+                      "type": "string"
+                    },
+                    "configInstruments": {
+                      "type": "string"
+                    },
+                    "configTargetInstrument": {
+                      "type": "string"
+                    },
+                    "classificationConfidence": {
+                      "type": "string"
+                    },
+                    "classificationBasis": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "integer"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "baseConfigPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "importMode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "downloaded": {
+                      "type": "boolean"
+                    },
+                    "missingPaths": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "modelPath": {
+                      "type": "string"
+                    },
+                    "configPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "auxiliaryPaths": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "defaultInferenceParams": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    },
+                    "defaultInferenceParamsSource": {
+                      "type": "string"
+                    },
+                    "inferenceParamMeta": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    },
+                    "capabilities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "slots": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    },
+                    "slotTask": {
+                      "type": "string"
+                    },
+                    "defaultInferenceParamsResolved": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "aliases",
+                    "modelType",
+                    "architecture",
+                    "supported",
+                    "unsupportedReason",
+                    "category",
+                    "categoryCn",
+                    "primaryCategory",
+                    "primaryCategoryCn",
+                    "secondaryCategory",
+                    "secondaryCategoryCn",
+                    "targetStem",
+                    "configInstruments",
+                    "configTargetInstrument",
+                    "classificationConfidence",
+                    "classificationBasis",
+                    "sizeBytes",
+                    "sha256",
+                    "downloaded",
+                    "missingPaths",
+                    "modelPath",
+                    "configPath",
+                    "auxiliaryPaths"
+                  ]
+                }
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "categoriesCn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "count": {
+                "type": "integer"
+              },
+              "modelDir": {
+                "type": "string"
+              },
+              "debugStatus": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "models",
+              "count"
+            ]
+          },
+          "resultSchemaEvent": "models"
         },
         "info": {
           "handler": "core.worker_models:cmd_model_info",
           "command": "model_info",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modelType": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "architecture": {
+                "type": "string"
+              },
+              "supported": {
+                "type": "boolean"
+              },
+              "unsupportedReason": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "categoryCn": {
+                "type": "string"
+              },
+              "primaryCategory": {
+                "type": "string"
+              },
+              "primaryCategoryCn": {
+                "type": "string"
+              },
+              "secondaryCategory": {
+                "type": "string"
+              },
+              "secondaryCategoryCn": {
+                "type": "string"
+              },
+              "targetStem": {
+                "type": "string"
+              },
+              "configInstruments": {
+                "type": "string"
+              },
+              "configTargetInstrument": {
+                "type": "string"
+              },
+              "classificationConfidence": {
+                "type": "string"
+              },
+              "classificationBasis": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "baseConfigPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "importMode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "downloaded": {
+                "type": "boolean"
+              },
+              "missingPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "auxiliaryPaths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "defaultInferenceParams": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "defaultInferenceParamsSource": {
+                "type": "string"
+              },
+              "inferenceParamMeta": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "slots": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "slotTask": {
+                "type": "string"
+              },
+              "defaultInferenceParamsResolved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "aliases",
+              "modelType",
+              "architecture",
+              "supported",
+              "unsupportedReason",
+              "category",
+              "categoryCn",
+              "primaryCategory",
+              "primaryCategoryCn",
+              "secondaryCategory",
+              "secondaryCategoryCn",
+              "targetStem",
+              "configInstruments",
+              "configTargetInstrument",
+              "classificationConfidence",
+              "classificationBasis",
+              "sizeBytes",
+              "sha256",
+              "downloaded",
+              "missingPaths",
+              "modelPath",
+              "configPath",
+              "auxiliaryPaths"
+            ]
+          },
+          "resultSchemaEvent": "model_info"
         },
         "interface": {
           "handler": "core.worker_models:cmd_model_interface",
           "command": "model_interface",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelId": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "interface": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "problems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "interface"
+            ]
+          },
+          "resultSchemaEvent": "model_interface"
         },
         "delete": {
           "handler": "core.worker_models:cmd_delete_model",
           "command": "delete_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "resultEvent": "model_delete_done",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "boolean"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "completedFiles": {
+                "type": "integer"
+              },
+              "totalFiles": {
+                "type": "integer"
+              },
+              "progress": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "resultSchemaEvent": "model_delete_done"
         },
         "delete_tool": {
           "handler": "core.worker_models:cmd_delete_tool_model",
           "command": "delete_tool_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "missingOk": {
+                "type": "boolean"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tool": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
+              "modelStorageSummary": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            }
+          },
+          "resultSchemaEvent": "tool_model_deleted"
         },
         "hub": {
           "handler": "core.model_hub_worker:cmd_model_hub",
           "command": "model_hub",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modality": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "modelDir": {
+                    "type": "string"
+                  },
+                  "models": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "modality": {
+                          "type": "string"
+                        },
+                        "modalities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "task": {
+                          "type": "string"
+                        },
+                        "capabilities": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "roles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "categoryCn": {
+                          "type": "string"
+                        },
+                        "architecture": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "license": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "properties": {}
+                          }
+                        },
+                        "downloaded": {
+                          "type": "boolean"
+                        },
+                        "partial": {
+                          "type": "boolean"
+                        },
+                        "missingPaths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "runtime": {
+                          "type": "string"
+                        },
+                        "implemented": {
+                          "type": "boolean"
+                        },
+                        "downloadable": {
+                          "type": "boolean"
+                        },
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "sizeBytes": {
+                          "type": "integer"
+                        },
+                        "modelPath": {
+                          "type": "string"
+                        },
+                        "configPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "modelType": {
+                          "type": "string"
+                        },
+                        "targetStem": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "blockedReason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "label",
+                        "modality",
+                        "modalities",
+                        "downloaded",
+                        "runtime",
+                        "implemented",
+                        "downloadable",
+                        "size"
+                      ]
+                    }
+                  },
+                  "environment": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "boolean"
+                    }
+                  },
+                  "count": {
+                    "type": "integer"
+                  },
+                  "downloadedCount": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "ok",
+                  "modelDir",
+                  "models",
+                  "environment",
+                  "count",
+                  "downloadedCount"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "model": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {}
+                  },
+                  "modelDir": {
+                    "type": "string"
+                  },
+                  "verified": {
+                    "type": "boolean"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {}
+                    }
+                  },
+                  "failures": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "unverified": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "ok",
+                  "model",
+                  "modelDir",
+                  "verified",
+                  "files",
+                  "failures",
+                  "unverified"
+                ]
+              }
+            ]
+          },
+          "resultSchemaEvent": "model_hub_result"
         },
         "download": {
           "handler": "core.model_hub_worker:cmd_model_download",
           "command": "model_download",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "downloaded": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "skipped": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modelDir": {
+                "type": "string"
+              },
+              "modelInfo": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "modelId",
+              "downloaded",
+              "skipped"
+            ]
+          },
+          "resultSchemaEvent": "asset.done"
         },
         "storage": {
           "handler": "core.worker_models:cmd_model_storage_summary",
           "command": "model_storage_summary",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": "string"
+              },
+              "totalBytes": {
+                "type": "integer"
+              },
+              "toolModelsBytes": {
+                "type": "integer"
+              },
+              "downloadedCount": {
+                "type": "integer"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "downloaded": {
+                      "type": "boolean"
+                    },
+                    "sizeBytes": {
+                      "type": "integer"
+                    },
+                    "expectedSizeBytes": {
+                      "type": "integer"
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "type": "integer"
+                          },
+                          "exists": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "sizeBytes"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "downloaded",
+                    "sizeBytes",
+                    "expectedSizeBytes",
+                    "files"
+                  ]
+                }
+              },
+              "toolModels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "integer"
+                    },
+                    "fileCount": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "tool",
+                    "role",
+                    "path",
+                    "sizeBytes",
+                    "fileCount"
+                  ]
+                }
+              },
+              "residualFiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "sizeBytes": {
+                      "type": "integer"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "sizeBytes"
+                  ]
+                }
+              },
+              "residualBytes": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "modelDir",
+              "totalBytes",
+              "downloadedCount",
+              "models",
+              "toolModels",
+              "residualFiles",
+              "residualBytes"
+            ]
+          },
+          "resultSchemaEvent": "model_storage_summary"
         },
         "cleanup": {
           "handler": "core.worker_models:cmd_cleanup_model_residual_files",
           "command": "cleanup_model_residual_files",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "resultEvent": "model_residual_cleanup_done",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "deleted": {
+                "type": "integer"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "completedFiles": {
+                "type": "integer"
+              },
+              "totalFiles": {
+                "type": "integer"
+              },
+              "progress": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "resultSchemaEvent": "model_residual_cleanup_done"
         },
         "custom.import": {
           "handler": "core.worker_custom_models:cmd_import_custom_model",
           "command": "import_custom_model",
+          "resultEvent": "custom_model_import_finished",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "configPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "force": {
+                "type": "boolean"
+              },
+              "importMode": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "verify": {
+                "type": "boolean"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": "string"
+              },
+              "importMode": {
+                "type": "string"
+              },
+              "verified": {
+                "type": "boolean"
+              }
+            }
+          },
+          "resultSchemaEvent": "custom_model_import_finished"
         },
         "custom.inspect": {
           "handler": "core.worker_custom_models:cmd_inspect_custom_model",
           "command": "inspect_custom_model",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "configPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelPath": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sizeBytes": {
+                "type": "integer"
+              },
+              "suggestions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "modelType": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "string"
+                    },
+                    "basisCode": {
+                      "type": "string"
+                    },
+                    "basisDetail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "modelType",
+                    "confidence",
+                    "basisCode",
+                    "basisDetail"
+                  ]
+                }
+              },
+              "suggestedModelType": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "suggestedName": {
+                "type": "string"
+              },
+              "instruments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "targetInstrument": {
+                "type": "string"
+              },
+              "knownModelTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "configOptionalModelTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "configRequired": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "stateDictReadable": {
+                "type": "boolean"
+              },
+              "stateDictError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "modelPath",
+              "configPath",
+              "sizeBytes",
+              "suggestions",
+              "suggestedModelType",
+              "suggestedName",
+              "instruments",
+              "targetInstrument",
+              "knownModelTypes",
+              "configOptionalModelTypes",
+              "configRequired",
+              "stateDictReadable",
+              "stateDictError"
+            ]
+          },
+          "resultSchemaEvent": "custom_model_inspected"
         },
         "custom.unregister": {
           "handler": "core.worker_custom_models:cmd_unregister_custom_model",
           "command": "unregister_custom_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "deleteFiles": {
+                "type": "boolean"
+              },
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "filesDeleted": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deletedFiles": {
+                "type": "boolean"
+              },
+              "fileDeletionSupported": {
+                "type": "boolean"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "name",
+              "filesDeleted",
+              "deletedFiles",
+              "fileDeletionSupported",
+              "errors"
+            ]
+          },
+          "resultSchemaEvent": "custom_model_unregistered"
         },
         "custom.relink": {
           "handler": "core.worker_custom_models:cmd_relink_custom_model",
           "command": "relink_custom_model",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "configPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "modelType": {
+                "type": "string"
+              },
+              "modelPath": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": "string"
+              }
+            }
+          },
+          "resultSchemaEvent": "custom_model_relinked"
         },
         "custom.remap": {
           "handler": "core.worker_custom_models:cmd_remap_custom_model_paths",
           "command": "remap_custom_model_paths",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "fromRoot": {
+                "type": "string"
+              },
+              "toRoot": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "remapped": {
+                "type": "integer"
+              },
+              "count": {
+                "type": "integer"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unchanged": {
+                "type": "integer"
+              },
+              "unavailable": {
+                "type": "integer"
+              }
+            }
+          },
+          "resultSchemaEvent": "custom_models_remapped"
         },
         "debug.catalog_info": {
           "handler": "core.worker_models:cmd_debug_catalog_info",
           "command": "debug_catalog_info",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "baseCatalogPath": {
+                "type": "string"
+              },
+              "debugCatalogPath": {
+                "type": "string"
+              },
+              "debugDir": {
+                "type": "string"
+              },
+              "baseCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "debugCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "effectiveCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "status": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "baseCatalogPath",
+              "debugCatalogPath",
+              "debugDir",
+              "baseCatalog",
+              "debugCatalog",
+              "effectiveCatalog",
+              "status"
+            ]
+          },
+          "resultSchemaEvent": "debug_catalog_info"
         },
         "debug.catalog_save": {
           "handler": "core.worker_models:cmd_debug_catalog_save",
           "command": "debug_catalog_save",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "catalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "baseCatalogPath": {
+                "type": "string"
+              },
+              "debugCatalogPath": {
+                "type": "string"
+              },
+              "debugDir": {
+                "type": "string"
+              },
+              "baseCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "debugCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "effectiveCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "status": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "baseCatalogPath",
+              "debugCatalogPath",
+              "debugDir",
+              "baseCatalog",
+              "debugCatalog",
+              "effectiveCatalog",
+              "status"
+            ]
+          },
+          "resultSchemaEvent": "debug_catalog_info"
         },
         "debug.catalog_reset": {
           "handler": "core.worker_models:cmd_debug_catalog_reset",
           "command": "debug_catalog_reset",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "baseCatalogPath": {
+                "type": "string"
+              },
+              "debugCatalogPath": {
+                "type": "string"
+              },
+              "debugDir": {
+                "type": "string"
+              },
+              "baseCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "debugCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "effectiveCatalog": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "status": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            },
+            "required": [
+              "baseCatalogPath",
+              "debugCatalogPath",
+              "debugDir",
+              "baseCatalog",
+              "debugCatalog",
+              "effectiveCatalog",
+              "status"
+            ]
+          },
+          "resultSchemaEvent": "debug_catalog_info"
         },
         "debug.model_config": {
           "handler": "core.worker_models:cmd_debug_model_config",
           "command": "debug_model_config",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "modelDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "readOnly": {
+                "type": "boolean"
+              },
+              "baseConfigPath": {
+                "type": "string"
+              },
+              "effectiveConfigPath": {
+                "type": "string"
+              },
+              "baseContent": {
+                "type": "string"
+              },
+              "effectiveContent": {
+                "type": "string"
+              },
+              "downloadedConfigExists": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          },
+          "resultSchemaEvent": "debug_model_config"
         }
       }
     },
@@ -260,56 +3159,501 @@
           "command": "runtime_info",
           "proxy": "none",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "backend": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "manifestVersion": {
+                "type": "string"
+              },
+              "pythonVersion": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "machine": {
+                "type": "string"
+              },
+              "bootstrapPython": {
+                "type": "string"
+              },
+              "runtimeEnvsDir": {
+                "type": "string"
+              },
+              "activeRuntimeFile": {
+                "type": "string"
+              },
+              "activeRuntimeError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "backend": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "installedBackend": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "installState": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": true
+              },
+              "rollbackAvailable": {
+                "type": "boolean"
+              },
+              "statePath": {
+                "type": "string"
+              },
+              "logPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "installedEnvironments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "gpuVendors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "torchVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "torchBackend": {
+                "type": "string"
+              },
+              "acceleratorAvailable": {
+                "type": "boolean"
+              },
+              "packages": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "packageVersions": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": true
+              },
+              "pymssVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pymssCoreVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pymssGraphAvailable": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "liveProbeError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ready": {
+                "type": "boolean"
+              }
+            }
+          },
+          "resultSchemaEvent": "runtime_info"
         },
         "install": {
           "handler": "core.worker_bootstrap:cmd_install_runtime",
           "command": "install_runtime",
+          "resultEvent": "runtime_install_finished",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "locale": {
+                "type": "string"
+              },
+              "mirror": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "state": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "logPath": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend",
+              "state",
+              "logPath"
+            ]
+          },
+          "resultSchemaEvent": "runtime_install_finished"
         },
         "core_versions": {
           "handler": "core.worker_bootstrap:cmd_runtime_core_versions",
           "command": "runtime_core_versions",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "versions": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "packages": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "latestVersion": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "currentVersion": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "updateAvailable": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "required": [
+              "channel",
+              "packages"
+            ]
+          },
+          "resultSchemaEvent": "runtime_core_versions"
         },
         "activate": {
           "handler": "core.worker_bootstrap:cmd_activate_runtime",
           "command": "activate_runtime",
           "proxy": "none",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "onlyIfNoActive": {
+                "type": "boolean"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "resultSchemaEvent": "runtime_activated"
         },
         "sizes": {
           "handler": "core.worker_bootstrap:cmd_runtime_env_sizes",
           "command": "runtime_env_sizes",
           "proxy": "none",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "sizes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "totalBytes": {
+                "type": "integer"
+              },
+              "incompleteBackends": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "sizes",
+              "totalBytes",
+              "incompleteBackends"
+            ]
+          },
+          "resultSchemaEvent": "runtime_env_sizes"
         },
         "delete": {
           "handler": "core.worker_bootstrap:cmd_delete_runtime",
           "command": "delete_runtime",
+          "resultEvent": "runtime_deleted",
           "proxy": "none",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "backend": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend"
+            ]
+          },
+          "resultSchemaEvent": "runtime_deleted"
         },
         "optional_status": {
           "handler": "core.worker_optional_packages:cmd_optional_package_status",
           "command": "optional_package_status",
           "proxy": "none",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "package": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "package": {
+                "type": "string"
+              },
+              "requirement": {
+                "type": "string"
+              },
+              "installed": {
+                "type": "boolean"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "canUninstall": {
+                "type": "boolean"
+              },
+              "issue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtimeIdentity": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "package",
+              "installed",
+              "present"
+            ]
+          },
+          "resultSchemaEvent": "optional_package_status"
         },
         "optional_manage": {
           "handler": "core.worker_optional_packages:cmd_manage_optional_package",
           "command": "manage_optional_package",
+          "resultEvent": "optional_package_status",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "package": {
+                "type": "string"
+              },
+              "locale": {
+                "type": "string"
+              },
+              "mirror": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "package": {
+                "type": "string"
+              },
+              "requirement": {
+                "type": "string"
+              },
+              "installed": {
+                "type": "boolean"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "canUninstall": {
+                "type": "boolean"
+              },
+              "issue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtimeIdentity": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "package",
+              "installed",
+              "present"
+            ]
+          },
+          "resultSchemaEvent": "optional_package_status"
         }
       }
     },
@@ -321,14 +3665,145 @@
           "command": "plugin_marketplace",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "installed": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "pluginsDir": {
+                "type": "string"
+              },
+              "verificationError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtime": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "catalog": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "catalogError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "installed",
+              "pluginsDir",
+              "runtime"
+            ]
+          },
+          "resultSchemaEvent": "plugin_marketplace"
         },
         "manage": {
           "handler": "core.worker_plugins:cmd_manage_plugin",
           "command": "manage_plugin",
+          "resultEvent": "plugin_manage_result",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": ["install", "update", "repair", "uninstall", "check_updates"]
+              },
+              "name": {
+                "type": "string"
+              },
+              "locale": {
+                "type": "string"
+              },
+              "mirror": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": ["action"]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "installed": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "pluginsDir": {
+                "type": "string"
+              },
+              "verificationError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtime": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "catalog": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "catalogError": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "installed",
+              "pluginsDir",
+              "runtime"
+            ]
+          },
+          "resultSchemaEvent": "plugin_manage_result"
         }
       }
     },
@@ -340,28 +3815,167 @@
           "command": "list_nodes",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              }
+            },
+            "required": [
+              "nodes"
+            ]
+          },
+          "resultSchemaEvent": "nodes_list",
+          "resultEvent": "nodes_list"
         },
         "operations": {
           "handler": "core.worker_operations:cmd_list_operations",
           "command": "list_operations",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "plugins": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "pymssOperationsAvailable": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operations",
+              "plugins",
+              "pymssOperationsAvailable"
+            ]
+          },
+          "resultSchemaEvent": "operations_list"
         },
         "operation": {
           "handler": "core.worker_operations:cmd_describe_operation",
           "command": "describe_operation",
           "proxy": "configured",
           "kind": "query",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {}
+          },
+          "resultSchemaEvent": "operation_spec"
         },
         "run_operation": {
           "handler": "core.worker_operations:cmd_run_operation",
           "command": "run_operation",
+          "resultEvent": "task.result",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "inputs": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "outputDir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "outputs": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {}
+              },
+              "outputDir": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operation",
+              "outputs",
+              "outputDir"
+            ]
+          },
+          "resultSchemaEvent": "task.result"
         }
       }
     },
@@ -373,14 +3987,169 @@
           "command": "infer",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "device": {
+                "type": "string"
+              },
+              "deviceIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "input": {
+                "type": "string"
+              },
+              "inputIndex": {
+                "type": "integer"
+              },
+              "model": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "outputLayout": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "outputDir": {
+                "type": "string"
+              },
+              "outputRoot": {
+                "type": "string"
+              },
+              "outputFormat": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "files",
+              "outputs",
+              "outputDir"
+            ]
+          },
+          "resultSchemaEvent": "task.result"
         },
         "run": {
           "handler": "core.worker_workflows:cmd_infer_workflow",
           "command": "infer_workflow",
           "proxy": "configured",
           "kind": "task",
-          "summary": ""
+          "summary": "",
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "input": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "output": {
+                "type": "string"
+              },
+              "outputLayout": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "workflowName": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {}
+                }
+              },
+              "outputDir": {
+                "type": "string"
+              },
+              "outputRoot": {
+                "type": "string"
+              },
+              "outputFormat": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "files",
+              "outputs",
+              "outputDir"
+            ]
+          },
+          "resultSchemaEvent": "task.result"
         }
       }
     }
@@ -389,8 +4158,9 @@
     "_comment": [
       "流式事件的唯一词表：<域>.<动词>，域是 task（任务）或 asset（资产获取）。",
       "终态只有一个名字 task.result（原 task.done 已收敛进来）。",
-      "命令结果型事件（models / env_info / operation_result …）不在此列，它们与命令同名。",
-      "emit() 只发这里有的名字；scripts/check-architecture.py 会拒绝 task_* / download_* 这类历史写法。"
+      "命令结果型事件（models / env_info …）不在此列，它们与命令同名。",
+      "emit() 只发这里有的名字；scripts/check-architecture.py 会拒绝 task_* / download_* 这类历史写法。",
+      "终态事件是 canonical 的子集：任务或资产到此不再产生进度。"
     ],
     "canonical": [
       "task.started",
@@ -404,6 +4174,166 @@
       "asset.progress",
       "asset.log",
       "asset.done"
+    ],
+    "terminal": [
+      "task.result",
+      "task.cancelled",
+      "asset.done"
     ]
+  },
+  "execution": {
+    "_comment": [
+      "执行侧清单：哪些命令需要 bootstrap 解释器、哪些是 Rust 原生入口。",
+      "worker 项必须能在 domains 的 command 里找到；native 项不在 worker 协议里。",
+      "resultJobs 是“结果任务”的分类：commands 为 worker 命令，operations 为经 media 路由的操作名。",
+      "outputScope 声明需要输出临时作用域的命令/操作；backgroundResult 声明必须有后台结果代理的命令。",
+      "bootstrap.withoutRuntime 是没有激活运行时也允许跑的查询/下载命令；updatesRuntime 是会替换运行时并把 bootstrap 使用者排除在外的命令。",
+      "terminalEvents 是后台监督进程的终态词表；未列出的命令只把 error 当终态。"
+    ],
+    "bootstrap": {
+      "worker": [
+        "health",
+        "runtime_info",
+        "runtime_env_sizes",
+        "runtime_core_versions",
+        "install_runtime",
+        "activate_runtime",
+        "delete_runtime"
+      ],
+      "native": [
+        "update_runtime_core"
+      ],
+      "withoutRuntime": [
+        "media_library",
+        "list_models",
+        "env_info",
+        "model_hub",
+        "model_download"
+      ],
+      "updatesRuntime": [
+        "update_runtime_core",
+        "manage_plugin",
+        "activate_runtime",
+        "delete_runtime",
+        "install_runtime"
+      ]
+    },
+    "resultJobs": {
+      "commands": [
+        "infer",
+        "infer_workflow",
+        "audio_tools",
+        "media_tool",
+        "run_operation",
+        "export_editor_mix"
+      ],
+      "operations": [
+        "media_image",
+        "media_video",
+        "media_workflow",
+        "media_convert"
+      ]
+    },
+    "outputScope": {
+      "commands": [
+        "run_operation"
+      ],
+      "audioToolCommands": [
+        "audio_tools"
+      ],
+      "operations": [
+        "convert",
+        "merge",
+        "slicer"
+      ]
+    },
+    "backgroundResult": [
+      "audio_tools",
+      "export_editor_mix",
+      "manage_plugin",
+      "run_operation"
+    ],
+    "terminalEvents": {
+      "model_download": [
+        "error",
+        "asset.done",
+        "task.cancelled"
+      ],
+      "delete_model": [
+        "error",
+        "model_delete_done",
+        "model_delete_failed"
+      ],
+      "cleanup_model_residual_files": [
+        "error",
+        "model_residual_cleanup_done",
+        "model_residual_cleanup_failed"
+      ],
+      "install_runtime": [
+        "error",
+        "runtime_install_finished",
+        "task.cancelled"
+      ],
+      "delete_runtime": [
+        "error",
+        "runtime_deleted",
+        "task.cancelled"
+      ],
+      "update_runtime_core": [
+        "error",
+        "runtime_core_update_finished",
+        "runtime_core_update_plan",
+        "task.cancelled"
+      ],
+      "manage_optional_package": [
+        "error",
+        "optional_package_status",
+        "task.cancelled"
+      ],
+      "manage_plugin": [
+        "error",
+        "plugin_manage_result",
+        "task.cancelled"
+      ],
+      "import_custom_model": [
+        "error",
+        "custom_model_import_finished",
+        "task.cancelled"
+      ],
+      "infer": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "infer_workflow": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "audio_tools": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "media_tool": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "run_operation": [
+        "error",
+        "task.result",
+        "task.cancelled"
+      ],
+      "list_nodes": [
+        "error",
+        "nodes_list"
+      ],
+      "export_editor_mix": [
+        "error",
+        "editor_mix_exported",
+        "task.cancelled"
+      ]
+    }
   }
 }

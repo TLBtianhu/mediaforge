@@ -1,9 +1,9 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
+import { pickModelConfigFile, pickModelWeightsFile } from '@/api/native'
 import { safeModelName } from '@/utils/modelName'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
-import { invoke } from '@tauri-apps/api/core'
 import { DocumentAttachOutline, FolderOpenOutline } from '@vicons/ionicons5'
 import { useModelStore, type CustomModelInspection } from '@/stores/model'
 import { formatBytes } from '@/utils/format'
@@ -101,18 +101,14 @@ watch(() => props.show, (visible) => {
 })
 
 async function pickWeights() {
-  const picked = await invoke<string | null>('pick_model_weights_file', {
-    title: t('models.customPickWeights'),
-  })
+  const picked = await pickModelWeightsFile(t('models.customPickWeights'))
   if (!picked) return
   modelPath.value = picked
   clearInspectionForFileChange()
 }
 
 async function pickConfig() {
-  const picked = await invoke<string | null>('pick_model_config_file', {
-    title: t('models.customPickConfig'),
-  })
+  const picked = await pickModelConfigFile(t('models.customPickConfig'))
   if (!picked) return
   configPath.value = picked
   clearInspectionForFileChange()
@@ -430,7 +426,7 @@ const nextDisabled = computed(() => {
 .cmi-hint {
   margin: 0;
   font-size: 13px;
-  color: var(--text-secondary, #888);
+  color: var(--on-surface-muted);
 }
 
 .cmi-hint--muted {
@@ -467,7 +463,7 @@ const nextDisabled = computed(() => {
   font-size: 13px;
   padding: 8px 12px;
   border-radius: 8px;
-  background: var(--fill-2, rgba(128, 128, 128, 0.08));
+  background: var(--surface-2);
 }
 
 .cmi-suggestions {
@@ -483,7 +479,7 @@ const nextDisabled = computed(() => {
   align-items: flex-start;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.25));
+  border: 1px solid var(--outline);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -491,12 +487,12 @@ const nextDisabled = computed(() => {
 }
 
 .cmi-suggestion:hover {
-  background: var(--fill-2, rgba(128, 128, 128, 0.08));
+  background: var(--surface-2);
 }
 
 .cmi-suggestion--active {
-  border-color: var(--primary-color, #63e2b7);
-  background: var(--fill-2, rgba(128, 128, 128, 0.08));
+  border-color: var(--primary);
+  background: var(--surface-2);
 }
 
 .cmi-suggestion__type {
@@ -506,7 +502,7 @@ const nextDisabled = computed(() => {
 
 .cmi-suggestion__basis {
   font-size: 12px;
-  color: var(--text-secondary, #888);
+  color: var(--on-surface-muted);
 }
 
 .cmi-field {
@@ -525,17 +521,17 @@ const nextDisabled = computed(() => {
 
 .cmi-required {
   font-size: 11px;
-  color: var(--error-color, #e88080);
+  color: var(--danger);
 }
 
 .cmi-optional {
   font-size: 11px;
-  color: var(--text-secondary, #888);
+  color: var(--on-surface-muted);
 }
 
 .cmi-error {
   font-size: 12px;
-  color: var(--error-color, #e88080);
+  color: var(--danger);
 }
 
 .cmi-radio-title {
@@ -547,7 +543,7 @@ const nextDisabled = computed(() => {
 .cmi-radio-desc {
   display: block;
   font-size: 12px;
-  color: var(--text-secondary, #888);
+  color: var(--on-surface-muted);
 }
 
 .cmi-toggle-row {

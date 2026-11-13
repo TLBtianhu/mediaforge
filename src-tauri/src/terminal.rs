@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+﻿use std::sync::atomic::{AtomicBool, Ordering};
 
 static TERMINAL_ATTACHED: AtomicBool = AtomicBool::new(false);
 static VERBOSE_OUTPUT: AtomicBool = AtomicBool::new(false);
@@ -566,7 +566,7 @@ mod tests {
     fn compact_warnings_and_errors_keep_complete_context_and_tracebacks() {
         for level in ["warn", "error", "fatal"] {
             let input = serde_json::json!({"schemaVersion":1,"source":"worker","level":level,
-                "logger":"worker.inference","event":"task.failed","message":"Separation failed",
+                "logger":"worker.inference","event":"task.result","message":"Separation failed",
                 "detail":"Traceback:\n  model.forward()\nRuntimeError: allocation failed",
                 "taskId":"task-a","requestId":"request-a","nodeId":"node-a","jobId":"job-a",
                 "location":{"file":"infer.py","line":42},

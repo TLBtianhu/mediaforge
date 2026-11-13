@@ -73,7 +73,7 @@ class StreamingPipelineTests(unittest.TestCase):
         ]
         import subprocess
 
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -192,6 +192,7 @@ class MultiStepPipelineTests(unittest.TestCase):
             ],
             check=True,
             capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
     @classmethod

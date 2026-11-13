@@ -1,40 +1,46 @@
 /**
  * 队列任务构造：输出路径、单模型任务与工作流任务。
- * 任务 store 提供状态与持久化动作；模块只负责创建并入队。
+ * 任务 store 提供状态与持久化动作；模块只负责创建请求草稿，写盘确认后才入队。
  */
+import type { Ref } from 'vue'
 import type { WorkflowEntry } from './workflow.ts'
-import type { OutputLayout, OutputNamingConfig, SeparationTask } from './task.ts'
+import type { OutputLayout, OutputNamingConfig, SeparationRunConfig, SeparationTask } from './task.ts'
+import type { TaskStatus } from '../features/tasks/lifecycle.ts'
+import type { useSettingsStore } from './settings.ts'
 
-type Deps = Record<string, any>
+type Deps = {
+  useSettingsStore: () => ReturnType<typeof useSettingsStore>
+  windowsPaths: Ref<boolean>
+  resolveOutputDirectory: (value?: string | null, fallback?: string | null, windows?: boolean) => string
+  joinOutputPath: (base: string, child: string, windows: boolean) => string
+  inputStemSegment: (input: string, fallback: string, windows: boolean) => string
+  createRunId: (prefix: string) => string
+  STAGE_META: Record<TaskStatus, { progress: number; label: string }>
+  buildRunConfig: (inferenceParams: Record<string, unknown>, modelType?: string | null, outputLayout?: OutputLayout, outputNaming?: OutputNamingConfig) => SeparationRunConfig
+  buildWorkflowRunConfig: (workflow: WorkflowEntry, outputLayout?: OutputLayout, outputNaming?: OutputNamingConfig) => SeparationRunConfig
+}
 
 export function makeTaskQueue(deps: Deps) {
-  const {
-    useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath,
-    inputStemSegment, createRunId, STAGE_META, localLogRecord,
-    buildRunConfig, buildWorkflowRunConfig, tasks, rememberSessionTasks,
-    activeTaskId, queuePersist,
-  } = deps
+  const { useSettingsStore, windowsPaths, resolveOutputDirectory, joinOutputPath, inputStemSegment, createRunId, STAGE_META, buildRunConfig, buildWorkflowRunConfig } = deps
 
-function resolveTaskOutputPath(jobOutput: string, input: string, resultId: string, outputLayout: OutputLayout) {
+function resolveTaskOutputPath(jobOutput: string, input: string, fallbackId: string, outputLayout: OutputLayout) {
     return outputLayout === 'flat'
       ? jobOutput
-      : joinOutputPath(jobOutput, inputStemSegment(input, resultId, windowsPaths.value), windowsPaths.value)
+      : joinOutputPath(jobOutput, inputStemSegment(input, fallbackId, windowsPaths.value), windowsPaths.value)
   }
 
   function createQueuedTask(input: string, model: string, inferenceParams: Record<string, unknown>, modelType?: string | null, jobId?: string, jobOutput?: string, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig, batchIndex?: number) {
     const settings = useSettingsStore()
     const id = createRunId('sep')
-    const resultId = createRunId('result')
     const resolvedJobOutput = jobOutput || resolveOutputDirectory(settings.outputDir, undefined, windowsPaths.value)
     const task: SeparationTask = {
       id,
       jobId,
-      resultId,
       ...(typeof batchIndex === 'number' && Number.isSafeInteger(batchIndex) && batchIndex >= 0 ? { batchIndex } : {}),
       model,
       input,
       jobOutput: resolvedJobOutput,
-      output: resolveTaskOutputPath(resolvedJobOutput, input, resultId, outputLayout),
+      output: resolveTaskOutputPath(resolvedJobOutput, input, id, outputLayout),
       status: 'queued',
       message: 'Queued',
       createdAt: Date.now(),
@@ -43,30 +49,24 @@ function resolveTaskOutputPath(jobOutput: string, input: string, resultId: strin
       stageLabel: STAGE_META.queued.label,
       files: [],
       outputs: [],
-      logs: [localLogRecord('Queued', 'task.queued', 'info', { taskId: id })],
+      logs: [],
       runConfig: buildRunConfig(inferenceParams, modelType, outputLayout, outputNaming),
     }
-    tasks.value.unshift(task)
-    rememberSessionTasks([task])
-    activeTaskId.value = id
-    queuePersist()
     return task
   }
 
   function createQueuedWorkflowTask(input: string, workflow: WorkflowEntry, jobId?: string, jobOutput?: string, outputLayout: OutputLayout = 'folders', outputNaming?: OutputNamingConfig, batchIndex?: number) {
     const settings = useSettingsStore()
     const id = createRunId('wf')
-    const resultId = createRunId('result')
     const resolvedJobOutput = jobOutput || resolveOutputDirectory(settings.outputDir, undefined, windowsPaths.value)
     const task: SeparationTask = {
       id,
       jobId,
-      resultId,
       ...(typeof batchIndex === 'number' && Number.isSafeInteger(batchIndex) && batchIndex >= 0 ? { batchIndex } : {}),
       model: workflow.name,
       input,
       jobOutput: resolvedJobOutput,
-      output: resolveTaskOutputPath(resolvedJobOutput, input, resultId, outputLayout),
+      output: resolveTaskOutputPath(resolvedJobOutput, input, id, outputLayout),
       status: 'queued',
       message: 'Queued',
       createdAt: Date.now(),
@@ -75,13 +75,9 @@ function resolveTaskOutputPath(jobOutput: string, input: string, resultId: strin
       stageLabel: STAGE_META.queued.label,
       files: [],
       outputs: [],
-      logs: [localLogRecord(`Queued workflow: ${workflow.name}`, 'task.queued', 'info', { taskId: id })],
+      logs: [],
       runConfig: buildWorkflowRunConfig(workflow, outputLayout, outputNaming),
     }
-    tasks.value.unshift(task)
-    rememberSessionTasks([task])
-    activeTaskId.value = id
-    queuePersist()
     return task
   }
 

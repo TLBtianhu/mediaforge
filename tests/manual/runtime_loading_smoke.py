@@ -17,7 +17,7 @@ with sync_playwright() as playwright:
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.add_init_script('''localStorage.setItem('pymss-studio:app-settings', JSON.stringify({
-      startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light',animationsEnabled:true
+      version:1,startupOnboardingSeen:true,locale:'zh-CN',themeMode:'light',animationsEnabled:true
     }))''')
     page.goto(args.url + '/#/settings')
     page.wait_for_load_state('networkidle')

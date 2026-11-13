@@ -110,13 +110,13 @@ impl Fixture {
     fn new() -> Self {
         #[cfg(windows)]
         let mut command = {
-            let mut command = Command::new("cmd.exe");
+            let mut command = crate::process_command::hidden_command("cmd.exe");
             command.args(["/D", "/C", "ping -n 30 127.0.0.1 >nul"]);
             command
         };
         #[cfg(unix)]
         let mut command = {
-            let mut command = Command::new("sh");
+            let mut command = crate::process_command::hidden_command("sh");
             command.args(["-c", "exec sleep 30"]);
             command
         };
@@ -135,7 +135,9 @@ impl Fixture {
                 let request: Value = serde_json::from_slice(&bytes).unwrap();
                 let id = request["id"].as_u64().unwrap();
                 recorded.lock().unwrap().push(request);
-                ack.send(Ok(())).unwrap();
+                if ack.send(Ok(())).is_err() {
+                    break;
+                }
                 if id > 1 {
                     let _ = sender.send(Ok(json!({"id":id,"ok":true,"result":{"sessionId":"new-session","position":2,"states":{"effect":"fresh-state"}}})));
                 }
@@ -152,12 +154,15 @@ impl Fixture {
         self.process.as_mut().unwrap()
     }
     fn suspend(&mut self, operation: &str, timeout: Duration) {
+        // The same budget currently covers the fixture writer's acknowledgement.
+        // Leave enough scheduling room when the native test suite runs in parallel.
+        let timeout = timeout.max(Duration::from_millis(250));
         let result =
             self.process()
                 .request_live_with(json!({"op":operation}), timeout, &mut |_| {
                     Some("Authorization".into())
                 });
-        assert!(matches!(result, Err(HostRequestError::DialogPending(_))));
+        assert!(matches!(result, Err(HostRequestError::DialogPending(_))), "unexpected dialog fixture result: {result:?}");
         assert!(!result.unwrap_err().is_fatal());
     }
 }
@@ -167,7 +172,7 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         self.process.take();
         if let Some(writer) = self.writer.take() {
-            writer.join().unwrap();
+            let _ = writer.join();
         }
     }
 }
@@ -249,23 +254,23 @@ fn absent_modal_keeps_the_original_timeout_and_dismissed_modal_has_a_bounded_dea
         let started = std::time::Instant::now();
         let result = fixture.process().request_live_with(
             json!({"op":"status"}),
-            Duration::from_millis(60),
+            Duration::from_millis(250),
             &mut |_| None,
         );
         assert!(result.unwrap_err().is_fatal());
         assert!(started.elapsed() >= Duration::from_millis(50));
         assert!(started.elapsed() < Duration::from_secs(2));
         assert_eq!(fixture.process().sequence, 1);
-        let retry = std::time::Instant::now();
+        let remaining = fixture.process().pending.as_mut().unwrap().remaining();
         assert!(fixture
             .process()
             .request_live_with(json!({"op":"status"}), REQUEST_TIMEOUT, &mut |_| None)
             .unwrap_err()
             .is_fatal());
-        assert!(
-            retry.elapsed() < Duration::from_millis(40),
-            "retry must not renew a non-modal deadline"
-        );
+        assert!(fixture.process().pending.as_mut().unwrap().remaining() <= remaining,
+            "retry must not renew the original deadline");
+        assert_eq!(fixture.process().sequence, 1, "retry must not send a new request");
+        assert_eq!(fixture.requests.lock().unwrap().len(), 1);
     }
 }
 
@@ -442,7 +447,7 @@ fn real_plugin_authorization_keeps_its_owned_session_alive() {
         .into_owned();
     let ffmpeg = required("PYMSS_REAL_PLUGIN_FFMPEG");
     let root = tempfile::tempdir().unwrap();
-    let mut command = Command::new(executable);
+    let mut command = crate::process_command::hidden_command(executable);
     command
         .arg("--audio-host")
         .env("PYMSS_STUDIO_DATA_ROOT", root.path());

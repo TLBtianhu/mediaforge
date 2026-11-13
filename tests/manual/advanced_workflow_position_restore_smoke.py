@@ -33,7 +33,7 @@ with sync_playwright() as playwright:
     page.add_init_script(
         """localStorage.setItem(
           'pymss-studio:app-settings',
-          JSON.stringify({ startupOnboardingSeen: true, locale: 'en' }),
+          JSON.stringify({ version: 1, startupOnboardingSeen: true, locale: 'en' }),
         )"""
     )
     page.goto(args.url.rstrip('/') + "/#/workflow-node-editor?new=1")

@@ -11,7 +11,7 @@ function harness(overrides = {}) {
     modelPreferences: { value: { 'a.ckpt': { note: '主力模型' } } },
     modelStore: {
       getModelUseCount: name => (name === 'a.ckpt' ? 7 : 0),
-      toggleFavorite: name => calls.push(['fav', name]),
+      toggleModelFavorite: name => calls.push(['fav', name]),
       setModelNote: (name, note) => calls.push(['note', name, note]),
     },
     noteEditorModel: { value: null },

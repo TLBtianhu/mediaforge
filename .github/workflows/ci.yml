@@ -138,6 +138,20 @@ jobs:
       - name: Check the worker command surface
         run: python scripts/check-command-surface.py --strict
 
+      - name: Check generated worker command contracts
+        run: python scripts/sync_worker_contracts.py --check
+
+      - name: Check the frontend invoke boundary
+        run: python scripts/check-frontend-invokes.py
+
+      - name: Check the Tauri command map
+        run: |
+          python scripts/sync-tauri-commands.py --check
+          python scripts/check-tauri-command-map.py
+
+      - name: Check the theme token contract
+        run: python scripts/check-theme-tokens.py
+
       - name: Verify the MCP bridge contract for DSH
         run: python scripts/smoke_mcp.py
 
@@ -166,6 +180,9 @@ jobs:
       - name: Verify the development executable keeps its data in the repository
         shell: pwsh
         run: ./scripts/smoke-dev-data-root.ps1 -AppExe 'src-tauri\target\release\pymss-studio.exe'
+      - name: Verify installed and portable assets respect isolated data roots
+        shell: pwsh
+        run: ./scripts/smoke-asset-paths.ps1 -AppExe 'src-tauri\target\release\pymss-studio.exe'
       - name: Verify runtime install, reuse and rollback end to end
         shell: pwsh
         run: |

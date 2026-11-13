@@ -1,0 +1,215 @@
+# 当前任务账本契约（schemaVersion 2）
+
+当前任务真源为 `<data-root>/agent-jobs/<jobId>.json`。音频队列、媒体任务与Agent任务共用该目录与
+当前格式；不读取或写回settings/tasks.json，不生成index/workspace列表副本，不迁移旧记录。
+目录列表与前端显示均从job记录读取。旧、缺失或未来版本、坏JSON及失效引用明确报错，
+原文件保留；Rust/Python磁盘读取也拒绝重复JSON键，不能忽略坏记录后报告一个成功的空列表。
+
+## 文件与状态
+
+每个job必需schemaVersion/jobId/command/source/status/fraction/message/error/result、
+createdAt/updatedAt/startedAt/finishedAt、owner/runtime/logs。时间为有限Unix秒；createdAt不变，
+updatedAt随真实写入更新，startedAt/finishedAt未发生时为null，终态必须有finishedAt。
+status仅queued/running/completed/failed/cancelled/interrupted；终态不可倒退，running必须有typed owner。
+source仅manual/agent；result为object或null；结构化日志有界保存，不另存nodeLogs分组副本。
+
+owner为null或持有对应owner lease的tauri-worker/operation-kernel身份。PID只作诊断，不能替代lease。
+owner=null的queued音频尚未交给worker，必须保留并允许后续调度；不是中断任务。
+执行中的owner失去lease才由后端将其恢复为interrupted，前端重载不自行把活任务改成失败。
+
+## 音频批次只保存一份共享请求
+
+每个输入仍有独立job文件与result。批次首条作为primary，只保存一份实际common worker payload，
+其中可含model或workflow图、推理参数、设备与批次输出根；不再内嵌一份每个输入的完整任务列表。
+primary的audio.memberJobIds只保存有序ID列表，且包含自身。子任务仅有payloadRef指向primary。
+每条audio.request只保存自身input/output/inputIndex，以及可选的inputs/workbenchOutputs绑定差异。
+
+primary可有小型presentation：workflowId/sourceUpdatedAt/workbench.nativeGraph，用于恢复界面来源；
+不保存另一份workflowDefinition、完整runConfig或完整任务快照。没有独有元数据时可省略presentation。
+common payload若显式提供inferenceParamsVersion，必须为当前整数3；缺省才使用当前参数默认值。
+子任务不得复制payload、presentation或membership。组内command/source、primary、索引和成员必须一致；
+禁止缺父、缺子、跨组引用或循环引用。
+
+空外部输入用null（原生图可从自身输入节点读取文件）；非空输入及输出保留原路径字符。
+inputIndex若提供为从1开始的整数；绑定是节点ID到路径字符串的object。
+
+执行请求只在内存中展开：保留common.output批次根，tasks由相应leaf的request加taskId组成。
+单条重试也以单leaf batch展开，避免把leaf输出目录误当批次根再次套目录；重试生成新ID，
+不得沿用旧taskId/requestId向旧任务发送事件，也不把展开后的payload回写子任务。
+
+## 写入与UI边界
+
+- `enqueue_audio_jobs`校验整组并完成当前job落盘后返回确认，前端才开始调度。
+- `start_separation` / `start_workflow_inference`仅传已入队的jobId。后端读盘claim，
+  实际参数取自已确认记录，不能再由前端发送一份执行参数覆盖。
+- owner lease随执行生命周期持有，普通进度写按单job write锁原子替换。
+- 后端观察worker事件，持久化状态、真实结果、详细stage/progress、节点状态/顺序与结构化日志。
+  recoverable错误只记录诊断，不提前终态；失败或取消保留已知部分产物。
+- worker仅使用临时payload.json传输请求，回收本次自建进程后删除该文件，保留诊断日志和其它工作区产物。
+- 前端只维护内存投影：files来自outputs，nodeLogs从结构化日志分组，duration/stageLabel等派生，
+  不再通过防抖autosave写整个任务历史，也不能回写status/result。
+- 列表响应为 `schemaVersion 3` 信封：`{schemaVersion, full, jobs, removed, dataRoot, jobsDir}`。
+  - 请求不带 `known` 时 `full=true`，返回权威全量快照（首次加载、恢复、诊断与测试）。
+  - 请求带 `known`（`{jobId: updatedAt}`）时返回增量：只含 `updatedAt` 变化的记录，`removed` 列出
+    磁盘上已不存在的已知ID。后端仍每次读取目录成员并按当前格式校验全部记录，只是不再重传未变化内容。
+  - 前端合并后必须对整个集合重做音频组闭包校验；增量子集本身不校验闭包。
+  - `known` 缺省、缺失或非法时明确报错，不退化成空列表，也不接受旧信封。
+- 完整列表仍是权威快照；缺席的旧记录应移出UI，且迟到刷新不能盖掉新事件或复活已删除记录。
+  增量响应同样遵守该规则：未提及的ID保持现状，`removed` 中的ID被移除（本地尚未落盘的pending除外）。
+
+## 取消、删除与保留策略
+
+排队单leaf可原子取消，不用等待一个不存在的worker监听.cancel文件。primary取消后仍能作为
+共享请求锚点，其他queued成员可从任一leaf发起claim；本次worker使用首个仍待执行leaf作为运行ID。
+共享worker执行时取消须结束该worker及其活动成员；workbench整组取消要阻止中间调度。
+
+记录删除按完整组进行，必须全终态并确认没有活动owner，保留所有lock文件inode。
+Kernel默认retention只作用于Agent历史；manual音频历史保留到显式删除。任何清理均须保护完整引用组，
+不能删掉仍被child引用的primary；不隐式把列表裁成最近100条。
+Kernel清理子进程失败时继续持有owner lease与临时请求文件，终态记录也不可被retention删除。
+同一Kernel可通过再次cancel有限重试清理，确认wait回收后才释放；没有自动后台重试保证。
+结果删除先用checkOnly预检全终态与owner释放，再由最终后端事务重做检查、回收用户明确选择的文件并删除记录。
+删除记录不等于删除媒体文件；关联编辑工程作为独立资产保留，不自动删除工程来绕过文件引用保护。
+孤立编辑工程仍需通过单独入口明确清理；删除结果时不递归删除工程或输出目录。
+
+媒体/Agent通用结果使用`remove_result_jobs(jobIds, deleteFiles=false, checkOnly=false)`，不接收前端文件列表。
+仅接受当前结果命令白名单的非audio记录。音频入口为`remove_audio_jobs(jobIds, deleteFiles=false, checkOnly=false)`，
+接受primary或任一child并在catalog内展开整组，两入口共用同一result_jobs引擎、文件保护策略与删除事务；
+旧独立audio_jobs删除事务已移除，不保留旧响应回退。checkedJobIds/removedJobIds均返回完整组选中ID，
+整次所有组须全终态且owner lease已释放。
+文件由后端按当前命令的明确结果字段推导，不扫输出目录，不把failed输入、scalar或任意嵌套路径当成产物。
+支持infer/media的outputs描述符、工具outputPaths/outputPath以及operation的audio_file描述符；旧MIDI报告
+存在猜取旧文件的归属风险，故可删记录但保留其文件。producer已移除目录glob回退，缺明确现存绝对文件报告则失败。
+
+catalog及所选owner/write锁覆盖引用检查、文件动作和记录删除；已存编辑工程读取至文件动作复用JSON写锁，
+防本进程保存穿过检查。输入、其它任务的输入/已知产物、活动任务声明输出范围、编辑工程引用、模型与运行时、
+程序及非outputs应用数据受保护；链接/reparse祖先、非普通文件和无法可靠检查的路径保留。
+编辑器导出仅从export_editor_mix的result.path推导产物，不复制为outputs；工程snapshot与source路径不是输出。
+仅当前v4请求、合法project.id、exportDir精确等于本数据根editor-projects/<id>/exports，且已存v4工程id确认归属时，
+该目录下wav/flac普通文件可经过应用数据保护的窄例外；模型/输入/其它任务/编辑器/媒体库/程序/reparse等其余检查不豁免。
+缺工程、错误id/目录、相邻文件或旧schema不获得例外。相对sources/assets输入或活导出目录无法确定时保留候选文件。
+音频request.output/workbenchOutputs及已知SaveAudio节点路径是写目标，不当作选中任务自身输入；
+其它终态任务保护明确产物，活任务保护未来输出目录，cancelled primary仍按有活child的完整组保护共享图。
+图内load文件/批量文件夹及真实命名输入须保护；没有被有效绝对picker/绑定覆盖的相对输入无法确定CWD时保留候选文件，
+不从输出目录猜测路径。workbench=true不将global input视作覆盖所有图输入。
+同样检查其它来源任务明确的相对文件输入：媒体inputs列表、音频工具的源/参考文件、operation的file描述符等；
+不能确认位置则保留文件，不把scalar值、模型别名或普通查询字符串当文件路径。
+程序与resource目录采用整根保护；便携输出若嵌在程序目录下也保守保留，不为回收输出放宽程序资产边界。
+任意打开的编辑器可能有未保存引用，故保留文件；素材库精确引用从dataRoot/library.db全表读取path/thumbnail，
+不根据有条数上限的UI列表猜测。Windows从System32只读SQLite连接保持事务与资产lease至文件回收结束，
+正常库仅保留真实命中引用（library_reference）；无库/合法空库也持lease，允许无引用产物正常回收。
+所有library入口从扫描、probe、缩略图发布到commit/close持同一零正文.asset-references.lock，不unlink锁inode。
+native媒体库调用强制当前storage dataRoot并移除旧大JSONguard，worker仅拿asset→SQLite，不拿catalog/JSON，
+与删除的catalog→owner/write→JSON→model→asset顺序无反转；Bridge通过执行器scope传根，不改进程env。
+模型登记四条写命令持进程内mutation lease至实际reap，删除持同gate读快照至回收，busy或退出未确认即保留文件。
+此保护不宣称任意外部进程修改的事务一致性。
+
+素材库current schema1、application_id=MFLB、DELETE模式及全部DDL对象由manifest/library-schema.json唯一声明。
+旧0、未来版本、错误appid/编码、额外table/index/view/trigger、坏记录或完整性检查失败均拒绝并保原库，不建表修复/迁移。
+完整对象元组对比不能按name压字典（trigger与index可同名）；全表14字段与UTF-8/type/路径必须合法，不用LIMIT截断引用。
+SQLite open前检查header rollback模式及任何-wal/-shm/-journal；未知日志状态直接保留，不做checkpoint、恢复或immutable绕过。
+库缺失才创建当前格式。Python读取/修改前同样严检，缩略图删除只允许本根下确切源路径哈希的普通自有缓存文件。
+Windows用系统winsqlite3，无新SQLite依赖包；非Windows有库暂返回unsupported并保留文件，无库仍安全持lease。
+
+默认仅删记录；显式勾选文件回收才执行，无永久删除回退，不删除输出目录。响应固定schemaVersion2及
+checkedJobIds/removedJobIds/trashed/failed[{path,error}]/retained[{path,reason}]。
+任一文件回收失败则本次全部任务记录保留，可能已有部分文件移入回收站；UI须再次明确确认才能只删记录。
+受保护文件的retained不是回收失败，UI必须告知保留数量，不能报告全部文件已回收。预检无文件/记录删除动作，
+最终提交重新检查；前端仅按后端removedJobIds安装内存删除标记，不另存删除清单或回写job生命周期。
+Windows使用专用STA线程与recycle-only/no-UI操作；自动化以临时文件和注入回收器验证失败/引用边界，
+不触发系统回收站或GUI。未知输出形状不猜文件归属，可显示终态处理记录但不能据任意嵌套路径回收。
+音频单条、多选与清空统一使用ID-only预检及最终事务；前端不再规划回收路径、共享引用或空目录链。
+浏览器预览只支持严格当前格式的整组记录删除，文件回收明确要求桌面端；教程使用同一响应形状并保留虚拟资产。
+组件在预检等待中卸载后不得再发最终删除；已提交的原生事务按实际回执更新store，不能因路由离开伪造取消。
+
+结果页包含有文件和无文件的终态处理记录；音频组由allJobs保全全部成员，再筛选至少有一条终态的组，
+不只以成功leaf构建一份不完整组。混合组显示各成员真实终态与计数；仍有queued/running成员时可查看已有结果，
+整组不可删除/选择。清空仅选择完整终态组，不删除正在执行批次的成功子集。interrupted状态从唯一journal派生，
+不改写audio执行层的failed映射，也不新增持久状态副本。无文件显示“未生成文件”，文件/编辑器按钮不对空产物开放。
+查询、下载和运行时管理不进入处理结果列表；手动音频不在generic区重复展示。
+
+Rust、Python Kernel与常驻前端识别editor_mix_exported完整结果及task.cancelled，保留单一result.path和已知部分产物；
+worker主动取消即便exit0仍是cancelled。recoverable=true仅更新诊断不提前终态；迟到事件不能倒退终态。
+worker主动取消不重新触发外部取消watcher去终止自身收尾，外部新观察的cancelled仍发取消信号；owner/配额仍须实际reap后释放。
+
+编辑工程仅在用户单独确认时清理，确认说明会删除其目录中的录音、缓存和默认导出。
+list_orphaned_editor_projects由后端strict完整catalog推导，不接收前端activeTaskIds；delete仅接显式projectIds，
+在catalog→JSON→model→asset锁内重新读取当前工程v4与任务。sourceTaskId仍存在、export job引用project.id或任一现存job明确绝对路径与工程相交，
+均保留；损坏catalog或重复JSON键先报错，不把它们当空集合。只有命名和id/sourceTaskId双重证明归属的closed任务型项目才清，
+独立/另存工程保留。选择后有新任务引用须block，不把后来出现的其它孤立项目加入删除集。
+单工程、按任务和孤立工程删除共用同一引用快照，持LibrarySnapshot至显式删除结束；库source/thumbnail、模型权重/config、
+其它工程source/peaks/plugin路径与目标相交时保留，目录型输入是目标祖先也保护。当前registry必须version1，未知/坏/忙数据先报错，
+非空相对文件引用不按工程目录或relativePath猜位置。其它被选工程之间的交叉引用同样保留，不靠批次顺序消除保护。
+任一编辑器窗口打开时阻止本批删除；未知的未保存内存引用不能视作不存在。整批先预检，包括项目内所有嵌套后代，拒reparse/特殊文件；
+任一预检失败或项目被引用，尚未开始删除的整批都不执行。文件系统删除本身仍可能部分失败，不能承诺多目录断电/失败回滚。
+工程保存持JSON→asset到原子替换结束；首次加入本数据根editor-projects内的缺失文件引用会拒绝并保留原工程，
+已经保存的缺失引用与外部缺失源仍允许保留以便重链。自有引用不阻止删除其所属工程。
+录音的每次mutation及波形worker也持asset lease，获锁后复核工程仍存在/id/schema和普通路径，再创建或发布文件；
+等待删除结束的旧波形请求不能重建该项目。原生不提前mkdir，也不持同一lease等待child；派生cache文件拒reparse。
+工程删除专用policy允许便携程序根内的正常managed data；只去掉包含dataRoot的宽泛program/resource祖先，
+模型/运行时保护不被过滤，实际EXE及嵌入工程的program/resource仍保留。
+持久工程sources与导出worker投影assets是两个当前v4契约，分别验证，不能为检查复制一份sources。
+自定义模型四个writer从验证/复制到注册/sidecar/rollback同样持asset lease，worker CLI和Kernel固定canonical registry根，
+应用内inline查询显式scope，不修改线程共享env。外部第三方pymss CLI、其它应用与任意文件系统修改没有参与此协议；
+跨进程未保存编辑器状态及任意外部修改仍不属于完整资产事务。
+MCP model.import_custom使用真实name/modelType/modelPath等参数并经Kernel持久执行；editor.peaks使用path/resolution/cacheDir。
+原paths/inputs错误参数入口已删除，不加旧入口回退。两种模型列表读取同一root的registry及sidecar；未知/坏registry明确报错，
+不能把读取失败显示成空自定义模型集合。模型列表不创建持久镜像，自定义模型不宣称可经catalog下载。
+
+目录成员增删与引用闭包读取共用`.catalog.lock`，单job写共用`.writes/<id>.lock`，
+执行归属共用`.owners/<id>.lock`，Rust与Python使用同一锁协议。
+catalog读列表时，指纹（长度/修改时间/创建时间/文件索引）未变的单文件直接使用上一版已校验快照，
+不打开文件也不抢写锁；需要重新解析的单文件仍按对应write锁读取，避免Windows原子替换与打开文件相撞；
+已持write锁的内部读取不重复加锁。原子替换不会产生半写状态，因此读取不会看到未发布的中间内容，
+只可能看到上一次已提交的完整版本；替换提交后指纹改变，下一次读取必然重新解析。
+多文件操作失败时只回滚本次明确拥有的路径。损坏引用和无法判定的事务报错并保留文件。
+
+### 批量记录删除与进程中断恢复
+
+结果删除和 Kernel 历史保留清理共用以下磁盘约定。删除前在 catalog → owner → write 锁序下确认整批记录为终态且无人执行。需要回收产物时先完成原有引用保护和文件回收，回收失败则保留全部记录。应用没有通用路径回收命令，结果和工程继续由原生 ID 入口解析归属。
+
+1. 将选中记录逐个移动到 `agent-jobs/.removal-pending/<jobId>.json`，文件字节保持原样。把整个目录原子改名为 `.removal-committed` 时提交整批删除。
+2. 后续读取持 catalog 锁检查两种阶段。发现 pending 时，先确认归还所有暂存记录后的完整目录合法，再将记录原样归还。发现 committed 时，先校验可见目录、暂存身份和路径，再逐个清理确切的暂存记录。提交后的清理失败会记日志，删除仍按已提交返回，后续全量或增量读取会重试清理。
+3. 此前写出的 `.<jobId>.<nonce>.removing` 也是当前 schema 2 的事务残留。已知命名、合法终态记录和完整引用可核实的记录原样恢复。若旧清理已移除音频组部分成员，只有剩余成员来自同一批 Rust 删除、身份和组内顺序一致、已知缺失成员符合旧实现的按 ID 清理顺序，且无其它组成员或引用时，才清理无法归还的暂存记录。
+
+恢复拒绝未知阶段、坏记录、重名、链接和 reparse，预检失败时保留事务和记录文件。恢复只处理账本文件。目录提交点覆盖进程中断，系统回收站已经完成的操作及断电后的文件系统持久性仍受各自机制约束。
+
+## 共享处理任务配额
+
+`manifest/execution-quota.json`是覆盖命令、默认1/最大4和配置字段名的唯一来源。
+配额读取同data-root的`settings/app.json`中现有`maxConcurrentSeparations`，不另存调度配置或队列索引。
+Rust/Python共用`.quota/global-0.lock`至`global-3.lock`的无正文OS lease；锁文件保留inode，释放不删除。
+领取时在catalog内检查全部固定slot及其`.quota/reaping/global-N.lock`，包括当前上限之外仍在运行的高位slot。
+同一个slot的两把锁只计一次，因此4降到1也会等待已有worker退出。
+
+音频批次占一个slot。通用手工任务与Agent处理任务先落ownerless queued，成功领取后才写running/startedAt、
+持owner及slot并启动worker。资源不足是正常排队；排队取消不创建payload/进程，取消音频primary仍可执行其余leaf。
+桌面和Kernel先启动独立监督进程。监督进程持有slot和每个账本成员的`.owners/reaping/<jobId>.lock`后确认就绪，
+执行器确认后才放行worker。结果先终态时仍保留slot与owner。正常结束和取消均在确认worker进程树退出、
+关闭管道和结束取消监视后释放主租约。启动失败和清理失败同样保留租约到回收完成。
+
+取消或执行器进程异常退出时，控制管道EOF通知监督进程。Windows使用Job Object，POSIX使用独立进程组，
+Linux监督进程回收被重新托管的后代。执行器退出后，监督进程的租约继续阻止同槽任务领取、结果删除和中断恢复，
+直到该进程树退出。桌面账本的`workerPid`记录其直接监督进程，仅用于诊断。
+
+Rust以每应用一个内存pending表/dispatcher接回任务，重启仅恢复通用manual queued；音频仍由前端确认后交接。
+Kernel以一个可关闭、弱引用pump恢复Agent queued；双方不代跑另一来源。前端活动任务每2秒串行同步账本，
+空闲时降为每10秒；不依赖Queue路由。ACK丢失经权威刷新后有界重发，同组登记幂等，等待不会伪造failed。
+worker必须发出通用或protocol.json resultEvent声明的终态；非法事件、无结果退出均失败，退出码0本身不代表成功。
+
+本阶段只共享同数据根的处理worker上限；各执行器内部FIFO，不承诺全局FIFO、跨数据根配额或物理GPU分区。
+查询、下载、运行时管理不占处理slot；原有运行时/应用互斥机制仍独立。回收边界为监督进程建立的Job Object或进程组。
+
+## 验证入口
+
+`tests/fixtures/jobs/current-contract.json`是三层共同的格式样例，含合法音频primary/child、
+无外部输入的原生图、无presentation的模型任务、独立Agent记录和紧凑的拒绝案例。
+它仅验证存储契约，不代表其中占位模型或空图可以执行。
+Python conformance、Rust schema/CRUD/owner/ref测试和前端codec/实际store测试共同验证读取及写入边界。
+`tests/fixtures/jobs/quota-contract.json`补充两后端共用的21个配额配置样例；真实Rust/Python进程验证双向互斥、
+正常退出和取消关闭继承管道、执行器被强制终止后延迟回收期间的配额保护，以及进程树回收后的中断恢复。
+所有验证须遵守DEVELOPMENT隔离与Windows隐藏子进程规则，不启动GUI或使用用户profile。
+
+已删除三个依赖旧task-history、旧事件入口或重复工作流快照的手工UI脚本；其旧实现可从Git历史查看。
+记录删除的自动化覆盖已转入当前store及Rust账本测试。真实工作流画布颜色、重载等视觉验收仍待使用
+当前契约重建隔离脚本，并在用户允许GUI验证后执行；不能把旧视觉脚本历史通过当作本轮验收。

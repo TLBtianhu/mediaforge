@@ -74,7 +74,7 @@ def download(item: dict, target_dir: Path, force: bool = False) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Download MediaForge image models")
     parser.add_argument("--dir", default=str(DEFAULT_MODEL_DIR), help="target model directory")
-    parser.add_argument("--proxy", help="proxy URL, for example http://127.0.0.1:7897")
+    parser.add_argument("--proxy", help="optional proxy URL; HTTP_PROXY / HTTPS_PROXY are used by default")
     parser.add_argument("--force", action="store_true", help="re-download existing files")
     parser.add_argument("--only", help="download one model only, by catalog filename")
     args = parser.parse_args()

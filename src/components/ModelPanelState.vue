@@ -30,7 +30,7 @@ const emit = defineEmits<{ action: [] }>()
 
 <style scoped>
 .model-panel-state { display: flex; min-height: 260px; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-sm); padding: 28px; text-align: center; }
-.model-panel-state__glyph { color: var(--primary-strong); font-size: 26px; }
+.model-panel-state__glyph { color: var(--primary-ink); font-size: 26px; }
 .model-panel-state strong { color: var(--on-surface-heading); font-size: 14px; }
 .model-panel-state p { max-width: 340px; margin: 0; color: var(--on-surface-muted); font-size: 12px; line-height: 1.5; }
 .model-panel-state__error { color: var(--danger); }

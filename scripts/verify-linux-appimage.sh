@@ -11,6 +11,8 @@ APPDIR="$PROBE_ROOT/squashfs-root"
 RESOURCE_ID="$(find "$APPDIR/usr" -path '*/python-runtime/bootstrap-id' -print -quit)"
 test -n "$RESOURCE_ID"
 RESOURCES="$(dirname "$(dirname "$RESOURCE_ID")")"
+python3 scripts/posix-release.py verify "$RESOURCES"
+source scripts/posix-release-isolation.sh "$PROBE_ROOT"
 test -f "$RESOURCES/python/worker.py"
 test -s "$RESOURCES/resources/plugin-sdk/pymss-sdk.js"
 test -s "$RESOURCES/resources/plugin-sdk/pymss-sdk.css"
@@ -61,9 +63,6 @@ cp -a "$RESOURCES/python-runtime" "$PROBE_ROOT/stable-python"
 unset LD_LIBRARY_PATH
 PY="$PROBE_ROOT/stable-python/bin/python3"
 export PYTHONDONTWRITEBYTECODE=1
-export PYMSS_STUDIO_DATA_ROOT="$PROBE_ROOT/data"
-export MEDIAFORGE_RUNTIME_ENVS_DIR="$PROBE_ROOT/data/runtime-envs"
-export MEDIAFORGE_ACTIVE_RUNTIME_FILE="$MEDIAFORGE_RUNTIME_ENVS_DIR/active-runtime.json"
 export PYMSS_STUDIO_BOOTSTRAP_PYTHON="$PY"
 "$PY" -c 'import sys, ssl, venv, requests, socks; assert sys.prefix == sys.base_prefix; print(sys.version)'
 "$PY" -m pip install --help > /dev/null

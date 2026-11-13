@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { saveTextFileDialog } from '@/api/native'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useDialog, useMessage, type DropdownOption } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -11,7 +12,6 @@ import {
   ListOutline,
   MusicalNotesOutline,
   OpenOutline,
-  PlayOutline,
   SearchOutline,
   SettingsOutline,
 } from '@vicons/ionicons5'
@@ -35,8 +35,7 @@ import {
 } from '@/utils/workflowSimple'
 import { WorkflowEditorInUseError } from '@/utils/workflowEditorState'
 import { themeIsDark } from '@/utils/theme'
-import { hasInvalidSimpleStructure, isGraphWorkflowDefinition, isSimpleWorkflowDefinition } from '@/workflows/formats'
-import { litegraphToComfy } from '@/litegraph/graphAdapter'
+import { hasInvalidSimpleStructure, isGraphWorkflowDefinition, isSimpleWorkflowDefinition, normalizeGraphWorkflowDefinition } from '@/workflows/formats'
 import {
   countWorkflowSaveOutputs,
   getWorkflowDefinitionIssue,
@@ -94,9 +93,9 @@ const normalizeOptions = computed(() => [
 ])
 
 const {
-  normalizeMode, workflowKind, workflowTypeCounts, workflowTypeFilterOptions,
-  filteredWorkflows, workflowGroups, workflowListMetaMap, workflowListMeta,
-  workflowTypeLabel, workflowDefinitionError, workflowRunBlocked, workflowStatusMap,
+  normalizeMode, workflowKind, workflowTypeFilterOptions,
+  filteredWorkflows, workflowGroups, workflowListMeta,
+  workflowTypeLabel, workflowDefinitionError,
   isWorkflowBlocked, isNodeEditorOpen, isAnyEditorOpen, setWorkflowTypeFilter,
 } = makeWorkflowListing({
   computed, t, workflows, query, typeFilter, workflow, selectedWorkflowId,
@@ -107,7 +106,6 @@ function workflowMenuOptionsFor(current: WorkflowEntry | null): DropdownOption[]
   if (!current) return []
   const isSimpleDefinition = isSimpleWorkflowDefinition(current.definition)
   const canEditSimple = isSimpleDefinition && analyzeSimpleWorkflow(current.definition).editable
-  const definitionError = workflowDefinitionError(current.definition)
   const locked = Boolean(workflow.editorFor(current.id))
   const options: DropdownOption[] = [
     {
@@ -509,17 +507,6 @@ function deleteWorkflow(item: WorkflowEntry) {
   })
 }
 
-function runSelected() {
-  const current = selectedWorkflow.value
-  if (!current) return
-  if (selectedError.value) {
-    message.warning(selectedError.value)
-    return
-  }
-  workflow.selectWorkflow(current.id)
-  openWorkflowEditor(current)
-}
-
 // ---- comfy-mss import / export ----
 function triggerImportWorkflow() {
   importFileInputRef.value?.click()
@@ -580,7 +567,7 @@ async function exportWorkflowDefinition(
 ) {
   try {
     const payload = isGraphWorkflowDefinition(definition)
-      ? { ...definition, ...litegraphToComfy(definition) }
+      ? normalizeGraphWorkflowDefinition(definition)
       : definition
     const suffix = isGraphWorkflowDefinition(definition)
       ? 'comfy-mss.json'
@@ -589,10 +576,7 @@ async function exportWorkflowDefinition(
     const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
     if (isTauri) {
       const content = `${JSON.stringify(payload, null, 2)}\n`
-      const savedPath = await invoke<string | null>('save_text_file_dialog', {
-        defaultName: fileName,
-        content,
-      })
+      const savedPath = await saveTextFileDialog(fileName, content)
       if (!savedPath) return
     } else {
       downloadJsonFile(fileName, payload)

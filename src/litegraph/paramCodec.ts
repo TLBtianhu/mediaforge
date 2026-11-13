@@ -9,7 +9,7 @@
  *
  * 于是 UI 怎么排版都不影响语义：把控件换个顺序，payload 依旧按 spec 顺序写；
  * 新增/删除控件不需要改任何下标。这条规则由 `tests/paramCodec.test.ts` 扫源码守护——
- * 除本文件与明确的迁移函数外，出现 `widgets_values[0]` 这样的下标访问就算违规。
+ * 除本文件与格式校验外，出现 `widgets_values[0]` 这样的下标访问就算违规。
  */
 import { BUILTIN_SPECS, NODE_SPECS, type NodeSpec, type WidgetSpec } from './nodeSpecs.ts'
 
@@ -34,20 +34,20 @@ export function widgetSpec(spec: NodeSpec, name: string): WidgetSpec | undefined
 /**
  * 位置数组 → 命名参数。
  *
- * 超出 spec 长度的值（旧图里更多控件）不丢，放进 `extra` 由调用方决定怎么处理；
- * 缺失的值用 spec 默认值补齐，所以老图不会因为新控件而崩。
+ * 按当前声明读取；超出声明的布局必须拒绝。省略的可选参数使用当前默认值。
  */
 export function decodeWidgets(
   spec: NodeSpec,
   values: unknown[] | null | undefined,
-): { params: Record<string, unknown>; extra: unknown[] } {
+): { params: Record<string, unknown> } {
   const list = Array.isArray(values) ? values : []
   const params: Record<string, unknown> = {}
   const widgets = spec.widgets || []
+  if (list.length > widgets.length) throw new Error(`Unsupported widget schema for ${spec.type}`)
   widgets.forEach((widget, index) => {
     params[widget.name] = index < list.length ? list[index] : widget.default
   })
-  return { params, extra: list.slice(widgets.length) }
+  return { params }
 }
 
 export interface EncodeReport {
@@ -107,21 +107,6 @@ export function firstWidgetValue(info: { widgets_values?: unknown[] } | null | u
   return Array.isArray(list) && list.length > 0 ? list[0] : undefined
 }
 
-/**
- * 读第 N 个控件值（**兼容旧图**用）。
- *
- * 只应在"节点没有静态 spec"或"旧数据没有名字"时使用；新代码请用 `widgetValue`。
- * 位置化知识集中在本文件，调用方不再各自写 `widgets_values[2]`。
- */
-export function widgetValueAt(
-  info: { widgets_values?: unknown[] } | null | undefined,
-  index: number,
-): unknown {
-  const list = info?.widgets_values
-  if (!Array.isArray(list) || index < 0 || index >= list.length) return undefined
-  return list[index]
-}
-
 /** 按名字写一个值，返回新的节点信息（不修改入参）。 */export function withWidgetValue<T extends { widgets_values?: unknown[] }>(
   spec: NodeSpec | undefined,
   info: T,
@@ -129,9 +114,9 @@ export function widgetValueAt(
   value: unknown,
 ): T {
   if (!spec || !widgetSpec(spec, name)) return info
-  const { params, extra } = decodeWidgets(spec, info.widgets_values)
+  const { params } = decodeWidgets(spec, info.widgets_values)
   params[name] = value
-  return { ...info, widgets_values: [...encodeWidgets(spec, params), ...extra] }
+  return { ...info, widgets_values: encodeWidgets(spec, params) }
 }
 
 /** 按名字批量写，一次 encode。 */
@@ -141,7 +126,7 @@ export function withWidgetValues<T extends { widgets_values?: unknown[] }>(
   patch: Record<string, unknown>,
 ): T {
   if (!spec) return info
-  const { params, extra } = decodeWidgets(spec, info.widgets_values)
+  const { params } = decodeWidgets(spec, info.widgets_values)
   let changed = false
   for (const [name, value] of Object.entries(patch)) {
     if (!widgetSpec(spec, name)) continue
@@ -149,5 +134,5 @@ export function withWidgetValues<T extends { widgets_values?: unknown[] }>(
     changed = true
   }
   if (!changed) return info
-  return { ...info, widgets_values: [...encodeWidgets(spec, params), ...extra] }
+  return { ...info, widgets_values: encodeWidgets(spec, params) }
 }

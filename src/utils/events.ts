@@ -22,14 +22,12 @@ export async function registerWorkerEvents() {
     registrationInFlight = listen('pymss://worker-event', (event) => {
       const app = useAppStore()
       const settings = useSettingsStore()
-      const tasks = useTaskStore()
       const models = useModelStore()
       const workerEvent = event.payload as WorkerEvent
       app.handleWorkerEvent(workerEvent)
       if (settings.developerMode) app.recordWorkerEvent(workerEvent)
       void settings.handleWorkerEvent(workerEvent)
       app.handleRuntimeEvent(workerEvent)
-      if (isMainTaskOwner()) tasks.handleWorkerEvent(workerEvent)
       models.handleWorkerEvent(workerEvent)
     }).then((unlisten) => {
       unlistenWorkerEvents = unlisten

@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from core.worker_audio import _publish_export_path
+from shared.output_publish import publish_output_path
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 SUPPORTED_AUDIO_SUFFIXES = {
     ".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus",
@@ -80,6 +81,8 @@ def _render_output(path: Path, render: Callable[[Path], None]) -> Path:
     if token or state:
         if not re.fullmatch(r'[A-Za-z0-9_-]{16,96}', token) or not state:
             raise RuntimeError('Audio temporary-file state is invalid')
+        launcher_pids = {str(os.getpid()), str(os.getppid())}
+        launcher_pids.update(os.environ.get('PYMSS_STUDIO_AUDIO_TEMP_LAUNCHER_PIDS', '').split(','))
         for attempt in range(10):
             try:
                 scope = json.loads(Path(state).read_text(encoding='utf-8'))
@@ -88,7 +91,7 @@ def _render_output(path: Path, render: Callable[[Path], None]) -> Path:
                     scope['token'] == token
                     and type(launcher_pid) is int
                     and launcher_pid > 0
-                    and launcher_pid in {os.getpid(), os.getppid()}
+                    and str(launcher_pid) in launcher_pids
                     and Path(scope['directory']).resolve() == path.parent.resolve()
                 ):
                     prefix = f'.pymss-audio-{token}-{launcher_pid}-'
@@ -105,7 +108,7 @@ def _render_output(path: Path, render: Callable[[Path], None]) -> Path:
         render(temporary)
         if not temporary.stat().st_size:
             raise RuntimeError("No audio data was written")
-        return _publish_export_path(temporary, path)
+        return publish_output_path(temporary, path)
     finally:
         try:
             temporary.unlink(missing_ok=True)
@@ -128,6 +131,7 @@ def _run_ffmpeg(arguments: list[str]) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        **hidden_subprocess_kwargs(),
     )
 
 
@@ -146,6 +150,7 @@ def run_process(arguments: list[str]) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
+        **hidden_subprocess_kwargs(),
     )
 
 

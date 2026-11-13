@@ -136,7 +136,7 @@ buildSync({entryPoints: [fixture + '/entry.ts'], outfile: fixture + '/playback.j
   bundle: true, format: 'esm', platform: 'browser',
   alias: {'@/i18n': fixture + '/i18n.ts', '@': root + '/src'}});
 """
-    subprocess.run(['node', '-e', script, root.as_posix(), fixture.as_posix()], check=True, cwd=root)
+    subprocess.run(['node', '-e', script, root.as_posix(), fixture.as_posix()], check=True, cwd=root, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def handler_for(fixture, ffmpeg):
@@ -165,7 +165,7 @@ def handler_for(fixture, ffmpeg):
                             f'atrim=start={start - warm}:duration=4,asetpts=PTS-STARTPTS',
                             '-t', '4', '-ar', str(rate), '-ac', str(channels),
                             '-c:a', 'pcm_f32le', '-f', 'f32le', 'pipe:1']
-                result = subprocess.run(command, capture_output=True, check=True, timeout=15)
+                result = subprocess.run(command, capture_output=True, check=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 data = result.stdout
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/octet-stream')

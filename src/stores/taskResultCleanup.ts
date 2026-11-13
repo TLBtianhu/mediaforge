@@ -1,33 +1,14 @@
 import type { SeparationTask } from './task.ts'
-import { cleanupDirChain, parentDir, pathKey, samePath } from './taskOutputPaths.ts'
+import { isTerminalTaskStatus, taskJobId } from '../features/tasks/lifecycle.ts'
 
-export function resultTrashTargets(task: SeparationTask): string[] {
-  const seen = new Set<string>()
-  return task.outputs
-    .map(output => output.path)
-    .filter((path): path is string => Boolean(path))
-    .filter(path => {
-      if (seen.has(path)) return false
-      seen.add(path)
-      return true
-    })
-}
-
-export function resultTrashEmptyDirs(task: SeparationTask, windows: boolean): string[] {
-  if (task.runConfig?.workbench) return []
-  if (task.runConfig?.outputLayout !== 'folders') return []
-  const jobOutput = task.jobOutput
-  const output = task.output
-  if (output && !samePath(output, jobOutput, windows)) return cleanupDirChain(output, jobOutput, windows)
-  const parents = task.outputs.map(item => parentDir(item.path || '', windows)).filter(Boolean)
-  const dirs = parents.flatMap(parent => cleanupDirChain(parent, jobOutput, windows))
-  const seen = new Set<string>()
-  return dirs.filter(dir => {
-    const key = pathKey(dir, windows)
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+/** Result removal includes the whole batch and must never race an active sibling. */
+export function getRemovalTasks(sourceTasks: readonly SeparationTask[], ids: readonly string[], runningMessage: string): SeparationTask[] {
+  const selected = new Set(ids)
+  if ([...selected].some(id => !sourceTasks.some(task => task.id === id))) throw new Error(runningMessage)
+  const jobs = new Set(sourceTasks.filter(task => selected.has(task.id)).map(taskJobId))
+  const related = sourceTasks.filter(task => jobs.has(taskJobId(task)))
+  if (related.some(task => !isTerminalTaskStatus(task.status))) throw new Error(runningMessage)
+  return related
 }
 
 export function primaryRevealPath(task: SeparationTask): string {

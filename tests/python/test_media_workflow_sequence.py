@@ -17,6 +17,8 @@ class WorkflowSequenceTests(unittest.TestCase):
     def test_multifile_model_directory_is_not_misreported_as_missing(self) -> None:
         with tempfile.TemporaryDirectory(prefix="mf-workflow-models-") as root_name:
             root = Path(root_name)
+            for name in ("ProPainter.pth", "raft-things.pth", "recurrent_flow_completion.pth"):
+                (root / name).write_bytes(b"small model fixture")
             with mock.patch.object(workflow_worker.capabilities, "model_path", return_value=root):
                 workflow_worker._validate_models([{"bindings": {"primary": "media:propainter"}}])
             with mock.patch.object(workflow_worker.capabilities, "model_path", return_value=root / "missing"):

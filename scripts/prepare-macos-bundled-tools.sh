@@ -341,7 +341,7 @@ ARIA2_RUNTIME_MANIFEST="$(
 )"
 
 cat > "$DEST_DIR/THIRD_PARTY_TOOLS.txt" <<EOF
-This directory contains self-contained command-line tools bundled for Pymss Studio macOS releases.
+This directory contains self-contained command-line tools bundled for MediaForge macOS releases.
 
 Bundled tools:
 - FFmpeg / ffprobe

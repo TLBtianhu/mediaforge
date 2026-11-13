@@ -73,12 +73,20 @@ class ApprovalGateTests(unittest.TestCase):
             with self.subTest(tool=name):
                 self.assertNotIn("requiresConfirmation", result)
 
-    def test_legacy_bridge_tools_are_untouched(self) -> None:
-        """models_download 这类历史工具保持原行为，避免打断既有调用方。"""
+    def test_only_a_literal_boolean_true_confirms_an_explicit_action(self) -> None:
+        for value in (False, "true", 1, "yes"):
+            with self.subTest(value=value):
+                result = self.bridge.call("model.delete", {"model": "media:lama", "confirmExplicit": value})
+                self.assertTrue(result["requiresConfirmation"])
+
+    def test_legacy_download_alias_uses_the_same_approval_gate(self) -> None:
         legacy = {tool["name"] for tool in self.bridge._bridge_tools()}
         self.assertIn("models_download", legacy)
         with mock.patch.object(self.bridge, "download_model", return_value={"ok": True}) as download:
             result = self.bridge.call("models_download", {"modelId": "media:lama"})
+            self.assertTrue(result["requiresConfirmation"])
+            download.assert_not_called()
+            result = self.bridge.call("models_download", {"modelId": "media:lama", "confirmExplicit": True})
         self.assertTrue(result["ok"])
         download.assert_called_once()
 

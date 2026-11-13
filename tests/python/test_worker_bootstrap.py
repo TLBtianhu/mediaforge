@@ -21,6 +21,7 @@ COMMON_PACKAGES = ("av", "librosa", "numpy", "pymss", "pymss-core")
 
 MANIFEST = {
     "manifestVersion": "test-1",
+    "python": "3.12",
     "common": {name: name for name in COMMON_PACKAGES},
     "backends": {
         "cpu": {"platforms": ["win32", "linux", "darwin"]},
@@ -98,6 +99,39 @@ class RuntimeReadinessTests(unittest.TestCase):
 
 
 class ManifestRequirementTests(unittest.TestCase):
+    def test_worker_install_rejects_unsupported_arch_before_provisioning(self):
+        for platform_name, arch, backend in (
+            ("win32", "aarch64", "cuda"),
+            ("linux", "aarch64", "cuda"),
+            ("darwin", "x86_64", "mlx"),
+        ):
+            with self.subTest(platform=platform_name, arch=arch), tempfile.TemporaryDirectory() as temporary, \
+                 mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", Path(temporary)), \
+                 mock.patch.object(worker_bootstrap, "interpreter_architecture", return_value=arch), \
+                 mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST), \
+                 mock.patch.object(worker_bootstrap, "_validate_install_python_versions") as validate, \
+                 mock.patch.object(worker_bootstrap, "HiddenVenvBuilder") as create, \
+                 mock.patch.object(worker_bootstrap.subprocess, "Popen") as pip, \
+                 mock.patch.object(sys, "platform", platform_name), contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertNotEqual(worker_bootstrap.cmd_install_runtime({"backend": backend}), 0)
+                self.assertEqual(json.loads(output.getvalue())["payload"]["code"], "RUNTIME_PLATFORM_UNSUPPORTED")
+                self.assertIn(f"{platform_name}/{arch}", output.getvalue())
+                validate.assert_not_called()
+                create.assert_not_called()
+                pip.assert_not_called()
+
+    def test_worker_install_keeps_linux_cuda_and_macos_mlx_routes(self):
+        for platform_name, arch, backend in (("linux", "x86_64", "cuda"), ("darwin", "aarch64", "mlx")):
+            with self.subTest(platform=platform_name, arch=arch), tempfile.TemporaryDirectory() as temporary, \
+                 mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", Path(temporary)), \
+                 mock.patch.object(worker_bootstrap, "interpreter_architecture", return_value=arch), \
+                 mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST), \
+                 mock.patch.object(worker_bootstrap, "_validate_install_python_versions", side_effect=ValueError("fixture stop")) as validate, \
+                 mock.patch.object(sys, "platform", platform_name), contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertNotEqual(worker_bootstrap.cmd_install_runtime({"backend": backend}), 0)
+                self.assertEqual(json.loads(output.getvalue())["payload"]["code"], "RUNTIME_PYTHON_MISMATCH")
+                validate.assert_called_once()
+
     def test_manifest_status_requires_complete_numeric_markers(self):
         for actual, expected, status in (
             ("2026.09.1", "2026.09.1", "current"),
@@ -138,7 +172,7 @@ class ManifestRequirementTests(unittest.TestCase):
         self.assertIn("[socks]", manifest["bootstrap"]["requests"])
         for name in ("prepare-python-runtime.ps1", "prepare-python-runtime.sh"):
             content = (root / "scripts" / name).read_text(encoding="utf-8")
-            self.assertIn("BootstrapRequirements" if name.endswith(".ps1") else "BOOTSTRAP_REQUIREMENTS", content)
+            self.assertIn("$manifest.bootstrap" if name.endswith(".ps1") else "BOOTSTRAP_REQUIREMENTS", content)
             self.assertIn("import requests", content)
             self.assertIn("socks", content)
 
@@ -320,6 +354,33 @@ class MultipleEnvironmentTests(unittest.TestCase):
             with self.subTest(record=record):
                 self.active_file.write_text(json.dumps(record), encoding="utf-8")
                 self.assertIsNone(worker_bootstrap._resolve_runtime_state_from(self.active_file))
+
+    def test_corrupt_pointer_is_reported_but_write_paths_stay_lenient(self):
+        self._make_env("cpu", "2.7.1")
+        self.active_file.write_text("{not json", encoding="utf-8")
+        with self._runtime():
+            info = worker_bootstrap._runtime_info_payload({})
+            self.assertIsNone(info["installState"])
+            self.assertIn("active-runtime.json", info["activeRuntimeError"])
+            self.assertIn("not valid JSON", info["activeRuntimeError"])
+        # Activation/write paths keep treating it as absent instead of crashing.
+        self.assertIsNone(worker_bootstrap._resolve_runtime_state_from(self.active_file))
+        self.assertIsNone(worker_bootstrap._read_runtime_state())
+
+    def test_missing_pointer_has_no_diagnostic(self):
+        with self._runtime():
+            self.assertIsNone(worker_bootstrap._active_runtime_diagnostic())
+            self.assertIsNone(worker_bootstrap._runtime_info_payload({})["activeRuntimeError"])
+
+    def test_pointer_to_a_missing_interpreter_is_diagnosed(self):
+        self._make_env("cpu", "2.7.1")
+        self.active_file.write_text(json.dumps({
+            "backend": "cpu",
+            "pythonPath": str(self.envs_dir / "cpu" / "Scripts" / "gone.exe"),
+        }), encoding="utf-8")
+        with self._runtime():
+            diagnostic = worker_bootstrap._active_runtime_diagnostic()
+        self.assertIn("missing interpreter", diagnostic)
 
     def test_startup_managed_activation_preserves_a_pointer_created_during_probe(self):
         self._make_env("cpu", "2.7.1")
@@ -1000,6 +1061,93 @@ class ActiveEnvironmentReportsLiveFactsTests(unittest.TestCase):
         self.assertEqual(entry["torchVersion"], "2.7.1+cu128")
 
 
+class InstallPythonVersionTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="mediaforge-install-python-"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.envs = self.root / "runtime-envs"
+        self.env = self.envs / "cpu"
+        self.env.mkdir(parents=True)
+        self.active = self.envs / "active-runtime.json"
+        self.active.write_bytes(b'{"preserve":"active selection"}')
+
+    def _snapshot(self):
+        return {
+            str(path.relative_to(self.envs)): path.read_bytes() if path.is_file() else None
+            for path in self.envs.rglob("*") if path.name != ".runtime-management.lock"
+        }
+
+    def _reject_install(self, stdout="3.12\n", returncode=0):
+        before = self._snapshot()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", self.envs))
+            stack.enter_context(mock.patch.object(worker_bootstrap, "ACTIVE_RUNTIME_FILE", self.active))
+            stack.enter_context(mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST))
+            stack.enter_context(mock.patch.object(sys, "platform", "win32"))
+            actions = [stack.enter_context(mock.patch.object(worker_bootstrap, name)) for name in (
+                "_recover_runtime_transactions", "_resolve_pypi_mirror", "_repair_runtime_venv_config",
+                "_create_runtime_venv", "_ensure_runtime_pip", "_write_runtime_state", "_atomic_write_json",
+            )]
+            pip = stack.enter_context(mock.patch.object(worker_bootstrap.subprocess, "Popen"))
+            probe = stack.enter_context(mock.patch.object(worker_bootstrap.subprocess, "run", return_value=
+                mock.Mock(returncode=returncode, stdout=stdout)))
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                result = worker_bootstrap.cmd_install_runtime({"backend": "cpu", "taskId": "version-check"})
+        self.assertNotEqual(result, 0)
+        event = json.loads(output.getvalue())
+        self.assertEqual(event["payload"]["code"], "RUNTIME_PYTHON_MISMATCH")
+        self.assertEqual(event["taskId"], "version-check")
+        for action in [*actions, pip]:
+            action.assert_not_called()
+        self.assertEqual(self._snapshot(), before)
+        return event["payload"], probe
+
+    def test_old_venv_is_rejected_before_any_recovery_or_pip(self):
+        (self.env / "pyvenv.cfg").write_text("home = old-python\nversion = 3.11.9\n", encoding="utf-8")
+        (self.env / "preserved-model-record.json").write_bytes(b"unchanged")
+        payload, probe = self._reject_install()
+        probe.assert_not_called()
+        self.assertIn("3.11.9", payload["message"])
+        self.assertIn("preserved", payload["message"])
+
+    def test_actual_interpreter_version_is_checked_even_if_config_claims_312(self):
+        (self.env / "pyvenv.cfg").write_text("version = 3.12.13\n", encoding="utf-8")
+        (self.env / "Scripts").mkdir()
+        (self.env / "Scripts" / "python.exe").write_bytes(b"old executable")
+        payload, probe = self._reject_install(stdout="3.11\n")
+        self.assertIn("3.11", payload["message"])
+        self.assertEqual(probe.call_args.args[0][1:4], ["-I", "-S", "-B"])
+        self.assertNotIn("PYTHONHOME", probe.call_args.kwargs["env"])
+        self.assertNotIn("PYTHONPATH", probe.call_args.kwargs["env"])
+
+    def test_unverifiable_existing_interpreter_is_preserved(self):
+        (self.env / "Scripts").mkdir()
+        (self.env / "Scripts" / "python.exe").write_bytes(b"broken executable")
+        self._reject_install(stdout="", returncode=1)
+
+    def test_old_recovery_copy_is_rejected_before_it_can_be_moved_or_deleted(self):
+        for suffix in ("reinstalling", "core-backup", "core-updating"):
+            with self.subTest(suffix=suffix):
+                backup = self.envs / f".cpu.{suffix}"
+                backup.mkdir()
+                config = backup / "pyvenv.cfg"
+                config.write_text("version_info = 3.11.9\n", encoding="utf-8")
+                self._reject_install()
+                config.unlink()
+                backup.rmdir()
+
+    def test_old_bootstrap_cannot_create_a_new_wrong_version_environment(self):
+        with mock.patch.object(sys, "version_info", mock.Mock(major=3, minor=11)):
+            self._reject_install()
+
+    def test_fresh_current_version_environment_passes_the_preflight(self):
+        with mock.patch.object(sys, "platform", "win32"), \
+             mock.patch.object(worker_bootstrap.subprocess, "run") as probe:
+            worker_bootstrap._validate_install_python_versions(self.env, MANIFEST)
+        probe.assert_not_called()
+        self.assertEqual(list(self.env.iterdir()), [])
+
+
 class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
     """Regression guard for the root cause: the install used _runtime_info_payload(), which
     probes the *active* runtime — still the previous environment at that point."""
@@ -1050,7 +1198,7 @@ class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
              mock.patch.object(worker_bootstrap, "_manifest", return_value=manifest), \
              mock.patch.object(worker_bootstrap, "_probe_python_runtime", side_effect=self._probe), \
              mock.patch.object(worker_bootstrap, "_create_runtime_venv", side_effect=self._create_stub_venv), \
-             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0)) as run, \
+             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="3.12\n")) as run, \
              mock.patch.object(worker_bootstrap.subprocess, "Popen", pip), \
              mock.patch.dict(os.environ, {"PYTHONHOME": "bundle-home", "PYTHONPATH": "bundle-overlay"}), \
              mock.patch.object(sys, "platform", "win32"), \
@@ -1127,6 +1275,7 @@ class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
              mock.patch.object(worker_bootstrap, "_runtime_pip_works", return_value=True), \
              mock.patch.object(worker_bootstrap, "_verify_runtime_audio", return_value=None) as verify_audio, \
              mock.patch.object(worker_bootstrap, "_create_runtime_venv", side_effect=self._create_stub_venv), \
+             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="3.12\n")), \
              mock.patch.object(worker_bootstrap.subprocess, "Popen", pip), \
              mock.patch.object(sys, "platform", "win32"), \
              contextlib.redirect_stdout(io.StringIO()):
@@ -1158,6 +1307,7 @@ class InstallRecordsTheNewEnvironmentTests(unittest.TestCase):
              mock.patch.object(worker_bootstrap, "_manifest", return_value=manifest), \
              mock.patch.object(worker_bootstrap, "_create_runtime_venv", side_effect=self._create_stub_venv), \
              mock.patch.object(worker_bootstrap, "_runtime_pip_works", return_value=True), \
+             mock.patch.object(worker_bootstrap.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="3.12\n")), \
              mock.patch.object(worker_bootstrap.subprocess, "Popen", failed_pip), \
              mock.patch.object(sys, "platform", "win32"), \
              contextlib.redirect_stdout(io.StringIO()):

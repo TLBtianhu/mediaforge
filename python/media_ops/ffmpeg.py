@@ -13,6 +13,9 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Iterable
 
+from shared.worker_subprocess import hidden_subprocess_kwargs
+from .stream_process import StreamProcess
+
 VIDEO_FORMATS = {"mp4", "mkv", "mov", "webm", "avi"}
 AUDIO_FORMATS = {"mp3", "wav", "flac", "m4a", "aac", "ogg"}
 IMAGE_FORMATS = {"jpg", "jpeg", "png", "webp", "gif"}
@@ -65,7 +68,7 @@ def _find_tool(name: str, root: Path | None = None) -> str:
 
 
 def _run_json(cmd: list[str]) -> dict:
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **hidden_subprocess_kwargs())
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or "").strip()[-1200:] or f"ffprobe failed ({proc.returncode})")
     return json.loads(proc.stdout or "{}")
@@ -227,23 +230,22 @@ def convert_one(
     src_kind = "image" if _is_image(src_meta) else ("video" if src_meta["video"] else "audio")
     dst = _output_path(source, out_dir, target_format)
     cmd = _build_command(source, dst, src_kind, target_format, int(crf), str(preset))
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, encoding="utf-8", errors="replace", bufsize=1,
-    )
     duration = float(src_meta.get("duration") or 0.0)
     last_fraction = 0.0
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        seconds = _progress_seconds(line)
-        if seconds is not None and duration > 0:
-            last_fraction = max(last_fraction, min(0.99, seconds / duration))
-            if progress:
-                progress(last_fraction, f"正在转换 {source.name}")
-    stderr = (proc.stderr.read() if proc.stderr else "") or ""
-    code = proc.wait()
-    if code != 0:
-        raise RuntimeError(f"ffmpeg failed for {source.name}: {stderr.strip()[-1200:]}")
+    process = StreamProcess(cmd, f"ffmpeg for {source.name}", want_stdout=True)
+    try:
+        assert process.proc.stdout is not None
+        for raw in process.proc.stdout:
+            seconds = _progress_seconds(raw.decode("utf-8", "replace"))
+            if seconds is not None and duration > 0:
+                last_fraction = max(last_fraction, min(0.99, seconds / duration))
+                if progress:
+                    progress(last_fraction, f"正在转换 {source.name}")
+        code = process.finish()
+        if code != 0:
+            raise RuntimeError(f"ffmpeg failed for {source.name}: {process.tail()[-1200:]}")
+    finally:
+        process.close()
     if progress:
         progress(1.0, f"完成 {source.name}")
     return {

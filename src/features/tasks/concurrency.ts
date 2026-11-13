@@ -1,5 +1,7 @@
-export const DEFAULT_CONCURRENT_SEPARATIONS = 1
-export const MAX_CONCURRENT_SEPARATIONS = 4
+import executionQuota from '../../../manifest/execution-quota.json' with { type: 'json' }
+
+export const DEFAULT_CONCURRENT_SEPARATIONS = executionQuota.defaultLimit
+export const MAX_CONCURRENT_SEPARATIONS = executionQuota.maxSlots
 
 export function normalizeConcurrentSeparations(value: unknown): number {
   const count = Number(value)

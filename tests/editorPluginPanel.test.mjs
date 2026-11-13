@@ -52,7 +52,7 @@ function environment(t, { scanControl = false } = {}) {
     pluginHostRequest: async () => { if (controls.probeUnavailable && controls.host) { controls.host.unavailable = true; throw new Error('Host is closed') } },
     async invoke(command, args) {
       calls.push({ kind: 'invoke', command, args })
-      if (command === 'pick_input_folder') return controls.directory
+      if (command === 'plugin:dialog|open') return controls.directory
       if (command === 'plugin_host_cached_scan_report') {
         const report = controls.cacheReport
         if (controls.cacheGate) await controls.cacheGate.promise
@@ -93,6 +93,28 @@ function environment(t, { scanControl = false } = {}) {
     clearTimeout: id => timers.delete(id),
     clonePluginChain, pluginDescriptorCategory, pluginDescriptorFamilies, pluginDescriptorFormat, pluginFavoriteKey, pluginDescriptorLabels, pluginDescriptorVariant, pluginSlotMatchesDescriptor,
   })
+  // The panel imports the typed picker/scan wrappers; route them through the same invoke mock.
+  context.openDialog = async options => context.invoke('plugin:dialog|open', { options })
+  const scanCommand = {
+    pluginHostCachedScanReport: 'plugin_host_cached_scan_report',
+    pluginHostScanReport: 'plugin_host_scan_report',
+    pluginHostScanStatus: 'plugin_host_scan_status',
+    pluginHostScanBlacklist: 'plugin_host_scan_blacklist',
+    pluginHostSkipScan: 'plugin_host_skip_scan',
+    pluginHostCancelScan: 'plugin_host_cancel_scan',
+    pluginHostRemoveScanBlacklist: 'plugin_host_remove_scan_blacklist',
+  }
+  for (const [name, command] of Object.entries(scanCommand)) {
+    context[name] = (...args) => {
+      let payload
+      if (name === 'pluginHostCachedScanReport') payload = { paths: args[0] }
+      else if (name === 'pluginHostScanReport') payload = { paths: args[0], ...(args[1] || {}) }
+      else if (name === 'pluginHostSkipScan') payload = { scanId: args[0], path: args[1] }
+      else if (name === 'pluginHostScanStatus' || name === 'pluginHostCancelScan') payload = { scanId: args[0] }
+      else if (name === 'pluginHostRemoveScanBlacklist') payload = { path: args[0] }
+      return context.invoke(command, payload)
+    }
+  }
   const scope = effectScope()
   scope.run(() => vm.runInContext(code, context))
   const dispose = () => { if (!stopped) { stopped = true; disposals.forEach(callback => callback()); scope.stop() } }
@@ -508,7 +530,9 @@ test('browsing folders preserves existing paths, ignores cancellation and avoids
   assert.deepEqual(JSON.parse(env.preferences.get('pymss-plugin-library-directories-v1')), ['/existing', '/additional'])
   assert.equal(env.read('directoryDraft'), '')
   assert.equal(env.read('busy'), false)
-  assert.equal(env.calls.filter(call => call.command === 'pick_input_folder').length, 3)
+  const directoryPicks = env.calls.filter(call => call.command === 'plugin:dialog|open')
+  assert.equal(directoryPicks.length, 3)
+  assert.deepEqual(JSON.parse(JSON.stringify(directoryPicks[0].args.options)), { directory: true, multiple: false })
   assert.equal(env.calls.filter(call => call.command === 'plugin_host_scan_report').length, 2)
   assert.deepEqual(JSON.parse(JSON.stringify(env.calls.filter(call => call.command === 'plugin_host_scan_report')[0].args.paths)), ['/existing', '/additional'])
   assert.equal(env.writes.length, 0)

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "defaultLimit": 1,
+  "maxSlots": 4,
+  "settingKey": "maxConcurrentSeparations",
+  "commands": [
+    "infer",
+    "infer_workflow",
+    "audio_tools",
+    "media_tool",
+    "run_operation",
+    "export_editor_mix"
+  ]
+}

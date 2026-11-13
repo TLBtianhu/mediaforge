@@ -36,7 +36,7 @@ watch(() => currentJob.value?.id, id => { if (!id) showDetails.value = false })
 const batchTasks = computed(() => currentJob.value?.tasks || [])
 const active = computed(() => batchTasks.value.some(item => !isTerminalTaskStatus(item.status)))
 const canRemoveRun = computed(() => Boolean(currentJob.value) && !active.value
-  && !batchTasks.value.some(item => item.status === 'done' && !item.resultHidden && (item.outputs.length || item.files.length)))
+  && !batchTasks.value.some(item => item.status === 'done' && (item.outputs.length || item.files.length)))
 const removingRun = ref(false)
 const batchStatus = computed(() => resolveJobStatus(batchTasks.value))
 const batchLogs = computed(() => batchTasks.value.flatMap((item, index) => [

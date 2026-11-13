@@ -194,8 +194,6 @@ def list_models(
 ) -> dict:
     model_root = model_dir(root)
     media_items = _load(MEDIA_CATALOG)
-    # 老布局（权重在根下）先搬到 media/，否则老用户会看到"模型未下载"。
-    worker_paths.migrate_media_models(model_root, [item.get("name") for item in media_items])
     records = [
         _audio_record(item, model_root, source)
         for item in _load(AUDIO_CATALOG)

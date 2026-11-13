@@ -23,6 +23,7 @@ from typing import Any
 
 from shared.worker_protocol import emit, emit_error
 from shared import worker_paths
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 
 OPTIONAL_PACKAGES: dict[str, dict[str, str]] = {
@@ -56,18 +57,18 @@ def _apple_silicon_plugin_status(runtime: RuntimeContext | None = None) -> dict[
         installed = _inventory(_root(), verify=False).get("installed", [])
     except Exception:
         return None
-    row = next((item for item in installed if item.get("name") == "asr"), None)
+    row = next((item for item in installed if item.get("name") == "asr" and item.get("managed")), None)
     if not row:
         return None
     # Plugin present: the component reports through the plugin's funasr-mlx sidecar.
     return {
         "package": "funasr",
         "requirement": "asr plugin (funasr-mlx)",
-        "installed": bool(row.get("loaded")),
+        "installed": bool(row.get("verified")),
         "present": True,
         "version": "mlx",
         "source": "plugin",
-        "issue": None if row.get("loaded") else "plugin_not_loaded",
+        "issue": None if row.get("verified") else "plugin_not_verified",
         "runtimeIdentity": runtime.identity,
     }
 
@@ -191,6 +192,7 @@ def _environment_version(name: str, runtime: RuntimeContext | None = None) -> st
             encoding="utf-8",
             errors="replace",
             env=environment,
+            **hidden_subprocess_kwargs(),
         )
     except Exception:
         return None
@@ -262,6 +264,7 @@ def _run_process(
         encoding="utf-8",
         errors="replace",
         env=environment,
+        **hidden_subprocess_kwargs(),
     )
     assert process.stdout is not None
     recent: list[str] = []
@@ -517,7 +520,7 @@ def _manage_funasr_via_plugin(
             return 0
         _emit_stage("funasr", action, "Installing the ASR plugin (funasr-mlx backend)", task_id)
         code = cmd_manage_plugin({
-            "action": "install",
+            "action": "repair" if current and current["present"] else "install",
             "name": "asr",
             "mirror": mirror,
             "locale": locale,

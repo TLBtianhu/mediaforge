@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { pluginHostCachedScanReport, pluginHostCancelScan, pluginHostRemoveScanBlacklist, pluginHostScanBlacklist, pluginHostScanReport, pluginHostScanStatus, pluginHostSkipScan } from '@/api/native'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { computed, nextTick, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { AddOutline, ArrowDownOutline, ArrowUpOutline, ChevronForwardOutline, CloseOutline, FolderOpenOutline, OpenOutline, OptionsOutline, RefreshOutline, SearchOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
 import { useEditorStore } from '@/stores/editor'
@@ -86,7 +87,7 @@ const chain = computed(() => targetTrackId.value === null
   ? props.session.pluginChain || []
   : props.session.tracks.find(track => track.id === targetTrackId.value)?.pluginChain || [])
 const parameterSlot = computed(() => chain.value.find(slot => slot.id === parameterSlotId.value))
-const { managerBody, managerChain, managerStyle, libraryWidth, libraryMin, libraryMax,
+const { managerStyle, libraryWidth, libraryMin, libraryMax,
   parameterHeight, parameterMin, parameterMax, resizing, stacked, startResize, resizeWithKeyboard, resetSize,
 } = usePluginManagerLayout(managerOpen, computed(() => Boolean(parameterSlot.value)))
 const resizeCorners = ['nw', 'ne', 'sw', 'se'] as const
@@ -275,7 +276,7 @@ async function restoreCatalog() {
   const request = ++catalogRequest
   catalogLoading.value = true
   try {
-    const report = await invoke<PluginScanReport & { hasCache: boolean }>('plugin_host_cached_scan_report', { paths: [...directories.value] })
+    const report = await pluginHostCachedScanReport<PluginScanReport & { hasCache: boolean }>([...directories.value])
     if (disposed || request !== catalogRequest) return
     descriptors.value = report.plugins
     scanReport.value = report.hasCache ? report : null
@@ -391,8 +392,8 @@ async function browseDirectory() {
   const project = props.session
   let chosen = false
   await run(async () => {
-    const path = await invoke<string | null>('pick_input_folder')
-    if (path && !disposed) { directoryDraft.value = path; addDirectory(); chosen = true }
+    const path = await openDialog({ directory: true, multiple: false })
+    if (typeof path === 'string' && !disposed) { directoryDraft.value = path; addDirectory(); chosen = true }
   })
   if (chosen && !disposed && props.session === project) { sourcesOpen.value = false; await scan() }
 }
@@ -419,12 +420,12 @@ function cancelActiveScan() {
   scanStatus.value = null
   scanActionPending.value = null
   scanStopRequested.value = false
-  if (scan.controlled) void invoke('plugin_host_cancel_scan', { scanId: scan.id }).catch(() => undefined)
+  if (scan.controlled) void pluginHostCancelScan(scan.id).catch(() => undefined)
 }
 async function pollScanStatus(scan: ActiveScan) {
   if (!isCurrentScan(scan)) return
   try {
-    const status = await invoke<PluginScanStatus | null>('plugin_host_scan_status', { scanId: scan.id })
+    const status = await pluginHostScanStatus<PluginScanStatus>(scan.id)
     if (!isCurrentScan(scan)) return
     if (status?.scanId === scan.id) scanStatus.value = status
   } catch (cause) {
@@ -442,7 +443,7 @@ async function refreshBlacklist(project = props.session, generation = scanGenera
   if (!capabilities.value?.scanControl || disposed) return
   const refresh = ++blacklistGeneration
   try {
-    const entries = await invoke<PluginScanBlacklistEntry[]>('plugin_host_scan_blacklist')
+    const entries = await pluginHostScanBlacklist<PluginScanBlacklistEntry>()
     if (!disposed && props.session === project && scanGeneration === generation && refresh === blacklistGeneration) scanBlacklist.value = entries
   } catch (cause) {
     if (!disposed && props.session === project && scanGeneration === generation && refresh === blacklistGeneration) error.value = cause instanceof Error ? cause.message : String(cause)
@@ -456,7 +457,7 @@ async function skipCurrentScanPlugin() {
   const name = scanItemName(path, status.currentName)
   scanActionPending.value = 'skip'
   try {
-    const result = await invoke<{ skipped: boolean }>('plugin_host_skip_scan', { scanId: scan.id, path })
+    const result = await pluginHostSkipScan(scan.id, path)
     if (!isCurrentScan(scan)) return
     scanFeedback.value = t(result.skipped ? 'editor.plugins.scanPluginSkipped' : 'editor.plugins.scanPluginAlreadyFinished', { name })
     if (result.skipped) void refreshBlacklist(scan.project, scan.generation)
@@ -470,7 +471,7 @@ async function stopScan() {
   scanActionPending.value = 'cancel'
   scanStopRequested.value = true
   try {
-    const result = await invoke<{ cancelled: boolean }>('plugin_host_cancel_scan', { scanId: scan.id })
+    const result = await pluginHostCancelScan(scan.id)
     if (!isCurrentScan(scan)) return
     if (!result.cancelled) scanStopRequested.value = false
     scanFeedback.value = t(result.cancelled ? 'editor.plugins.scanStopping' : 'editor.plugins.scanPhaseFinished')
@@ -486,7 +487,7 @@ async function removeBlacklistedPlugin(path: string) {
   await run(async () => {
     const project = props.session
     const generation = scanGeneration
-    await invoke('plugin_host_remove_scan_blacklist', { path })
+    await pluginHostRemoveScanBlacklist(path)
     if (disposed || props.session !== project || scanGeneration !== generation) return
     // A list fetched before removal completed must not put the removed entry back.
     blacklistGeneration++
@@ -510,8 +511,8 @@ async function scan(force = false) {
   // Start observation before invoking the long-running scan; control commands use independent IPC calls.
   if (current.controlled) void pollScanStatus(current)
   try {
-    let report = await invoke<PluginScanReport>('plugin_host_scan_report', { paths: [...directories.value], force,
-      ...(current.controlled ? { scanId: current.id } : {}) })
+    let report = await pluginHostScanReport<PluginScanReport>([...directories.value], {
+      force, ...(current.controlled ? { scanId: current.id } : {}) })
     if (!isCurrentScan(current)) return
     if (report.cancelled) {
       const replaced = new Set([...report.plugins, ...report.failures, ...(report.blacklisted || [])].map(item => item.path))
@@ -520,7 +521,7 @@ async function scan(force = false) {
       report = { ...report, plugins: [...retained, ...report.plugins] }
       if (capabilities.value?.catalogCache) {
         try {
-          const cached = await invoke<PluginScanReport>('plugin_host_cached_scan_report', { paths: [...directories.value] })
+          const cached = await pluginHostCachedScanReport<PluginScanReport>([...directories.value])
           if (!isCurrentScan(current)) return
           const failures = [...new Map([...cached.failures, ...report.failures].map(failure => [failure.path, failure])).values()]
           report = { ...report, plugins: cached.plugins, failures }
@@ -1018,7 +1019,7 @@ async function toggleEditor(slotId: string) {
 .plugin-manager__chain { background: var(--surface-1); }
 .plugin-manager__chain--parameters { overflow-y: auto; }
 .plugin-manager__chain--parameters > .plugin-manager__slots { min-height: 96px; }
-.plugin-manager__feedback { flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--primary-softer); color: var(--primary-strong); font-size: 12px; line-height: 1.6; }
+.plugin-manager__feedback { flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--primary-softer); color: var(--primary-ink); font-size: 12px; line-height: 1.6; }
 .plugin-manager__section-heading, .plugin-manager__slot-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .plugin-manager__section-heading { justify-content: space-between; min-height: 28px; flex-shrink: 0; }
 .plugin-manager__section-heading > div { display: flex; align-items: center; gap: 8px; }

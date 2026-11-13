@@ -1,6 +1,10 @@
+import { specFor } from '../litegraph/paramCodec.ts'
+
 export type WorkflowFormat = 'simple' | 'graph' | 'unknown'
 
 export const WORKFLOW_FORMAT_VERSION = 1
+// Persisted pymss graphs use Comfy's tuple-link schema, independently of our store envelope.
+export const COMFY_WORKFLOW_VERSION = 0.4
 
 export const SIMPLE_ENSEMBLE_ALGORITHMS = [
   'avg_wave', 'median_wave', 'min_wave', 'max_wave',
@@ -47,11 +51,7 @@ export function hasInvalidSimpleInferenceNumbers(params: Record<string, unknown>
   })
 }
 
-/**
- * Detect the editor format from the persisted definition. Existing workflow
- * records predate explicit format metadata, so the definition remains the
- * authoritative migration source.
- */
+/** Inspect the definition shape; stored metadata is validated separately. */
 export function detectWorkflowFormat(definition: unknown): WorkflowFormat {
   if (!isRecord(definition)) return 'unknown'
   const hasSteps = Array.isArray(definition.steps)
@@ -264,90 +264,48 @@ export function isWorkflowSaveNodeType(value: unknown): boolean {
   return WORKFLOW_SAVE_NODE_TYPES.has(String(value || ''))
 }
 
-const LEGACY_SIMPLE_SAVE_FILENAME = /\.(?:wav|flac|mp3|m4a)$/iu
-const DEFAULT_SIMPLE_OUTPUT_NAME = '%filename%_%stem%_%model%'
-
-/**
- * Early Studio builds labelled the YAML save-map value as a filename even
- * though pymss defines it as an output subdirectory. Migrate generated values
- * to the current flat-file representation while leaving ordinary folder
- * names (which do not have an audio suffix) untouched.
- */
-export function normalizeSimpleWorkflowDefinition(
-  definition: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!Array.isArray(definition.steps)) return definition
-  let changed = false
-  const base = { ...definition }
-  if (Object.prototype.hasOwnProperty.call(base, 'save_intermediate')) {
-    // Saving is represented by explicit links to the save node. Drop the
-    // retired global switch when an older definition is loaded.
-    delete base.save_intermediate
-    changed = true
+/** Validate the current YAML representation without rewriting stored values. */
+export function normalizeSimpleWorkflowDefinition(definition: Record<string, unknown>): Record<string, unknown> {
+  if (definition.version !== WORKFLOW_FORMAT_VERSION || !Array.isArray(definition.steps)
+    || Object.prototype.hasOwnProperty.call(definition, 'save_intermediate')) {
+    throw new Error('Unsupported simple workflow schema; the original definition was preserved')
   }
-  const defaults = isRecord(base.defaults) ? base.defaults : {}
-  const outputFormat = typeof defaults.output_format === 'string' && defaults.output_format.trim()
-    ? defaults.output_format.trim().toLowerCase()
-    : 'wav'
-  const steps = (definition.steps as unknown[]).map((value) => {
-    if (!isRecord(value) || !isRecord(value.save)) return value
-    let saveChanged = false
-    const outputNames = isRecord(value.output_names) ? { ...value.output_names } : {}
-    const save = Object.fromEntries(Object.entries(value.save).map(([stem, target]) => {
-      if (typeof target !== 'string') return [stem, target]
-      const trimmed = target.trim()
-      if (LEGACY_SIMPLE_SAVE_FILENAME.test(trimmed)) {
-        saveChanged = true
-        outputNames[stem] = trimmed
-        return [stem, 'Default']
-      }
-      // The current creator used the stem itself as the directory name. Treat
-      // that generated convention as a flat output and preserve custom names.
-      if (trimmed.localeCompare(stem, undefined, { sensitivity: 'accent' }) === 0) {
-        saveChanged = true
-        outputNames[stem] = outputNames[stem] || `${DEFAULT_SIMPLE_OUTPUT_NAME}.${outputFormat}`
-        return [stem, 'Default']
-      }
-      return [stem, target]
-    }))
-    if (!saveChanged) return value
-    changed = true
-    return { ...value, save, output_names: outputNames }
-  })
-  return changed ? { ...base, steps } : definition
+  for (const step of definition.steps) {
+    if (isRecord(step) && isRecord(step.save) && Object.values(step.save).some(value => typeof value === 'string' && /\.(?:wav|flac|mp3|m4a)$/iu.test(value.trim()))) {
+      throw new Error('Unsupported simple workflow save schema; use output_names for filenames')
+    }
+  }
+  return definition
 }
 
-/**
- * Upgrade graph details whose serialized widget layout changed between pymss
- * versions. The returned definition is a copy only when a migration is needed.
- */
-export function normalizeGraphWorkflowDefinition(
-  definition: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!Array.isArray(definition.nodes)) return definition
-
-  let changed = false
-  const nodes = definition.nodes.map((value) => {
-    if (!isRecord(value)) return value
-    const type = String(value.type || '').replace(/^pymss_/, '')
-    if (type !== 'custom_mss_separate' && type !== 'custom_mss_separate_list') return value
-
-    const widgets = value.widgets_values
-    if (!Array.isArray(widgets)) return value
-    const hasLegacyDownloadFields = typeof widgets[3] === 'boolean'
-      && typeof widgets[4] === 'string'
-    if (!hasLegacyDownloadFields) return value
-
-    changed = true
-    return {
-      ...value,
-      // Legacy layout:
-      // [model, model_type, device, download_missing, source, device_ids, debug]
-      // Current layout:
-      // [model, model_type, device, device_ids, debug]
-      widgets_values: [widgets[0], widgets[1], widgets[2], widgets[5], widgets[6] ?? false],
+/** Validate the current graph widget layout; never convert old pymss versions. */
+export function normalizeGraphWorkflowDefinition(definition: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(definition.nodes)) return normalizeSimpleWorkflowDefinition(definition)
+  if (definition.version !== COMFY_WORKFLOW_VERSION || !Array.isArray(definition.links)
+    || definition.links.some(link => !Array.isArray(link) || link.length !== 6)) {
+    throw new Error('Unsupported graph workflow schema; the original definition was preserved')
+  }
+  for (const node of definition.nodes) {
+    if (!isRecord(node)) throw new Error('Invalid graph workflow node')
+    const type = String(node.type || '').replace(/^pymss_/, '')
+    const widgets = node.widgets_values
+    const spec = specFor(String(node.type || '')) || specFor(type)
+    if (spec && Array.isArray(widgets) && widgets.length > spec.widgets.length) {
+      throw new Error('Unsupported graph widget schema; the original definition was preserved')
     }
-  })
-
-  return changed ? { ...definition, nodes } : definition
+    if (['custom_mss_separate', 'custom_mss_separate_list'].includes(type) && Array.isArray(widgets)
+      && typeof widgets[3] === 'boolean' && typeof widgets[4] === 'string') {
+      throw new Error('Unsupported graph widget schema; the original definition was preserved')
+    }
+    if (Array.isArray(widgets)) {
+      const obsolete = (type === 'save_audio' && widgets.length > 5)
+        || (type === 'SaveAudio' && widgets.length === 0)
+        || (['SaveAudioMP3', 'SaveAudioOpus'].includes(type) && widgets.length === 1)
+        || (type === 'SaveAudioAdvanced' && widgets.length >= 5)
+        || (type === 'AudioConcat' && ['front', 'back'].includes(String(widgets[0]).toLowerCase()))
+        || (['StringTrim', 'CaseConverter', 'RegexExtract'].includes(type) && widgets.length === 1)
+      if (obsolete) throw new Error('Unsupported graph widget schema; the original definition was preserved')
+    }
+  }
+  return definition
 }

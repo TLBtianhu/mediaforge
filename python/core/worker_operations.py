@@ -2,8 +2,7 @@
 
 ``list_operations`` / ``describe_operation`` are quick one-shot queries.
 ``run_operation`` executes one operation with file-referenced inputs and
-emits ``operation_result`` as its terminal event (Rust treats it like
-``task.result``: terminal for the task, progress events optional).
+emits canonical ``task.progress`` and terminal ``task.result`` events.
 """
 
 from __future__ import annotations
@@ -143,7 +142,7 @@ def cmd_run_operation(payload: dict[str, Any]) -> int:
         from pymss.operations import OperationContext
 
         def _progress(fraction, message=""):
-            emit("operation_progress", {
+            emit("task.progress", {
                 "operation": operation_id,
                 "fraction": float(fraction),
                 "message": str(message or ""),
@@ -162,7 +161,7 @@ def cmd_run_operation(payload: dict[str, Any]) -> int:
             name: _serialize_output(name, value, output_dir)
             for name, value in result.items()
         }
-        emit("operation_result", {
+        emit("task.result", {
             "operation": operation_id,
             "outputs": serialized,
             "outputDir": str(output_dir),

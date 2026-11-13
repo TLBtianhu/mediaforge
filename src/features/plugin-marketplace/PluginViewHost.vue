@@ -8,12 +8,15 @@
  * allowlisted SDK methods pass, and every incoming message is checked against
  * "source must be this iframe".
  */
+import { getBuildInfo, setPluginViewRoot, startOperationTask } from '@/api/native'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { invokeWorkerCommand } from '@/api/worker'
 import { open } from '@tauri-apps/plugin-dialog'
 import { pluginViewUrl } from './viewUrl'
+import { isTaskProgress, isTaskResult } from '@/utils/taskEvents'
 
 type PluginViewContribution = {
   id: string
@@ -53,11 +56,11 @@ async function handleCall(id: number, method: string, params: Record<string, unk
   if (!allowed(method)) throw new Error(`PERMISSION_DENIED: ${method}`)
   switch (method) {
     case 'app.info': {
-      const build = await invoke<{ version: string }>('get_build_info')
+      const build = await getBuildInfo()
       return { studio: 'pymss-studio', version: build.version, locale: t('plugins.sdkLocale' as never) || 'en' }
     }
     case 'operations.describe':
-      return await invoke('describe_operation', { payload: { operation: params.operation } })
+      return await invokeWorkerCommand('describe_operation', { operation: String(params.operation) })
     case 'operations.start': {
       const requestId = `plugin_view_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const promise = new Promise<unknown>((resolve, reject) => {
@@ -66,13 +69,11 @@ async function handleCall(id: number, method: string, params: Record<string, unk
       // Unmount can reject the request while the native start call is pending.
       void promise.catch(() => undefined)
       try {
-        await invoke('start_operation_task', {
-          payload: {
-            operation: params.operation,
-            inputs: params.inputs || {},
-            params: params.params || {},
-            requestId,
-          },
+        await startOperationTask({
+          operation: params.operation,
+          inputs: params.inputs || {},
+          params: params.params || {},
+          requestId,
         })
         return await promise
       } finally {
@@ -97,7 +98,7 @@ const THEME_TOKENS = [
   '--surface', '--surface-1', '--surface-2', '--surface-3',
   '--on-surface', '--on-surface-heading', '--on-surface-muted',
   '--outline', '--outline-strong',
-  '--primary', '--primary-strong', '--primary-soft',
+  '--primary', '--primary-ink', '--primary-soft',
   '--danger', '--success', '--warning', '--radius', '--radius-small',
 ]
 
@@ -155,7 +156,7 @@ onMounted(async () => {
   try {
     if (!props.view.entryPath && !props.view.entry) throw new Error('view entry not found')
     if (!props.pluginsRoot) throw new Error('plugins root not ready')
-    await invoke('set_plugin_view_root', { root: props.pluginsRoot })
+    await setPluginViewRoot(props.pluginsRoot)
     if (disposed) return
     const unlisten = await listen<{ type: string; requestId?: string; taskId?: string; payload: Record<string, unknown> }>(
       'pymss://worker-event',
@@ -163,13 +164,13 @@ onMounted(async () => {
         const requestId = workerEvent.requestId || workerEvent.taskId || ''
         const handlers = runRequests.get(requestId)
         if (!handlers) return
-        if (workerEvent.type === 'operation_result') {
+        if (isTaskResult(workerEvent.type)) {
           runRequests.delete(requestId)
           handlers.resolve(workerEvent.payload)
         } else if (workerEvent.type === 'error' || workerEvent.type === 'task.cancelled') {
           runRequests.delete(requestId)
           handlers.reject(new Error(String(workerEvent.payload?.message || workerEvent.type)))
-        } else if (workerEvent.type === 'operation_progress') {
+        } else if (isTaskProgress(workerEvent.type)) {
           postToFrame({ jsonrpc: '2.0', method: 'task.progress', params: { ...(workerEvent.payload || {}), requestId, id: handlers.rpcId } })
         }
       },

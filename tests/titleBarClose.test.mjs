@@ -26,7 +26,12 @@ function environment() {
     useTaskStore: () => ({ runningTasks: [] }),
     window: { __TAURI_INTERNALS__: {} }, navigator: { platform: 'Win32' },
     getCurrentWindow: () => ({ label: 'editor', async destroy() { calls.push('destroy') }, async close() { calls.push('close') } }),
-    async invoke(command) { calls.push(command) }, onMounted() {}, onUnmounted() {},
+    closeCurrentWindow: async () => { calls.push('close_current_window') },
+    minimizeCurrentWindow: async () => { calls.push('minimize_current_window') },
+    toggleMaximizeCurrentWindow: async () => { calls.push('toggle_maximize_current_window'); return false },
+    isCurrentWindowMaximized: async () => false,
+    startDragCurrentWindow: async () => { calls.push('start_drag_current_window') },
+    onMounted() {}, onUnmounted() {},
   })
   vm.runInContext(code, context)
   return {

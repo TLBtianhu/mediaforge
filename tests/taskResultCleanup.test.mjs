@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { primaryRevealPath, resultTrashEmptyDirs, resultTrashTargets } from '../src/stores/taskResultCleanup.ts'
+import { getRemovalTasks, primaryRevealPath } from '../src/stores/taskResultCleanup.ts'
 
 const task = (overrides = {}) => ({
   output: '/out/result.wav',
@@ -10,13 +10,25 @@ const task = (overrides = {}) => ({
   ...overrides,
 })
 
-test('resultTrashTargets deduplicates explicit output paths', () => {
-  assert.deepEqual(resultTrashTargets(task()), ['/out/a.wav'])
+test('result deletion expands all terminal siblings while keeping unrelated jobs', () => {
+  const items = ['done', 'failed', 'cancelled'].map((status, index) => ({ ...task(), id: String(index), jobId: 'batch', status }))
+  const unrelated = { ...task(), id: 'other', jobId: 'other', status: 'done' }
+  assert.deepEqual(getRemovalTasks([...items, unrelated], ['0'], 'blocked'), items)
+  assert.deepEqual(getRemovalTasks([...items, unrelated], ['0', '1', '0'], 'blocked'), items)
 })
 
-test('flat and workbench tasks do not recycle arbitrary directories', () => {
-  assert.deepEqual(resultTrashEmptyDirs(task({ runConfig: { outputLayout: 'flat' } }), false), [])
-  assert.deepEqual(resultTrashEmptyDirs(task({ runConfig: { workbench: {} } }), false), [])
+test('a queued or running sibling rejects the full batch before a native request', () => {
+  for (const status of ['queued', 'downloading', 'loading', 'separating', 'saving']) {
+    const items = [{ ...task(), id: 'one', jobId: 'batch', status: 'done' }, { ...task(), id: 'two', jobId: 'batch', status }]
+    assert.throws(() => getRemovalTasks(items, ['one'], 'blocked'), /blocked/)
+  }
+})
+
+test('explicit missing task identities reject instead of becoming a successful empty removal', () => {
+  const items = [{ ...task(), id: 'one', jobId: 'batch', status: 'done' }]
+  assert.deepEqual(getRemovalTasks(items, [], 'changed'), [])
+  assert.throws(() => getRemovalTasks(items, ['missing'], 'changed'), /changed/)
+  assert.throws(() => getRemovalTasks(items, ['one', 'missing'], 'changed'), /changed/)
 })
 
 test('primaryRevealPath keeps the workbench first output', () => {

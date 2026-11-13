@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
@@ -588,12 +588,12 @@ function handleClose() {
   border-radius: 999px;
   font-size: 11px;
   cursor: pointer;
-  color: var(--on-primary, #fff);
+  color: var(--on-primary);
   background: var(--primary);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
   transition: background 160ms ease;
 }
-.ddm-logs-resume:hover { background: var(--primary-strong); }
+.ddm-logs-resume:hover { background: var(--primary-hover); }
 .ddm-logs-resume:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
 .dl-log {

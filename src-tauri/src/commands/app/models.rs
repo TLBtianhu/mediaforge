@@ -11,6 +11,11 @@ use tauri::{AppHandle, State};
 use super::common::chrono_like_timestamp;
 
 #[tauri::command]
+pub async fn list_models(app: AppHandle, payload: Option<Value>) -> AppResult<Value> {
+    run_worker_with_payload(&app, "list_models", payload)
+}
+
+#[tauri::command]
 pub async fn get_model_info(app: AppHandle, payload: Value) -> AppResult<Value> {
     run_worker_with_payload(&app, "model_info", Some(payload))
 }

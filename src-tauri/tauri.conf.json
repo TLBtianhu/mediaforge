@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MediaForge",
-  "version": "0.0.31",
+  "version": "0.0.34",
   "identifier": "studio.mediaforge.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeBuildCommand": "node scripts/build-frontend.mjs"
   },
   "app": {
     "windows": [
@@ -23,15 +23,12 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: mediaforge-preview: http://mediaforge-preview.localhost https://mediaforge-preview.localhost; media-src 'self' data: blob: mediaforge-preview: http://mediaforge-preview.localhost https://mediaforge-preview.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost mediaforge-preview: http://mediaforge-preview.localhost https://mediaforge-preview.localhost; frame-src 'self' http://pymss-plugin.localhost pymss-plugin:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'",
       "assetProtocol": {
-        "enable": true,
-        "scope": [
-          "$APPDATA/**",
-          "$HOME/.pymss-studio/**",
-          "**"
-        ]
-      }
+        "enable": false,
+        "scope": []
+      },
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:1420; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: mediaforge-preview: http://mediaforge-preview.localhost https://mediaforge-preview.localhost; media-src 'self' data: blob: mediaforge-preview: http://mediaforge-preview.localhost https://mediaforge-preview.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost mediaforge-preview: http://mediaforge-preview.localhost https://mediaforge-preview.localhost ws://localhost:1420 http://localhost:1420; frame-src 'self' http://pymss-plugin.localhost pymss-plugin:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {

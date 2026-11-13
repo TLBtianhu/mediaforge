@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { invoke } from '@tauri-apps/api/core'
+import { getBuildInfo } from '@/api/native'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
-import RuntimePreparationProgress from '@/components/RuntimePreparationProgress.vue'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import InferenceParameterHelp from '@/components/InferenceParameterHelp.vue'
 import { useBeginnerGuideStore } from '@/stores/beginnerGuide'
@@ -9,24 +10,21 @@ import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
-import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import packageMeta from '../../package.json'
-import appLogo from '@/assets/app-logo-symbol-canvas.png'
-import { SYSTEM_LOCALE, setLocale, type LocaleSetting } from '@/i18n'
+import { SYSTEM_LOCALE, setLocale } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
-import { useAppStore, type RuntimeBackend } from '@/stores/app'
-import { runtimeAcceleratorReady } from '@/utils/runtime'
+import { isTauriRuntime } from '@/utils/appStore'
+import { useAppStore } from '@/stores/app'
 import { makeRuntimeState } from './settings/runtimeState'
 import { makeRuntimeActions } from './settings/runtimeActions'
 import { makeProxyTest } from './settings/proxyTest'
-import { makeAppearance, dirName } from './settings/appearance'
+import { makeAppearance } from './settings/appearance'
 import { makeModelDirMigration } from './settings/modelDirMigration'
 import { useModelStore } from '@/stores/model'
 import { useTaskStore } from '@/stores/task'
 import { normalizeConcurrentSeparations } from '@/features/tasks/concurrency'
 import { formatBytes } from '@/utils/format'
-import { formatDateTime } from '@/utils/time'
 import { DEFAULT_SCALE_FACTOR, normalizeScaleFactor } from '@/utils/appZoom'
 import {
   applyTheme,
@@ -34,34 +32,22 @@ import {
   resolvedIsDark,
   runRippleViewTransition,
   THEME_ACCENTS,
-  type ThemeAccent,
-  type ThemeMode,
 } from '@/utils/theme'
 import {
   ColorPaletteOutline,
   FolderOpenOutline,
   TerminalOutline,
   SettingsOutline,
-  SpeedometerOutline,
-  SwapHorizontalOutline,
   LogoGithub,
   InformationCircleOutline,
   DocumentTextOutline,
   LinkOutline,
-  OpenOutline,
-  DownloadOutline,
-  AlertCircleOutline,
-  CheckmarkCircleOutline,
-  TrashOutline,
-  PlayOutline,
-  HardwareChipOutline,
-  CloudDownloadOutline,
-  RefreshOutline,
-  ChevronForwardOutline,
-  CompassOutline,
-  OptionsOutline,
 } from '@vicons/ionicons5'
-import VersionUpdateCard from '@/components/settings/VersionUpdateCard.vue'
+import SettingsAboutPanel from '@/components/settings/SettingsAboutPanel.vue'
+import SettingsPathsPanel from '@/components/settings/SettingsPathsPanel.vue'
+import SettingsAppearancePanel from '@/components/settings/SettingsAppearancePanel.vue'
+import SettingsDefaultsPanel from '@/components/settings/SettingsDefaultsPanel.vue'
+import SettingsRuntimePanel from '@/components/settings/SettingsRuntimePanel.vue'
 
 const { t, locale: currentLocale } = useI18n()
 const message = useMessage()
@@ -177,8 +163,8 @@ watch(() => app.runtimeInstallLogs.at(-1), () => {
 })
 const {
   runtimeInstalling, runtimeDetecting, runtimeBusy, runtimeCurrentError, runtimeCurrentBackend,
-  runtimeCurrentLabel, installedRuntimes, runtimePlatform, runtimeRecommendedBackend,
-  runtimeBackendDescription, runtimeBackendCatalog, runtimeBackendCards, runtimeCoreVersionLabel,
+  runtimeCurrentLabel, installedRuntimes,
+  runtimeBackendCatalog, runtimeBackendCards, runtimeCoreVersionLabel,
   runtimeBackendLabel, runtimeDiskTotalLabel, runtimeDiskMeasuring,
 } = makeRuntimeState({
   computed, t, app, runtimeManualChecking, runtimeActivating, runtimeDeleting,
@@ -203,7 +189,7 @@ watch([() => route.query.backend, activeSection, () => app.runtimeInfoLoading], 
 }, { immediate: true, flush: 'post' })
 
 const {
-  confirmRuntimeAction, installBackend, retryRuntimeInstall, refreshRuntimeStatus,
+  installBackend, retryRuntimeInstall, refreshRuntimeStatus,
   refreshRuntimeCoreVersions, cancelRuntimeInstall, deleteRuntime, activateInstalledRuntime,
   detectRuntime,
 } = makeRuntimeActions({
@@ -249,7 +235,7 @@ const downloadMethodOptions = computed(() => [
   { value: 'urllib' as const, label: t('settings.downloadMethodUrllib') },
 ])
 
-const { buildProxyTestSuggestion, testProxyConnection, formatConnectionInfo, resetProxyTest } = makeProxyTest({
+const { testProxyConnection, resetProxyTest } = makeProxyTest({
   t, invoke, proxyMode, proxyUrl, proxyBypass, downloadSource,
   proxyTestStatus, proxyTestMessage, proxyTestSuggestion, proxyTestElapsed,
 })
@@ -333,7 +319,7 @@ const aboutLinks = computed(() => [
 
 async function loadBuildInfo() {
   try {
-    buildInfo.value = await invoke<BuildInfo>('get_build_info')
+    buildInfo.value = await getBuildInfo()
     app.buildInfoVersion = buildInfo.value?.version || ''
     app.buildInfoVariant = buildInfo.value?.variant || ''
   } catch {
@@ -342,11 +328,23 @@ async function loadBuildInfo() {
 }
 
 const languageSelectWrap = ref<HTMLElement | null>(null)
+
+function setLanguageSelectWrap(element: HTMLElement | null) {
+  languageSelectWrap.value = element
+}
+
+function setScaleSliderIndex(index: number) {
+  scaleSliderIndex.value = index
+}
+
+function setAnimationsEnabled(enabled: boolean) {
+  animationsEnabled.value = enabled
+}
 const {
   scaleFactorPercent, scaleSliderIndex, scaleSliderMarks, isDefaultScaleFactor,
   currentResolvedLanguageLabel, appearanceThemeAccentLabel,
-  formatScaleFactorLabel, isSameScaleFactor, updateScaleFactor, resetScaleFactorToDefault,
-  getEventOrigin, getElementOrigin, selectThemeMode, selectThemeAccent, selectLocale,
+  resetScaleFactorToDefault,
+  selectThemeMode, selectThemeAccent, selectLocale,
 } = makeAppearance({
   computed, t, scaleFactor, themeMode, themeAccent, locale, currentLocale, animationsEnabled,
   languageSelectWrap, normalizeScaleFactor, DEFAULT_SCALE_FACTOR,
@@ -397,6 +395,37 @@ async function openExternalUrl(url: string) {
 }
 
 
+const recoveringSettings = computed(() => settings.recoveryState.status === 'running')
+const settingsRecoveryBackup = computed(() => settings.recoveryState.backupPath || '')
+// Browser previews have no file to back up; only the desktop app can recover.
+const settingsRecoverySupported = isTauriRuntime()
+
+// The stored file is unsupported. Nothing is migrated or overwritten here: the
+// user explicitly chooses to back up the original bytes and reset to defaults.
+function requestSettingsRecovery() {
+  if (recoveringSettings.value) return
+  dialog.warning({
+    title: t('settings.schemaRecoverTitle'),
+    content: t('settings.schemaRecoverConfirm'),
+    positiveText: t('settings.schemaRecover'),
+    negativeText: t('common.cancel'),
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: async () => {
+      if (recoveringSettings.value) return false
+      try {
+        const response = await settings.recoverSettings()
+        if (response.recovered) message.success(t('settings.schemaRecovered', { path: settingsRecoveryBackup.value }))
+        else message.info(t('settings.schemaRecoverNotNeeded'))
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : String(error))
+        return false
+      }
+      return true
+    },
+  })
+}
+
+
 
 onMounted(async () => {
   await loadBuildInfo()
@@ -407,6 +436,29 @@ onMounted(async () => {
 <template>
   <div class="page mf-page page--settings" data-tone="blue">
     <MediaPageHeader :title="t('settings.title')" :subtitle="t('settings.subtitle')" :icon="SettingsOutline" eyebrow="SETTINGS" tone="blue" />
+
+    <n-alert v-if="settings.loadError" type="error" class="settings-schema-alert" :title="t('settings.schemaRejectedTitle')">
+      <p class="settings-schema-alert__hint">{{ t('settings.schemaRejectedHint') }}</p>
+      <details class="settings-schema-alert__details">
+        <summary>{{ t('common.technicalDetails') }}</summary>
+        <pre>{{ settings.loadError }}</pre>
+      </details>
+      <div class="settings-schema-alert__actions">
+        <n-button
+          v-if="settingsRecoverySupported"
+          type="error"
+          size="small"
+          :loading="recoveringSettings"
+          @click="requestSettingsRecovery"
+        >
+          {{ t('settings.schemaRecover') }}
+        </n-button>
+        <span v-else class="settings-schema-alert__hint">{{ t('settings.schemaRecoverDesktopOnly') }}</span>
+        <span v-if="settingsRecoveryBackup" class="settings-schema-alert__backup">
+          {{ t('settings.schemaBackupPath', { path: settingsRecoveryBackup }) }}
+        </span>
+      </div>
+    </n-alert>
 
     <div class="settings-shell">
       <aside class="settings-sidebar" :aria-label="t('settings.settingsNavigation')">
@@ -427,733 +479,109 @@ onMounted(async () => {
       </aside>
 
       <main class="settings-content">
-        <section v-if="activeSection === 'about'" class="about-panel">
-          <article class="about-hero">
-            <div class="about-hero__main">
-              <div class="about-logo-wrap">
-                <img class="about-logo" :src="appLogo" alt="MediaForge" />
-              </div>
-              <div class="about-hero__copy">
-                <span class="about-eyebrow">{{ t('settings.aboutEyebrow') }}</span>
-                <h2 class="about-hero__title">MediaForge</h2>
-              </div>
-            </div>
-
-            <div class="about-stats" :aria-label="t('settings.about')">
-              <div v-for="item in aboutVersionItems" :key="item.label" class="about-stat">
-                <span class="about-stat__label">{{ item.label }}</span>
-                <strong class="about-stat__value">{{ item.value }}</strong>
-                <small class="about-stat__meta">{{ item.meta }}</small>
-              </div>
-            </div>
-          </article>
-
-          <article class="about-build-card" :class="`about-build-card--${buildVerification.tone}`">
-            <div class="about-build-card__head">
-              <span>{{ t('settings.officialVerification') }}</span>
-              <strong>{{ buildVerification.label }}</strong>
-            </div>
-            <p>{{ buildVerification.description }}</p>
-            <div class="about-build-fingerprint">
-              <span>{{ t('settings.buildFingerprint') }}</span>
-              <code>{{ buildFingerprint }}</code>
-            </div>
-          </article>
-
-          <article class="about-info-card about-guide-card" data-guide="guide-help">
-            <div class="section-title section-title--plain">
-              <span class="section-title__icon"><n-icon :component="CompassOutline" size="18" /></span>
-              <span>{{ t('beginnerGuide.label') }}</span>
-            </div>
-            <div class="about-guide-card__actions">
-              <n-button v-if="settings.beginnerGuideProgress.status === 'active'" type="primary" @click="beginnerGuide.start()">
-                <template #icon><n-icon :component="ChevronForwardOutline" /></template>
-                {{ t('beginnerGuide.resume') }}
-              </n-button>
-              <n-button type="primary" secondary @click="beginnerGuide.start(true)">
-                <template #icon><n-icon :component="RefreshOutline" /></template>
-                {{ t('beginnerGuide.restart') }}
-              </n-button>
-              <n-button secondary @click="showParameterHelp = true">
-                <template #icon><n-icon :component="OptionsOutline" /></template>
-                {{ t('parameterHelp.label') }}
-              </n-button>
-            </div>
-          </article>
-
-          <div class="about-detail-grid">
-            <article class="about-info-card about-info-card--license">
-              <div class="section-title section-title--plain">
-                <span class="section-title__icon">
-                  <n-icon :component="DocumentTextOutline" size="18" />
-                </span>
-                <span>{{ t('settings.license') }}</span>
-              </div>
-              <div class="license-stack">
-                <div class="license-row">
-                  <span>{{ t('settings.desktopLicense') }}</span>
-                  <strong>{{ desktopLicense }}</strong>
-                </div>
-                <div class="license-row">
-                  <span>{{ t('settings.coreLicense') }}</span>
-                  <strong>{{ coreLicense }}</strong>
-                </div>
-              </div>
-            </article>
-
-            <article class="about-info-card about-info-card--links">
-              <div class="section-title section-title--plain">
-                <span class="section-title__icon">
-                  <n-icon :component="LinkOutline" size="18" />
-                </span>
-                <span>{{ t('settings.relatedLinks') }}</span>
-              </div>
-              <div class="about-link-list">
-                <button
-                  v-for="link in aboutLinks"
-                  :key="link.url"
-                  type="button"
-                  class="about-link-item"
-                  @click="openExternalUrl(link.url)"
-                >
-                  <span class="about-link-item__icon"><n-icon :component="link.icon" size="18" /></span>
-                  <span class="about-link-item__label">{{ link.label }}</span>
-                  <n-icon class="about-link-item__open" :component="OpenOutline" size="16" />
-                </button>
-              </div>
-            </article>
-            <VersionUpdateCard />
-          </div>
-        </section>
+        <SettingsAboutPanel
+          v-if="activeSection === 'about'"
+          :version-items="aboutVersionItems"
+          :build-verification="buildVerification"
+          :build-fingerprint="buildFingerprint"
+          :guide-active="settings.beginnerGuideProgress.status === 'active'"
+          :about-links="aboutLinks"
+          :desktop-license="desktopLicense"
+          :core-license="coreLicense"
+          @start-guide="beginnerGuide.start($event)"
+          @parameter-help="showParameterHelp = true"
+          @open-link="openExternalUrl"
+        />
 
         <!-- Appearance -->
-        <section v-else-if="activeSection === 'appearance'" class="settings-section-panel">
-        <n-card class="settings-card settings-card--compact settings-card--appearance" :bordered="true" size="small">
-          <template #header>
-            <div class="section-title">
-              <span class="section-title__icon">
-                <n-icon :component="ColorPaletteOutline" size="18" />
-              </span>
-              <span>{{ t('settings.appearance') }}</span>
-            </div>
-          </template>
-
-          <div class="appearance-list">
-            <p class="appearance-hint">{{ t('settings.appearanceHint') }}</p>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.theme') }}</label>
-              </div>
-              <div class="setting-row__control">
-                <div class="theme-switcher">
-                  <button
-                    type="button"
-                    :class="{ active: themeMode === 'system' }"
-                    @click="selectThemeMode('system', $event)"
-                  >
-                    {{ t('settings.themeSystem') }}
-                  </button>
-                  <button
-                    type="button"
-                    :class="{ active: themeMode === 'dark' }"
-                    @click="selectThemeMode('dark', $event)"
-                  >
-                    {{ t('settings.themeDark') }}
-                  </button>
-                  <button
-                    type="button"
-                    :class="{ active: themeMode === 'light' }"
-                    @click="selectThemeMode('light', $event)"
-                  >
-                    {{ t('settings.themeLight') }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.themeColor') }}</label>
-              </div>
-              <div class="setting-row__control">
-                <div class="accent-dots">
-                  <button
-                    v-for="accent in themeAccentOptions"
-                    :key="accent.value"
-                    type="button"
-                    class="accent-dot"
-                    :class="{ active: themeAccent === accent.value }"
-                    :title="accent.label"
-                    :aria-label="accent.label"
-                    @click="selectThemeAccent(accent.value, $event)"
-                  >
-                    <span
-                      class="accent-dot__fill"
-                      :style="{ background: `linear-gradient(135deg, ${accent.preview[0]} 0 50%, ${accent.preview[1]} 50% 100%)` }"
-                    />
-                  </button>
-                  <span class="accent-current">{{ appearanceThemeAccentLabel }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.language') }}</label>
-                <p v-if="locale === SYSTEM_LOCALE" class="setting-row__hint">
-                  {{ t('settings.languageFollowSystemHint', { locale: currentResolvedLanguageLabel }) }}
-                </p>
-              </div>
-              <div class="setting-row__control">
-                <div ref="languageSelectWrap" class="language-select-wrap">
-                  <n-select
-                    :value="locale"
-                    :options="languageOptions"
-                    :consistent-menu-width="false"
-                    @update:value="selectLocale"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.scaleFactor') }}</label>
-                <button
-                  type="button"
-                  class="scale-reset"
-                  :disabled="isDefaultScaleFactor"
-                  @click="resetScaleFactorToDefault"
-                >
-                  {{ t('settings.restoreDefaultScale') }}
-                </button>
-              </div>
-              <div class="setting-row__control">
-                <div class="scale-control">
-                  <n-slider
-                    v-model:value="scaleSliderIndex"
-                    :min="0"
-                    :max="5"
-                    :step="1"
-                    :marks="scaleSliderMarks"
-                    :tooltip="false"
-                  />
-                  <span class="scale-value">{{ scaleFactorPercent }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-row__label">
-                <label class="setting-row__title">{{ t('settings.animations') }}</label>
-                <p class="setting-row__hint">{{ t('settings.animationsHint') }}</p>
-              </div>
-              <div class="setting-row__control">
-                <n-switch v-model:value="animationsEnabled" />
-              </div>
-            </div>
-          </div>
-        </n-card>
-        </section>
+        <SettingsAppearancePanel
+          v-else-if="activeSection === 'appearance'"
+          :theme-mode="themeMode"
+          :theme-accent="themeAccent"
+          :theme-accent-options="themeAccentOptions"
+          :appearance-theme-accent-label="appearanceThemeAccentLabel"
+          :locale="locale"
+          :system-locale="SYSTEM_LOCALE"
+          :current-resolved-language-label="currentResolvedLanguageLabel"
+          :language-options="languageOptions"
+          :scale-slider-index="scaleSliderIndex"
+          :scale-slider-marks="scaleSliderMarks"
+          :scale-factor-percent="scaleFactorPercent"
+          :is-default-scale-factor="isDefaultScaleFactor"
+          :animations-enabled="animationsEnabled"
+          :set-language-select-wrap="setLanguageSelectWrap"
+          @select-theme-mode="selectThemeMode"
+          @select-theme-accent="selectThemeAccent"
+          @select-locale="selectLocale"
+          @reset-scale-factor="resetScaleFactorToDefault"
+          @update-scale-slider-index="setScaleSliderIndex"
+          @update-animations-enabled="setAnimationsEnabled"
+        />
 
         <!-- Runtime -->
-        <section v-else-if="activeSection === 'runtime'" class="settings-section-panel runtime-section">
-          <article class="about-hero runtime-hero" data-guide="runtime-overview">
-            <div class="about-hero__main">
-              <div class="section-title__icon runtime-hero__icon">
-                <n-icon :component="TerminalOutline" size="18" />
-              </div>
-              <div class="about-hero__copy">
-                <span class="about-eyebrow">{{ t('settings.runtime') }}</span>
-                <h2 class="about-hero__title">{{ !app.runtimeInfo && !app.envInfo && runtimeDetecting ? t('settings.runtimeChecking') : runtimeCurrentLabel }}</h2>
-                <p v-if="runtimeCurrentError" class="runtime-hero__desc runtime-hero__desc--error">{{ runtimeCurrentError }}</p>
-                <p v-else class="runtime-hero__desc">{{ t('settings.runtimeDesc') }}</p>
-              </div>
-              <n-button size="small" secondary :loading="runtimeDetecting" :disabled="runtimeBusy" @click="detectRuntime" style="margin-left: auto; align-self: center;">
-                {{ t('settings.runtimeDetect') }}
-              </n-button>
-            </div>
-
-            <div class="about-stats" :aria-label="t('settings.runtime')">
-              <div v-for="item in runtimeSummaryItems" :key="item.label" class="about-stat">
-                <span class="about-stat__label">{{ item.label }}</span>
-                <n-skeleton v-if="!app.runtimeInfo && !app.envInfo && runtimeDetecting" text width="65%" :sharp="false" />
-                <strong v-else :key="item.value" class="about-stat__value runtime-value">{{ item.value }}</strong>
-                <small class="about-stat__meta">{{ item.meta }}</small>
-              </div>
-            </div>
-          </article>
-
-          <!-- Runtime Environments -->
-          <article class="about-info-card runtime-envs-card">
-            <div class="runtime-envs-card__content">
-            <n-alert v-if="!app.runtimeManagementSupported" type="info" :bordered="false">
-            </n-alert>
-            <div class="section-title section-title--plain">
-              <span class="section-title__icon">
-                <n-icon :component="HardwareChipOutline" size="18" />
-              </span>
-              <span>{{ t('settings.runtimeBackendsSection') }}</span>
-            </div>
-            <div class="runtime-read-status" role="status" aria-live="polite">
-              <span :class="{ 'runtime-read-status--error': app.runtimeInfoError }">
-                <n-spin v-if="app.runtimeInfoLoading" :size="12" />
-                <n-icon v-else :component="app.runtimeInfoError ? AlertCircleOutline : CheckmarkCircleOutline" size="14" />
-                {{ t(app.runtimeInfoLoading ? 'settings.runtimeChecking' : app.runtimeInfoError ? 'settings.runtimeRefreshFailed' : 'settings.runtimeInfoReady') }}
-              </span>
-              <span v-if="app.envLoading">
-                <n-spin :size="12" />{{ t('settings.runtimeDevicesChecking') }}
-              </span>
-              <span v-if="runtimeDiskMeasuring">
-                <n-spin :size="12" />{{ t('settings.runtimeDiskMeasuring') }}
-              </span>
-              <span v-else-if="app.runtimeEnvSizesError" class="runtime-read-status--error">
-                <n-icon :component="AlertCircleOutline" size="14" />{{ t('settings.runtimeDiskMeasureFailed') }}
-              </span>
-            </div>
-            <p v-if="app.runtimeInfoError" class="runtime-read-error">{{ app.runtimeInfoError }}</p>
-            <Transition name="runtime-content" mode="out-in" @after-enter="locateRuntimeBackend">
-            <div v-if="!app.runtimeInfo && app.runtimeInfoLoading" key="loading" class="runtime-envs-list" :aria-label="t('settings.runtimeChecking')" aria-busy="true">
-              <div v-for="backend in runtimeBackendCatalog" :key="backend.backend" class="runtime-env-card runtime-env-card--skeleton">
-                <strong class="runtime-env-card__backend">{{ backend.label }}</strong>
-                <n-skeleton text width="70%" :sharp="false" />
-                <n-skeleton text width="45%" :sharp="false" />
-                <n-skeleton height="24px" width="96px" :sharp="false" />
-              </div>
-            </div>
-            <div v-else key="ready" class="runtime-envs-list">
-              <div
-                v-for="card in runtimeBackendCards"
-                :key="card.key"
-                class="runtime-env-card"
-                :data-runtime-backend="card.backend"
-                :class="{
-                  'runtime-env-card--active': card.state === 'active',
-                  'runtime-env-card--muted': card.state === 'not_installed',
-                  'runtime-env-card--requested': route.query.backend === card.backend,
-                }"
-              >
-                <div class="runtime-env-card__head">
-                  <strong class="runtime-env-card__backend">{{ card.label }}</strong>
-                  <n-tag v-if="card.state === 'active'" :bordered="false" size="small" type="success" round>
-                    {{ t('settings.runtimeActive') }}
-                  </n-tag>
-                  <n-tag v-else-if="card.state === 'installed'" :bordered="false" size="small" type="info" round>
-                    {{ t('settings.runtimeInstalled') }}
-                  </n-tag>
-                  <n-tag v-if="card.health === 'degraded'" :bordered="false" size="small" type="warning" round>
-                    {{ t('settings.runtimeHealthDegraded') }}
-                  </n-tag>
-                  <n-tag v-else-if="card.health === 'broken'" :bordered="false" size="small" type="error" round>
-                    {{ t('settings.runtimeHealthBroken') }}
-                  </n-tag>
-                  <n-tag v-if="card.recommended" :bordered="false" size="small" type="warning" round>
-                    {{ t('settings.runtimeRecommended') }}
-                  </n-tag>
-                  <n-tag v-if="card.manifestOutdated" :bordered="false" size="small" type="warning" round>
-                    {{ t('settings.runtimeManifestOutdated') }}
-                  </n-tag>
-                  <n-tag v-if="card.workflowGraphUnavailable" :bordered="false" size="small" type="warning" round>
-                    {{ t('settings.runtimeWorkflowSupportOutdated') }}
-                  </n-tag>
-                </div>
-
-                <p v-if="card.description" class="runtime-env-card__desc">{{ card.description }}</p>
-                <p v-if="card.offCatalog" class="runtime-env-card__desc">{{ t('settings.runtimeBackendUnsupported') }}</p>
-                <p v-if="card.vendorMissing" class="runtime-env-card__desc">{{ t('settings.runtimeVendorNotDetected') }}</p>
-                <p v-if="card.health === 'broken'" class="runtime-env-card__desc">{{ t('settings.runtimeHealthBrokenHint') }}</p>
-                <p v-if="card.manifestOutdated" class="runtime-env-card__desc">
-                  {{ card.env?.coreUpdateSupported === false
-                    ? t(card.manifestNewer ? 'settings.runtimeManifestNewerBundledHint' : 'settings.runtimeManifestOutdatedBundledHint')
-                    : t(card.manifestNewer ? 'settings.runtimeManifestNewerHint' : 'settings.runtimeManifestOutdatedHint') }}
-                </p>
-                <p v-if="card.workflowGraphUnavailable" class="runtime-env-card__desc">
-                  {{ card.env?.coreUpdateSupported === false
-                    ? t('settings.runtimeWorkflowSupportBundledHint')
-                    : t('settings.runtimeWorkflowSupportHint') }}
-                </p>
-
-                <div v-if="card.env" class="runtime-env-card__meta">
-                  <span v-if="card.env.torchVersion">{{ t('settings.runtimeTorchVersion', { version: card.env.torchVersion }) }}</span>
-                  <span>{{ runtimeCoreVersionLabel(card) }}</span>
-                  <span v-if="runtimeAcceleratorReady(card.env, card.backend)" class="runtime-env-card__accel runtime-env-card__accel--ok">{{ t('settings.runtimeAcceleratorAvailable') }}</span>
-                  <span v-else-if="card.backend !== 'cpu'" class="runtime-env-card__accel">{{ t('settings.runtimeAcceleratorUnavailable') }}</span>
-                  <span v-if="card.diskLabel">{{ t('settings.runtimeDiskUsage', { size: card.diskLabel }) }}</span>
-                </div>
-                <div v-else-if="card.state === 'not_installed'" class="runtime-env-card__meta">
-                  <span>{{ t('settings.runtimeInstallSizeHint', { size: card.sizeHint }) }}</span>
-                  <span v-if="card.leftoverLabel" class="runtime-env-card__accel">
-                    {{ t('settings.runtimeLeftover', { size: card.leftoverLabel }) }}
-                  </span>
-                </div>
-
-                <div class="runtime-env-card__actions">
-                  <n-button
-                    v-if="app.runtimeManagementSupported && card.state === 'not_installed'"
-                    size="tiny"
-                    secondary
-                    type="primary"
-                    :loading="card.installing"
-                    :disabled="runtimeBusy || !app.runtimeInfo"
-                    @click="installBackend(card.backend)"
-                  >
-                    <template #icon><n-icon :component="DownloadOutline" /></template>
-                    {{ card.installing ? t('settings.runtimeInstalling') : t('settings.runtimeInstallBackend') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeManagementSupported && card.state === 'installed' && card.health !== 'broken'"
-                    size="tiny"
-                    secondary
-                    type="primary"
-                    :loading="runtimeActivating === card.backend"
-                    :disabled="runtimeBusy"
-                    @click="activateInstalledRuntime(card)"
-                  >
-                    <template #icon><n-icon :component="PlayOutline" /></template>
-                    {{ t('settings.runtimeActivateShort') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeManagementSupported && card.state !== 'not_installed'"
-                    size="tiny"
-                    tertiary
-                    :loading="card.installing"
-                    :disabled="runtimeBusy"
-                    @click="installBackend(card.backend)"
-                  >
-                    {{ card.installing ? t('settings.runtimeInstalling') : t('settings.runtimeRepair') }}
-                  </n-button>
-                  <n-button
-                    v-if="card.env?.logPath"
-                    size="tiny"
-                    tertiary
-                    @click="revealPath(card.env.logPath)"
-                  >
-                    {{ t('settings.runtimeViewLog') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeManagementSupported && card.leftover"
-                    size="tiny"
-                    tertiary
-                    type="error"
-                    :loading="runtimeDeleting === card.backend"
-                    :disabled="runtimeBusy"
-                    @click="deleteRuntime(card)"
-                  >
-                    <template #icon><n-icon :component="TrashOutline" /></template>
-                    {{ t('settings.runtimeCleanLeftover') }}
-                  </n-button>
-                  <n-button
-                    v-if="app.runtimeManagementSupported && card.state === 'installed' && card.env?.source !== 'bundled'"
-                    size="tiny"
-                    tertiary
-                    type="error"
-                    :loading="runtimeDeleting === card.backend"
-                    :disabled="runtimeBusy"
-                    @click="deleteRuntime(card)"
-                  >
-                    <template #icon><n-icon :component="TrashOutline" /></template>
-                    {{ t('settings.runtimeDelete') }}
-                  </n-button>
-                </div>
-
-                <RuntimePreparationProgress
-                  v-if="card.installing"
-                  :message="app.runtimeInstallMessage"
-                  :show-logs="true"
-                  :show-cancel="true"
-                  @logs="runtimeLogDialogVisible = true"
-                  @cancel="cancelRuntimeInstall"
-                />
-              </div>
-            </div>
-            </Transition>
-
-            <p v-if="runtimeDiskTotalLabel" class="setting-row__hint runtime-disk-total">
-              {{ t('settings.runtimeDiskTotal', { size: runtimeDiskTotalLabel }) }}
-            </p>
-
-            <div class="runtime-mirror-row">
-              <label class="text-muted text-sm">{{ t('settings.runtimeMirrorLabel') }}</label>
-              <n-select v-model:value="runtimeMirror" size="small" class="runtime-mirror-row__select" :options="[
-                { label: t('onboarding.runtimeMirrorAuto'), value: 'auto' },
-                { label: t('onboarding.runtimeMirrorUstc'), value: 'ustc' },
-                { label: t('onboarding.runtimeMirrorTsinghua'), value: 'tsinghua' },
-                { label: t('onboarding.runtimeMirrorAliyun'), value: 'aliyun' },
-                { label: t('onboarding.runtimeMirrorTencent'), value: 'tencent' },
-                { label: t('onboarding.runtimeMirrorPypi'), value: 'pypi' },
-              ]" />
-            </div>
-
-            <n-alert v-if="app.runtimeInstallStatus === 'error'" type="error" :show-icon="true">
-              <div class="runtime-install-error">
-                <div class="runtime-install-error__message">{{ app.runtimeInstallMessage }}</div>
-                <div class="runtime-install-error__actions">
-                  <n-button
-                    size="small"
-                    tertiary
-                    @click="runtimeLogDialogVisible = true"
-                  >
-                    <template #icon><n-icon :component="DocumentTextOutline" /></template>
-                    {{ t('settings.runtimeShowInstallLog') }}
-                  </n-button>
-                  <n-button v-if="app.runtimeInfo?.logPath" size="small" tertiary @click="revealPath(app.runtimeInfo.logPath)">
-                    {{ t('settings.runtimeOpenInstallLog') }}
-                  </n-button>
-                  <n-button size="small" secondary :disabled="runtimeBusy" @click="retryRuntimeInstall">
-                    {{ t('settings.runtimeRetryInstall') }}
-                  </n-button>
-                </div>
-              </div>
-            </n-alert>
-
-
-            <div v-if="!runtimeInstalling && app.runtimeInstallLogs.length" class="runtime-log-trigger">
-              <n-button size="small" tertiary @click="runtimeLogDialogVisible = true">
-                <template #icon><n-icon :component="DocumentTextOutline" /></template>
-                {{ t('settings.runtimeShowInstallLog') }}
-              </n-button>
-            </div>
-            </div>
-          </article>
-        </section>
+        <SettingsRuntimePanel
+          v-else-if="activeSection === 'runtime'"
+          v-model:runtime-mirror="runtimeMirror"
+          :runtime-detecting="runtimeDetecting"
+          :runtime-busy="runtimeBusy"
+          :runtime-current-error="runtimeCurrentError"
+          :runtime-current-label="runtimeCurrentLabel"
+          :runtime-summary-items="runtimeSummaryItems"
+          :runtime-backend-catalog="runtimeBackendCatalog"
+          :runtime-backend-cards="runtimeBackendCards"
+          :runtime-disk-measuring="runtimeDiskMeasuring"
+          :runtime-disk-total-label="runtimeDiskTotalLabel"
+          :runtime-installing="runtimeInstalling"
+          :runtime-activating="runtimeActivating"
+          :runtime-deleting="runtimeDeleting"
+          :runtime-core-version-label="runtimeCoreVersionLabel"
+          :detect-runtime="detectRuntime"
+          :install-backend="installBackend"
+          :activate-installed-runtime="activateInstalledRuntime"
+          :delete-runtime="deleteRuntime"
+          :cancel-runtime-install="cancelRuntimeInstall"
+          :retry-runtime-install="retryRuntimeInstall"
+          :reveal-path="revealPath"
+          @show-logs="runtimeLogDialogVisible = true"
+        />
 
         <!-- Paths -->
-        <section v-else-if="activeSection === 'paths'" class="settings-section-panel">
-        <n-card class="settings-card settings-card--feature settings-card--paths" :bordered="true" size="small">
-          <template #header>
-            <div class="section-title">
-              <span class="section-title__icon">
-                <n-icon :component="FolderOpenOutline" size="18" />
-              </span>
-              <span>{{ t('settings.dataDir') }}</span>
-            </div>
-          </template>
-
-          <div class="path-panel">
-            <div class="path-panel__intro">{{ t('settings.pathsHint') }}</div>
-
-            <div class="path-root-block">
-              <div class="path-root-row">
-                <code class="path-root" :title="dataRoot || t('common.notSet')">{{ dataRoot || t('common.notSet') }}</code>
-                <n-button secondary size="small" :disabled="!dataRoot" @click="revealPath(dataRoot)">
-                  {{ t('common.open') }}
-                </n-button>
-              </div>
-            </div>
-
-            <div class="path-primary-grid" data-guide="settings-paths">
-              <div class="path-item path-item--primary">
-                <div class="path-item__head">
-                  <div class="path-item__head-copy">
-                    <strong>{{ t('settings.modelDir') }}</strong>
-                  </div>
-                  <div class="path-item__actions">
-                    <n-tag v-if="hasActiveModelDirUsage && !isModelDirMigrating" :bordered="false" size="small" type="warning">
-                      {{ t('settings.modelDirInUse') }}
-                    </n-tag>
-                    <n-button
-                      secondary
-                      type="primary"
-                      size="small"
-                      :loading="isCheckingModelDir"
-                      :disabled="hasActiveModelDirUsage || isCheckingModelDir"
-                      @click="changeModelDir"
-                    >
-                      <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
-                      {{ t('settings.changeModelDir') }}
-                    </n-button>
-                  </div>
-                </div>
-                <code class="path-item__value" :title="modelDir || t('common.notSet')">{{ modelDir || t('common.notSet') }}</code>
-              </div>
-
-              <div class="path-item path-item--primary">
-                <div class="path-item__head">
-                  <div class="path-item__head-copy">
-                    <strong>{{ t('settings.outputDir') }}</strong>
-                  </div>
-                  <div class="path-item__actions">
-                    <n-button secondary type="primary" size="small" @click="changeOutputDir">
-                      <template #icon><n-icon :component="FolderOpenOutline" /></template>
-                      {{ t('settings.changeOutputDir') }}
-                    </n-button>
-                  </div>
-                </div>
-                <code class="path-item__value" :title="outputDir || t('common.notSet')">{{ outputDir || t('common.notSet') }}</code>
-              </div>
-            </div>
-
-            <div class="path-grid">
-              <div v-for="entry in dataDirEntries" :key="entry.key" class="path-subcard">
-                <span>{{ t(entry.key) }}</span>
-                <code class="path-field__value" :title="entry.value || entry.fallback">{{ dirName(entry.value, entry.fallback) }}</code>
-              </div>
-            </div>
-          </div>
-        </n-card>
-        </section>
+        <SettingsPathsPanel
+          v-else-if="activeSection === 'paths'"
+          :data-root="dataRoot"
+          :model-dir="modelDir"
+          :output-dir="outputDir"
+          :data-dir-entries="dataDirEntries"
+          :has-active-model-dir-usage="hasActiveModelDirUsage"
+          :is-model-dir-migrating="isModelDirMigrating"
+          :is-checking-model-dir="isCheckingModelDir"
+          @reveal-path="revealPath"
+          @change-model-dir="changeModelDir"
+          @change-output-dir="changeOutputDir"
+        />
 
         <!-- Defaults & Execution -->
-        <section v-else-if="activeSection === 'defaults'" class="settings-section-panel">
-        <n-card class="settings-card" :bordered="true" size="small">
-          <template #header>
-            <div class="section-title">
-              <span class="section-title__icon">
-                <n-icon :component="SettingsOutline" size="18" />
-              </span>
-              <span>{{ t('settings.defaults') }}</span>
-            </div>
-          </template>
-
-          <div class="settings-merged-layout">
-            <section class="settings-group">
-              <div class="setting-field" data-guide="settings-device">
-                <label class="text-muted text-sm">{{ t('settings.defaultDevice') }}</label>
-                <n-select
-                  v-model:value="defaultDevice"
-                  :options="deviceOptions"
-                />
-              </div>
-            </section>
-
-            <section class="settings-group" data-guide="settings-downloads">
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.downloadSource') }}</label>
-                <n-select
-                  v-model:value="downloadSource"
-                  :options="[
-                    { label: 'ModelScope', value: 'modelscope' },
-                    { label: 'Hugging Face', value: 'huggingface' },
-                    { label: 'HF Mirror', value: 'hf-mirror' },
-                  ]"
-                />
-              </div>
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.downloadMethod') }}</label>
-                <n-select
-                  v-model:value="downloadMethod"
-                  :options="downloadMethodOptions"
-                />
-                <p class="text-muted text-sm setting-field__hint">{{ t('settings.downloadMethodHint') }}</p>
-              </div>
-            </section>
-
-            <section class="settings-group">
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.proxyMode') }}</label>
-                <n-select
-                  v-model:value="proxyMode"
-                  :options="proxyModeOptions"
-                  @update:value="resetProxyTest"
-                />
-                <p class="text-muted text-sm setting-field__hint">{{ t('settings.proxyModeHint') }}</p>
-              </div>
-              <div v-if="proxyMode === 'custom'" class="proxy-custom-grid">
-                <div class="setting-field">
-                  <label class="text-muted text-sm">{{ t('settings.proxyUrl') }}</label>
-                  <n-input
-                    v-model:value="proxyUrl"
-                    :placeholder="t('settings.proxyUrlPlaceholder')"
-                    clearable
-                    size="small"
-                    @update:value="resetProxyTest"
-                  />
-                </div>
-                <div class="setting-field">
-                  <label class="text-muted text-sm">{{ t('settings.proxyBypass') }}</label>
-                  <n-input
-                    v-model:value="proxyBypass"
-                    :placeholder="t('settings.proxyBypassPlaceholder')"
-                    size="small"
-                  />
-                </div>
-              </div>
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.proxyTest') }}</label>
-                <div class="proxy-test-row">
-                  <n-button
-                    size="small"
-                    secondary
-                    :loading="proxyTestLoading"
-                    :disabled="proxyMode === 'custom' && !proxyUrl.trim()"
-                    @click="testProxyConnection"
-                  >
-                    {{ t('settings.proxyTest') }}
-                  </n-button>
-                  <span v-if="proxyTestStatus === 'success'" class="proxy-test-info">
-                    <n-icon :component="CheckmarkCircleOutline" size="14" color="var(--success)" />
-                    <span class="proxy-test-info__text">{{ proxyTestMessage }}</span>
-                  </span>
-                  <n-tag
-                    v-else-if="proxyTestStatus === 'error'"
-                    size="small"
-                    type="error"
-                    round
-                    :bordered="false"
-                  >{{ t('settings.proxyTestFailed') }}</n-tag>
-                  <n-tag
-                    v-else-if="proxyTestStatus === 'testing'"
-                    size="small"
-                    :bordered="false"
-                  >{{ t('settings.proxyTesting') }}</n-tag>
-                </div>
-                <div v-if="proxyTestStatus === 'error' && proxyTestMessage" class="proxy-test-error">
-                  <div class="proxy-test-error__head">
-                    <n-icon :component="AlertCircleOutline" size="14" color="var(--danger)" />
-                    <span>{{ proxyTestMessage }}</span>
-                  </div>
-                  <p v-if="proxyTestSuggestion" class="proxy-test-error__tip">{{ proxyTestSuggestion }}</p>
-                </div>
-              </div>
-            </section>
-
-            <section class="settings-group settings-group--soft">
-              <div class="settings-group__head">
-                <span class="settings-group__icon">
-                  <n-icon :component="SpeedometerOutline" size="16" />
-                </span>
-                <span>{{ t('settings.execution') }}</span>
-              </div>
-              <div class="setting-field">
-                <label class="text-muted text-sm">{{ t('settings.maxConcurrentSeparations') }}</label>
-                <n-input-number
-                  v-model:value="maxConcurrentSeparationsInput"
-                  :min="1"
-                  :max="settings.MAX_CONCURRENT_SEPARATIONS"
-                  :precision="0"
-                  :step="1"
-                  clearable
-                  style="width: 100%;"
-                />
-                <p class="text-muted text-sm setting-field__hint">
-                  {{ t('settings.maxConcurrentSeparationsHint') }}
-                </p>
-              </div>
-            </section>
-
-            <section class="settings-group settings-group--soft">
-              <div class="settings-group__head">
-                <span class="settings-group__icon">
-                  <n-icon :component="TerminalOutline" size="16" />
-                </span>
-                <span>{{ t('settings.developerMode') }}</span>
-              </div>
-              <div class="setting-field setting-field--switch">
-                <div class="setting-switch-row">
-                  <div class="setting-switch-row__copy">
-                    <label class="text-muted text-sm">{{ t('settings.developerModeTitle') }}</label>
-                    <p class="text-muted text-sm setting-field__hint">
-                      {{ t('settings.developerModeHint') }}
-                    </p>
-                  </div>
-                  <n-switch v-model:value="developerMode" />
-                </div>
-              </div>
-            </section>
-          </div>
-        </n-card>
-        </section>
+        <SettingsDefaultsPanel
+          v-else-if="activeSection === 'defaults'"
+          v-model:default-device="defaultDevice"
+          v-model:download-source="downloadSource"
+          v-model:download-method="downloadMethod"
+          v-model:proxy-mode="proxyMode"
+          v-model:proxy-url="proxyUrl"
+          v-model:proxy-bypass="proxyBypass"
+          v-model:max-concurrent-separations-input="maxConcurrentSeparationsInput"
+          v-model:developer-mode="developerMode"
+          :device-options="deviceOptions"
+          :download-method-options="downloadMethodOptions"
+          :proxy-mode-options="proxyModeOptions"
+          :max-concurrent-separations="settings.MAX_CONCURRENT_SEPARATIONS"
+          :proxy-test-loading="proxyTestLoading"
+          :proxy-test-status="proxyTestStatus"
+          :proxy-test-message="proxyTestMessage"
+          :proxy-test-suggestion="proxyTestSuggestion"
+          :test-proxy-connection="testProxyConnection"
+          :reset-proxy-test="resetProxyTest"
+        />
       </main>
     </div>
 
@@ -1346,4 +774,5 @@ onMounted(async () => {
   </div>
 </template>
 
+<style scoped src="./settings/settings-shared.css"></style>
 <style scoped src="./settings/settings-view.css"></style>

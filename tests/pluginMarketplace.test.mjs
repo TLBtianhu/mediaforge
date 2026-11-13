@@ -16,6 +16,8 @@ const vite = await createServer({
       if (!id.replaceAll('\\', '/').endsWith('/src/features/plugin-marketplace/composable.ts')) return null
       return code
         .replace("import { invoke } from '@tauri-apps/api/core'", 'const invoke = (...args) => globalThis.__pluginInvoke(...args)')
+        .replace("import { invokeWorkerQuery } from '@/api/worker'", 'const invokeWorkerQuery = (...args) => globalThis.__pluginInvoke(...args)')
+        .replace("import { cancelTask } from '@/api/native'", 'const cancelTask = taskId => globalThis.__pluginInvoke("cancel_task", { taskId })')
         .replace("import { listen, type UnlistenFn } from '@tauri-apps/api/event'", 'type UnlistenFn = () => void; const listen = (...args) => globalThis.__pluginListen(...args)')
     },
   }],
@@ -56,6 +58,18 @@ test('a terminal event delivered before invoke returns completes installation', 
   await market.manage('install', { name: 'hello' })
   assert.equal(market.busy.value, false)
   assert.equal(pluginRevision.value, before + 1)
+})
+
+test('marketplace forwards a catalog name and drops injected source overrides', async () => {
+  await reset()
+  const completion = market.manage('install', { name: 'hello', target: 'https://example.invalid/code', sha256: 'fake' })
+  await nextTurn()
+  const request = requests.find(entry => entry.command === 'manage_plugin')
+  assert.equal(request.payload.name, 'hello')
+  assert.equal('target' in request.payload, false)
+  assert.equal('sha256' in request.payload, false)
+  event('plugin_manage_result', { ...empty(), updates: {} }, request.payload.taskId)
+  await completion
 })
 
 test('a server-assigned id is accepted even when its event arrives before acknowledgement', async () => {

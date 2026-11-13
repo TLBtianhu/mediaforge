@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { closeCurrentWindow, isCurrentWindowMaximized, minimizeCurrentWindow, startDragCurrentWindow, toggleMaximizeCurrentWindow } from '@/api/native'
 import { firstWidgetValue } from '../litegraph/paramCodec.ts'
 import { createLogger } from '@/utils/logger'
 
@@ -8,7 +9,6 @@ import { useI18n } from 'vue-i18n'
 import { useMessage, type InputInst } from 'naive-ui'
 import { FolderOpenOutline } from '@vicons/ionicons5'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke } from '@tauri-apps/api/core'
 import { storeToRefs } from 'pinia'
 import WorkflowRunPanel from '@/components/workflow/WorkflowRunPanel.vue'
 import WorkflowExecutionProgress from '@/components/workflow/WorkflowExecutionProgress.vue'
@@ -25,6 +25,7 @@ import {
   type WorkflowEntry,
 } from '@/stores/workflow'
 import {
+  COMFY_WORKFLOW_VERSION,
   isGraphWorkflowDefinition,
   isWorkflowSaveNodeType,
   isWorkflowSeparationNodeType,
@@ -89,7 +90,7 @@ const formError = computed(() => {
   if (formatError.value) return formatError.value
   if (canvasError.value) return canvasError.value
   if (!name.value.trim()) return t('workflows.nameRequired')
-  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as any[] : []
+  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as Record<string, unknown>[] : []
   if (!nodes.length) return t('workflows.stepsRequired')
   // Deep validation belongs to pymss. Incomplete graphs can still be saved
   // as drafts; these checks only prevent submitting an incomplete workflow.
@@ -104,12 +105,12 @@ const formError = computed(() => {
  * comfy-mss serializes model widgets as ``[category] filename`` — strip the
  * annotation prefix before matching (mirrors pymss' runtime behaviour). */
 const missingModelNodes = computed(() => {
-  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as any[] : []
+  const nodes = Array.isArray(definition.value.nodes) ? definition.value.nodes as Record<string, unknown>[] : []
   const downloaded = new Set(downloadedModels.value.map(item => item.name))
   const missing: string[] = []
   for (const n of nodes) {
     if (isWorkflowSeparationNodeType(n.type)) {
-      const raw = String(firstWidgetValue(n as any) || '').trim()
+      const raw = String(firstWidgetValue(n as { widgets_values?: unknown[] }) || '').trim()
       const model = raw.replace(/^\[[^\]]*\]\s*/, '').trim()
       if (model && !downloaded.has(model)) missing.push(String(n.id))
     }
@@ -176,7 +177,7 @@ function syncCurrentDefinition() {
 
 function createFreshDefinition(): Record<string, unknown> {
   // An empty comfy-mss graph; the editor seeds a starter workflow on mount.
-  return { last_node_id: 0, last_link_id: 0, nodes: [], links: [], version: 1 }
+  return { last_node_id: 0, last_link_id: 0, nodes: [], links: [], version: COMFY_WORKFLOW_VERSION }
 }
 
 function restoreDefaultControls(defaults: { device: string; outputFormat: string }) {
@@ -386,7 +387,7 @@ async function destroyWindow() {
   cancelAutosave()
   if (currentWindow && currentWindow.label !== 'main') {
     try {
-      await invoke('close_current_window')
+      await closeCurrentWindow()
     } catch {
       await currentWindow.destroy().catch(() => currentWindow.close())
     }
@@ -431,7 +432,7 @@ async function refreshMaximized() {
     return
   }
   try {
-    isMaximized.value = await invoke<boolean>('is_current_window_maximized')
+    isMaximized.value = await isCurrentWindowMaximized()
   } catch (error) {
     studioLog.warn('[workflow-node-editor] is_current_window_maximized failed', error)
     try {
@@ -448,7 +449,7 @@ function startWindowDrag(event?: MouseEvent) {
     return
   }
   if (!currentWindow) return
-  invoke('start_drag_current_window').catch((error) => {
+  startDragCurrentWindow().catch((error) => {
     studioLog.warn('[workflow-node-editor] start_drag_current_window failed', error)
     currentWindow.startDragging().catch(innerError => studioLog.warn('[workflow-node-editor] currentWindow.startDragging failed', innerError))
   })
@@ -457,7 +458,7 @@ function startWindowDrag(event?: MouseEvent) {
 async function minimizeWindow() {
   if (!currentWindow) return
   try {
-    await invoke('minimize_current_window')
+    await minimizeCurrentWindow()
   } catch (error) {
     studioLog.warn('[workflow-node-editor] minimize_current_window failed', error)
     currentWindow.minimize().catch(innerError => studioLog.warn('[workflow-node-editor] currentWindow.minimize failed', innerError))
@@ -467,7 +468,7 @@ async function minimizeWindow() {
 async function toggleMaximizeWindow() {
   if (!currentWindow) return
   try {
-    isMaximized.value = await invoke<boolean>('toggle_maximize_current_window')
+    isMaximized.value = await toggleMaximizeCurrentWindow()
   } catch (error) {
     studioLog.warn('[workflow-node-editor] toggle_maximize_current_window failed', error)
     currentWindow.toggleMaximize().then(refreshMaximized).catch(innerError => studioLog.warn('[workflow-node-editor] currentWindow.toggleMaximize failed', innerError))
@@ -748,7 +749,7 @@ onBeforeUnmount(() => {
 }
 
 .workflow-name-trigger:hover {
-  color: var(--primary-strong);
+  color: var(--primary-ink);
 }
 
 .workflow-name-trigger,

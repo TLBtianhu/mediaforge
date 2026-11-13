@@ -72,7 +72,7 @@ onBeforeUnmount(() => {
 .tutorial-data-host iframe { display: block; width: 100%; height: 100%; border: 0; }
 .tutorial-data-host__loading { position: absolute; inset: 40px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--surface); color: var(--on-surface-muted); font-size: 13px; }
 .tutorial-data-host__loading p { margin: 0; max-width: 360px; padding: 0 20px; text-align: center; }
-.tutorial-data-host__badge { position: fixed; top: 10px; left: 240px; font-size: 11px; color: var(--primary-strong); pointer-events: none; }
+.tutorial-data-host__badge { position: fixed; top: 10px; left: 240px; font-size: 11px; color: var(--primary-ink); pointer-events: none; }
 .guide-demo-exit { position: fixed; top: 5px; right: 150px; min-height: 30px; border: 1px solid var(--outline-strong); border-radius: 6px; padding: 4px 12px; background: var(--surface-2); color: var(--on-surface); font: inherit; font-size: 12px; cursor: pointer; }
 .guide-demo-exit:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .tutorial-data-host--mac .guide-demo-exit { right: 16px; }

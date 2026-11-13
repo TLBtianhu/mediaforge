@@ -161,6 +161,10 @@ if (-not $interpreter) {
     }
 }
 if ($interpreter -and (Test-Path $interpreter)) {
+    . (Join-Path $PSScriptRoot 'release-signing.ps1')
+    $expectedPython = [string](Get-Content -LiteralPath (Join-Path $workerDir 'runtime-manifest.json') -Raw | ConvertFrom-Json).python
+    try { Assert-ReleasePython -PythonPath $interpreter -ExpectedVersion $expectedPython }
+    catch { Add-Result 'Python ABI' 'FAIL' '解释器必须与发布目标 Python 3.12 一致'; throw }
     $version = Invoke-Captured -Exe $interpreter -Arguments @('-c', 'import sys; print(sys.version.split()[0])') -WorkingDirectory $Root
     if ($version.ExitCode -eq 0) { Add-Result 'Python 解释器' 'PASS' ("$interpreter -> " + ($version.Output -join ' ')) }
     else { Add-Result 'Python 解释器' 'FAIL' ("无法执行：$interpreter") }
@@ -213,6 +217,7 @@ print(ffmpeg._find_tool('ffmpeg'))
     $event = Get-LastJsonEvent -Lines $envInfo.Output -Type 'env_info'
     if ($event) {
         $payload = $event.payload
+        if ($payload.runtimeMatchesManifest -ne $true) { throw 'worker Python version does not match its runtime manifest' }
         $torch = 'none'
         if ($payload.torchAvailable) { $torch = "$($payload.torchVersion) / $($payload.torchBackend)" }
         Add-Result 'worker env_info' 'PASS' ("python $($payload.pythonVersion) · torch $torch · pymss $($payload.pymssVersion)")

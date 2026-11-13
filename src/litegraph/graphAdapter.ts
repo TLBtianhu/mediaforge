@@ -9,7 +9,7 @@
  *  - drop the litegraph-only `floatingLinks` / `reroutes` arrays
  */
 import type { ISerialisedGraph, ISerialisedNode, SerialisableGraph, SerialisableLLink } from '@comfyorg/litegraph/dist/types/serialisation'
-import { normalizeGraphWorkflowDefinition } from '../workflows/formats'
+import { COMFY_WORKFLOW_VERSION, normalizeGraphWorkflowDefinition } from '../workflows/formats'
 
 export interface ComfyNode {
   id: number
@@ -52,8 +52,9 @@ export interface ComfyWorkflow {
  * Convert a litegraph-serialized graph into a clean comfy-mss workflow dict
  * suitable for pymss.graph.load_comfy_file (after JSON.stringify).
  */
-export function litegraphToComfy(serialized: ISerialisedGraph | any): ComfyWorkflow {
-  const rawNodes: ISerialisedNode[] = serialized.nodes || []
+export function litegraphToComfy(serialized: ISerialisedGraph | Record<string, unknown>): ComfyWorkflow {
+  const source = serialized as ISerialisedGraph & { widgets_values?: unknown; state?: Record<string, unknown> }
+  const rawNodes: ISerialisedNode[] = source.nodes || []
   const nodes: ComfyNode[] = rawNodes.map((n) => {
     const out: ComfyNode = {
       ...n,
@@ -70,20 +71,20 @@ export function litegraphToComfy(serialized: ISerialisedGraph | any): ComfyWorkf
     if (n.title) out.title = String(n.title)
     out.properties = n.properties || {}
     // litegraph writes widgets_values only when serialize_widgets is set on the node
-    const wv = (n as any).widgets_values
+    const wv = (n as ISerialisedNode & { widgets_values?: unknown }).widgets_values
     if (Array.isArray(wv)) out.widgets_values = wv
     return out
   })
 
   const links: ComfyLink[] = []
-  for (const l of comfyLinksToLitegraph(serialized.links || [])) {
+  for (const l of comfyLinksToLitegraph(source.links || [])) {
     // litegraph serialize() emits object-format links
     // ({id, origin_id, origin_slot, target_id, target_slot, type});
     // convert them into the comfy 6-tuple so pymss/comfy-mss can read them.
     // NOTE: the tuple MUST be a real array — pymss' comfy loader rejects
     // anything that is not isinstance(entry, list); numeric-key objects
     // ({0: id, ...}) serialize to {"0": id} in JSON and get silently dropped.
-    const obj = l as Record<string, any>
+    const obj = l as unknown as Record<string, unknown>
     if (!obj || typeof obj !== 'object' || obj.id === undefined) continue
     links.push([
       Number(obj.id),
@@ -96,23 +97,23 @@ export function litegraphToComfy(serialized: ISerialisedGraph | any): ComfyWorkf
   }
 
   const wf: ComfyWorkflow = {
-    last_node_id: Number(serialized.state?.lastNodeId ?? serialized.last_node_id ?? (nodes.length ? Math.max(...nodes.map((n) => n.id)) : 0)),
-    last_link_id: Number(serialized.state?.lastLinkId ?? serialized.last_link_id ?? (links.length ? Math.max(...links.map((l) => l[0])) : 0)),
+    last_node_id: Number(source.state?.lastNodeId ?? source.last_node_id ?? (nodes.length ? Math.max(...nodes.map((n) => n.id)) : 0)),
+    last_link_id: Number(source.state?.lastLinkId ?? source.last_link_id ?? (links.length ? Math.max(...links.map((l) => l[0])) : 0)),
     nodes,
     links,
     // ComfyUI schema 1 requires object links and state, not these tuples.
-    version: 0.4,
+    version: COMFY_WORKFLOW_VERSION,
   }
-  if (typeof serialized.id === 'string') wf.id = serialized.id
-  if (typeof serialized.revision === 'number') wf.revision = serialized.revision
-  if (Array.isArray(serialized.groups)) wf.groups = serialized.groups
-  if (serialized.config && typeof serialized.config === 'object') wf.config = serialized.config
-  if (serialized.extra) wf.extra = serialized.extra
+  if (typeof source.id === 'string') wf.id = source.id
+  if (typeof source.revision === 'number') wf.revision = source.revision
+  if (Array.isArray(source.groups)) wf.groups = source.groups
+  if (source.config && typeof source.config === 'object') wf.config = source.config as unknown as Record<string, unknown>
+  if (source.extra) wf.extra = source.extra
   return wf
 }
 
 /** JSON string for pymss.graph.load_comfy_file. */
-export function toComfyJson(serialized: ISerialisedGraph | any): string {
+export function toComfyJson(serialized: ISerialisedGraph | Record<string, unknown>): string {
   return JSON.stringify(litegraphToComfy(serialized), null, 2)
 }
 
@@ -128,19 +129,12 @@ export function comfyLinksToLitegraph(links: unknown[]): SerialisableLLink[] {
   for (const l of links || []) {
     // litegraph serialize() already emits object-format links
     // ({id, origin_id, ...}) — exactly what configure() wants.
-    if (l && typeof l === 'object' && !Array.isArray(l) && (l as any).origin_id !== undefined) {
+    if (l && typeof l === 'object' && !Array.isArray(l) && (l as Record<string, unknown>).origin_id !== undefined) {
       out.push(l as SerialisableLLink)
       continue
     }
-    // Comfy 6-tuple, either a real array or the numeric-key object
-    // ({0: id, 1: src, ...}) produced by litegraphToComfy — JSON round-trips
-    // the latter into objects with numeric keys that must be re-read by index.
-    const tuple = Array.isArray(l)
-      ? l
-      : l && typeof l === 'object' && (l as any)[0] !== undefined
-        ? [0, 1, 2, 3, 4, 5].map(i => (l as any)[i])
-        : null
-    if (!tuple || tuple.length < 6) continue
+    if (!Array.isArray(l) || l.length !== 6) throw new Error('Unsupported graph link schema')
+    const tuple = l
     out.push({
       id: Number(tuple[0]),
       type: String(tuple[5]),
@@ -153,7 +147,7 @@ export function comfyLinksToLitegraph(links: unknown[]): SerialisableLLink[] {
   return out
 }
 
-/** Accept native ComfyUI graphs and the tuple/object hybrids saved by older Studio versions. */
+/** Adapt the current persisted Comfy tuple schema to LiteGraph's in-memory objects. */
 export function comfyToLitegraph(definition: Record<string, unknown>): SerialisableGraph & { nodes: ISerialisedNode[] } {
   // Vue definitions can be proxies; LiteGraph structured-clones extra metadata.
   const normalized = normalizeGraphWorkflowDefinition(JSON.parse(JSON.stringify(definition)))

@@ -53,6 +53,7 @@ class ProxyConfigTests(unittest.TestCase):
             capture_output=True,
             check=False,
             text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         event = json.loads(result.stdout.strip().splitlines()[-1])
@@ -71,6 +72,7 @@ class ProxyConfigTests(unittest.TestCase):
             capture_output=True,
             check=False,
             text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         event = json.loads(result.stdout.strip().splitlines()[-1])

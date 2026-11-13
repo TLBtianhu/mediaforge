@@ -22,12 +22,27 @@ SPEC.loader.exec_module(CHECK)
 
 
 class MacosCoreCheckTests(unittest.TestCase):
-    def test_shipped_package_can_be_reinstalled_offline_without_external_or_cache_files(self):
-        for pruned in (False, True):
-            with self.subTest(pruned=pruned):
-                self.check_offline_package(pruned=pruned)
+    def test_missing_package_file_is_rejected_even_when_the_metadata_api_filters_it(self):
+        with tempfile.TemporaryDirectory(prefix="mf-macos-missing-package-") as raw:
+            root = Path(raw)
+            information = root / "site-packages/pymss-2.1.8.dist-info"
+            information.mkdir(parents=True)
+            (information / "METADATA").write_text("Metadata-Version: 2.1\nName: pymss\nVersion: 2.1.8\n", encoding="utf-8")
+            (information / "RECORD").write_text("pymss/missing.py,,\npymss-2.1.8.dist-info/WHEEL,,\npymss-2.1.8.dist-info/METADATA,,\n", encoding="utf-8")
+            (information / "WHEEL").write_text("Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n", encoding="utf-8")
+            distribution = metadata.PathDistribution(information)
+            with mock.patch.object(CHECK.metadata, "distribution", return_value=distribution):
+                with self.assertRaisesRegex(RuntimeError, "invalid file entry: pymss/pymss/missing.py"):
+                    CHECK.pack_installed_distribution("pymss", root / "wheels")
 
-    def check_offline_package(self, *, pruned):
+    def test_shipped_package_can_be_reinstalled_offline_without_external_or_cache_files(self):
+        self.check_offline_package(missing_wheel=False)
+
+    def test_missing_wheel_metadata_is_rejected_without_reconstruction(self):
+        with self.assertRaisesRegex(RuntimeError, "missing WHEEL metadata"):
+            self.check_offline_package(missing_wheel=True)
+
+    def check_offline_package(self, *, missing_wheel):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             site = root / "site-packages"
@@ -51,7 +66,7 @@ class MacosCoreCheckTests(unittest.TestCase):
             record = io.StringIO()
             csv.writer(record).writerows((path, "", "") for path in [*contents, "../../../bin/pymss", "pymss-2.1.8.dist-info/RECORD"])
             (information / "RECORD").write_text(record.getvalue(), encoding="utf-8", newline="")
-            if pruned:
+            if missing_wheel:
                 (information / "WHEEL").unlink()
             distribution = metadata.PathDistribution(information)
             with mock.patch.object(CHECK.metadata, "distribution", return_value=distribution):
@@ -72,7 +87,7 @@ class MacosCoreCheckTests(unittest.TestCase):
             result = subprocess.run([
                 sys.executable, "-m", "pip", "install", "--dry-run", "--ignore-installed", "--no-deps",
                 "--no-index", "--no-cache-dir", "--disable-pip-version-check", "--report", str(report), str(wheel),
-            ], capture_output=True, text=True, env=environment, timeout=60)
+            ], capture_output=True, text=True, env=environment, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["install"][0]["metadata"]["version"], "2.1.8")
 

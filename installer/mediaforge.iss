@@ -8,6 +8,7 @@
 #define SourceDir GetEnv("MEDIAFORGE_PORTABLE_DIR")
 #define OutputDir GetEnv("MEDIAFORGE_INSTALLER_OUTPUT") == "" ? "..\release" : GetEnv("MEDIAFORGE_INSTALLER_OUTPUT")
 #define PackageSuffix GetEnv("MEDIAFORGE_PACKAGE_SUFFIX") == "" ? "windows-x64-cuda" : GetEnv("MEDIAFORGE_PACKAGE_SUFFIX")
+#define InstallerIcon GetEnv("MEDIAFORGE_INSTALLER_ICON") == "" ? "..\src-tauri\icons\icon.ico" : GetEnv("MEDIAFORGE_INSTALLER_ICON")
 
 #if SourceDir == ""
   #error MEDIAFORGE_PORTABLE_DIR is required. It must point to the staged portable directory.
@@ -22,7 +23,7 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppVerName={#MyAppName} {#MyAppVersion}
 DefaultDirName={localappdata}\Programs\{#MyAppName}
-; 用户不选目录：安装位置是常量，升级自然落在同一处。
+; Default remains stable for upgrades; /DIR allows isolated candidate validation.
 DisableDirPage=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
@@ -34,10 +35,12 @@ OutputDir={#OutputDir}
 OutputBaseFilename=MediaForge-{#MyAppVersion}-{#PackageSuffix}-setup
 Compression=lzma2/max
 LZMAUseSeparateProcess=yes
-LZMADictionarySize=1048576
+; Dictionary is in KiB. Bound compression memory on developer/CI machines.
+LZMADictionarySize=65536
+LZMANumBlockThreads=2
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=..\src-tauri\icons\icon.ico
+SetupIconFile={#InstallerIcon}
 UninstallDisplayIcon={app}\app\{#MyAppExeName}
 CloseApplications=yes
 RestartApplications=no
@@ -51,10 +54,19 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "dshbridge"; Description: "附带 DSH 集成桥（由 DSH 插件管理器加载）"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; Older builds shipped the developer-only PS1 helpers into the user's install.
+; Delete them on upgrade so nobody can run the legacy injector by habit.
+Type: files; Name: "{app}\integrations\dsh-mediaforge\*.ps1"
+Type: files; Name: "{app}\integrations\dsh-mediaforge\*.bak*"
+Type: files; Name: "{app}\integrations\dsh-mediaforge\launcher.template.cmd"
+Type: files; Name: "{app}\integrations\dsh-mediaforge\mediaforge-mcp.cmd"
+
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion
-Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "python-runtime\runtime-envs\*,integrations\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\integrations\*"; DestDir: "{app}\integrations"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Tasks: dshbridge
+; Root anchors preserve code directories such as pip/_internal/models and distlib/data.
+Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Excludes: "\{#MyAppExeName},\mediaforge.portable,\python-runtime\runtime-envs\*,\integrations\*,\models\*,\data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\integrations\*"; DestDir: "{app}\integrations"; Excludes: "*.ps1,*.bak*"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Tasks: dshbridge
 ; The bootstrap runtime stays read-only; only runtime-envs is writable for managed installs.
 
 [Dirs]
@@ -67,9 +79,7 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\app\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\app\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-; 安装路径指针：MCP 启动器（%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd）按
-; MEDIAFORGE_HOME → 这个键 → %LOCALAPPDATA%\Programs → Program Files 的顺序找应用。
-; 写在声明区而不是脚本里，脚本失败也不会丢指针。
+; 记录当前安装程序的位置。DSH 按用户链接的 bundle 解析所在实例。
 Root: HKCU; Subkey: "Software\MediaForge"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}\app"; Flags: uninsdeletekey
 
 [Run]

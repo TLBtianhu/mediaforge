@@ -34,22 +34,25 @@ def bundle_paths(app: Path) -> tuple[Path, Path, Path]:
 def pack_installed_distribution(name: str, destination: Path) -> Path:
     """Reuse the shipped package bytes so verification needs no package index."""
     distribution = metadata.distribution(name)
-    files = distribution.files
-    if files is None:
+    inventory = distribution.read_text("RECORD")
+    if inventory is None:
         raise RuntimeError(f"The installed package has no file inventory: {name}")
+    # Python 3.12's Distribution.files silently drops missing RECORD entries.
+    # Validation must inspect the complete declared inventory instead.
+    rows = list(csv.reader(io.StringIO(inventory)))
+    if not rows or any(len(row) != 3 or not row[0] for row in rows):
+        raise RuntimeError(f"The installed package has an invalid file inventory: {name}")
+    files = [PurePosixPath(row[0]) for row in rows]
     package_metadata = next((item for item in files if str(item).endswith(".dist-info/METADATA")), None)
     if package_metadata is None:
         raise RuntimeError(f"The installed package has no distribution metadata: {name}")
     information = PurePosixPath(str(package_metadata)).parent
     wheel_text = distribution.read_text("WHEEL")
-    if wheel_text:
-        tag = next(line.removeprefix("Tag: ") for line in wheel_text.splitlines() if line.startswith("Tag: "))
-    else:
-        # Release pruning removes WHEEL but keeps METADATA and RECORD. The
-        # reconstructed wheel is only consumed by this exact bundled interpreter.
-        from pip._vendor.packaging.tags import sys_tags
-        tag = str(next(sys_tags()))
-        wheel_text = f"Wheel-Version: 1.0\nRoot-Is-Purelib: false\nTag: {tag}\n"
+    if not wheel_text or information / "WHEEL" not in files:
+        raise RuntimeError(f"The installed package is missing WHEEL metadata: {name}")
+    tag = next((line.removeprefix("Tag: ") for line in wheel_text.splitlines() if line.startswith("Tag: ")), None)
+    if not tag:
+        raise RuntimeError(f"The installed package has invalid WHEEL metadata: {name}")
     destination.mkdir(parents=True, exist_ok=True)
     output = destination / f"{name.replace('-', '_')}-{distribution.version}-{tag}.whl"
     root = Path(distribution.locate_file("")).resolve()
@@ -70,12 +73,6 @@ def pack_installed_distribution(name: str, destination: Path) -> Path:
             archive.writestr(information_entry, data)
             digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
             records.append((str(path), f"sha256={digest}", str(len(data))))
-        if not any(path == str(information / "WHEEL") for path, _, _ in records):
-            wheel_data = wheel_text.encode()
-            wheel_path = str(information / "WHEEL")
-            archive.writestr(wheel_path, wheel_data)
-            digest = base64.urlsafe_b64encode(hashlib.sha256(wheel_data).digest()).decode().rstrip("=")
-            records.append((wheel_path, f"sha256={digest}", str(len(wheel_data))))
         record_path = str(information / "RECORD")
         record = io.StringIO()
         csv.writer(record).writerows([*records, (record_path, "", "")])
@@ -97,7 +94,7 @@ def bundle_snapshot(app: Path) -> dict:
 
 def verify_signature(app: Path) -> None:
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)],
-                   capture_output=True, text=True, check=True, timeout=120)
+                   capture_output=True, text=True, check=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def replace_test_bundle(app: Path, source: Path, directory: Path) -> None:
@@ -178,6 +175,7 @@ def verify_runtime(app: Path, directory: Path, replacement_app: Path | None = No
         completed = subprocess.run(
             [str(python), "-B", str(worker_path), "update_runtime_core", "--payload", json.dumps(payload)],
             env=os.environ.copy(), cwd=directory, capture_output=True, text=True, timeout=120,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         result = protocol_payload(completed.stdout, event)
         completed.check_returncode()
@@ -196,6 +194,7 @@ def verify_runtime(app: Path, directory: Path, replacement_app: Path | None = No
             completed = subprocess.run(
                 [str(python), "-B", str(worker_path), command, "--payload", json.dumps(payload)],
                 env=environment, cwd=directory, capture_output=True, text=True, timeout=120, check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             result = protocol_payload(completed.stdout, event)
             if command == "env_info":
@@ -276,6 +275,7 @@ def verify_app(app: Path) -> None:
                 [str(python), "-B", str(Path(__file__).resolve()), str(installed),
                  "--verify-runtime", str(directory), "--replacement-app", str(app)],
                 env=environment, cwd=directory, capture_output=True, text=True, check=True, timeout=600,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             print(completed.stdout.strip())
             verify_signature(installed)

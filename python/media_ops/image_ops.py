@@ -723,25 +723,6 @@ class ImageRestorer:
             )
         return self._upscalers[key]
 
-    def process(
-        self,
-        image: np.ndarray,
-        mode: str = "watermark_upscale",
-        scale: float = 2.0,
-        target: tuple[int, int] | None = None,
-        fit: str = "contain",
-        conf: float = 0.25,
-        expand: int = 6,
-        progress=None,
-    ) -> tuple[np.ndarray, dict]:
-        steps = capabilities.steps_from_mode(mode)
-        for step in steps:
-            if step["capability"] == "watermark_removal":
-                step["params"].update({"conf": conf, "expand": expand})
-            elif step["capability"] == "upscale":
-                step["params"].update({"scale": scale, "target": target, "fit": fit})
-        return self.process_steps(image, steps, progress=progress)
-
     def process_steps(
         self,
         image: np.ndarray,
@@ -764,8 +745,8 @@ class ImageRestorer:
                 inpainter_path = str(capabilities.model_path(str(bindings.get("inpainter") or watermark_defaults["inpainter"])))
                 boxes, scores, mask = self.detector_for(detector_path).detect(
                     image,
-                    conf=float(params.get("conf") or 0.25),
-                    expand=int(params.get("expand") or 6),
+                    conf=float(params.get("conf", 0.25)),
+                    expand=int(params.get("expand", 6)),
                 )
                 info["steps"].append({"capability": capability, "boxes": int(len(boxes)), "scores": [round(float(v), 3) for v in scores[:20]], "mask_ratio": round(mask_area_ratio(mask), 4)})
                 if int(mask.max()) == 0:
@@ -833,10 +814,11 @@ class ImageRestorer:
         steps: list[dict] | None = None,
         progress=None,
     ) -> dict:
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("process_file requires explicit steps")
         source = Path(input_path)
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
-        steps = steps or capabilities.steps_from_mode(mode)
         _SUFFIX = {"watermark_removal": "clean", "denoise": "denoise", "upscale": "sr"}
         suffix = "_".join(_SUFFIX.get(str(step.get("capability")), "out") for step in steps)
         target_path = output_root / f"{source.stem}_{suffix}.png"

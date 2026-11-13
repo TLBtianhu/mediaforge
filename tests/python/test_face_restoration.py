@@ -83,7 +83,8 @@ class FaceRestorationTests(unittest.TestCase):
                  mock.patch.object(image_worker.image_ops, "write_image", side_effect=lambda path, _image: Path(path).write_bytes(b"restored")), \
                  mock.patch.object(image_worker, "emit", side_effect=lambda kind, payload, **kwargs: events.append((kind, payload))):
                 code = image_worker.cmd_media_image({
-                    "mode": "face", "inputs": [str(source)], "outputDir": str(output_dir), "requestId": "face-test",
+                    "steps": [{"capability": "face_restoration", "bindings": image_worker.capabilities.default_bindings("face_restoration"), "params": {}}],
+                    "inputs": [str(source)], "outputDir": str(output_dir), "requestId": "face-test",
                 })
             self.assertEqual(code, 0)
             restore.assert_called_once()

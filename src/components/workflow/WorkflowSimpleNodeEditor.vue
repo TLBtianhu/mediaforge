@@ -171,7 +171,6 @@ const NODE_WIDTH = 300
 const ENSEMBLE_WIDTH = 320
 const INPUT_WIDTH = 280
 const SAVE_WIDTH = 340
-const NODE_HEIGHT_BASE = 166
 const PORT_GAP = 26
 const SAVE_ROW_GAP = 84
 

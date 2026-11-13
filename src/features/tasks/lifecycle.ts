@@ -39,7 +39,6 @@ const ACTIVE_STATUS_PRIORITY: readonly TaskStatus[] = [
 export type TaskLifecycleItem = {
   id: string
   jobId?: string
-  batchId?: string
   /** Explicit source order for tasks submitted together in a batch. */
   batchIndex?: number
   createdAt: number
@@ -54,8 +53,8 @@ export function isInterruptedTaskStatus(status: TaskStatus) {
   return INTERRUPTIBLE_TASK_STATUSES.includes(status as (typeof INTERRUPTIBLE_TASK_STATUSES)[number])
 }
 
-export function taskJobId(task: Pick<TaskLifecycleItem, 'id' | 'jobId' | 'batchId'>) {
-  return task.jobId || task.batchId || task.id
+export function taskJobId(task: Pick<TaskLifecycleItem, 'id' | 'jobId'>) {
+  return task.jobId || task.id
 }
 
 function batchIndexOf(task: TaskLifecycleItem): number | undefined {

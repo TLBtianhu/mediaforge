@@ -193,6 +193,7 @@ def ui_widget_map(project_root: Path) -> dict[str, list[str]]:
         cwd=project_root,
         text=True,
         encoding="utf-8",
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     return json.loads(output)
 

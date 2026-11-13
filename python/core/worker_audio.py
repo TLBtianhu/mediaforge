@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from shared.worker_protocol import emit, emit_error
+from shared.output_publish import publish_output_path
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 
 class _EditorExportCancelled(Exception):
@@ -96,61 +98,6 @@ class _DiskMixBuffer:
         except Exception:
             pass
         self.path.unlink(missing_ok=True)
-
-
-def _rename_export_path(temporary: Path, path: Path) -> None:
-    """Move a completed file without replacing a concurrent output."""
-    if os.name == 'nt':
-        os.rename(temporary, path)
-        return
-    import ctypes
-    import errno
-
-    library = ctypes.CDLL(None, use_errno=True)
-    if sys.platform == 'darwin':
-        rename = getattr(library, 'renamex_np', None)
-        arguments = (os.fsencode(temporary), os.fsencode(path), 0x4)  # RENAME_EXCL
-        signature = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
-    elif sys.platform.startswith('linux'):
-        rename = getattr(library, 'renameat2', None)
-        arguments = (-100, os.fsencode(temporary), -100, os.fsencode(path), 1)  # AT_FDCWD, RENAME_NOREPLACE
-        signature = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
-    else:
-        rename = None
-    if rename is None:
-        raise OSError(errno.ENOTSUP, 'Atomic output publishing is unavailable', str(path))
-    rename.argtypes = signature
-    rename.restype = ctypes.c_int
-    if rename(*arguments) != 0:
-        code = ctypes.get_errno() or errno.EIO
-        raise OSError(code, os.strerror(code), str(path))
-
-
-def _publish_export_path(temporary: Path, path: Path) -> Path:
-    """Atomically publish a completed export without overwriting an earlier mix."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    for index in range(1, 1000):
-        candidate = path if index == 1 else path.with_name(f"{path.stem}_{index}{path.suffix}")
-        try:
-            os.link(temporary, candidate)
-        except FileExistsError:
-            continue
-        except OSError:
-            # Filesystems without hard links use the platform's exclusive
-            # rename operation; never expose an empty final placeholder.
-            try:
-                _rename_export_path(temporary, candidate)
-            except FileExistsError:
-                continue
-            return candidate
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            # The final hard link is already complete. Worker/Rust cleanup can
-            # remove a transiently locked task temp after the process exits.
-            pass
-        return candidate
-    raise FileExistsError(f"Failed to publish a unique export filename: {path}")
 
 
 def _audio_metadata(path: Path) -> dict[str, Any]:
@@ -304,7 +251,7 @@ def _read_editor_audio(path: Path, target_rate: int | None = None) -> tuple[Any,
         ffmpeg, "-nostdin", "-v", "error", "-threads", "1", "-i", str(path),
         "-map", "0:a:0", "-vn", "-ar", str(rate), "-ac", "2",
         "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1",
-    ], capture_output=True, check=False, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    ], capture_output=True, check=False, **hidden_subprocess_kwargs())
     if result.returncode:
         detail = result.stderr.decode("utf-8", errors="replace").strip()[-2000:]
         raise RuntimeError(f"Unable to decode multichannel audio: {detail or result.returncode}")
@@ -364,7 +311,62 @@ def cmd_audio_metadata(payload: dict[str, Any]) -> int:
         return emit_error("AUDIO_METADATA_FAILED", str(exc), traceback.format_exc())
 
 
+def _validate_waveform_projects(root: Path, paths: tuple[Path, ...]) -> None:
+    from shared.asset_references import ensure_plain_path
+
+    managed = (root / "editor-projects").resolve()
+    for path in paths:
+        ensure_plain_path(path)
+        try:
+            relative = path.resolve().relative_to(managed)
+        except ValueError:
+            continue
+        if not relative.parts:
+            raise ValueError("Waveform target must belong to an existing editor project")
+        project_id = relative.parts[0]
+        project_path = managed / project_id / "project.json"
+        ensure_plain_path(project_path)
+
+        def strict_object(pairs):
+            value = {}
+            for key, item in pairs:
+                if key in value:
+                    raise ValueError("Duplicate editor project key")
+                value[key] = item
+            return value
+
+        project = json.loads(project_path.read_text(encoding="utf-8"), object_pairs_hook=strict_object,
+                             parse_constant=lambda value: (_ for _ in ()).throw(ValueError("Invalid editor project number")))
+        if (not isinstance(project, dict) or type(project.get("version")) is not int or project["version"] != 4
+                or project.get("id") != project_id or not isinstance(project.get("sources"), list)
+                or not isinstance(project.get("tracks"), list)
+                or any(not isinstance(track, dict) or "effects" in track
+                       or not isinstance(track.get("clips"), list) or type(track.get("autoName")) is not bool
+                       for track in project["tracks"])):
+            raise ValueError("Unsupported or mismatched editor project; original files preserved")
+
+
 def cmd_waveform_peaks(payload: dict[str, Any]) -> int:
+    from shared.asset_references import asset_reference_lock, ensure_plain_path
+    from shared.worker_paths import data_root
+
+    try:
+        root = data_root(payload.get("dataRoot")).absolute()
+        path = Path(payload.get("path") or "")
+        cache = Path(payload.get("cacheDir") or path.parent / ".pymss-peaks")
+        if not path.is_absolute() or not cache.is_absolute():
+            raise ValueError("Waveform source and cache paths must be absolute")
+        with asset_reference_lock(root):
+            ensure_plain_path(root / "editor-projects")
+            _validate_waveform_projects(root, (path, cache))
+            if not path.is_file():
+                raise FileNotFoundError(str(path))
+            return _cmd_waveform_peaks_locked(payload)
+    except Exception as exc:
+        return emit_error("WAVEFORM_PEAKS_FAILED", str(exc), traceback.format_exc())
+
+
+def _cmd_waveform_peaks_locked(payload: dict[str, Any]) -> int:
     path_value = payload.get("path")
     if not path_value:
         return emit_error("WAVEFORM_PEAKS_FAILED", "Missing audio path")
@@ -377,6 +379,8 @@ def cmd_waveform_peaks(payload: dict[str, Any]) -> int:
     cache_name = f"{path.stem}_{cache_key}_{resolution}_v2.json"
     peaks_path = cache_dir / cache_name
     try:
+        from shared.asset_references import ensure_plain_path
+        ensure_plain_path(peaks_path)
         if peaks_path.is_file() and peaks_path.stat().st_mtime >= path.stat().st_mtime:
             data = json.loads(peaks_path.read_text(encoding="utf-8"))
             channel_peaks = data.get("channelPeaks") or []
@@ -798,7 +802,7 @@ def cmd_export_editor_mix(payload: dict[str, Any]) -> int:
                         output_path.name,
                     )
             check_cancelled()
-            published_path = _publish_export_path(temporary_path, output_path)
+            published_path = publish_output_path(temporary_path, output_path)
             temporary_path = None
             output_path = published_path
         except Exception:

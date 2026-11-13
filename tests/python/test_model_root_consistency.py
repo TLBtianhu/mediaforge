@@ -44,7 +44,7 @@ except ImportError as exc:  # pragma: no cover - 取决于解释器里装了什�
     IMPORT_SKIP_REASON = f"缺少运行时依赖，只比对三个入口：{exc}"
 
 ENV_KEYS = (
-    "MEDIAFORGE_MODEL_DIR",
+    "PYMSS_MODEL_DIR",
     "MEDIAFORGE_MODEL_DIR",
     "MEDIAFORGE_DATA_DIR",
     "MEDIAFORGE_DATA_ROOT",
@@ -91,9 +91,19 @@ class ModelRootConsistencyTests(unittest.TestCase):
     def test_pymss_model_dir_is_honoured_when_it_is_the_only_hint(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             override = Path(raw) / "pymss-weights"
-            with mock.patch.dict(os.environ, env_without_overrides(MEDIAFORGE_MODEL_DIR=str(override)), clear=True):
+            with mock.patch.dict(os.environ, env_without_overrides(PYMSS_MODEL_DIR=str(override)), clear=True):
                 roots = self.roots()
         self.assert_all_equal(roots, override)
+
+    def test_export_sets_the_pymss_import_time_hint_too(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            worker_paths.export_model_root('C:/isolated/models')
+            self.assertEqual(os.environ['MEDIAFORGE_MODEL_DIR'], 'C:/isolated/models')
+            self.assertEqual(os.environ['PYMSS_MODEL_DIR'], 'C:/isolated/models')
+
+    def test_current_model_hint_wins_over_legacy_hint(self) -> None:
+        with mock.patch.dict(os.environ, {'MEDIAFORGE_MODEL_DIR': 'C:/current', 'PYMSS_MODEL_DIR': 'C:/legacy'}, clear=True):
+            self.assertEqual(worker_paths.model_root(), Path('C:/current'))
 
     def test_default_never_points_inside_the_program_directory(self) -> None:
         """无任何配置时，模型根不能落在程序目录（只读、且打包版没有 models/）。"""

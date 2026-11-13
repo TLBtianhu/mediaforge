@@ -23,7 +23,9 @@ from pip._vendor.packaging.utils import canonicalize_name
 from pip._vendor.packaging.version import Version
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
-from shared import worker_paths
+from shared import runtime_pointer, worker_paths
+from shared.runtime_platform import interpreter_architecture
+from shared.worker_subprocess import HiddenVenvBuilder, hidden_subprocess_kwargs
 
 
 MANIFEST_PATH = Path(__file__).resolve().parents[1] / "runtime-manifest.json"
@@ -554,9 +556,7 @@ def _runtime_command_path(path: Path) -> Path:
 
 
 def _create_runtime_venv(env_dir: Path) -> None:
-    import venv
-
-    venv.EnvBuilder(with_pip=True, clear=True, symlinks=(os.name != "nt")).create(_normal_runtime_path(env_dir))
+    HiddenVenvBuilder(with_pip=True, clear=True, symlinks=(os.name != "nt")).create(_normal_runtime_path(env_dir))
 
 
 def _repair_runtime_venv_config(env_dir: Path) -> bool:
@@ -610,28 +610,15 @@ def _make_posix_venv_relocatable(env_dir: Path) -> bool:
 
 
 # ===== primitives.py =====
-def _resolve_runtime_state_from(file: Path) -> dict[str, Any] | None:
-    """Read active-runtime.json and resolve relative pythonPath against its parent dir."""
-    try:
-        state = json.loads(file.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if not isinstance(state, dict):
-        return None
-    python_path = state.get("pythonPath")
-    if python_path:
-        if not isinstance(python_path, str):
-            return None
-        p = Path(python_path)
-        if not p.is_absolute():
-            resolved = file.parent / p
-            if resolved.is_file():
-                # Keep the executable link: POSIX venvs locate pyvenv.cfg through argv[0].
-                state["pythonPath"] = str(resolved.parent.resolve() / resolved.name)
-            else:
-                return None
-        elif not p.is_file():
-            return None
+def _load_runtime_state_from(file: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """Read active-runtime.json and say why it was rejected.
+
+    Missing file means "nothing activated"; anything else is reported so a
+    damaged pointer never turns into "no runtime" by accident.
+    """
+    state, error = runtime_pointer.load_active_runtime(file)
+    if state is None:
+        return None, error
     overlay_path = state.get("overlayPath")
     if overlay_path:
         overlay = Path(str(overlay_path))
@@ -643,7 +630,23 @@ def _resolve_runtime_state_from(file: Path) -> dict[str, Any] | None:
         else:
             state["overlayPath"] = str(resolved_overlay)
     state.pop("source", None)
+    return state, None
+
+
+def _resolve_runtime_state_from(file: Path) -> dict[str, Any] | None:
+    """Lenient view for write/activation paths; diagnostics use _load_runtime_state_from."""
+    state, _ = _load_runtime_state_from(file)
     return state
+
+
+def _active_runtime_diagnostic() -> str | None:
+    """Explain a rejected active pointer, or return None when it is usable or absent."""
+    state, error = _load_runtime_state_from(ACTIVE_RUNTIME_FILE)
+    if error:
+        return error
+    if state is not None and _read_runtime_state() is None:
+        return f"runtime pointer {ACTIVE_RUNTIME_FILE} is not a usable environment"
+    return None
 
 
 def _read_runtime_state() -> dict[str, Any] | None:
@@ -788,6 +791,7 @@ def _verify_runtime_audio(python_path: Path, overlay_path: Path | None = None, *
         errors="replace",
         timeout=60,
         env={**_probe_environment(overlay_path, python_path=python_path), "PYTHONDONTWRITEBYTECODE": "1"},
+        **hidden_subprocess_kwargs(),
     )
     if completed.returncode:
         lines = completed.stderr.strip().splitlines()
@@ -839,6 +843,7 @@ print(json.dumps(result, ensure_ascii=False))
         errors="replace",
         stderr=subprocess.PIPE,
         env=_probe_environment(overlay_path, python_path=python_path),
+        **hidden_subprocess_kwargs(),
     )
     result = json.loads(output)
     if (
@@ -886,6 +891,7 @@ print(json.dumps(result, ensure_ascii=False))
             encoding="utf-8",
             errors="replace",
             env=_probe_environment(overlay_path, python_path=python_path),
+            **hidden_subprocess_kwargs(),
         )
         data = json.loads(output.strip() or "{}")
         return {name: (str(data.get(name)) if data.get(name) else None) for name in package_names}
@@ -1121,9 +1127,62 @@ def _runtime_python_works(python_path: Path) -> bool:
             text=True,
             timeout=20,
             env=_probe_environment(python_path=python_path),
+            **hidden_subprocess_kwargs(),
         ).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
+
+
+def _validate_install_python_versions(env_dir: Path, manifest: dict[str, Any]) -> None:
+    """Reject foreign Python environments before recovery, repair, or reinstall can mutate them."""
+    expected = manifest.get("python")
+    if not isinstance(expected, str) or not re.fullmatch(r"\d+\.\d+", expected):
+        raise ValueError("The runtime manifest must declare a Python major.minor version.")
+    actual = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if actual != expected:
+        raise ValueError(f"Runtime installation requires Python {expected}; the bootstrap is Python {actual}.")
+
+    # Recovery may promote a hidden environment or discard its backup. Check these copies
+    # before recovery too, so an interrupted old-version install cannot bypass the guard.
+    candidates = [env_dir, *(
+        env_dir.parent / f".{env_dir.name}.{suffix}"
+        for suffix in ("reinstalling", "core-backup", "core-updating")
+    )]
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+
+        def reject(found: str) -> None:
+            raise ValueError(
+                f"Cannot replace runtime {candidate}: {found}. Python {expected} is required. "
+                "Select or create a new matching environment; the existing directory is preserved."
+            )
+
+        config = candidate / "pyvenv.cfg"
+        if config.is_file():
+            for line in config.read_text(encoding="utf-8").splitlines():
+                key, separator, value = line.partition("=")
+                if separator and key.strip() in {"version", "version_info"}:
+                    match = re.match(r"(\d+\.\d+)(?:\.|$)", value.strip())
+                    if not match or match.group(1) != expected:
+                        reject(f"pyvenv.cfg declares Python {value.strip()}")
+
+        python_path = candidate / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        if not python_path.is_file():
+            continue  # An interrupted fresh install may not have created its interpreter yet.
+        try:
+            result = subprocess.run(
+                [str(_runtime_command_path(python_path)), "-I", "-S", "-B", "-c",
+                 "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+                env=_probe_environment(python_path=python_path),
+                **hidden_subprocess_kwargs(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            reject("its interpreter version could not be verified")
+        if result.returncode or result.stdout.strip() != expected:
+            found = result.stdout.strip() if re.fullmatch(r"\d+\.\d+", result.stdout.strip()) else "unverified"
+            reject(f"its interpreter is Python {found}")
 
 
 def _runtime_pip_works(python_path: Path) -> bool:
@@ -1136,6 +1195,7 @@ def _runtime_pip_works(python_path: Path) -> bool:
             errors="replace",
             timeout=30,
             env=_probe_environment(python_path=python_path),
+            **hidden_subprocess_kwargs(),
         ).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -1612,6 +1672,7 @@ def _ensure_runtime_pip(
         errors="replace",
         timeout=120,
         env=_probe_environment(python_path=python_path),
+        **hidden_subprocess_kwargs(inherit_console=True),
     )
     for line in result.stdout.splitlines():
         message = line.rstrip()
@@ -1776,10 +1837,11 @@ def _runtime_info_payload(payload: dict[str, Any], *, repair: bool = True) -> di
         "manifestVersion": manifest["manifestVersion"],
         "pythonVersion": platform.python_version(),
         "platform": sys.platform,
-        "machine": platform.machine(),
+        "machine": interpreter_architecture(),
         "bootstrapPython": str(_bootstrap_python_path()),
         "runtimeEnvsDir": str(RUNTIME_ENVS_DIR),
         "activeRuntimeFile": str(ACTIVE_RUNTIME_FILE),
+        "activeRuntimeError": _active_runtime_diagnostic(),
         "backend": backend,
         "installedBackend": install_state.get("backend") if install_state else None,
         "installState": install_state,
@@ -2042,7 +2104,6 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
     mirror = str(payload.get("mirror") or "auto").strip().lower()
     locale = str(payload.get("locale") or "").strip().lower()
     manifest = _manifest()
-    _recover_runtime_transactions()
     supported = _supported_backend(backend, manifest)
     if not supported:
         from shared.worker_protocol import emit_error
@@ -2051,9 +2112,21 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
     if sys.platform not in spec.get("platforms", []):
         from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_PLATFORM_UNSUPPORTED", f"Backend {backend} is not supported on {sys.platform}", task_id=task_id)
+    arch = interpreter_architecture()
+    supported_arch = {"win32": "x86_64", "linux": "x86_64", "darwin": "aarch64"}.get(sys.platform)
+    if arch != supported_arch:
+        from shared.worker_protocol import emit_error
+        return emit_error("RUNTIME_PLATFORM_UNSUPPORTED",
+                          f"Backend {backend} is not supported on {sys.platform}/{arch}", task_id=task_id)
+    env_dir = _env_dir(backend)
+    try:
+        _validate_install_python_versions(env_dir, manifest)
+    except (OSError, ValueError) as exc:
+        from shared.worker_protocol import emit_error
+        return emit_error("RUNTIME_PYTHON_MISMATCH", str(exc), task_id=task_id)
+    _recover_runtime_transactions()
     index_url = None
     mirror, index_url = _resolve_pypi_mirror(mirror, locale)
-    env_dir = _env_dir(backend)
     try:
         had_existing_environment = env_dir.is_dir() and any(env_dir.iterdir())
     except OSError:
@@ -2086,7 +2159,7 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
         command.extend(args)
         append_log(stage, "pip install " + " ".join(args))
         _emit("runtime_install_stage", {"stage": stage, "command": "pip install " + " ".join(args)}, task_id)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=_probe_environment())
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=_probe_environment(), **hidden_subprocess_kwargs())
         assert process.stdout is not None
         try:
             for line in process.stdout:
@@ -2499,6 +2572,7 @@ def cmd_update_runtime_core(payload: dict[str, Any]) -> int:
                 encoding="utf-8",
                 errors="replace",
                 env=_probe_environment(python_path=python_path),
+                **hidden_subprocess_kwargs(),
             )
             assert process.stdout is not None
             try:

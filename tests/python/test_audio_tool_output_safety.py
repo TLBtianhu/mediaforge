@@ -15,7 +15,7 @@ from unittest import mock
 
 from . import _bootstrap
 from audio_tools import common, convert, merge, slicer
-from core import worker_audio
+from shared import output_publish
 
 
 class AudioOutputSafetyTests(unittest.TestCase):
@@ -68,7 +68,7 @@ print(json.dumps({'partial': observed[0], 'result': str(result)}))
         env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[2] / 'python'),
                'PYMSS_STUDIO_AUDIO_TEMP_TOKEN': token, 'PYMSS_STUDIO_AUDIO_TEMP_STATE': str(record)}
         result = subprocess.run([sys.executable, '-c', worker, str(self.output)], env=env,
-                                capture_output=True, text=True, timeout=20)
+                                capture_output=True, text=True, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertEqual(result.returncode, 0, result.stderr)
         observed = json.loads(result.stdout)
         self.assertTrue(observed['partial'].startswith(f'.pymss-audio-{token}-{os.getpid()}-'))
@@ -122,7 +122,7 @@ print(json.dumps({'partial': observed[0], 'result': str(result)}))
 
     def test_unsupported_hard_links_never_create_final_placeholders(self):
         target = self.output / 'mix.wav'
-        with mock.patch.object(worker_audio.os, 'link', side_effect=OSError('unsupported')):
+        with mock.patch.object(output_publish.os, 'link', side_effect=OSError('unsupported')):
             published = common._render_output(target, lambda temporary: temporary.write_bytes(b'complete'))
             self.assertEqual(published.read_bytes(), b'complete')
 
@@ -132,33 +132,33 @@ print(json.dumps({'partial': observed[0], 'result': str(result)}))
             with self.subTest(platform=platform):
                 rename = mock.Mock(return_value=0)
                 library = types.SimpleNamespace(**{name: rename})
-                with mock.patch.object(worker_audio.os, 'name', 'posix'), \
-                     mock.patch.object(worker_audio.sys, 'platform', platform), \
+                with mock.patch.object(output_publish.os, 'name', 'posix'), \
+                     mock.patch.object(output_publish.sys, 'platform', platform), \
                      mock.patch.object(ctypes, 'CDLL', return_value=library), \
                      mock.patch.object(ctypes, 'get_errno', return_value=errno.EEXIST):
-                    worker_audio._rename_export_path(temporary, target)
+                    output_publish.rename_exclusive(temporary, target)
                     self.assertEqual(rename.call_args.args[-1], flag)
                     self.assertIn(os.fsencode(temporary), rename.call_args.args)
                     self.assertIn(os.fsencode(target), rename.call_args.args)
                     rename.return_value = -1
                     with self.assertRaises(FileExistsError):
-                        worker_audio._rename_export_path(temporary, target)
+                        output_publish.rename_exclusive(temporary, target)
 
     def test_missing_exclusive_rename_cannot_publish_a_placeholder(self):
         temporary, target = self.output / 'temporary.wav', self.output / 'mix.wav'
-        with mock.patch.object(worker_audio.os, 'name', 'posix'), \
-             mock.patch.object(worker_audio.sys, 'platform', 'linux'), \
+        with mock.patch.object(output_publish.os, 'name', 'posix'), \
+             mock.patch.object(output_publish.sys, 'platform', 'linux'), \
              mock.patch.object(ctypes, 'CDLL', return_value=types.SimpleNamespace()):
             with self.assertRaises(OSError):
-                worker_audio._rename_export_path(temporary, target)
+                output_publish.rename_exclusive(temporary, target)
         self.assertFalse(target.exists())
 
     def test_failed_windows_rename_does_not_leave_a_final_placeholder(self):
         if os.name != 'nt':
             self.skipTest('Windows atomic rename fallback')
         target = self.output / 'mix.wav'
-        with mock.patch.object(worker_audio.os, 'link', side_effect=OSError('unsupported')), \
-             mock.patch.object(worker_audio.os, 'rename', side_effect=OSError('rename failed')):
+        with mock.patch.object(output_publish.os, 'link', side_effect=OSError('unsupported')), \
+             mock.patch.object(output_publish.os, 'rename', side_effect=OSError('rename failed')):
             with self.assertRaises(OSError):
                 common._render_output(target, lambda temporary: temporary.write_bytes(b'complete'))
         self.assertEqual(list(self.output.iterdir()), [])
@@ -211,7 +211,7 @@ def render(temporary):
 _render_output(root / 'finished.wav', render)
 '''
         env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[2] / 'python')}
-        child = subprocess.Popen([sys.executable, '-c', worker, str(self.output)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        child = subprocess.Popen([sys.executable, '-c', worker, str(self.output)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         try:
             deadline = time.monotonic() + 10
             while not (self.output / 'ready').exists() and time.monotonic() < deadline:

@@ -5,6 +5,40 @@ export type DebugTab = 'overview' | 'runtime' | 'activity' | 'models' | 'events'
 export type CatalogEditMode = 'simple' | 'advanced'
 export type DebugLogLevelFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'unclassified'
 export type DebugLogCategoryFilter = 'all' | 'issues' | 'traceback' | 'pymss' | 'worker' | 'app' | 'runtime' | 'store' | 'other'
+
+export type DebugCatalogModel = {
+  name: string
+  aliases?: string[]
+  model_type?: string
+  architecture?: string
+  supported?: boolean
+  unsupported_reason?: string
+  relpath?: string
+  config_relpath?: string
+  auxiliary_relpaths?: string[]
+  size_bytes?: number
+  sha256?: string
+  primary_category?: string
+  primary_category_cn?: string
+  secondary_category?: string
+  secondary_category_cn?: string
+  target_stem?: string
+  config_instruments?: string
+  config_target_instrument?: string
+  classification_confidence?: string
+  classification_basis?: string
+  aliasesText?: string
+  [key: string]: unknown
+}
+
+export type DebugCatalog = {
+  schema_version?: number
+  models: DebugCatalogModel[]
+  removed?: unknown[]
+  source_repository?: { huggingface?: string; modelscope?: string }
+  [key: string]: unknown
+}
+
 export type DebugCatalogInfo = {
   baseCatalogPath: string
   debugCatalogPath: string
@@ -12,7 +46,7 @@ export type DebugCatalogInfo = {
   baseCatalog: Record<string, unknown>
   debugCatalog: Record<string, unknown>
   effectiveCatalog: Record<string, unknown>
-  status: Record<string, any>
+  status: Record<string, unknown>
 }
 export type DebugModelConfig = {
   model: string

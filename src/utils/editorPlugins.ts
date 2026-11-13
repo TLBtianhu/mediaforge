@@ -152,8 +152,9 @@ export function hasEditorPlugins(project: EditorSession | null | undefined) {
   return Boolean(project && projectPluginSlots(project).length)
 }
 
-export function pluginProjectVersion(project: EditorSession) {
-  return hasEditorPlugins(project) || project.masterLimiter ? 4 : 3
+export const CURRENT_EDITOR_PROJECT_VERSION = 4 as const
+export function pluginProjectVersion(_project: EditorSession) {
+  return CURRENT_EDITOR_PROJECT_VERSION
 }
 
 export function pluginProjectBlockReason(project: EditorSession, formats: readonly string[] = ['vst3', 'vst2', 'au']): 'format' | null {
@@ -172,13 +173,8 @@ export function applyPluginStates(project: EditorSession, states: Record<string,
   return changed
 }
 
-/** Legacy settings remain in saved projects but are not part of the audio graph. */
-export function pluginProcessingProject(project: EditorSession): EditorSession {
-  return {
-    ...project,
-    tracks: project.tracks.map(({ effects: _effects, ...track }) => track),
-  }
-}
+/** The current project is already the audio graph contract. */
+export function pluginProcessingProject(project: EditorSession): EditorSession { return project }
 
 /** Captured host state updates the host signature atomically; explicit history restores remain observable. */
 export function pluginProjectSignature(project: EditorSession) {

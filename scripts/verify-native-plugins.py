@@ -57,6 +57,7 @@ def run_helper(
         encoding="utf-8",
         env=environment,
         start_new_session=os.name != "nt",
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     try:
         stdout, stderr = process.communicate(payload, timeout=timeout)
@@ -68,6 +69,7 @@ def run_helper(
                 stderr=subprocess.DEVNULL,
                 check=False,
                 timeout=10,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         else:
             os.killpg(process.pid, signal.SIGKILL)
@@ -101,6 +103,7 @@ def verify(executable: Path, platform: str, timeout: float = 15) -> dict:
             capture_output=True,
             check=True,
             timeout=timeout,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         entitlements = plistlib.loads(signature.stdout)
         for permission in (

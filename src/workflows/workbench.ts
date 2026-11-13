@@ -15,18 +15,20 @@ export type WorkflowRuntimeBindings = {
 }
 export type WorkflowBindingNode = { id: string; label: string; embeddedPath?: string; subdirectory?: string }
 export type WorkflowWorkbenchSnapshot = {
-  version: 1
-  nativeGraph?: true
+  version: 2
   sourceUpdatedAt: number
-  sourceDefinition: Record<string, unknown>
   bindings: WorkflowRuntimeBindings
   inputs: Record<string, string>
   outputs: Record<string, string>
+  nativeGraph: boolean
+}
+export function workflowSourceDefinition(config?: { workflowDefinition?: Record<string, unknown>; workbench?: WorkflowWorkbenchSnapshot }): Record<string, unknown> {
+  return config?.workflowDefinition || {}
 }
 export type WorkbenchRun = { input: string; inputs: Record<string, string>; outputs: Record<string, string> }
 
 const LOAD_TYPES = new Set(['input_audio', 'pymss_load_audio', 'LoadAudio', 'pymss_load_audio_batch'])
-function record(value: unknown): value is Record<string, any> {
+function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 export function cloneWorkflow<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
@@ -52,7 +54,10 @@ export function workflowOutputNodes(definition: Record<string, unknown>): Workfl
       .filter(node => isWorkflowSaveNodeType(node.type))
       .map(node => {
         const widgets = Array.isArray(node.widgets_values) ? node.widgets_values : []
-        const dynamicPrefix = (Array.isArray(node.inputs) ? node.inputs : []).some((input: any) => input?.name === 'filename_prefix' && input.link != null)
+        const dynamicPrefix = (Array.isArray(node.inputs) ? node.inputs : []).some((input) => {
+        const slot = input as { name?: unknown; link?: unknown } | null
+        return slot?.name === 'filename_prefix' && slot.link != null
+      })
         const folder = node.type === 'pymss_save_audio' ? String(widgets[1] || '')
           : dynamicPrefix ? '' : String(widgets[0] || '').replace(/\\/g, '/').split('/').slice(0, -1).join('/')
         return { id: String(node.id), label: String(node.title || `${node.type} #${node.id}`),
@@ -191,6 +196,15 @@ function canonical(value: unknown): unknown {
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]))
 }
 
-export function workflowBindingsEqual(first: WorkflowRuntimeBindings, second: WorkflowRuntimeBindings): boolean {
-  return JSON.stringify(canonical(first)) === JSON.stringify(canonical(second))
+/** Compare the effective request, rather than persisting a second copy of editor bindings. */
+export function workbenchExecutionMatches(
+  definition: Record<string, unknown>, bindings: WorkflowRuntimeBindings,
+  executionDefinition: Record<string, unknown>, executionRuns: readonly WorkbenchRun[], defaultDirectory: string,
+): boolean {
+  if (workflowExecutionSignature(definition) !== workflowExecutionSignature(executionDefinition)) return false
+  if (detectWorkflowFormat(definition) === 'graph') return true
+  try {
+    return JSON.stringify(canonical(prepareWorkbenchRun(definition, bindings, defaultDirectory).runs))
+      === JSON.stringify(canonical(executionRuns))
+  } catch { return false }
 }

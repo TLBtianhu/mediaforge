@@ -7,7 +7,6 @@ import {
   type SimpleStepDraft,
 } from '@/utils/workflowSimple'
 
-export type SimpleConnectionSource = 'input' | `${string}.${string}`
 export type SimpleConnectionTarget =
   | `step:${string}`
   | `ensemble:${string}:${number}`

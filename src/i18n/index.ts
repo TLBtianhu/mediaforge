@@ -1,7 +1,6 @@
 import { createI18n } from 'vue-i18n'
 import zhCN from './zh-CN.json'
 import en from './en.json'
-import { runRippleViewTransition } from '@/utils/theme'
 
 export const SYSTEM_LOCALE = 'system' as const
 export const SUPPORTED_LOCALES = [
@@ -28,10 +27,6 @@ export function detectSystemLocale(): SupportedLocale {
   return nav.startsWith('zh') ? 'zh-CN' : 'en'
 }
 
-export function detectLocale(): SupportedLocale {
-  return detectSystemLocale()
-}
-
 export function resolveLocaleSetting(locale: LocaleSetting): SupportedLocale {
   return locale === SYSTEM_LOCALE ? detectSystemLocale() : locale
 }
@@ -39,7 +34,7 @@ export function resolveLocaleSetting(locale: LocaleSetting): SupportedLocale {
 let currentLocaleSetting: LocaleSetting = SYSTEM_LOCALE
 
 function applyResolvedLocale(locale: SupportedLocale) {
-  ;(i18n.global.locale as any).value = locale
+  i18n.global.locale.value = locale
   document.documentElement.lang = locale
 }
 
@@ -66,17 +61,8 @@ export function setLocale(locale: LocaleSetting) {
   applyResolvedLocale(resolveLocaleSetting(currentLocaleSetting))
 }
 
-export async function setLocaleWithTransition(
-  locale: LocaleSetting,
-  origin?: { x: number; y: number },
-) {
-  await runRippleViewTransition(() => {
-    setLocale(locale)
-  }, origin)
-}
-
 export function getCurrentLocale(): SupportedLocale {
-  const current = (i18n.global.locale as any)?.value ?? i18n.global.locale
+  const current = i18n.global.locale.value
   return current === 'en' ? 'en' : 'zh-CN'
 }
 

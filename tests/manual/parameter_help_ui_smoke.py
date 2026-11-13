@@ -19,7 +19,7 @@ with sync_playwright() as playwright:
         page = browser.new_page(viewport={'width': width, 'height': 850})
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
-        settings = json.dumps({'startupOnboardingSeen': True, 'beginnerGuideInvitationSeen': True, 'locale': language, 'themeMode': theme,
+        settings = json.dumps({'version': 1, 'startupOnboardingSeen': True, 'beginnerGuideInvitationSeen': True, 'locale': language, 'themeMode': theme,
                               'animationsEnabled': False, 'beginnerGuideProgress': {'status': 'skipped', 'step': 0}})
         page.add_init_script('localStorage.setItem("pymss-studio:app-settings",' + json.dumps(settings) + ')')
         page.goto(args.url + '/#/settings?section=about')

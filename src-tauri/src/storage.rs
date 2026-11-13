@@ -23,6 +23,39 @@ static JSON_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // Multiple WebView windows can autosave the same store at once. Serialize the temporary-file
 // replacement in the Rust process so a second writer never races the first ReplaceFileW call.
 static JSON_WRITE_LOCK: Mutex<()> = Mutex::new(());
+static MODEL_REFERENCE_MUTATIONS: Mutex<usize> = Mutex::new(0);
+#[cfg(test)]
+static MODEL_REFERENCE_TEST_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(test)]
+pub(crate) fn model_reference_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    MODEL_REFERENCE_TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+pub(crate) struct ModelReferenceMutation { pending_reap: bool }
+impl ModelReferenceMutation {
+    pub(crate) fn spawned(&mut self) { self.pending_reap = true; }
+    pub(crate) fn reaped(&mut self) { self.pending_reap = false; }
+}
+impl Drop for ModelReferenceMutation {
+    fn drop(&mut self) {
+        if self.pending_reap {
+            // An uncertain child must never make result files appear unreferenced.
+            // Keep deletion fail-closed for this process rather than guess it exited.
+            eprintln!("model registry mutation exit is unconfirmed; result-file recycling remains blocked");
+            return;
+        }
+        let mut count = MODEL_REFERENCE_MUTATIONS.lock().unwrap_or_else(|error| error.into_inner());
+        *count -= 1;
+    }
+}
+pub(crate) fn model_reference_mutation(command: &str) -> Option<ModelReferenceMutation> {
+    if !matches!(command, "import_custom_model" | "relink_custom_model" | "remap_custom_model_paths" | "unregister_custom_model") { return None; }
+    *MODEL_REFERENCE_MUTATIONS.lock().unwrap_or_else(|error| error.into_inner()) += 1;
+    Some(ModelReferenceMutation { pending_reap: false })
+}
+pub(crate) fn model_reference_snapshot_guard() -> std::sync::MutexGuard<'static, usize> {
+    MODEL_REFERENCE_MUTATIONS.lock().unwrap_or_else(|error| error.into_inner())
+}
 const PORTABLE_MARKER_FILE_NAME: &str = "mediaforge.portable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,10 +197,7 @@ fn resolve_data_root(
 }
 
 pub fn data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    let env_root = std::env::var_os(MEDIAFORGE_DATA_ROOT_ENV)
-        .or_else(|| std::env::var_os(DATA_ROOT_ENV))
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from);
+    let env_root = explicit_data_root();
     Ok(resolve_data_root(
         env_root,
         development_data_root_dir()?,
@@ -177,19 +207,55 @@ pub fn data_root_dir(app: &AppHandle) -> AppResult<PathBuf> {
     ))
 }
 
+fn env_path(names: &[&str]) -> Option<PathBuf> {
+    names.iter().find_map(|name| {
+        std::env::var_os(name)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+    })
+}
+
+fn explicit_data_root() -> Option<PathBuf> {
+    env_path(&[MEDIAFORGE_DATA_ROOT_ENV, "MEDIAFORGE_DATA_DIR", DATA_ROOT_ENV])
+}
+
+fn resolve_asset_root(
+    explicit_asset: Option<PathBuf>,
+    explicit_data: Option<PathBuf>,
+    default_data: PathBuf,
+    packaged_asset: Option<PathBuf>,
+    name: &str,
+) -> PathBuf {
+    explicit_asset
+        .or_else(|| explicit_data.map(|root| root.join(name)))
+        .or(packaged_asset)
+        .unwrap_or_else(|| default_data.join(name))
+}
+
+fn packaged_layout() -> AppResult<Option<InstalledLayout>> {
+    if is_development_executable() {
+        return Ok(None);
+    }
+    let exe = std::env::current_exe()?;
+    #[cfg(windows)]
+    if let Some(layout) = installed_layout_for(&exe) {
+        return Ok(Some(layout));
+    }
+    Ok(portable_layout_for(&exe))
+}
+
 pub fn settings_dir(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(data_root_dir(app)?.join("settings"))
 }
 
 pub fn models_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    #[cfg(windows)]
-    if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.models);
-    }
-    if let Some(layout) = portable_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.models);
-    }
-    Ok(data_root_dir(app)?.join("models"))
+    Ok(resolve_asset_root(
+        env_path(&["MEDIAFORGE_MODEL_DIR", "PYMSS_MODEL_DIR"]),
+        explicit_data_root(),
+        data_root_dir(app)?,
+        packaged_layout()?.map(|layout| layout.models),
+        "models",
+    ))
 }
 
 pub fn outputs_dir(app: &AppHandle) -> AppResult<PathBuf> {
@@ -261,39 +327,13 @@ fn bundled_runtime_envs_from(resource: Option<&Path>, exe_dir: &Path) -> Option<
 }
 
 pub fn runtime_envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
-    if let Some(value) = std::env::var_os("MEDIAFORGE_RUNTIME_ENVS_DIR") {
-        if !value.is_empty() {
-            return Ok(PathBuf::from(value));
-        }
-    }
-    #[cfg(windows)]
-    if let Some(layout) = installed_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.runtime_envs);
-    }
-    if let Some(layout) = portable_layout_for(&std::env::current_exe()?) {
-        return Ok(layout.runtime_envs);
-    }
-    #[cfg(any(feature = "vst-lab", target_os = "macos", target_os = "linux"))]
-    {
-        Ok(data_root_dir(app)?.join("runtime-envs"))
-    }
-    #[cfg(not(any(feature = "vst-lab", target_os = "macos", target_os = "linux")))]
-    {
-        // 开发态：数据根和运行时根不是同一个地方——数据在 `.dev-data`，
-        // 运行时默认却在 exe 旁边的 `python-runtime`，于是 `pnpm tauri dev` 永远
-        // 报 "No active runtime environment is installed"。
-        // 数据根下存在 runtime-envs 时优先用它，开发态与数据目录保持一致。
-        // 运行时属于"可变状态"，必须待在可写的数据根里：
-        // 装到 %LOCALAPPDATA%\Programs 之后，程序目录虽然也归用户所有，
-        // 但把 2.5 GB 的可替换资产塞进程序目录会让升级/卸载互相牵连。
-        // 因此数据根下有 runtime-envs 就用它，没有才回落程序目录（仅兼容老布局）。
-        if let Ok(candidate) = data_root_dir(app).map(|root| root.join("runtime-envs")) {
-            if candidate.is_dir() {
-                return Ok(candidate);
-            }
-        }
-        Ok(runtime_root_dir(app)?.join("runtime-envs"))
-    }
+    Ok(resolve_asset_root(
+        env_path(&["MEDIAFORGE_RUNTIME_ENVS_DIR"]),
+        explicit_data_root(),
+        data_root_dir(app)?,
+        packaged_layout()?.map(|layout| layout.runtime_envs),
+        "runtime-envs",
+    ))
 }
 
 pub fn active_runtime_file(app: &AppHandle) -> AppResult<PathBuf> {
@@ -340,11 +380,12 @@ pub fn app_paths_payload(app: &AppHandle) -> AppResult<AppPathsPayload> {
 fn store_file_name(name: &str) -> AppResult<&'static str> {
     match name {
         "app-settings" => Ok("app.json"),
-        "task-history" => Ok("tasks.json"),
+        "task-history" => Err(AppError::Worker("task-history is unsupported; use the schema-2 job store; original file preserved".into())),
         "model-state" => Ok("model-cache.json"),
         "editor-ui" => Ok("editor-ui.json"),
         "audio-tools" => Ok("audio-tools.json"),
         "workflow-state" => Ok("workflows.json"),
+        "media-workflows" => Ok("media-workflows.json"),
         "separate-state" => Ok("separate.json"),
         "update-state" => Ok("update.json"),
         _ => Err(AppError::Worker(format!("unknown app store: {name}"))),
@@ -355,6 +396,170 @@ pub fn app_store_path(app: &AppHandle, name: &str) -> AppResult<PathBuf> {
     Ok(settings_dir(app)?.join(store_file_name(name)?))
 }
 
+fn validate_app_settings(data: &Value) -> AppResult<()> {
+    let invalid = || AppError::Worker("unsupported app settings schema; original file preserved".into());
+    let object = data.as_object().ok_or_else(invalid)?;
+    // Every field is optional except the schema version; unknown fields are not.
+    fn kind(value: &Value, expected: &str) -> bool {
+        match expected {
+            "string" => value.is_string(),
+            "boolean" => value.is_boolean(),
+            "number" => value.as_f64().is_some_and(f64::is_finite),
+            "object" => value.is_object(),
+            _ => false,
+        }
+    }
+    fn one_of(value: &Value, choices: &[&str]) -> bool {
+        value.as_str().is_some_and(|text| choices.contains(&text))
+    }
+    const THEME_MODES: &[&str] = &["system", "dark", "light"];
+    const THEME_ACCENTS: &[&str] = &["blue", "pink", "sky", "teal"];
+    const LOCALES: &[&str] = &["system", "zh-CN", "en"];
+    const DOWNLOAD_METHODS: &[&str] = &["aria2c", "urllib"];
+    const WAV_BITS: &[&str] = &["PCM_16", "PCM_24", "FLOAT"];
+    const FLAC_BITS: &[&str] = &["PCM_16", "PCM_24"];
+    const MP3_RATES: &[&str] = &["128k", "192k", "256k", "320k"];
+    const M4A_CODECS: &[&str] = &["aac", "alac"];
+    const PROXY_MODES: &[&str] = &["system", "none", "custom"];
+    const UPDATE_CHANNELS: &[&str] = &["stable", "prerelease"];
+    const UPDATE_SOURCES: &[&str] = &["auto", "github", "modelscope"];
+    if object.get("version").and_then(Value::as_u64) != Some(1) {
+        return Err(invalid());
+    }
+    const FIELDS: &[(&str, &str)] = &[
+        ("themeMode", "string"), ("themeAccent", "string"), ("scaleFactor", "number"),
+        ("locale", "string"), ("animationsEnabled", "boolean"), ("developerMode", "boolean"),
+        ("modelDir", "string"), ("outputDir", "string"), ("defaultDevice", "string"),
+        ("defaultFormat", "string"), ("downloadSource", "string"), ("downloadMethod", "string"),
+        ("maxConcurrentSeparations", "number"), ("clearInputAfterSubmit", "boolean"),
+        ("wavBitDepth", "string"), ("flacBitDepth", "string"), ("mp3BitRate", "string"),
+        ("m4aBitRate", "string"), ("m4aCodec", "string"), ("startupOnboardingSeen", "boolean"),
+        ("beginnerGuideInvitationSeen", "boolean"), ("beginnerGuideProgress", "object"),
+        ("proxyMode", "string"), ("proxyUrl", "string"), ("proxyBypass", "string"),
+        ("updateChannel", "string"), ("updateSource", "string"), ("updateEndpointOverride", "string"),
+    ];
+    let known: Vec<&str> = std::iter::once("version").chain(FIELDS.iter().map(|(name, _)| *name)).collect();
+    if object.keys().any(|key| !known.contains(&key.as_str())) {
+        return Err(invalid());
+    }
+    for (name, expected) in FIELDS {
+        let Some(value) = object.get(*name) else { continue };
+        if !kind(value, expected) {
+            return Err(invalid());
+        }
+    }
+    for (name, choices) in [
+        ("themeMode", THEME_MODES), ("themeAccent", THEME_ACCENTS), ("locale", LOCALES),
+        ("downloadMethod", DOWNLOAD_METHODS), ("wavBitDepth", WAV_BITS), ("flacBitDepth", FLAC_BITS),
+        ("mp3BitRate", MP3_RATES), ("m4aCodec", M4A_CODECS), ("proxyMode", PROXY_MODES),
+        ("updateChannel", UPDATE_CHANNELS), ("updateSource", UPDATE_SOURCES),
+    ] {
+        if let Some(value) = object.get(name) {
+            if !one_of(value, choices) { return Err(invalid()); }
+        }
+    }
+    if let Some(value) = object.get("maxConcurrentSeparations") {
+        let limit = value.as_u64().ok_or_else(invalid)?;
+        let maximum = crate::python::compute_worker_slots()? as u64;
+        if !(1..=maximum).contains(&limit) {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
+/// Reject a settings file we cannot interpret, without touching its bytes.
+///
+/// The reason is surfaced to the UI so the user can choose an explicit
+/// recovery; no caller may silently replace the preserved file with defaults.
+fn settings_bytes_rejection(bytes: &[u8]) -> Option<String> {
+    let text = match std::str::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => return Some("settings file is not valid UTF-8".into()),
+    };
+    let value = match serde_json::from_str::<Value>(text) {
+        Ok(value) => value,
+        Err(error) => return Some(format!("settings file is not valid JSON: {error}")),
+    };
+    validate_app_settings(&value).err().map(|error| error.to_string())
+}
+
+/// `Some(reason)` means this path holds a file the current app cannot load.
+pub(crate) fn app_settings_rejection(path: &Path) -> AppResult<Option<String>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(settings_bytes_rejection(&bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Explicit recovery: keep the exact original bytes in a new backup file, then
+/// remove the rejected file so the next load starts from documented defaults.
+///
+/// Returns `None` when there is nothing to recover (missing or already valid).
+pub(crate) fn recover_app_settings_file(path: &Path) -> AppResult<Option<PathBuf>> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if settings_bytes_rejection(&bytes).is_none() {
+        return Ok(None);
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| AppError::Worker("settings file has no parent directory".into()))?;
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("app");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_millis())
+        .unwrap_or(0);
+    for attempt in 0..1000u32 {
+        let name = if attempt == 0 {
+            format!("{stem}.rejected-{stamp}.json")
+        } else {
+            format!("{stem}.rejected-{stamp}-{attempt}.json")
+        };
+        let backup = parent.join(name);
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let written = (|| -> AppResult<()> {
+            use std::io::Write;
+            file.write_all(&bytes)?;
+            file.sync_all()?;
+            Ok(())
+        })();
+        drop(file);
+        if let Err(error) = written {
+            let _ = std::fs::remove_file(&backup);
+            return Err(error);
+        }
+        // The user's bytes are the point of the backup; never drop the original
+        // unless the copy is byte-identical.
+        if std::fs::read(&backup)? != bytes {
+            let _ = std::fs::remove_file(&backup);
+            return Err(AppError::Worker(
+                "settings backup does not match the original bytes; original preserved".into(),
+            ));
+        }
+        std::fs::remove_file(path)?;
+        return Ok(Some(backup));
+    }
+    Err(AppError::Worker(
+        "could not allocate a settings backup file name; original preserved".into(),
+    ))
+}
+
 pub fn read_app_store(app: &AppHandle, name: &str) -> AppResult<Value> {
     ensure_app_directories(app)?;
     let path = app_store_path(app, name)?;
@@ -362,12 +567,38 @@ pub fn read_app_store(app: &AppHandle, name: &str) -> AppResult<Value> {
         return Ok(Value::Null);
     }
     let content = std::fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&content)?)
+    let value = serde_json::from_str::<Value>(&content)?;
+    if name == "media-workflows" {
+        if !value.is_object() { return Err(AppError::Worker("invalid media workflow store".into())); }
+        return crate::media_workflows::normalize_state(value);
+    }
+    if name == "workflow-state" { validate_workflow_state(&value)?; }
+    if name == "app-settings" { validate_app_settings(&value)?; }
+    Ok(value)
+}
+
+/// A file the current schema cannot load must not be replaced by defaults.
+fn ensure_app_settings_replaceable(path: &Path) -> AppResult<()> {
+    match app_settings_rejection(path)? {
+        None => Ok(()),
+        Some(reason) => Err(AppError::Worker(format!(
+            "app settings on disk cannot be replaced implicitly ({reason}); \
+             keep the original file and use the explicit settings recovery"
+        ))),
+    }
 }
 
 pub fn write_app_store(app: &AppHandle, name: &str, data: &Value) -> AppResult<()> {
+    if name == "workflow-state" { validate_workflow_state(data)?; }
+    if name == "app-settings" { validate_app_settings(data)?; }
     ensure_app_directories(app)?;
     let path = app_store_path(app, name)?;
+    if name == "app-settings" {
+        // A file the current schema cannot load is evidence of an older/newer
+        // install or damage. Replacing it with defaults would destroy the only
+        // copy of the user's settings, so only explicit recovery may proceed.
+        ensure_app_settings_replaceable(&path)?;
+    }
     write_json_file(&path, data)
 }
 
@@ -378,54 +609,67 @@ pub(crate) fn write_json_file(path: &Path, data: &Value) -> AppResult<()> {
     write_json_file_locked(path, data)
 }
 
-pub(crate) fn write_editor_project_file(path: &Path, data: &Value) -> AppResult<()> {
+pub(crate) fn write_editor_project_file(data_root: &Path, path: &Path, data: &Value) -> AppResult<()> {
+    write_editor_project_file_with_replace(data_root, path, data, replace_file)
+}
+
+fn write_editor_project_file_with_replace(
+    data_root: &Path,
+    path: &Path,
+    data: &Value,
+    replace: impl FnOnce(&Path, &Path) -> AppResult<()>,
+) -> AppResult<()> {
     let _write_guard = JSON_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    backup_pre_plugin_project(path, data).map_err(|error| {
-        AppError::Worker(format!("Could not preserve the original editor project at {}: {error}", path.display()))
-    })?;
-    write_json_file_locked(path, data)
-}
-
-fn backup_pre_plugin_project(path: &Path, data: &Value) -> AppResult<()> {
-    let backup = path.with_file_name("project.pre-plugins.json");
-    match std::fs::symlink_metadata(&backup) {
-        Ok(metadata) if metadata.is_file() => return Ok(()),
-        Ok(_) => return Err(AppError::Worker(format!("The project backup is not a regular file: {}", backup.display()))),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
+    validate_editor_project(data)?;
+    let id = data.get("id").and_then(Value::as_str)
+        .ok_or_else(|| AppError::Worker("missing editor project id; original file preserved".into()))?;
+    crate::commands::app::editor::validate_editor_project_id(id)?;
+    let expected = data_root.join("editor-projects").join(id).join("project.json");
+    if path != expected {
+        return Err(AppError::Worker("editor project path does not match its identity; original file preserved".into()));
     }
-    let content = match std::fs::read(path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+    crate::python::result_jobs::plain_path(data_root).map_err(|reason| AppError::Worker(reason.into()))?;
+    crate::python::result_jobs::plain_path(path).map_err(|reason| AppError::Worker(reason.into()))?;
+    // Save and native deletion share JSON -> asset ordering. The OS lease also
+    // excludes saves from another process until the atomic replacement finishes.
+    let _asset = crate::python::library_references::AssetLease::acquire(data_root, Duration::from_secs(5))?;
+    crate::python::result_jobs::plain_path(path).map_err(|reason| AppError::Worker(reason.into()))?;
+    let previous = match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            let previous = crate::python::result_jobs::parse_reference_json(&std::fs::read_to_string(path)?)?;
+            validate_editor_project(&previous)?;
+            if previous.get("id").and_then(Value::as_str) != Some(id) {
+                return Err(AppError::Worker("stored editor project identity does not match; original file preserved".into()));
+            }
+            Some(previous)
+        }
+        Ok(_) => return Err(AppError::Worker("editor project must be a regular file; original file preserved".into())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(error.into()),
     };
-    let previous: Value = serde_json::from_slice(&content)?;
-    let has_legacy_effects = previous.get("tracks").and_then(Value::as_array)
-        .is_some_and(|tracks| tracks.iter().any(|track| track.get("effects").is_some_and(Value::is_object)));
-    if previous.get("version").and_then(Value::as_u64).unwrap_or(0) >= 4
-        || (!has_legacy_effects && data.get("version").and_then(Value::as_u64).unwrap_or(0) < 4)
-    {
-        return Ok(());
-    }
+    crate::python::editor_references::validate_managed_reference_targets(data_root, data, previous.as_ref())?;
+    write_json_file_with_replace(path, data, replace)
+}
 
-    // Publish a fully synced copy before replacing the project. A second writer
-    // cannot replace the first upgrade snapshot, including across processes.
-    let mut file = tempfile::NamedTempFile::new_in(path.parent().unwrap_or_else(|| Path::new(".")))?;
-    file.write_all(&content)?;
-    file.as_file().sync_all()?;
-    match file.persist_noclobber(&backup) {
-        Ok(_) => Ok(()),
-        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
-            if std::fs::symlink_metadata(&backup)?.is_file() {
-                Ok(())
-            } else {
-                Err(error.error.into())
-            }
-        }
-        Err(error) => Err(error.error.into()),
-    }
+/// Hold the same guard as editor saves while inspecting references and recycling
+/// result files. The callback must not call another JSON-writing storage API.
+pub(crate) fn with_editor_project_guard<T>(action: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+    let _guard = JSON_WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    action()
+}
+
+pub(crate) fn validate_editor_project(project: &Value) -> AppResult<()> {
+    let valid = project.get("version").and_then(Value::as_u64) == Some(4)
+        && project.get("sources").is_some_and(Value::is_array)
+        && project.get("tracks").and_then(Value::as_array).is_some_and(|tracks| tracks.iter().all(|track| {
+            track.is_object() && track.get("effects").is_none()
+                && track.get("clips").is_some_and(Value::is_array)
+                && track.get("autoName").is_some_and(Value::is_boolean)
+        }));
+    if !valid { return Err(AppError::Worker("unsupported editor project schema; original file preserved".into())); }
+    Ok(())
 }
 
 fn write_json_file_locked(path: &Path, data: &Value) -> AppResult<()> {
@@ -473,15 +717,47 @@ fn write_json_file_with_replace(
             )));
         }
     }
+    if result.is_ok() {
+        bump_modified_time(path);
+    }
     if result.is_err() {
         let _ = std::fs::remove_file(&temporary);
     }
     result
 }
 
+/// ReplaceFileW may keep the replaced file's creation time, and two writes can
+/// land in the same timestamp tick; a job cache keyed by (len, mtime, ctime)
+/// would then miss the update. Give every successful replacement a strictly
+/// increasing mtime so the stamp always changes.
+fn bump_modified_time(path: &Path) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos() as u64)
+        .unwrap_or(0);
+    let mut previous = LAST.load(Ordering::Relaxed);
+    let stamp = loop {
+        let next = now.max(previous.saturating_add(1));
+        match LAST.compare_exchange_weak(previous, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => break next,
+            Err(actual) => previous = actual,
+        }
+    };
+    if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
+        let _ = file.set_modified(UNIX_EPOCH + Duration::from_nanos(stamp));
+    }
+}
+
 pub fn mutate_workflow_store(app: &AppHandle, mutation: &Value) -> AppResult<Value> {
     ensure_app_directories(app)?;
-    let path = app_store_path(app, "workflow-state")?;
+    mutate_workflow_file(&app_store_path(app, "workflow-state")?, mutation)
+}
+
+pub(crate) fn mutate_workflow_file(path: &Path, mutation: &Value) -> AppResult<Value> {
     let _write_guard = JSON_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -490,7 +766,7 @@ pub fn mutate_workflow_store(app: &AppHandle, mutation: &Value) -> AppResult<Val
         let content = std::fs::read_to_string(&path)?;
         serde_json::from_str::<Value>(&content)?
     } else {
-        serde_json::json!({ "workflows": [], "selectedWorkflowId": "" })
+        serde_json::json!({ "version": 1, "workflows": [], "selectedWorkflowId": "" })
     };
     let response = apply_workflow_mutation(state, mutation)?;
     if response.get("conflict").is_none() {
@@ -502,36 +778,47 @@ pub fn mutate_workflow_store(app: &AppHandle, mutation: &Value) -> AppResult<Val
     Ok(response)
 }
 
-fn missing_workflow_id(item: &Value) -> bool {
-    item.is_object()
-        && item
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_none()
+pub(crate) fn mutate_media_workflow_file(path: &Path, mutation: &Value) -> AppResult<Value> {
+    let _guard = JSON_WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let state = match std::fs::read_to_string(path) {
+        Ok(content) => {
+            let value = serde_json::from_str::<Value>(&content)?;
+            if !value.is_object() { return Err(AppError::Worker("invalid media workflow store".into())); }
+            value
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Null,
+        Err(error) => return Err(error.into()),
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis().min(u64::MAX as u128) as u64;
+    let response = crate::media_workflows::apply_mutation(state, mutation, now)?;
+    if response.get("conflict").is_none() { write_json_file_locked(path, &response["state"])?; }
+    Ok(response)
 }
 
-fn legacy_workflow_index(workflow_list: &[Value], mutation: &Value) -> Option<usize> {
-    let legacy_index = mutation
-        .get("legacyIndex")
-        .and_then(Value::as_u64)
-        .and_then(|value| usize::try_from(value).ok());
-    let legacy_entry = mutation.get("legacyEntry");
-    let is_match = |item: &Value| {
-        missing_workflow_id(item)
-            && legacy_entry
-                .map(|expected| expected == item)
-                .unwrap_or(true)
-    };
-    legacy_index
-        .filter(|index| workflow_list.get(*index).is_some_and(&is_match))
-        .or_else(|| legacy_entry.and_then(|_| workflow_list.iter().position(is_match)))
+pub fn mutate_media_workflows(app: &AppHandle, mutation: &Value) -> AppResult<Value> {
+    mutate_media_workflow_file(&app_store_path(app, "media-workflows")?, mutation)
+}
+
+fn validate_workflow_state(state: &Value) -> AppResult<()> {
+    let invalid = || AppError::Worker("unsupported workflow-state schema; original file preserved".into());
+    if state.get("version").and_then(Value::as_u64) != Some(1) { return Err(invalid()); }
+    let entries = state.get("workflows").and_then(Value::as_array).ok_or_else(invalid)?;
+    let selected = state.get("selectedWorkflowId").and_then(Value::as_str).ok_or_else(invalid)?;
+    let mut ids = std::collections::HashSet::new();
+    for entry in entries {
+        let id = entry.get("id").and_then(Value::as_str).filter(|id| !id.trim().is_empty()).ok_or_else(invalid)?;
+        if !ids.insert(id) || entry.get("formatVersion").and_then(Value::as_u64) != Some(1) {
+            return Err(invalid());
+        }
+    }
+    if !selected.is_empty() && !ids.contains(selected) { return Err(invalid()); }
+    Ok(())
 }
 
 fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Value> {
-    if !state.is_object() {
-        state = serde_json::json!({ "workflows": [], "selectedWorkflowId": "" });
+    validate_workflow_state(&state)?;
+    if mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some() {
+        return Err(AppError::Worker("unsupported workflow mutation schema".into()));
     }
     let state_object = state
         .as_object_mut()
@@ -541,12 +828,7 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let workflows = state_object
-        .entry("workflows")
-        .or_insert_with(|| Value::Array(Vec::new()));
-    if !workflows.is_array() {
-        *workflows = Value::Array(Vec::new());
-    }
+    let workflows = state_object.get_mut("workflows").ok_or_else(|| AppError::Worker("workflow list is missing".into()))?;
     let workflow_list = workflows
         .as_array_mut()
         .ok_or_else(|| AppError::Worker("workflow list must be an array".into()))?;
@@ -560,24 +842,18 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
                 .cloned()
                 .filter(Value::is_object)
                 .ok_or_else(|| AppError::Worker("workflow entry is required".into()))?;
+            if entry.get("formatVersion").and_then(Value::as_u64) != Some(1) {
+                return Err(AppError::Worker("unsupported workflow record schema".into()));
+            }
             let workflow_id = entry
                 .get("id")
                 .and_then(Value::as_str)
                 .filter(|value| !value.trim().is_empty())
                 .ok_or_else(|| AppError::Worker("workflow id is required".into()))?
                 .to_string();
-            let mut existing_index = workflow_list.iter().position(|item| {
+            let existing_index = workflow_list.iter().position(|item| {
                 item.get("id").and_then(Value::as_str) == Some(workflow_id.as_str())
             });
-            let has_legacy_reference =
-                mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some();
-            let mut legacy_target_mismatch = false;
-            if existing_index.is_none() {
-                existing_index = legacy_workflow_index(workflow_list, mutation);
-                if existing_index.is_none() && has_legacy_reference {
-                    legacy_target_mismatch = true;
-                }
-            }
             let actual_updated_at = existing_index
                 .and_then(|index| workflow_list[index].get("updatedAt"))
                 .and_then(Value::as_u64)
@@ -588,9 +864,8 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             if !force
-                && (legacy_target_mismatch
-                    || (expected_updated_at.is_some()
-                        && expected_updated_at.unwrap_or(0) != actual_updated_at))
+                && expected_updated_at.is_some()
+                && expected_updated_at.unwrap_or(0) != actual_updated_at
             {
                 conflict = Some(serde_json::json!({
                     "workflowId": workflow_id,
@@ -631,18 +906,13 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
                 .unwrap_or("");
             let index = workflow_list
                 .iter()
-                .position(|item| item.get("id").and_then(Value::as_str) == Some(workflow_id))
-                .or_else(|| legacy_workflow_index(workflow_list, mutation));
+                .position(|item| item.get("id").and_then(Value::as_str) == Some(workflow_id));
             let actual_updated_at = index
                 .and_then(|index| workflow_list[index].get("updatedAt"))
                 .and_then(Value::as_u64)
                 .unwrap_or(0);
             let expected_updated_at = mutation.get("expectedUpdatedAt").and_then(Value::as_u64);
-            let has_legacy_reference =
-                mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some();
-            if (index.is_none() && has_legacy_reference)
-                || (expected_updated_at.is_some()
-                    && expected_updated_at.unwrap_or(0) != actual_updated_at)
+            if expected_updated_at.is_some() && expected_updated_at.unwrap_or(0) != actual_updated_at
             {
                 conflict = Some(serde_json::json!({
                     "workflowId": workflow_id,
@@ -677,34 +947,12 @@ fn apply_workflow_mutation(mut state: Value, mutation: &Value) -> AppResult<Valu
             let existing_index = workflow_list
                 .iter()
                 .position(|item| item.get("id").and_then(Value::as_str) == Some(workflow_id));
-            let legacy_index = existing_index
-                .is_none()
-                .then(|| legacy_workflow_index(workflow_list, mutation))
-                .flatten();
-            let has_legacy_reference =
-                mutation.get("legacyIndex").is_some() || mutation.get("legacyEntry").is_some();
-            if !workflow_id.is_empty()
-                && existing_index.is_none()
-                && legacy_index.is_none()
-                && has_legacy_reference
-            {
-                conflict = Some(serde_json::json!({
-                    "workflowId": workflow_id,
-                    "expectedUpdatedAt": 0,
-                    "actualUpdatedAt": 0,
-                }));
-            } else {
-                if let Some(index) = legacy_index {
-                    workflow_list[index]["id"] = Value::String(workflow_id.to_string());
-                }
-                if workflow_id.is_empty() || existing_index.is_some() || legacy_index.is_some() {
-                    state_object.insert(
-                        "selectedWorkflowId".into(),
-                        Value::String(workflow_id.to_string()),
-                    );
-                }
+            if !workflow_id.is_empty() && existing_index.is_none() {
+                return Err(AppError::Worker("workflow id is missing".into()));
             }
+            state_object.insert("selectedWorkflowId".into(), Value::String(workflow_id.to_string()));
         }
+
         _ => {
             return Err(AppError::Worker(format!(
                 "unknown workflow mutation: {action}"
@@ -783,15 +1031,123 @@ fn replace_file(temporary: &Path, destination: &Path) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_workflow_mutation, resolve_data_root, store_file_name, write_json_file,
-        JSON_WRITE_SEQUENCE,
+        app_settings_rejection, apply_workflow_mutation, ensure_app_settings_replaceable,
+        recover_app_settings_file, resolve_data_root, settings_bytes_rejection, store_file_name,
+        validate_app_settings, write_json_file, JSON_WRITE_SEQUENCE,
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
     fn path(name: &str) -> PathBuf {
         PathBuf::from(name)
+    }
+
+    fn current_workflow_state(mut state: Value) -> Value {
+        state["version"]=json!(1);
+        if let Some(entries)=state["workflows"].as_array_mut() { for entry in entries { entry["formatVersion"]=json!(1); } }
+        state
+    }
+
+    fn current_workflow_mutation(state: Value, mutation: &Value) -> crate::error::AppResult<Value> {
+        let state = current_workflow_state(state);
+        let mut mutation=mutation.clone();
+        if mutation.get("entry").is_some() { mutation["entry"]["formatVersion"]=json!(1); }
+        apply_workflow_mutation(state,&mutation)
+    }
+
+    #[test]
+    fn app_settings_require_the_current_version_and_reject_unknown_fields() {
+        validate_app_settings(&json!({"version": 1, "themeMode": "dark"})).unwrap();
+        for value in [
+            json!(null), json!([]), json!({}), json!({"version": 0}), json!({"version": 2}),
+            json!({"version": 1, "futureSetting": true}),
+        ] {
+            assert!(validate_app_settings(&value).is_err(), "accepted {value}");
+        }
+    }
+
+    #[test]
+    fn rejected_settings_are_preserved_and_only_explicit_recovery_moves_them() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("app.json");
+        // Every rejection reason the current schema defines.
+        for (name, content) in [
+            ("missing version", br#"{"themeMode":"dark"}"#.as_slice()),
+            ("zero version", br#"{"version":0}"#.as_slice()),
+            ("future version", br#"{"version":2}"#.as_slice()),
+            ("unknown field", br#"{"version":1,"futureSetting":true}"#.as_slice()),
+            ("bad enum", br#"{"version":1,"themeMode":"neon"}"#.as_slice()),
+            ("broken json", br#"{"version":1,"#.as_slice()),
+        ] {
+            assert!(
+                settings_bytes_rejection(content).is_some(),
+                "{name} should be rejected"
+            );
+        }
+        assert!(settings_bytes_rejection(br#"{"version":1,"themeMode":"dark"}"#).is_none());
+
+        let invalid = br#"{"version":0,"themeMode":"light"}"#.to_vec();
+        std::fs::write(&file, &invalid).unwrap();
+        assert!(app_settings_rejection(&file).unwrap().is_some());
+        // Reading a rejected file never rewrites it.
+        assert_eq!(std::fs::read(&file).unwrap(), invalid);
+        // A normal save must refuse before touching the preserved file.
+        let guard = ensure_app_settings_replaceable(&file);
+        assert!(guard.is_err(), "a rejected file must block implicit replacement");
+        assert_eq!(std::fs::read(&file).unwrap(), invalid);
+
+        let backup = recover_app_settings_file(&file).unwrap().expect("a backup is created");
+        assert_eq!(std::fs::read(&backup).unwrap(), invalid, "the backup keeps the original bytes");
+        assert!(!file.exists(), "the rejected file is removed only after the backup is verified");
+        assert_eq!(backup.parent(), Some(root.path()));
+        assert!(backup.file_name().unwrap().to_string_lossy().starts_with("app.rejected-"));
+
+        // Nothing is left to recover, and a valid file is never moved.
+        assert!(recover_app_settings_file(&file).unwrap().is_none());
+        std::fs::write(&file, br#"{"version":1}"#).unwrap();
+        assert!(recover_app_settings_file(&file).unwrap().is_none());
+        assert!(file.exists());
+
+        // Repeated recoveries never overwrite an earlier backup.
+        std::fs::write(&file, &invalid).unwrap();
+        let second = recover_app_settings_file(&file).unwrap().unwrap();
+        assert_ne!(second, backup);
+        assert_eq!(std::fs::read(&second).unwrap(), invalid);
+    }
+
+    #[test]
+    fn media_workflow_file_transactions_merge_parallel_windows() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("media-workflows.json");
+        let handles = (0..8).map(|index| {
+            let path = path.clone();
+            std::thread::spawn(move || super::mutate_media_workflow_file(&path, &json!({
+                "action":"upsert","id":format!("preset_{index}"),"name":format!("Preset {index}"),
+                "definition":{"version":1,"modality":"image","steps":[{"capability":"upscale","bindings":{"upscaler":"media:real-esrgan-x2"},"params":{"scale":2}}]}
+            })).unwrap())
+        }).collect::<Vec<_>>();
+        for handle in handles { handle.join().unwrap(); }
+        let stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(stored["presets"].as_array().unwrap().len(), 8);
+        let revision = stored["presets"][0]["updatedAt"].as_u64().unwrap();
+        let id = stored["presets"][0]["id"].as_str().unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let conflict = super::mutate_media_workflow_file(&path, &json!({"action":"delete","id":id,"expectedUpdatedAt":revision - 1})).unwrap();
+        assert!(conflict.get("conflict").is_some());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn media_workflow_file_corruption_never_gets_overwritten() {
+        let root = tempfile::tempdir().unwrap(); let path = root.path().join("media-workflows.json");
+        std::fs::write(&path, b"broken-json").unwrap();
+        assert!(super::mutate_media_workflow_file(&path, &json!({"action":"delete","id":"preset","expectedUpdatedAt":1})).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"broken-json");
+        std::fs::write(&path, b"null").unwrap();
+        assert!(super::mutate_media_workflow_file(&path, &json!({"action":"delete","id":"preset","expectedUpdatedAt":1})).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"null");
+        assert_eq!(store_file_name("media-workflows").unwrap(), "media-workflows.json");
     }
 
     #[test]
@@ -803,7 +1159,7 @@ mod tests {
             ],
             "selectedWorkflowId": "first",
         });
-        let first = apply_workflow_mutation(
+        let first = current_workflow_mutation(
             initial,
             &json!({
                 "action": "upsert",
@@ -812,7 +1168,7 @@ mod tests {
             }),
         )
         .unwrap();
-        let second = apply_workflow_mutation(
+        let second = current_workflow_mutation(
             first["state"].clone(),
             &json!({
                 "action": "upsert",
@@ -837,7 +1193,7 @@ mod tests {
             "workflows": [{ "id": "first", "name": "Remote", "createdAt": 1, "updatedAt": 20 }],
             "selectedWorkflowId": "first",
         });
-        let response = apply_workflow_mutation(
+        let response = current_workflow_mutation(
             state.clone(),
             &json!({
                 "action": "upsert",
@@ -847,7 +1203,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(response["conflict"]["actualUpdatedAt"], 20);
-        assert_eq!(response["state"], state);
+        assert_eq!(response["state"], current_workflow_state(state));
     }
 
     #[test]
@@ -856,7 +1212,7 @@ mod tests {
             "workflows": [{ "id": "first", "name": "First", "createdAt": 1, "updatedAt": 10 }],
             "selectedWorkflowId": "first",
         });
-        let response = apply_workflow_mutation(
+        let response = current_workflow_mutation(
             state,
             &json!({ "action": "select", "workflowId": "" }),
         )
@@ -866,165 +1222,21 @@ mod tests {
     }
 
     #[test]
-    fn workflow_mutation_migrates_a_legacy_entry_without_creating_a_duplicate() {
-        let state = json!({
-            "workflows": [{ "name": "Legacy", "definition": {}, "createdAt": 1 }],
-            "selectedWorkflowId": "",
-        });
-        let response = apply_workflow_mutation(
-            state,
-            &json!({
-                "action": "upsert",
-                "entry": {
-                    "id": "workflow_generated",
-                    "name": "Migrated",
-                    "definition": {},
-                    "createdAt": 2,
-                    "updatedAt": 10,
-                },
-                "expectedUpdatedAt": 0,
-                "legacyIndex": 0,
-            }),
-        )
-        .unwrap();
-        let workflows = response["state"]["workflows"].as_array().unwrap();
-        assert_eq!(workflows.len(), 1);
-        assert_eq!(workflows[0]["id"], "workflow_generated");
-        assert_eq!(workflows[0]["name"], "Migrated");
-    }
-
-    #[test]
-    fn stale_legacy_index_conflicts_instead_of_creating_a_duplicate() {
-        let state = json!({
-            "workflows": [{
-                "id": "workflow_saved_elsewhere",
-                "name": "Remote",
-                "definition": {},
-                "createdAt": 1,
-                "updatedAt": 20,
-            }],
-            "selectedWorkflowId": "workflow_saved_elsewhere",
-        });
-        let response = apply_workflow_mutation(
-            state.clone(),
-            &json!({
-                "action": "upsert",
-                "entry": {
-                    "id": "workflow_generated_locally",
-                    "name": "Local",
-                    "definition": {},
-                    "createdAt": 2,
-                    "updatedAt": 10,
-                },
-                "expectedUpdatedAt": 0,
-                "legacyIndex": 0,
-            }),
-        )
-        .unwrap();
-        assert!(response.get("conflict").is_some());
-        assert_eq!(response["state"], state);
-    }
-
-    #[test]
-    fn legacy_entry_identity_survives_reordering_before_migration() {
-        let target = json!({ "name": "Target legacy", "definition": {}, "updatedAt": 5 });
-        let state = json!({
-            "workflows": [
-                { "name": "Other legacy", "definition": {}, "updatedAt": 7 },
-                target.clone(),
-            ],
-            "selectedWorkflowId": "",
-        });
-        let response = apply_workflow_mutation(
-            state,
-            &json!({
-                "action": "upsert",
-                "entry": {
-                    "id": "workflow_target",
-                    "name": "Migrated target",
-                    "definition": {},
-                    "createdAt": 2,
-                    "updatedAt": 10,
-                },
-                "expectedUpdatedAt": 5,
-                "legacyIndex": 0,
-                "legacyEntry": target,
-            }),
-        )
-        .unwrap();
-        let workflows = response["state"]["workflows"].as_array().unwrap();
-        assert_eq!(workflows.len(), 2);
-        assert!(workflows
-            .iter()
-            .any(|item| item["id"] == "workflow_target" && item["name"] == "Migrated target"));
-        assert!(workflows
-            .iter()
-            .any(|item| item["name"] == "Other legacy" && item.get("id").is_none()));
-    }
-
-    #[test]
-    fn legacy_entries_support_select_and_delete_mutations() {
-        let first = json!({ "name": "First legacy", "definition": {} });
-        let second = json!({ "name": "Second legacy", "definition": {} });
-        let state = json!({
-            "workflows": [first.clone(), second.clone()],
-            "selectedWorkflowId": "",
-        });
-        let selected = apply_workflow_mutation(
-            state,
-            &json!({
-                "action": "select",
-                "workflowId": "workflow_second",
-                "legacyIndex": 1,
-                "legacyEntry": second,
-            }),
-        )
-        .unwrap();
-        assert_eq!(selected["state"]["selectedWorkflowId"], "workflow_second");
-        assert_eq!(selected["state"]["workflows"][1]["id"], "workflow_second");
-
-        let deleted = apply_workflow_mutation(
-            selected["state"].clone(),
-            &json!({
-                "action": "delete",
-                "workflowId": "workflow_first",
-                "legacyIndex": 0,
-                "legacyEntry": first,
-            }),
-        )
-        .unwrap();
-        let workflows = deleted["state"]["workflows"].as_array().unwrap();
-        assert_eq!(workflows.len(), 1);
-        assert_eq!(workflows[0]["id"], "workflow_second");
-    }
-
-    #[test]
-    fn stale_legacy_delete_and_select_report_conflicts() {
-        let legacy = json!({ "name": "Legacy", "definition": {} });
-        let migrated = json!({
-            "id": "workflow_remote",
-            "name": "Legacy",
-            "definition": {},
-            "updatedAt": 20,
-        });
-        let state = json!({
-            "workflows": [migrated],
-            "selectedWorkflowId": "workflow_remote",
-        });
-        for action in ["delete", "select"] {
-            let response = apply_workflow_mutation(
-                state.clone(),
-                &json!({
-                    "action": action,
-                    "workflowId": "workflow_stale",
-                    "legacyIndex": 0,
-                    "legacyEntry": legacy,
-                }),
-            )
-            .unwrap();
-            assert!(response.get("conflict").is_some(), "{action}");
-            assert_eq!(response["state"], state, "{action}");
+    fn incompatible_workflow_files_are_never_migrated_or_overwritten() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("workflows.json");
+        for state in [
+            json!({"workflows":[],"selectedWorkflowId":""}),
+            json!({"version":2,"workflows":[],"selectedWorkflowId":""}),
+            json!({"version":1,"workflows":[{"name":"missing id"}],"selectedWorkflowId":""}),
+        ] {
+            let raw = serde_json::to_vec(&state).unwrap();
+            std::fs::write(&path,&raw).unwrap();
+            assert!(super::mutate_workflow_file(&path,&json!({"action":"select","workflowId":""})).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(),raw);
         }
+        let state = json!({"version":1,"workflows":[],"selectedWorkflowId":""});
+        assert!(apply_workflow_mutation(state,&json!({"action":"select","legacyIndex":0})).is_err());
     }
 
     #[test]
@@ -1039,7 +1251,7 @@ mod tests {
             }],
             "selectedWorkflowId": "workflow",
         });
-        let response = apply_workflow_mutation(
+        let response = current_workflow_mutation(
             state.clone(),
             &json!({
                 "action": "delete",
@@ -1049,7 +1261,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(response["conflict"]["actualUpdatedAt"], 20);
-        assert_eq!(response["state"], state);
+        assert_eq!(response["state"], current_workflow_state(state));
     }
 
     struct ResourceFixture(PathBuf);
@@ -1181,82 +1393,120 @@ mod tests {
     }
 
     #[test]
-    fn editor_upgrade_backup_preserves_original_bytes_and_is_never_overwritten() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let backup = root.path().join("project.pre-plugins.json");
-        let original = b"{\n  \"id\": \"old\", \"version\": 3, \"tracks\": [{\"effects\": {\"delay\": 0.3}}], \"future\": [1, 2]\n}\n";
-        std::fs::write(&path, original).unwrap();
-        let mut next: serde_json::Value = serde_json::from_slice(original).unwrap();
-        // Autosave/enrichment can run before the user adds their first plugin.
-        next["name"] = json!("Renamed");
-        super::write_editor_project_file(&path, &next).unwrap();
-        assert_eq!(std::fs::read(&backup).unwrap(), original);
-        next["version"] = json!(4);
-        next["pluginChain"] = json!([{ "id": "slot", "state": "sha256:retained" }]);
-        super::write_editor_project_file(&path, &next).unwrap();
-        super::write_editor_project_file(&path, &next).unwrap();
-        assert_eq!(std::fs::read(&backup).unwrap(), original);
-        let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(saved, next);
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 2);
+    fn unsupported_editor_files_are_preserved_without_upgrade_backups() {
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("editor-projects/p/project.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        for version in [None,Some(2),Some(3),Some(5)] {
+            let mut old=json!({"id":"p","sources":[],"tracks":[]});
+            if let Some(version)=version { old["version"]=json!(version); }
+            let raw=serde_json::to_vec(&old).unwrap(); std::fs::write(&path,&raw).unwrap();
+            assert!(super::write_editor_project_file(root.path(),&path,&current).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(),raw);
+            assert!(!path.parent().unwrap().join("project.pre-plugins.json").exists());
+        }
     }
 
     #[test]
-    fn editor_upgrade_backup_covers_v3_without_effects_but_not_new_or_existing_v4_projects() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let backup = root.path().join("project.pre-plugins.json");
-        let old = json!({ "id": "project", "version": 3, "tracks": [] });
-        super::write_editor_project_file(&path, &old).unwrap();
-        super::write_editor_project_file(&path, &old).unwrap();
-        assert!(!backup.exists());
-        let upgraded = json!({ "id": "project", "version": 4, "masterLimiter": { "enabled": true } });
-        super::write_editor_project_file(&path, &upgraded).unwrap();
-        let stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&backup).unwrap()).unwrap();
-        assert_eq!(stored, old);
-        let new_root = tempfile::tempdir().unwrap();
-        let new_path = new_root.path().join("project.json");
-        super::write_editor_project_file(&new_path, &upgraded).unwrap();
-        super::write_editor_project_file(&new_path, &upgraded).unwrap();
-        assert!(!new_root.path().join("project.pre-plugins.json").exists());
+    fn current_editor_writes_replace_only_the_current_project() {
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("editor-projects/p/project.json");
+        for revision in 1..=3 {
+            super::write_editor_project_file(root.path(),&path,&json!({"id":"p","version":4,"sources":[],"tracks":[],"revision":revision})).unwrap();
+        }
+        let saved:Value=serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["revision"],3);
+        assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(),1);
     }
 
     #[test]
-    fn editor_upgrade_backup_failure_keeps_original_project_until_retry() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let backup = root.path().join("project.pre-plugins.json");
-        let old = b"{\"id\":\"project\",\"version\":3}";
-        std::fs::write(&path, old).unwrap();
-        std::fs::create_dir(&backup).unwrap();
-        let next = json!({ "id": "project", "version": 4 });
-        let error = super::write_editor_project_file(&path, &next).unwrap_err();
-        assert!(error.to_string().contains("Could not preserve the original editor project"));
-        assert_eq!(std::fs::read(&path).unwrap(), old);
-        std::fs::remove_dir(&backup).unwrap();
-        super::write_editor_project_file(&path, &next).unwrap();
-        assert_eq!(std::fs::read(&backup).unwrap(), old);
+    fn editor_save_rejects_duplicate_or_mismatched_previous_identity_without_rewriting() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        for raw in [
+            r#"{"id":"other","id":"p","version":4,"sources":[],"tracks":[]}"#,
+            r#"{"id":"p","version":4,"sources":[{"path":"keep.wav","path":"hide.wav"}],"tracks":[]}"#,
+            r#"{"id":"other","version":4,"sources":[],"tracks":[]}"#,
+        ] {
+            std::fs::write(&path,raw).unwrap();
+            assert!(super::write_editor_project_file(root.path(),&path,&current).is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(),raw);
+            assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(),1);
+        }
     }
 
     #[test]
-    fn editor_upgrade_backup_serializes_concurrent_first_saves() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("project.json");
-        let old = b"{\"id\":\"project\",\"version\":3}";
-        std::fs::write(&path, old).unwrap();
-        std::thread::scope(|scope| {
-            for revision in 1..=4 {
-                let path = &path;
-                scope.spawn(move || super::write_editor_project_file(path, &json!({
-                    "id": "project", "version": 4, "revision": revision
-                })).unwrap());
-            }
+    fn editor_save_requires_the_exact_profile_project_and_identity() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        super::write_editor_project_file(root.path(),&path,&current).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        for invalid in [json!({"version":4,"sources":[],"tracks":[]}),
+            json!({"id":"../outside","version":4,"sources":[],"tracks":[]}),
+            json!({"id":"other","version":4,"sources":[],"tracks":[]})] {
+            assert!(super::write_editor_project_file(root.path(),&path,&invalid).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(),before);
+        }
+        for invalid_path in [root.path().join("project.json"),root.path().join("editor-projects/p/other.json"),
+            root.path().join("editor-projects/p/../p/project.json")] {
+            assert!(super::write_editor_project_file(root.path(),&invalid_path,&current).is_err());
+        }
+        let relative_root=std::path::Path::new("relative-editor-save-root");
+        assert!(super::write_editor_project_file(relative_root,&relative_root.join("editor-projects/p/project.json"),&current).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(),before);
+    }
+
+    #[test]
+    fn editor_save_holds_asset_lease_through_atomic_replace_and_releases_it_on_failure() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        super::write_editor_project_file(root.path(),&path,&current).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        let mut replacing=false;
+        let result=super::write_editor_project_file_with_replace(root.path(),&path,&current,|temporary,destination| {
+            replacing=true;
+            assert!(crate::python::library_references::AssetLease::acquire(root.path(),std::time::Duration::ZERO).is_err());
+            assert_eq!(std::fs::read(destination).unwrap(),before);
+            assert!(temporary.is_file());
+            Err(crate::error::AppError::Worker("injected replacement failure".into()))
         });
-        assert_eq!(std::fs::read(root.path().join("project.pre-plugins.json")).unwrap(), old);
-        let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(saved["version"], 4);
-        assert!(saved["revision"].as_u64().is_some_and(|revision| (1..=4).contains(&revision)));
+        assert!(replacing && result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(),before);
+        assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(),1);
+        let _released=crate::python::library_references::AssetLease::acquire(root.path(),std::time::Duration::ZERO).unwrap();
+    }
+
+    #[test]
+    fn editor_save_rejects_new_missing_managed_assets_but_preserves_relinkable_missing_sources() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("editor-projects/p/project.json");
+        let current=json!({"id":"p","version":4,"sources":[],"tracks":[]});
+        super::write_editor_project_file(root.path(),&path,&current).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        let mut changed=current.clone();
+        changed["sources"]=json!([{"id":"source","path":root.path().join("editor-projects/deleted/recordings/take.wav"),"missing":true}]);
+        assert!(super::write_editor_project_file(root.path(),&path,&changed).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(),before);
+        // A previously saved missing reference must remain editable for relinking.
+        std::fs::write(&path,serde_json::to_vec(&changed).unwrap()).unwrap();
+        changed["name"]=json!("Editing while relinking");
+        super::write_editor_project_file(root.path(),&path,&changed).unwrap();
+        let outside=tempfile::tempdir().unwrap();
+        changed["sources"][0]["path"]=json!(outside.path().join("missing.wav"));
+        super::write_editor_project_file(root.path(),&path,&changed).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap()["sources"][0]["path"],changed["sources"][0]["path"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn editor_save_rejects_linked_project_paths_without_touching_the_target() {
+        let root=tempfile::tempdir().unwrap();let outside=tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("editor-projects")).unwrap();
+        std::os::unix::fs::symlink(outside.path(),root.path().join("editor-projects/p")).unwrap();
+        let path=root.path().join("editor-projects/p/project.json");
+        let raw=r#"{"id":"p","version":4,"sources":[],"tracks":[]}"#;
+        std::fs::write(outside.path().join("project.json"),raw).unwrap();
+        assert!(super::write_editor_project_file(root.path(),&path,&json!({"id":"p","version":4,"sources":[],"tracks":[]})).is_err());
+        assert_eq!(std::fs::read_to_string(outside.path().join("project.json")).unwrap(),raw);
     }
 
     #[cfg(windows)]
@@ -1465,5 +1715,35 @@ mod tests {
         assert_eq!(layout.data, fixture.0.join("data"));
         assert_eq!(layout.models, fixture.0.join("models"));
         assert_eq!(layout.runtime_envs, fixture.0.join("runtime-envs"));
+    }
+
+    #[test]
+    fn asset_roots_keep_explicit_data_inside_its_boundary() {
+        for name in ["models", "runtime-envs"] {
+            let data = path("isolated").join("data");
+            let result = super::resolve_asset_root(
+                None, Some(data.clone()), path("unused-data"), Some(path("installed").join(name)), name,
+            );
+            assert_eq!(result, data.join(name));
+        }
+    }
+
+    #[test]
+    fn asset_roots_preserve_explicit_asset_overrides() {
+        for name in ["models", "runtime-envs"] {
+            let explicit = path("separate-assets").join(name);
+            assert_eq!(super::resolve_asset_root(
+                Some(explicit.clone()), Some(path("isolated-data")), path("unused-data"), Some(path("installed").join(name)), name,
+            ), explicit);
+        }
+    }
+
+    #[test]
+    fn asset_roots_use_sibling_layout_only_without_data_override() {
+        for name in ["models", "runtime-envs"] {
+            let installed = path("installed").join(name);
+            assert_eq!(super::resolve_asset_root(None, None, path("installed").join("data"), Some(installed.clone()), name), installed);
+            assert_eq!(super::resolve_asset_root(None, None, path("dev-data"), None, name), path("dev-data").join(name));
+        }
     }
 }

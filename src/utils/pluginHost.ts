@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { pluginHostCapabilitySnapshot, pluginHostRequest as invokePluginHostRequest } from '@/api/native'
 import i18n from '@/i18n'
 import type { EditorPluginSlot, EditorSession } from '@/types/editor'
 import { pluginProcessingProject, pluginProjectBlockReason, pluginProjectSignature, projectPluginSlots } from './editorPlugins'
@@ -127,7 +127,7 @@ function observeResponse(request: Record<string, unknown>, value: unknown) {
 async function requestNow<T>(request: Record<string, unknown>): Promise<T> {
   const current = loaded
   try {
-    const result = await invoke<T>('plugin_host_request', { request })
+    const result = await invokePluginHostRequest<T>(request)
     observeResponse(request, result)
     return result
   } catch (cause) {
@@ -153,7 +153,7 @@ export function pluginHostRequest<T = Record<string, unknown>>(request: Record<s
   return enqueue(() => requestNow<T>(request))
 }
 export function pluginHostCapabilities() {
-  capabilities ||= invoke<PluginHostCapabilities>('plugin_host_capabilities').catch(() => ({ enabled: false, platform: '', formats: [], nativeEditor: false, experimental: true }))
+  capabilities ||= pluginHostCapabilitySnapshot<PluginHostCapabilities>().catch(() => ({ enabled: false, platform: '', formats: [], nativeEditor: false, experimental: true }))
   return capabilities
 }
 export function assertPluginProjectSupported(project: EditorSession, formats?: readonly string[]) {

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { EllipsisHorizontal } from '@vicons/ionicons5'
@@ -661,7 +661,7 @@ defineExpose({
   border: 1px solid var(--primary-border);
   border-radius: 8px;
   background: var(--surface-1);
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   font-size: 12px;
   pointer-events: none;
 }
@@ -678,7 +678,7 @@ defineExpose({
       color-mix(in srgb, var(--surface-1) 68%, var(--surface-2))
     );
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--surface-4, var(--surface-3)) 82%, rgba(255,255,255,0.14))
+  scrollbar-color: color-mix(in srgb, var(--surface-3) 82%, rgba(255,255,255,0.14))
     transparent;
 }
 
@@ -1210,7 +1210,7 @@ defineExpose({
   padding: 10px 14px;
   border: 1px dashed color-mix(in srgb, var(--primary) 68%, transparent);
   border-radius: 999px;
-  color: var(--primary-strong);
+  color: var(--primary-ink);
   background: color-mix(in srgb, var(--primary-soft) 44%, var(--surface-1));
   font-size: 12px;
 }

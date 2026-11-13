@@ -81,9 +81,9 @@ def _midi(runtime: Any, operation: str, payload: dict[str, Any]) -> dict[str, An
     _progress("midi", "transcribing", 1, 2, source.name)
     report = _unwrap(result.get("report")) or {}
     # The plugin reports the produced MIDI path; surface tool-shaped fields.
-    midi_path = str(report.get("output_midi") or report.get("result") or "")
-    candidates = sorted(Path(str(report.get("output_dir") or output_dir)).glob(f"{source.stem}*.mid"))
-    output_path = midi_path if midi_path else (str(candidates[0]) if candidates else "")
+    output_path = report.get("output_midi") or report.get("result")
+    if not isinstance(output_path, str) or not output_path.strip() or not Path(output_path).is_absolute() or not Path(output_path).is_file():
+        raise ValueError("MIDI operation did not report an existing absolute output file")
     return {
         "operation": "midi",
         "inputPath": str(source),

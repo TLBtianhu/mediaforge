@@ -1,0 +1,721 @@
+﻿import assert from 'node:assert/strict'
+import test, { after } from 'node:test'
+import { fileURLToPath } from 'node:url'
+import { createPinia } from 'pinia'
+import { createRenderer, nextTick } from 'vue'
+import { createServer } from 'vite'
+
+const fixtureId = '\0media-jobs-store-fixture'
+const vite = await createServer({
+  configFile: false, appType: 'custom', optimizeDeps: { noDiscovery: true },
+  server: { watch: null, middlewareMode: true, hmr: false, ws: false, preTransformRequests: false },
+  resolve: { alias: {
+    '@tauri-apps/api/core': '\0media-jobs-core', '@tauri-apps/api/event': '\0media-jobs-event',
+    '@': fileURLToPath(new URL('../src', import.meta.url)),
+  } },
+  plugins: [{
+    name: 'media-jobs-native-boundaries', enforce: 'pre',
+    transform(_code, id) {
+      if (id.replaceAll('\\', '/').endsWith('/src/stores/settings.ts')) return 'export const useSettingsStore = () => ({developerMode:false})'
+    },
+    resolveId(id) { return [fixtureId, '\0media-jobs-core', '\0media-jobs-event'].includes(id) ? id : null },
+    load(id) {
+      if (id === '\0media-jobs-core') return `export { invoke } from '${fixtureId}'`
+      if (id === '\0media-jobs-event') return `export { listen } from '${fixtureId}'`
+      if (id === fixtureId) return `
+        export const calls=[], timeline=[], listeners=new Map(), remote=new Map()
+        let invokeHook, listenHook
+        export function reset(nextInvoke,nextListen) { calls.length=timeline.length=0; listeners.clear(); remote.clear(); invokeHook=nextInvoke; listenHook=nextListen }
+        export async function invoke(command,args) {
+          calls.push({command,args}); timeline.push(command)
+          if(command==='start_audio_tool') {
+            const now=Date.now()/1000, id=args.payload.requestId
+            remote.set(id,{schemaVersion:2,jobId:id,command:'audio_tools',source:'manual',status:'running',cancelTaskId:id,
+              owner:{kind:'tauri-worker',pid:1},fraction:0,message:'',error:null,result:null,createdAt:now,updatedAt:now,startedAt:now,finishedAt:null,
+              runtime:{stage:null,progress:null,nodes:{},order:[]},logs:[],payload:JSON.parse(JSON.stringify(args.payload))})
+          }
+          if(invokeHook) return invokeHook(command,args)
+          return command==='agent_jobs' ? {schemaVersion:3,full:true,removed:[],jobs:[...remote.values()],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'} : {started:true}
+        }
+        export async function listen(name,callback) {
+          timeline.push('listen:start')
+          if(listenHook) await listenHook(name)
+          listeners.set(name,callback); timeline.push('listen:ready')
+          return ()=>listeners.delete(name)
+        }
+        export function emit(event) {
+          const job=remote.get(event.taskId||event.requestId),payload=event.payload||{}
+          if(job){
+            job.updatedAt=Date.now()/1000
+            if((['task.result','error','task.cancelled'].includes(event.type)||event.type==='editor_mix_exported'&&job.command==='export_editor_mix')&&!(event.type==='error'&&payload.recoverable===true)){
+              job.status=event.type==='error'||payload.failed?.length?'failed':event.type==='task.cancelled'?'cancelled':'completed'
+              job.finishedAt=job.updatedAt;job.result=payload
+            }
+          }
+          listeners.get('pymss://worker-event')?.({payload:event})
+        }
+      `
+      return null
+    },
+  }],
+})
+after(() => vite.close())
+globalThis.window={__TAURI_INTERNALS__:{}}
+const fixture = await vite.ssrLoadModule(fixtureId)
+const { useMediaJobsStore, JOURNAL_POLL_INTERVAL_MS, JOURNAL_IDLE_POLL_INTERVAL_MS, JOURNAL_FULL_RECONCILE_MS } = await vite.ssrLoadModule('/src/stores/mediaJobs.ts')
+const { useMediaJob } = await vite.ssrLoadModule('/src/composables/useMediaJob.ts')
+const deferred = () => {
+  let resolve, reject
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+const flush = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick() }
+const journal = (jobId, overrides = {}) => ({
+  schemaVersion:2, jobId, command:'audio_tools', source:'manual', status:'running', cancelTaskId:jobId,
+  owner:{kind:'tauri-worker',pid:1},fraction:0,message:'',error:null,createdAt:100,updatedAt:100,startedAt:100,
+  finishedAt:['completed','failed','cancelled','interrupted'].includes(overrides.status)?101:null,
+  runtime:{stage:null,progress:null,nodes:{},order:[]},logs:[],payload:{operation:'media_image'},result:null,...overrides,
+})
+const response = jobs => ({schemaVersion:3,full:true,removed:[],jobs,dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'})
+function setup(t, invokeHook, listenHook) {
+  fixture.reset(invokeHook, listenHook)
+  const pinia = createPinia()
+  const store = useMediaJobsStore(pinia)
+  t.after(() => store.$dispose())
+  return { pinia, store }
+}
+
+test('journal schema and worker events accept only the current contract', async t => {
+  const {store}=setup(t,async command=>command==='agent_jobs'?response([journal('current')]):{started:true})
+  await store.initialize()
+  fixture.emit({taskId:'current',type:'operation_progress',payload:{progress:0.8}})
+  fixture.emit({taskId:'current',type:'operation_result',payload:{outputs:[{path:'obsolete.png'}]}})
+  assert.equal(store.jobs[0].status,'running')
+  assert.equal(store.jobs[0].fraction,0)
+  assert.equal(store.jobs[0].result,null)
+  fixture.emit({taskId:'current',type:'task.result',payload:{outputs:[{path:'current.png'}]}})
+  assert.equal(store.jobs[0].status,'completed')
+  assert.equal(store.jobs[0].result.outputs[0].path,'current.png')
+  const before=JSON.stringify(store.jobs)
+  fixture.reset(async()=>({index:{jobs:[journal('obsolete')]},dataRoot:'/fixture',workspace:'/fixture/agent-workspace.json'}))
+  await store.refresh()
+  assert.match(store.error,/Unsupported.*journal.*schema/i)
+  assert.equal(JSON.stringify(store.jobs),before)
+  await assert.rejects(store.start({operation:'media_image',inputs:['current.png']}),/Unsupported.*journal.*schema/i)
+  assert.equal(fixture.calls.some(call=>call.command==='start_audio_tool'),false)
+})
+
+test('start waits for its event listener and registers the local job before native invocation', async t => {
+  const listening = deferred()
+  let store
+  ;({ store } = setup(t, async (command, args) => {
+    if (command === 'agent_jobs') return response([])
+    assert.equal(fixture.listeners.has('pymss://worker-event'), true)
+    assert.equal(store.jobs[0].jobId, args.payload.requestId)
+    fixture.emit({ requestId: args.payload.requestId, type: 'task.result', payload: { outputs: [{ path: 'early.png' }] } })
+    return { started: true }
+  }, () => listening.promise))
+  const pending = store.start({ operation: 'media_image', requestId: 'early' })
+  await flush()
+  assert.equal(fixture.calls.length, 0)
+  listening.resolve()
+  const job = await pending
+  assert.equal(job.status, 'completed')
+  assert.equal(job.result.outputs[0].path, 'early.png')
+  assert.ok(fixture.timeline.indexOf('listen:ready') < fixture.timeline.indexOf('start_audio_tool'))
+})
+
+test('submitted payload remains deeply isolated while native work is pending', async t => {
+  const ack = deferred(), started = deferred()
+  const { store } = setup(t, async (command, args) => {
+    if (command === 'agent_jobs') return response([])
+    started.resolve(args.payload)
+    return ack.promise
+  })
+  const input = { operation: 'media_image', requestId: 'snapshot', inputs: ['one.png'], steps: [{ params: { scale: 2 } }] }
+  const pending = store.start(input)
+  const nativePayload = await started.promise
+  input.inputs.push('two.png')
+  input.steps[0].params.scale = 8
+  assert.deepEqual(nativePayload.inputs, ['one.png'])
+  assert.equal(store.jobs[0].payload.steps[0].params.scale, 2)
+  ack.resolve({ started: true })
+  await pending
+})
+
+test('payload is captured when start is called even if initialization is delayed', async t => {
+  const listening = deferred()
+  const { store } = setup(t, undefined, () => listening.promise)
+  const payload = { operation: 'media_image', requestId: 'slow-init', inputs: ['original.png'], params: { scale: 2 } }
+  const pending = store.start(payload)
+  payload.inputs[0] = 'edited-after-click.png'
+  payload.params.scale = 8
+  listening.resolve()
+  await pending
+  const submitted = fixture.calls.find(call => call.command === 'start_audio_tool').args.payload
+  assert.deepEqual(submitted.inputs, ['original.png'])
+  assert.equal(submitted.params.scale, 2)
+})
+
+test('concurrent refreshes share one native read and cannot overwrite newer live events', async t => {
+  const read = deferred()
+  const { store } = setup(t, command => command === 'agent_jobs' ? read.promise : {})
+  store.jobs.push(journal('job'))
+  const first = store.refresh(), second = store.refresh()
+  assert.equal(fixture.calls.filter(call => call.command === 'agent_jobs').length, 1)
+  // Initialize the actual event handler without making its shared refresh complete yet.
+  const initialized = store.initialize()
+  await flush()
+  fixture.emit({ taskId: 'job', type: 'task.result', payload: { outputs: [{ path: 'finished.png' }] } })
+  read.resolve(response([journal('job', { fraction: 0.1 })]))
+  await Promise.all([first, second, initialized])
+  assert.equal(store.jobs[0].status, 'completed')
+  assert.equal(store.jobs[0].result.outputs[0].path, 'finished.png')
+  assert.equal(store.loading, false)
+})
+
+test('a later stale journal snapshot does not revert a terminal job to running', async t => {
+  const { store } = setup(t, () => response([journal('job')]))
+  await store.initialize()
+  fixture.emit({ taskId: 'job', type: 'task.cancelled', payload: { message: 'cancelled' } })
+  await store.refresh()
+  assert.equal(store.jobs[0].status, 'cancelled')
+  fixture.emit({ taskId: 'job', type: 'task.progress', payload: { fraction: 0.9 } })
+  fixture.emit({ taskId: 'job', type: 'task.result', payload: { outputs: [{ path: 'late.png' }] } })
+  assert.equal(store.jobs[0].status, 'cancelled')
+  assert.deepEqual(store.jobs[0].result, { message: 'cancelled' })
+})
+
+test('partial failure keeps its outputs and cannot be overwritten by late success', async t => {
+  const { store } = setup(t, () => response([journal('partial')]))
+  await store.initialize()
+  const payload = { outputs: [{ path: 'good.png' }], failed: [{ path: 'bad.png', error: 'invalid image' }] }
+  fixture.emit({ requestId: 'partial', type: 'task.result', payload })
+  payload.outputs[0].path = 'changed-outside-store.png'
+  fixture.emit({ requestId: 'partial', type: 'task.result', payload: { outputs: [] } })
+  assert.equal(store.jobs[0].status, 'failed')
+  assert.equal(store.jobs[0].result.outputs[0].path, 'good.png')
+  assert.equal(store.jobs[0].result.failed[0].error, 'invalid image')
+})
+
+test('media terminals with no outputs are failures while retaining their original payload', async t => {
+  const { store } = setup(t, () => response([journal('empty')]))
+  await store.initialize()
+  fixture.emit({ taskId: 'empty', type: 'task.result', payload: { outputs: [], failed: [] } })
+  assert.equal(store.jobs[0].status, 'failed')
+  assert.deepEqual(store.jobs[0].result, { outputs: [], failed: [] })
+})
+
+test('error terminals preserve structured recovery information even without output paths', async t => {
+  const { store } = setup(t, () => response([journal('error')]))
+  await store.initialize()
+  const recovery = { retryable: true, actions: [{ action: 'switch_device', to: 'cpu' }] }
+  fixture.emit({ taskId: 'error', type: 'error', payload: { code: 'OOM', message: 'out of memory', recovery } })
+  assert.equal(store.jobs[0].status, 'failed')
+  assert.deepEqual(store.jobs[0].result.recovery, recovery)
+  assert.equal(store.jobs[0].result.code, 'OOM')
+})
+
+test('an error keeps already journaled partial outputs and merges its recovery payload', async t => {
+  const { store } = setup(t, () => response([journal('partial-error', { result: { outputs: [{ path: 'partial.png' }] } })]))
+  await store.initialize()
+  fixture.emit({ taskId: 'partial-error', type: 'error', payload: { message: 'decoder failed', recovery: { retryable: true } } })
+  assert.equal(store.jobs[0].result.outputs[0].path, 'partial.png')
+  assert.equal(store.jobs[0].result.recovery.retryable, true)
+})
+
+test('only one manual job per operation can start while another operation remains independent', async t => {
+  const { store } = setup(t)
+  await store.start({ operation: 'media_image', requestId: 'image' })
+  await assert.rejects(store.start({ operation: 'media_image', requestId: 'duplicate' }), /already running/)
+  await store.start({ operation: 'media_video', requestId: 'video' })
+  assert.equal(fixture.calls.filter(call => call.command === 'start_audio_tool').length, 2)
+  assert.equal(store.active.length, 2)
+})
+
+test('running records without the current typed owner are rejected without enabling a submission', async t => {
+ const {store}=setup(t,()=>response([journal('invalid-owner',{owner:null})]))
+ await store.initialize()
+ assert.equal(store.jobs.length,0)
+ assert.match(store.error,/Unsupported task journal schema/)
+ await assert.rejects(store.start({operation:'media_image'}),/Unsupported task journal schema/)
+ assert.equal(fixture.calls.some(call=>call.command==='start_audio_tool'),false)
+})
+
+test('backend-owned running records restore their request and still prevent duplicate operations', async t => {
+  const live = journal('backend-live', { payload: { operation: 'media_image', inputs: ['live.png'], params: { scale: 2 } } })
+  const { store } = setup(t, () => response([live]))
+  await store.initialize()
+  assert.equal(store.active.length, 1)
+  assert.equal(store.latest('media_image').jobId, live.jobId)
+  assert.deepEqual(store.latest('media_image').payload.inputs, ['live.png'])
+  await assert.rejects(store.start({ operation: 'media_image', requestId: 'duplicate-live' }), /already running/)
+  assert.equal(fixture.calls.some(call => call.command === 'start_audio_tool'), false)
+})
+
+test('a rejected IPC submission absent from the journal leaves no fabricated failure and permits retry', async t => {
+  let attempts = 0
+  const { store } = setup(t, command => {
+    if (command === 'agent_jobs') return response([])
+    if (++attempts === 1) throw new Error('worker launch failed')
+    return { started: true }
+  })
+  await assert.rejects(store.start({ operation: 'media_image', requestId: 'failed' }), /worker launch failed/)
+  assert.equal(store.jobs.length, 0)
+  await store.start({ operation: 'media_image', requestId: 'retry' })
+  assert.equal(store.latest('media_image').jobId, 'retry')
+  assert.equal(store.active.length, 1)
+})
+
+test('reusing an existing job ID is rejected without replacing its historical outputs', async t => {
+  const prior = journal('original', { status: 'completed', result: { outputs: [{ path: 'original.png' }] } })
+  const { store } = setup(t, () => response([prior]))
+  await store.initialize()
+  await assert.rejects(store.start({ operation: 'media_video', requestId: 'original' }), /ID already exists/)
+  assert.equal(fixture.calls.some(call => call.command === 'start_audio_tool'), false)
+  assert.equal(store.jobs[0].result.outputs[0].path, 'original.png')
+})
+
+test('latest prefers the newly submitted job when two starts share the same millisecond', async t => {
+  const { store } = setup(t)
+  t.mock.method(Date, 'now', () => 1700000000000)
+  await store.start({ operation: 'media_image', requestId: 'z-first' })
+  fixture.emit({ requestId: 'z-first', type: 'task.result', payload: { outputs: [{ path: 'first.png' }] } })
+  await store.start({ operation: 'media_image', requestId: 'a-second' })
+  assert.equal(store.latest('media_image').jobId, 'a-second')
+  assert.equal(store.latest('media_image').status, 'queued')
+})
+
+test('listener initialization is retryable and concurrent initialization subscribes once', async t => {
+  let listens = 0
+  const { store } = setup(t, undefined, async () => { if (++listens === 1) throw new Error('bridge not ready') })
+  await assert.rejects(store.initialize(), /bridge not ready/)
+  assert.equal(fixture.calls.length, 0)
+  await Promise.all([store.initialize(), store.initialize()])
+  assert.equal(listens, 2)
+  assert.equal(fixture.listeners.size, 1)
+  await store.initialize()
+  assert.equal(listens, 2)
+})
+
+test('a failed journal refresh retains existing work and the next refresh clears its error', async t => {
+  let attempts = 0
+  const { store } = setup(t, () => {
+    if (++attempts === 1) throw new Error('temporary journal read failure')
+    return response([journal('restored', { status: 'completed', result: { outputs: [{ path: 'restored.png' }] } })])
+  })
+  await store.initialize()
+  assert.match(store.error, /temporary journal read failure/)
+  assert.equal(store.loading, false)
+  await store.refresh()
+  assert.equal(store.error, '')
+  assert.equal(store.jobs[0].result.outputs[0].path, 'restored.png')
+  assert.equal(store.dataRoot, '/fixture')
+})
+
+test('operation runtime progress and named output terminals are consumed without waiting for polling', async t => {
+  const { store } = setup(t, () => response([journal('graph', { command: 'run_operation' })]))
+  await store.initialize()
+  fixture.emit({ taskId: 'graph', type: 'task.progress', payload: { fraction: 0.5, message: 'rendering' } })
+  assert.equal(store.jobs[0].fraction, 0.5)
+  fixture.emit({ taskId: 'graph', type: 'task.result', payload: { outputs: { score: { kind: 'scalar', value: 42 } } } })
+  assert.equal(store.jobs[0].status, 'completed')
+  assert.equal(store.jobs[0].result.outputs.score.value, 42)
+})
+
+test('a full snapshot removes confirmed jobs that are absent and rejects corrupt snapshots atomically', async t => {
+  let rows = [journal('confirmed')]
+  const {store} = setup(t, () => response(rows))
+  await store.initialize()
+  rows = [journal('replacement'), {...journal('corrupt'),schemaVersion:1}]
+  await store.refresh()
+  assert.match(store.error,/Unsupported task journal schema/)
+  assert.deepEqual(store.jobs.map(job=>job.jobId),['confirmed'])
+  rows = []
+  await store.refresh()
+  assert.equal(store.error,'')
+  assert.deepEqual(store.jobs,[])
+})
+
+test('a delayed snapshot cannot resurrect a deleted group or its primary payload', async t => {
+  const gate=deferred();let reads=0
+  const {store}=setup(t,()=>++reads===1?response([journal('deleted')]):gate.promise)
+  await store.initialize()
+  const pending=store.refresh()
+  store.forget(['deleted'])
+  gate.resolve(response([journal('deleted')]))
+  await pending
+  assert.deepEqual(store.jobs,[])
+})
+
+test('a missing pending submission survives until ACK while a later authoritative absence removes it',async t=>{
+  const gate=deferred()
+  const {store}=setup(t,command=>command==='agent_jobs'?response([]):gate.promise)
+  const submitted=store.start({operation:'media_image',requestId:'pending-ack'})
+  await flush()
+  await store.refresh()
+  assert.equal(store.jobs[0].jobId,'pending-ack')
+  gate.resolve({started:true});await submitted
+  await store.refresh()
+  assert.deepEqual(store.jobs,[])
+})
+
+test('equal timestamps cannot replace newly observed live progress with stale disk progress',async t=>{
+  t.mock.method(Date,'now',()=>100000)
+  const {store}=setup(t,()=>response([journal('same-time')]))
+  await store.initialize()
+  fixture.emit({taskId:'same-time',type:'task.progress',payload:{fraction:0.75,message:'new progress'}})
+  await store.refresh()
+  assert.equal(store.jobs[0].fraction,0.75)
+  assert.equal(store.jobs[0].message,'new progress')
+})
+
+test('a queued backend ACK remains ownerless and starts only on the later real worker event', async t => {
+  const { pinia, store } = setup(t, (command, args) => {
+    if (command === 'agent_jobs') return response([...fixture.remote.values()])
+    if (command === 'start_audio_tool') {
+      const current = fixture.remote.get(args.payload.requestId)
+      Object.assign(current, { status: 'queued', owner: null, startedAt: null })
+      return { queued: true, started: false }
+    }
+  })
+  const { state, messages } = mountJob(t, pinia)
+  await state.start({ operation: 'media_image', requestId: 'resource-waiter' })
+  assert.equal(state.busy.value, true)
+  assert.equal(state.status.value, 'queued')
+  assert.equal(store.jobs[0].status, 'queued')
+  assert.equal(store.jobs[0].owner, null)
+  assert.equal(store.jobs[0].startedAt, null)
+  assert.deepEqual(messages, [])
+  Object.assign(fixture.remote.get('resource-waiter'), { status: 'running', owner: { kind: 'tauri-worker', pid: 1 }, startedAt: Date.now() / 1000 })
+  fixture.emit({ taskId: 'resource-waiter', type: 'task.started', payload: {} })
+  await flush()
+  assert.equal(state.status.value, 'running')
+  assert.equal(fixture.calls.filter(call => call.command === 'start_audio_tool').length, 1)
+})
+
+test('a lost media ACK preserves the authoritative queued waiter instead of inventing a failure', async t => {
+  const { store } = setup(t, (command, args) => {
+    if (command === 'agent_jobs') return response([...fixture.remote.values()])
+    if (command === 'start_audio_tool') {
+      Object.assign(fixture.remote.get(args.payload.requestId), { status: 'queued', owner: null, startedAt: null })
+      throw new Error('ACK lost')
+    }
+  })
+  const job = await store.start({ operation: 'media_video', requestId: 'accepted-before-disconnect' })
+  assert.equal(job.status, 'queued')
+  assert.equal(job.error, null)
+  assert.equal(job.owner, null)
+  assert.equal(fixture.calls.filter(call => call.command === 'start_audio_tool').length, 1)
+})
+
+test('resident polling idles slowly and returns to the active interval after discovering work', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let currentJobs = []
+  const { store } = setup(t, () => response(currentJobs))
+  await store.initialize()
+  const reads = () => fixture.calls.filter(call => call.command === 'agent_jobs').length
+  assert.equal(reads(), 1)
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), 1)
+  currentJobs = [journal('active-external')]
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS - JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), 2)
+  assert.equal(store.active.length, 1)
+  t.mock.timers.tick(JOURNAL_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), 3)
+})
+
+test('resident polling discovers external jobs without a Queue page and disposes its timer and listener', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { store } = setup(t)
+  await store.initialize()
+  fixture.remote.set('external', journal('external', { source: 'agent', command: 'run_operation' }))
+  const reads = () => fixture.calls.filter(call => call.command === 'agent_jobs').length
+  assert.equal(reads(), 1)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(store.jobs[0].jobId, 'external')
+  assert.equal(reads(), 2)
+  await Promise.all([store.initialize(), store.initialize()])
+  const beforePoll = reads()
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS)
+  await flush()
+  assert.equal(reads(), beforePoll + 1)
+  store.$dispose()
+  assert.equal(fixture.listeners.size, 0)
+  const beforeDispose = reads()
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 4)
+  await flush()
+  assert.equal(reads(), beforeDispose)
+})
+
+test('resident polling never overlaps a pending read or updates a disposed store', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = deferred()
+  let reads = 0
+  const { store } = setup(t, command => {
+    if (command === 'agent_jobs') return ++reads === 1 ? response([]) : pending.promise
+  })
+  await store.initialize()
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS)
+  await flush()
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 5)
+  await flush()
+  assert.equal(reads, 2)
+  store.$dispose()
+  pending.resolve(response([journal('late-external')]))
+  await flush()
+  assert.equal(store.jobs.length, 0)
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 4)
+  await flush()
+  assert.equal(reads, 2)
+})
+
+test('disposal during initialization releases the late event listener without creating a poll', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pending = deferred()
+  const { store } = setup(t, undefined, () => pending.promise)
+  const initializing = store.initialize()
+  store.$dispose()
+  pending.resolve()
+  await initializing
+  t.mock.timers.tick(JOURNAL_IDLE_POLL_INTERVAL_MS * 3)
+  await flush()
+  assert.equal(fixture.listeners.size, 0)
+  assert.equal(fixture.calls.length, 0)
+})
+
+const renderer = createRenderer({
+  createComment: text => ({ text }), createText: text => ({ text }), createElement: tag => ({ tag, children: [] }),
+  insert(node, parent) { node.parent = parent; parent.children.push(node) }, remove() {},
+  parentNode: node => node.parent, nextSibling: () => null, setText() {}, setElementText() {}, patchProp() {},
+})
+function mountJob(t, pinia, restore) {
+  const messages = []
+  const notifications = Object.fromEntries(['success', 'error', 'info', 'warning'].map(level => [level, text => messages.push([level, text])]))
+  const labels = Object.fromEntries(['queued', 'running', 'completed', 'failed', 'cancelled'].map(status => [status, () => status]))
+  let state
+  const app = renderer.createApp({ setup() { state = useMediaJob('media_image', labels, notifications, restore); return () => null } })
+  app.use(pinia)
+  app.mount({ children: [] })
+  t.after(() => app.unmount())
+  return { state, app, messages }
+}
+
+test('the composable quietly restores historical parameters and outputs without sharing mutable payloads', async t => {
+  const old = journal('historical', { status: 'completed', payload: { operation: 'media_image', inputs: ['old.png'] }, result: { outputs: [{ path: 'old-result.png' }] } })
+  const { pinia, store } = setup(t, () => response([old]))
+  await store.initialize()
+  const restored = []
+  const { state, messages } = mountJob(t, pinia, payload => { restored.push(payload); payload.inputs[0] = 'local edit' })
+  await flush()
+  assert.equal(restored.length, 1)
+  assert.equal(store.jobs[0].payload.inputs[0], 'old.png')
+  assert.equal(state.outputs.value[0].path, 'old-result.png')
+  assert.equal(state.busy.value, false)
+  assert.equal(messages.length, 0)
+})
+
+test('route unmount stops notifications while the resident store still completes the job', async t => {
+  const { pinia, store } = setup(t)
+  const { state, app, messages } = mountJob(t, pinia)
+  await state.start({ operation: 'media_image', requestId: 'route-job' })
+  assert.equal(state.busy.value, true)
+  app.unmount()
+  fixture.emit({ taskId: 'route-job', type: 'task.result', payload: { outputs: [{ path: 'after-navigation.png' }] } })
+  assert.equal(store.latest('media_image').status, 'completed')
+  assert.equal(messages.length, 0)
+})
+
+test('a mounted partial-failure transition notifies once and releases the composable start action', async t => {
+  const { pinia } = setup(t)
+  const { state, messages } = mountJob(t, pinia)
+  await state.start({ operation: 'media_image', requestId: 'partial-view' })
+  fixture.emit({ taskId: 'partial-view', type: 'task.result', payload: { outputs: [{ path: 'partial.png' }], failed: [{ error: 'bad input' }] } })
+  await flush()
+  assert.equal(state.busy.value, false)
+  assert.equal(state.failedCount.value, 1)
+  assert.equal(state.outputs.value.length, 1)
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0][0], 'warning')
+})
+
+test('a rejected submission reports its own error even when the previous job is already terminal', async t => {
+  const prior = journal('old', { status: 'completed', result: { outputs: [{ path: 'old.png' }] } })
+  const { pinia, store } = setup(t, () => response([prior]))
+  await store.initialize()
+  const { state, messages } = mountJob(t, pinia)
+  await flush()
+  await state.start({ operation: 'media_image', requestId: 'old' })
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0][0], 'error')
+  assert.match(messages[0][1], /ID already exists/)
+  assert.equal(state.outputs.value[0].path, 'old.png')
+})
+
+test('a newly registered IPC failure notifies once through its mounted terminal transition', async t => {
+  const { pinia } = setup(t, command => {
+    if (command === 'agent_jobs') return response([])
+    throw new Error('launch rejected')
+  })
+  const { state, messages } = mountJob(t, pinia)
+  await state.start({ operation: 'media_image', requestId: 'launch-failed' })
+  await flush()
+  assert.equal(state.busy.value, false)
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0][0], 'error')
+  assert.match(messages[0][1], /launch rejected/)
+})
+
+test('editor export canonical events project progress and one result path without materializing an outputs copy', async t => {
+  const { store } = setup(t, () => response([journal('export', { command: 'export_editor_mix', payload: { project: { id: 'project' } } })]))
+  await store.initialize()
+  fixture.emit({ taskId: 'export', type: 'editor_export_progress', payload: { completed: 40, total: 100, current: 'mix.wav' } })
+  assert.equal(store.jobs[0].fraction, 0.4)
+  assert.equal(store.jobs[0].status, 'running')
+  const result = { path: 'D:/out/mix.wav', duration: 2, sampleRate: 48000, channels: 2, format: 'wav' }
+  fixture.emit({ taskId: 'export', type: 'editor_mix_exported', payload: result })
+  assert.equal(store.jobs[0].status, 'completed')
+  assert.equal(store.jobs[0].fraction, 1)
+  assert.deepEqual(store.jobs[0].result, result)
+  assert.equal(Object.hasOwn(store.jobs[0].result, 'outputs'), false)
+  fixture.emit({ taskId: 'export', type: 'task.cancelled', payload: { message: 'late cancellation' } })
+  assert.equal(store.jobs[0].status, 'completed')
+  assert.deepEqual(store.jobs[0].result, result)
+})
+
+test('editor-specific events cannot complete unrelated jobs and recoverable diagnostics cannot finish an export', async t => {
+  const { store } = setup(t, () => response([journal('media'), journal('export', { command: 'export_editor_mix', payload: { project: {} } })]))
+  await store.initialize()
+  fixture.emit({ taskId: 'media', type: 'editor_mix_exported', payload: { path: 'D:/out/unrelated.wav' } })
+  assert.equal(store.jobs[0].status, 'running')
+  assert.equal(store.jobs[0].result, null)
+  fixture.emit({ taskId: 'export', type: 'error', payload: { recoverable: true, message: 'optional peak scan skipped' } })
+  assert.equal(store.jobs[1].status, 'running')
+  assert.equal(store.jobs[1].finishedAt, null)
+  assert.equal(store.jobs[1].result, null)
+  fixture.emit({ taskId: 'export', type: 'editor_mix_exported', payload: { path: 'D:/out/final.wav' } })
+  assert.equal(store.jobs[1].status, 'completed')
+  assert.equal(store.jobs[1].result.path, 'D:/out/final.wav')
+})
+
+test('export cancellation keeps existing artifacts and only a literal boolean recoverable error stays active', async t => {
+  const { store } = setup(t, () => response([
+    journal('export', { command: 'export_editor_mix', payload: {}, result: { path: 'D:/out/published.wav' } }),
+    journal('strict', { command: 'export_editor_mix', payload: {} }),
+  ]))
+  await store.initialize()
+  fixture.emit({ taskId: 'export', type: 'task.cancelled', payload: { message: 'cancelled by worker' } })
+  assert.equal(store.jobs[0].status, 'cancelled')
+  assert.equal(store.jobs[0].result.path, 'D:/out/published.wav')
+  fixture.emit({ taskId: 'strict', type: 'error', payload: { recoverable: 'true', message: 'failed' } })
+  assert.equal(store.jobs[1].status, 'failed')
+})
+
+const delta = (jobs, removed = []) => ({ schemaVersion: 3, full: false, removed, jobs, dataRoot: '/fixture', jobsDir: '/fixture/agent-jobs' })
+
+const audioPair = () => {
+  const primary = journal('primary', {
+    command: 'infer', payload: { model: 'model.ckpt', output: 'D:/out' },
+    audio: { groupId: 'group', primaryJobId: 'primary', index: 0, request: { input: 'D:/in.wav', output: 'D:/out' }, memberJobIds: ['primary', 'child'] },
+  })
+  const child = journal('child', {
+    command: 'infer', payloadRef: 'primary',
+    audio: { groupId: 'group', primaryJobId: 'primary', index: 1, request: { input: 'D:/in2.wav', output: 'D:/out2' } },
+  })
+  delete child.payload
+  return [primary, child]
+}
+
+test('incremental replies send the known versions and merge only what changed', async t => {
+  let reads = 0
+  let knownSeen
+  const { store } = setup(t, async (command, args) => {
+    if (command !== 'agent_jobs') return { started: true }
+    reads += 1
+    if (reads === 1) return response([journal('keep'), journal('changed'), journal('gone')])
+    knownSeen = args.known
+    return delta([journal('changed', { updatedAt: 300, message: 'updated' })], ['gone'])
+  })
+  await store.initialize()
+  assert.equal(store.jobs.length, 3)
+  await store.refresh()
+  assert.deepEqual(knownSeen, { keep: 100, changed: 100, gone: 100 })
+  assert.deepEqual(store.jobs.map(job => job.jobId).sort(), ['changed', 'keep'])
+  assert.equal(store.jobs.find(job => job.jobId === 'changed').message, 'updated')
+  await store.refresh()
+  assert.ok(knownSeen.changed === 300, 'the next poll must advertise the merged version')
+})
+
+test('a stale delta cannot regress live progress and a broken group is rejected before publishing', async t => {
+  let reads = 0
+  const { store } = setup(t, async (command) => {
+    if (command !== 'agent_jobs') return { started: true }
+    reads += 1
+    if (reads === 1) return response([journal('live'), ...audioPair()])
+    if (reads === 2) return delta([journal('live', { updatedAt: 50, fraction: 0 })])
+    return delta([], ['primary'])
+  })
+  await store.initialize()
+  fixture.emit({ taskId: 'live', type: 'task.progress', payload: { fraction: 0.5, message: 'half' } })
+  assert.equal(store.jobs.find(job => job.jobId === 'live').fraction, 0.5)
+  await store.refresh()
+  assert.equal(store.jobs.find(job => job.jobId === 'live').fraction, 0.5, 'a stale reply must not undo live progress')
+
+  // Removing the primary while its child stays would break the audio group.
+  const before = JSON.stringify(store.jobs)
+  await store.refresh()
+  assert.match(store.error, /Unsupported task journal schema/i)
+  assert.equal(JSON.stringify(store.jobs), before, 'a corrupt delta must not half-apply')
+})
+
+test('a delta cannot resurrect a group the user removed', async t => {
+  let reads = 0
+  const jobs = [journal('gone')]
+  const { store } = setup(t, async (command) => {
+    if (command !== 'agent_jobs') return { started: true }
+    reads += 1
+    return reads === 1 ? response(jobs) : delta([journal('gone', { updatedAt: 400 })])
+  })
+  await store.initialize()
+  store.forget(['gone'])
+  assert.equal(store.jobs.length, 0)
+  await store.refresh()
+  assert.equal(store.jobs.length, 0)
+})
+
+test('incremental polling is re-anchored by a periodic full reconcile', async t => {
+  const seen = []
+  const { store } = setup(t, async (command, args) => {
+    if (command !== 'agent_jobs') return { started: true }
+    seen.push(args)
+    // The backend answers full or incremental depending on what was asked.
+    return args && args.known ? delta([journal('anchored')]) : response([journal('anchored')])
+  })
+  await store.initialize()
+  assert.deepEqual(seen[0], {}, 'the first load must ask for an authoritative snapshot')
+  await store.refresh()
+  assert.deepEqual(seen[1], { known: { anchored: 100 } }, 'the next poll sends its known versions')
+
+  const realNow = Date.now
+  const base = realNow()
+  try {
+    // Inside the calibration window incremental polling stays incremental.
+    Date.now = () => base + JOURNAL_FULL_RECONCILE_MS - 60_000
+    await store.refresh()
+    assert.deepEqual(seen[2], { known: { anchored: 100 } })
+    // Past it, the next poll re-anchors on a full snapshot.
+    Date.now = () => base + JOURNAL_FULL_RECONCILE_MS + 60_000
+    await store.refresh()
+    assert.deepEqual(seen[3], {})
+    // After a successful reconcile the window restarts.
+    await store.refresh()
+    assert.deepEqual(seen[4], { known: { anchored: 100 } })
+  } finally {
+    Date.now = realNow
+  }
+})

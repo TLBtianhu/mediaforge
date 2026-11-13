@@ -1,11 +1,46 @@
 //! 文件与目录选择对话框。
 //!
-//! 从 app_cmd.rs 拆出；返回绝对路径，不做任何文件操作。
+//! 文件和目录选择。只有输入选择会记住预览来源。
 
 use crate::error::AppResult;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, FilePath};
+
+fn remember_dialog_selection(app: &AppHandle, files: &[FilePath]) {
+    let paths = files.iter().filter_map(FilePath::as_path).map(Path::to_path_buf).collect::<Vec<_>>();
+    super::scan::remember_input_selection(app, &paths);
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewInputKind {
+    Image,
+    Video,
+    Library,
+}
+
+#[tauri::command]
+pub async fn pick_preview_files(app: AppHandle, kind: PreviewInputKind) -> AppResult<Vec<String>> {
+    let (name, extensions): (&str, &[&str]) = match kind {
+        PreviewInputKind::Image => ("Images", super::scan::IMAGE_EXTENSIONS),
+        PreviewInputKind::Video => ("Videos", &["mp4", "mov", "mkv", "avi", "webm", "flv", "wmv", "m4v"]),
+        PreviewInputKind::Library => ("Media", &[
+            "mp4", "mov", "mkv", "avi", "webm", "mp3", "wav", "flac", "m4a", "aac", "ogg",
+            "jpg", "jpeg", "png", "webp", "gif",
+        ]),
+    };
+    let files = app.dialog().file().add_filter(name, extensions).blocking_pick_files().unwrap_or_default();
+    remember_dialog_selection(&app, &files);
+    Ok(files.into_iter().map(|path| path.to_string()).collect())
+}
+
+#[tauri::command]
+pub async fn pick_preview_folders(app: AppHandle) -> AppResult<Vec<String>> {
+    let folders = app.dialog().file().blocking_pick_folders().unwrap_or_default();
+    remember_dialog_selection(&app, &folders);
+    Ok(folders.into_iter().map(|path| path.to_string()).collect())
+}
 
 #[tauri::command]
 pub async fn pick_audio_files(app: AppHandle) -> AppResult<Vec<String>> {
@@ -18,6 +53,7 @@ pub async fn pick_audio_files(app: AppHandle) -> AppResult<Vec<String>> {
         )
         .blocking_pick_files()
         .unwrap_or_default();
+    remember_dialog_selection(&app, &files);
     Ok(files.into_iter().map(|p| p.to_string()).collect())
 }
 
@@ -49,15 +85,16 @@ pub async fn pick_model_config_file(app: AppHandle, title: Option<String>) -> Ap
 
 #[tauri::command]
 pub async fn pick_single_audio_file(app: AppHandle) -> AppResult<Option<String>> {
-    Ok(app
+    let file = app
         .dialog()
         .file()
         .add_filter(
             "Audio",
             &["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus"],
         )
-        .blocking_pick_file()
-        .map(|p| p.to_string()))
+        .blocking_pick_file();
+    remember_dialog_selection(&app, file.as_slice());
+    Ok(file.map(|path| path.to_string()))
 }
 
 pub(crate) fn path_to_string(path: &Path) -> String {
@@ -79,16 +116,15 @@ pub async fn pick_media_files(app: AppHandle) -> AppResult<Vec<String>> {
         )
         .blocking_pick_files()
         .unwrap_or_default();
+    remember_dialog_selection(&app, &files);
     Ok(files.into_iter().map(|p| p.to_string()).collect())
 }
 
 #[tauri::command]
 pub async fn pick_input_folder(app: AppHandle) -> AppResult<Option<String>> {
-    Ok(app
-        .dialog()
-        .file()
-        .blocking_pick_folder()
-        .map(|p| p.to_string()))
+    let folder = app.dialog().file().blocking_pick_folder();
+    remember_dialog_selection(&app, folder.as_slice());
+    Ok(folder.map(|path| path.to_string()))
 }
 
 #[tauri::command]

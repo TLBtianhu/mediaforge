@@ -11,13 +11,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import venv
 import zipfile
 from pathlib import Path
 from unittest import mock
 
 from core import worker_bootstrap as worker
 from core import worker_optional_packages as optional_packages
+from shared.worker_subprocess import HiddenVenvBuilder
 
 
 class OfflineCoreUpdateTests(unittest.TestCase):
@@ -39,7 +39,6 @@ class OfflineCoreUpdateTests(unittest.TestCase):
         alias.symlink_to(physical, target_is_directory=True)
         self.run_offline_update(bundled=True, temporary_parent=alias)
 
-    @unittest.skipUnless(shutil.which("bash"), "Bash is required for runtime pruning")
     def test_pruned_bundled_runtime_preserves_torch_dependencies_for_offline_updates(self):
         self.run_offline_update(bundled=True, pruned=True)
 
@@ -49,7 +48,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
         envs.mkdir()
         bundled_envs = root / "Installed.app/Contents/Resources/python-runtime/runtime-envs"
         base = (bundled_envs if bundled else envs) / "cpu"
-        venv.EnvBuilder(with_pip=True).create(base)
+        HiddenVenvBuilder(with_pip=True).create(base)
         python = base / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         wheels = root / "wheels"
         wheels.mkdir()
@@ -96,13 +95,19 @@ class OfflineCoreUpdateTests(unittest.TestCase):
         seed = subprocess.run([
             str(python), "-m", "pip", "install", "--disable-pip-version-check", "--no-index", "--find-links", str(wheels),
             "pymss==2.1.4", "pymss-core==0.1.6", "torch==2.7.1",
-        ], env=child_env, capture_output=True, text=True, timeout=90)
+        ], env=child_env, capture_output=True, text=True, timeout=90, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.assertEqual(seed.returncode, 0, seed.stderr)
         if pruned:
+            git = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+            if os.name == "nt" and not git.is_file():
+                self.skipTest("Git Bash is required for native Windows fixture paths")
+            bash = str(git) if os.name == "nt" else shutil.which("bash")
+            if not bash:
+                self.skipTest("Bash is required for runtime pruning")
             subprocess.run([
-                shutil.which("bash"), str(Path(__file__).resolve().parents[2] / "scripts/prune-python-runtime.sh"),
-                str(base), "--keep-venv",
-            ], env=child_env, capture_output=True, text=True, timeout=60, check=True)
+                bash, (Path(__file__).resolve().parents[2] / "scripts/prune-python-runtime.sh").as_posix(),
+                base.as_posix(), "--keep-venv",
+            ], env=child_env, capture_output=True, text=True, timeout=60, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             # The release check only supplies core wheels; base dependencies
             # must remain installed rather than being fetched again.
             for path in wheels.glob("setuptools-*.whl"):
@@ -164,7 +169,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                 })
                 status = subprocess.run([
                     str(python), str(resources / "worker.py"), "optional_package_status", "--payload", '{"package":"funasr"}',
-                ], env=environment, capture_output=True, text=True, timeout=30, check=False)
+                ], env=environment, capture_output=True, text=True, timeout=30, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 self.assertEqual(status.returncode, 0, status.stderr + status.stdout)
                 result = next(json.loads(line)["payload"] for line in status.stdout.splitlines()
                               if json.loads(line).get("type") == "optional_package_status")
@@ -175,7 +180,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                     "import json; from core.worker_optional_packages import activate_optional_packages; "
                     "activate_optional_packages(); import pymss, funasr, torchaudio, torch; "
                     "print(json.dumps({m.__name__: m.__file__ for m in (pymss, funasr, torchaudio, torch)}))",
-                ], env=environment, capture_output=True, text=True, timeout=30, check=False)
+                ], env=environment, capture_output=True, text=True, timeout=30, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 self.assertEqual(loaded.returncode, 0, loaded.stderr + loaded.stdout)
                 paths = json.loads(loaded.stdout)
                 self.assertTrue(Path(paths["pymss"]).resolve().is_relative_to(Path(expected_core).resolve()))
@@ -199,7 +204,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                     "worker._verify_runtime_audio=mock.Mock(); "
                     "raise SystemExit(worker.cmd_update_runtime_core(json.loads(sys.argv[1])))",
                     json.dumps(payload),
-                ], env=environment, capture_output=True, text=True, timeout=60)
+                ], env=environment, capture_output=True, text=True, timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
                 return [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
         baseline = {
@@ -221,6 +226,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
         installs = []
 
         def offline_popen(command, *args, **kwargs):
+            kwargs.setdefault("creationflags", getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if "pip" in command and "install" in command:
                 command = [*command, "--disable-pip-version-check", "--no-index", "--find-links", str(wheels)]
                 installs.append(command)
@@ -248,6 +254,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                 [str(python), "-c", "import pymss, new_audio_dependency; print(pymss.__file__)"],
                 env=worker._probe_environment(Path(installed["overlayPath"]), python_path=python),
                 capture_output=True, text=True, timeout=30, check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             self.assertTrue(
                 Path(loaded.stdout.strip()).resolve().is_relative_to(Path(installed["overlayPath"]).resolve()),
@@ -299,6 +306,7 @@ class OfflineCoreUpdateTests(unittest.TestCase):
                 [str(python), "-c", "import pymss; print(pymss.__file__)"],
                 env=worker._probe_environment(python_path=python),
                 capture_output=True, text=True, timeout=30, check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             self.assertTrue(
                 Path(loaded.stdout.strip()).resolve().is_relative_to(base.resolve()),

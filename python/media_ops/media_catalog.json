@@ -155,7 +155,10 @@
       "params": {
         "timestep": {
           "type": "number",
-          "default": 0.5
+          "default": 0.5,
+          "modalities": ["image"],
+          "minimum": 0,
+          "maximum": 1
         }
       },
       "licenseSpdx": "MIT",

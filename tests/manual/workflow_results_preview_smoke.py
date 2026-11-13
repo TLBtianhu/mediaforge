@@ -68,7 +68,7 @@ with sync_playwright() as playwright:
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.route('**/preview-audio/**', serve_preview_audio)
     page.add_init_script('localStorage.setItem("pymss-studio:app-settings", JSON.stringify(' + json.dumps({
-        'startupOnboardingSeen': True, 'locale': 'zh-CN', 'themeMode': 'light', 'outputDir': 'D:/Music/outputs',
+        'version': 1, 'startupOnboardingSeen': True, 'locale': 'zh-CN', 'themeMode': 'light', 'outputDir': 'D:/Music/outputs',
     }) + ')); localStorage.setItem("pymss-studio:workflow-state", JSON.stringify(' + json.dumps({
         'selectedWorkflowId': workflow['id'], 'workflows': [workflow],
     }, ensure_ascii=False) + '));')

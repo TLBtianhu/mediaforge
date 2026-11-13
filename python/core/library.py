@@ -7,7 +7,8 @@ back to Explorer for every task.
 from __future__ import annotations
 
 import hashlib
-import os
+from contextvars import ContextVar
+from functools import wraps
 import sqlite3
 import subprocess
 from datetime import datetime, timezone
@@ -15,6 +16,10 @@ from pathlib import Path
 from typing import Iterable
 
 from media_ops import ffmpeg
+from shared.asset_references import asset_reference_lock, ensure_plain_path
+from shared.library_schema import connect_current
+from shared.worker_paths import data_root as resolve_data_root
+from shared.worker_subprocess import hidden_subprocess_kwargs
 
 SUPPORTED_SUFFIXES = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".ts", ".mts", ".wmv", ".flv",
@@ -22,15 +27,12 @@ SUPPORTED_SUFFIXES = {
     ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff",
 }
 MAX_THUMBNAIL_SIDE = 480
+_OPERATION_ROOT: ContextVar[Path | None] = ContextVar("library_operation_root", default=None)
 
 
 def data_dir() -> Path:
-    override = os.environ.get("MEDIAFORGE_DATA_DIR")
-    if override:
-        root = Path(override)
-    else:
-        appdata = os.environ.get("APPDATA")
-        root = Path(appdata) / "MediaForge" if appdata else Path.home() / ".mediaforge"
+    root = _OPERATION_ROOT.get() or resolve_data_root().absolute()
+    ensure_plain_path(root)
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -41,44 +43,44 @@ def database_path() -> Path:
 
 def thumbnail_dir() -> Path:
     path = data_dir() / "thumbnails"
+    ensure_plain_path(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def _connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(database_path(), timeout=20)
-    connection.row_factory = sqlite3.Row
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS assets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            format TEXT DEFAULT '',
-            size INTEGER DEFAULT 0,
-            duration REAL DEFAULT 0,
-            width INTEGER DEFAULT 0,
-            height INTEGER DEFAULT 0,
-            fps REAL DEFAULT 0,
-            thumbnail TEXT DEFAULT '',
-            tags TEXT DEFAULT '',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind)")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_assets_updated ON assets(updated_at)")
-    connection.commit()
-    return connection
+    return connect_current(database_path())
+
+
+def _library_operation(operation):
+    @wraps(operation)
+    def locked(*args, **kwargs):
+        # Include scanning, probes and thumbnail writes: queueing an import is
+        # not an asset reference until SQLite has committed it.
+        root = resolve_data_root(kwargs.get("data_root")).absolute()
+        with asset_reference_lock(root):
+            token = _OPERATION_ROOT.set(root)
+            try:
+                return operation(*args, **kwargs)
+            finally:
+                _OPERATION_ROOT.reset(token)
+    return locked
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _thumbnail_filename(source: str) -> str:
+    digest = hashlib.sha1(source.encode("utf-8", errors="replace")).hexdigest()[:20]
+    return f"{digest}.jpg"
+
+
 def _row_to_asset(row: sqlite3.Row) -> dict:
+    thumbnail = row["thumbnail"] or ""
+    if thumbnail and (row["kind"] not in {"image", "video"}
+                      or Path(thumbnail) != data_dir() / "thumbnails" / _thumbnail_filename(row["path"])):
+        thumbnail = ""
     return {
         "id": int(row["id"]),
         "path": row["path"],
@@ -90,7 +92,7 @@ def _row_to_asset(row: sqlite3.Row) -> dict:
         "width": int(row["width"] or 0),
         "height": int(row["height"] or 0),
         "fps": float(row["fps"] or 0),
-        "thumbnail": row["thumbnail"] or "",
+        "thumbnail": thumbnail,
         "tags": row["tags"] or "",
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -111,8 +113,8 @@ def _iter_files(paths: Iterable[str | Path]) -> Iterable[Path]:
 def _thumbnail(path: Path, meta: dict, kind: str) -> str:
     if kind == "audio":
         return ""
-    digest = hashlib.sha1(str(path.resolve()).encode("utf-8", errors="replace")).hexdigest()[:20]
-    target = thumbnail_dir() / f"{digest}.jpg"
+    target = thumbnail_dir() / _thumbnail_filename(str(path.resolve()))
+    ensure_plain_path(target)
     if target.is_file():
         return str(target)
     command = [ffmpeg.ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
@@ -124,20 +126,22 @@ def _thumbnail(path: Path, meta: dict, kind: str) -> str:
         "-frames:v", "1", "-q:v", "3", str(target),
     ]
     try:
-        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60, **hidden_subprocess_kwargs())
     except Exception:  # noqa: BLE001
         return ""
     return str(target) if target.is_file() else ""
 
 
-def import_paths(paths: Iterable[str | Path]) -> dict:
-    files = list(_iter_files(paths))
+@_library_operation
+def import_paths(paths: Iterable[str | Path], *, data_root: str | Path | None = None) -> dict:
     imported: list[dict] = []
     errors: list[dict] = []
     connection = _connect()
     try:
+        files = list(_iter_files(paths))
         for path in files:
             try:
+                ensure_plain_path(path)
                 meta = ffmpeg.probe(path)
                 kind = ffmpeg.kind_of(meta)
                 video = meta.get("video") or {}
@@ -179,7 +183,8 @@ def import_paths(paths: Iterable[str | Path]) -> dict:
         connection.close()
 
 
-def list_assets(query: str = "", kind: str = "all", limit: int = 500) -> dict:
+@_library_operation
+def list_assets(query: str = "", kind: str = "all", limit: int = 500, *, data_root: str | Path | None = None) -> dict:
     connection = _connect()
     try:
         clauses: list[str] = []
@@ -202,7 +207,8 @@ def list_assets(query: str = "", kind: str = "all", limit: int = 500) -> dict:
         connection.close()
 
 
-def remove_assets(ids: Iterable[int]) -> dict:
+@_library_operation
+def remove_assets(ids: Iterable[int], *, data_root: str | Path | None = None) -> dict:
     values = [int(value) for value in ids]
     if not values:
         return {"removed": 0}
@@ -210,7 +216,7 @@ def remove_assets(ids: Iterable[int]) -> dict:
     connection = _connect()
     try:
         rows = connection.execute(
-            f"SELECT thumbnail FROM assets WHERE id IN ({placeholders})", values
+            f"SELECT path, thumbnail FROM assets WHERE id IN ({placeholders})", values
         ).fetchall()
         connection.execute(f"DELETE FROM assets WHERE id IN ({placeholders})", values)
         connection.commit()
@@ -218,15 +224,20 @@ def remove_assets(ids: Iterable[int]) -> dict:
             thumbnail = str(row["thumbnail"] or "")
             if thumbnail:
                 try:
-                    Path(thumbnail).unlink(missing_ok=True)
-                except OSError:
+                    target = Path(thumbnail)
+                    expected = thumbnail_dir() / _thumbnail_filename(str(Path(row["path"]).resolve()))
+                    ensure_plain_path(target)
+                    if target.is_absolute() and target == expected:
+                        target.unlink(missing_ok=True)
+                except (OSError, ValueError, TypeError):
                     pass
         return {"removed": len(rows)}
     finally:
         connection.close()
 
 
-def update_tags(asset_id: int, tags: str) -> dict:
+@_library_operation
+def update_tags(asset_id: int, tags: str, *, data_root: str | Path | None = None) -> dict:
     connection = _connect()
     try:
         connection.execute(
@@ -240,7 +251,8 @@ def update_tags(asset_id: int, tags: str) -> dict:
         connection.close()
 
 
-def stats() -> dict:
+@_library_operation
+def stats(*, data_root: str | Path | None = None) -> dict:
     connection = _connect()
     try:
         rows = connection.execute(

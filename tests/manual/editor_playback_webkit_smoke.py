@@ -389,9 +389,9 @@ def main():
         swift_source = fixture / 'runner.swift'
         swift_source.write_text(SWIFT_RUNNER, encoding='utf-8')
         subprocess.run(['xcrun', 'swiftc', str(swift_source),
-                        '-o', str(runner)], check=True)
+                        '-o', str(runner)], check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         result = subprocess.run([str(runner), f'{args.url}/{fixture.name}/index.html', args.ffmpeg],
-                                capture_output=True, text=True, timeout=100)
+                                capture_output=True, text=True, timeout=100, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if args.output:
             args.output.write_text(result.stdout + result.stderr, encoding='utf-8')
         records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]

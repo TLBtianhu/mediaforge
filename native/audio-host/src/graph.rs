@@ -962,7 +962,7 @@ mod tests {
             .unwrap()
             .join("bypass-signal-fixture-target");
         assert!(
-            std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+            test_process::command(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
                 .args(["build", "--locked", "--quiet", "--manifest-path"])
                 .arg(
                     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -999,7 +999,7 @@ mod tests {
             binary_directory.join(binary),
         )
         .unwrap();
-        let mut child = std::process::Command::new(executable)
+        let mut child = test_process::command(executable)
             .args([
                 "--exact",
                 "graph::tests::bypass_routes_aligned_dry_and_refills_wet_across_partial_blocks",
@@ -1024,3 +1024,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../test_process.rs"]
+mod test_process;

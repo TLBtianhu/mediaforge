@@ -12,12 +12,13 @@
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
 
 from shared.recovery import classify
+from shared import worker_paths
+from core import job_store
 
 _ABSOLUTE_PATH = re.compile(r"[A-Za-z]:\\[^\s'\"]+|/(?:[\w.\-]+/)+[\w.\-]+")
 _NUMBER = re.compile(r"\b\d+(?:\.\d+)?\b")
@@ -25,11 +26,7 @@ _WHITESPACE = re.compile(r"\s+")
 
 
 def default_root() -> Path:
-    import os
-
-    explicit = os.environ.get("MEDIAFORGE_DATA_DIR") or os.environ.get("MEDIAFORGE_DATA_ROOT")
-    root = Path(explicit).expanduser() if explicit else Path.home() / ".mediaforge"
-    return root
+    return worker_paths.data_root()
 
 
 def normalize_message(message: str, limit: int = 120) -> str:
@@ -40,17 +37,11 @@ def normalize_message(message: str, limit: int = 120) -> str:
     return text[:limit]
 
 
-def _job_files(jobs_root: Path, limit: int) -> list[Path]:
-    if not jobs_root.is_dir():
-        return []
-    files = [path for path in jobs_root.glob("*.json") if path.name != "index.json"]
-    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    return files[:limit] if limit > 0 else files
-
-
 def collect(root: Path | None = None, *, limit: int = 500) -> dict[str, Any]:
     jobs_root = Path(root or default_root()) / "agent-jobs"
-    files = _job_files(jobs_root, limit)
+    records = sorted(job_store.read_jobs(jobs_root).values(), key=lambda value: (value["updatedAt"], value["jobId"]), reverse=True)
+    if limit > 0:
+        records = records[:limit]
     scanned = 0
     failed = 0
     recoverable = 0
@@ -58,13 +49,7 @@ def collect(root: Path | None = None, *, limit: int = 500) -> dict[str, Any]:
     by_command: dict[str, int] = {}
     issues: dict[tuple[str, str], dict[str, Any]] = {}
 
-    for path in files:
-        try:
-            record = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(record, dict):
-            continue
+    for record in records:
         scanned += 1
         if str(record.get("status") or "") != "failed":
             continue

@@ -58,8 +58,6 @@ export type EditorTrack = {
   solo: boolean
   fadeIn: number
   fadeOut: number
-  /** Retained for older project versions; excluded from playback and export. */
-  effects?: Record<string, unknown>
   pluginChain?: EditorPluginSlot[]
   type?: 'stem' | 'audio' | 'reference' | 'recording'
   clips?: EditorClip[]
@@ -99,7 +97,6 @@ export type EditorProjectSummary = {
 }
 
 export type EditorAsset = EditorSource
-export type EditorProject = EditorSession & { assets?: EditorSource[] }
 export type EditorAssetTreeNode = {
   key: string
   name: string

@@ -1,6 +1,7 @@
 """工具面由 manifest 生成：数量、命令、模型清单、协议版本。"""
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -79,6 +80,76 @@ class BridgeDiagnosticsTests(unittest.TestCase):
             tools = bridge._contract_tools()
         self.assertEqual(len(tools), 1)
         self.assertIn("MCP_SCHEMA_MISMATCH", tools[0]["description"])
+
+
+class ActiveRuntimeBridgeTests(unittest.TestCase):
+    def test_relative_pointer_resolves_against_the_pointer_directory(self) -> None:
+        from agent_bridge import _active_runtime_python  # noqa: E402
+
+        with __import__("tempfile").TemporaryDirectory() as raw:
+            envs = Path(raw)
+            python = envs / "cpu" / "Scripts" / ("python.exe" if __import__("os").name == "nt" else "python")
+            python.parent.mkdir(parents=True)
+            python.write_text("stub", encoding="utf-8")
+            (envs / "active-runtime.json").write_text(
+                json.dumps({"pythonPath": "cpu/Scripts/" + python.name}), encoding="utf-8"
+            )
+            selected, error = _active_runtime_python(envs)
+        self.assertIsNone(error)
+        self.assertEqual(Path(selected), python.parent.resolve() / python.name)
+
+    def test_corrupt_pointer_is_reported_in_status(self) -> None:
+        from agent_bridge import Bridge  # noqa: E402
+
+        bridge = Bridge.__new__(Bridge)
+        bridge.data_root = Path("data")
+        bridge.model_root = Path("models")
+        bridge.runtime_error = "runtime pointer active-runtime.json is not valid JSON"
+        bridge.jobs = mock.Mock(count=lambda: 0)
+        with mock.patch("agent_bridge.model_hub.list_models", return_value={"count": 0, "downloadedCount": 0}):
+            status = bridge.status()
+        self.assertIn("not valid JSON", status["runtimeError"])
+
+
+class RuntimeGuardTests(unittest.TestCase):
+    def bridge(self, error: str | None, commands: set[str]):
+        from agent_bridge import Bridge  # noqa: E402
+
+        bridge = Bridge.__new__(Bridge)
+        bridge.runtime_error = error
+        bridge.runtime_bound_commands = frozenset(commands)
+        return bridge
+
+    def test_runtime_bound_commands_come_from_the_manifest(self) -> None:
+        from agent_bridge import _runtime_bound_commands  # noqa: E402
+
+        commands = _runtime_bound_commands()
+        self.assertIn("infer", commands)
+        self.assertIn("media_tool", commands)
+        self.assertNotIn("model_download", commands)
+
+    def test_runtime_bound_work_is_refused_when_the_pointer_is_corrupt(self) -> None:
+        bridge = self.bridge("runtime pointer x is not valid JSON", {"media_tool", "infer"})
+        probe = bridge.probe(["input.wav"])
+        self.assertEqual(probe["code"], "RUNTIME_POINTER_INVALID")
+        self.assertIn("not valid JSON", probe["error"])
+        blocked = bridge._runtime_blocked("infer")
+        self.assertEqual(blocked["command"], "infer")
+
+    def test_model_queries_and_downloads_are_not_blocked(self) -> None:
+        bridge = self.bridge("corrupt", {"media_tool"})
+        self.assertIsNone(bridge._runtime_blocked("model_download"))
+        with mock.patch("agent_bridge.model_hub.list_models", return_value={"models": [], "count": 0, "downloadedCount": 0, "modelDir": "models", "environment": {}}), \
+             mock.patch("core.worker_models.list_registered_user_models", return_value=[]), \
+             mock.patch("core.worker_models.user_model_registry_scope", mock.MagicMock()):
+            bridge.model_root = Path("models")
+            bridge.data_root = Path("data")
+            result = bridge.models_list()
+        self.assertTrue(result["ok"])
+
+    def test_healthy_pointer_blocks_nothing(self) -> None:
+        bridge = self.bridge(None, {"media_tool"})
+        self.assertIsNone(bridge._runtime_blocked("media_tool"))
 
 
 if __name__ == "__main__":

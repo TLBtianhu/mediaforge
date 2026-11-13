@@ -1,6 +1,6 @@
+import { scanMediaPaths } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref, watch, type ComputedRef } from 'vue'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -12,7 +12,7 @@ import { isTerminalTaskStatus } from '@/features/tasks/lifecycle'
 import { launchTask } from '@/features/tasks/launch'
 import { detectWorkflowFormat } from '@/workflows/formats'
 import { initializeWorkbenchBridge, requestWorkbenchAction } from '@/utils/workbenchBridge'
-import { cloneWorkflow, prepareWorkbenchRun, visibleWorkflowNodeStates, workbenchOutputDirectory, workflowBindingsEqual, workflowExecutionSignature, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
+import { cloneWorkflow, prepareWorkbenchRun, workflowSourceDefinition, visibleWorkflowNodeStates, workbenchOutputDirectory, workbenchExecutionMatches, workflowInputNodes, workflowOutputNodes } from '@/workflows/workbench'
 import { visibleWorkflowNodeLogs } from '@/workflows/nodeLogs'
 import { activeWorkflowTask, selectedWorkflowJob, workflowBatchExecution } from '@/workflows/batchExecution'
 
@@ -35,21 +35,23 @@ export function useWorkflowWorkbench(options: {
   const focusedJob = computed(() => selectedWorkflowJob(jobs.value, selectedJobId.value))
   const focusedTask = computed(() => activeWorkflowTask(focusedJob.value?.tasks || []) || focusedJob.value?.tasks.at(-1) || null)
   const batchExecution = computed(() => workflowBatchExecution(focusedJob.value?.tasks || []))
-  const executionDefinition = computed(() => focusedTask.value?.runConfig?.workbench?.sourceDefinition || null)
+  const executionDefinition = computed(() => focusedTask.value?.runConfig?.workbench ? workflowSourceDefinition(focusedTask.value.runConfig) : null)
   const executionMatchesDraft = computed(() => Boolean(executionDefinition.value)
-    && workflowExecutionSignature(executionDefinition.value!) === workflowExecutionSignature(options.definition())
-    && (focusedTask.value!.runConfig!.workbench!.nativeGraph
-      || workflowBindingsEqual(session.value.bindings, focusedTask.value!.runConfig!.workbench!.bindings)))
+    && workbenchExecutionMatches(options.definition(), session.value.bindings, executionDefinition.value!,
+      [...(focusedJob.value?.tasks || [])].sort((a, b) => (a.batchIndex || 0) - (b.batchIndex || 0)).map(task => ({
+        input: task.input, inputs: task.runConfig?.workbench?.inputs || {}, outputs: task.runConfig?.workbench?.outputs || {},
+      })), settings.outputDir))
   const executionNodeSummaries = computed(() => {
     const target = focusedTask.value
     const snapshot = target?.runConfig?.workbench
     if (!target || !snapshot) return {}
     const summary: Record<string, string> = {}
-    for (const node of workflowInputNodes(snapshot.sourceDefinition)) {
+    const definition = workflowSourceDefinition(target.runConfig)
+    for (const node of workflowInputNodes(definition)) {
       const path = snapshot.inputs[`studio_input_${node.id}`] || target.input
       summary[node.id] = path.split(/[\\/]/).pop() || path
     }
-    for (const node of workflowOutputNodes(snapshot.sourceDefinition)) summary[node.id] = snapshot.outputs[node.id] || ''
+    for (const node of workflowOutputNodes(definition)) summary[node.id] = snapshot.outputs[node.id] || ''
     summary.save = [...new Set(Object.values(snapshot.outputs))].join(' | ')
     return summary
   })
@@ -118,7 +120,7 @@ export function useWorkflowWorkbench(options: {
         const id = target?.dataset.workbenchInput || session.value.bindings.primaryInput || (nodes.length === 1 ? nodes[0].id : '')
         if (!id || !nodes.some(node => node.id === id)) { message.warning(t('workbench.missingInput')); return }
         try {
-          const scanned = await invoke<{ files: string[] }>('scan_media_paths', { paths: event.payload.paths })
+          const scanned = await scanMediaPaths(event.payload.paths)
           const previous = session.value.bindings.inputs[id]?.files || []
           session.value.bindings.inputs[id] = { files: [...new Set([...previous, ...scanned.files])] }
           session.value.bindings.primaryInput ||= id

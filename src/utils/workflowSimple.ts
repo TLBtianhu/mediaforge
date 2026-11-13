@@ -220,7 +220,7 @@ export type ComfyOverview = {
  * (load nodes with an input_name widget — pymss >= 2.1.2 contract). */
 export function analyzeComfyOverview(definition: unknown): ComfyOverview | null {
   if (!isRecord(definition) || !Array.isArray(definition.nodes)) return null
-  const nodes = definition.nodes as any[]
+  const nodes = definition.nodes as Record<string, unknown>[]
   const stripPrefix = (raw: string) => raw.replace(/^\[[^\]]*\]\s*/, '').trim()
   const models: string[] = []
   let separateCount = 0
@@ -255,7 +255,7 @@ export function hydrateSimpleWorkflow(definition: unknown): SimpleDraft {
   }
   const defaults = isRecord(definition.defaults) ? definition.defaults : {}
   const inference = isRecord(defaults.inference_params) ? defaults.inference_params : {}
-  const steps = (definition.steps as any[])
+  const steps = (definition.steps as Record<string, unknown>[])
     .filter(isRecord)
     .map((raw, index): SimpleStepDraft => ({
       id: String(raw.id || `step${index + 1}`),

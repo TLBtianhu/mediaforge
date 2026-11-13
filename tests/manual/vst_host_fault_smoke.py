@@ -192,7 +192,7 @@ def main() -> int:
     env.pop("PYMSS_VST_FIXTURE_BEHAVIOR", None)
     scanned = subprocess.run([str(host_path), "--plugin-scan", str(bundle)], env=env,
                              capture_output=True, text=True, encoding="utf-8", errors="replace",
-                             timeout=20, check=True)
+                             timeout=20, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     descriptor = next(plugin for plugin in json.loads(scanned.stdout)["plugins"] if plugin["name"] == "Fixture Gain")
     report = {"host": str(host_path), "fixture": str(fixture), "bundle": str(bundle),
               "artifacts": str(directory), "cases": [], "limitations": [

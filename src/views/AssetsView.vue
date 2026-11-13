@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import { pickPreviewFiles, pickPreviewFolders, revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
+import { mediaLibrary } from '@/api/mediaLibrary'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
+import { KnownObject } from '@/types/contracts'
+import type { WorkerCommandResult } from '@/types/workerContracts.generated'
 import {
   FolderOpenOutline,
   ImagesOutline,
@@ -20,35 +23,9 @@ import {
 
 defineOptions({ name: 'AssetsView' })
 
-type Asset = {
-  id: number
-  path: string
-  name: string
-  kind: 'audio' | 'image' | 'video'
-  format: string
-  size: number
-  duration: number
-  width: number
-  height: number
-  fps: number
-  thumbnail: string
-  tags: string
-  created_at: string
-  updated_at: string
-}
-type LibraryStats = {
-  kinds?: Record<string, { count: number; bytes: number }>
-  total?: { count: number; bytes: number }
-  database?: string
-}
-type LibraryResult = {
-  ok?: boolean
-  assets?: Asset[]
-  errors?: Array<{ path: string; error: string }>
-  stats?: LibraryStats
-  total?: number
-  removed?: number
-}
+type AssetContract = NonNullable<WorkerCommandResult<'media_library'>['assets']>[number]
+type Asset = KnownObject<AssetContract>
+type LibraryStats = Partial<KnownObject<NonNullable<WorkerCommandResult<'media_library'>['stats']>>>
 
 const { t } = useI18n()
 const message = useMessage()
@@ -59,6 +36,7 @@ const query = ref('')
 const kind = ref<'all' | 'audio' | 'image' | 'video'>('all')
 const busy = ref(false)
 const importing = ref(false)
+const libraryError = ref('')
 let unlistenDrop: (() => void) | undefined
 
 const kindOptions = computed(() => [
@@ -69,6 +47,9 @@ const kindOptions = computed(() => [
 ])
 
 const totalCount = computed(() => stats.value.total?.count ?? assets.value.length)
+const libraryErrorIsSchema = computed(() => /Unsupported library identity\/version\/journal mode/i.test(libraryError.value))
+const libraryErrorTitle = computed(() => libraryErrorIsSchema.value ? t('assets.librarySchemaTitle') : t('assets.libraryTitle'))
+const libraryErrorHint = computed(() => libraryErrorIsSchema.value ? t('assets.librarySchemaHint') : t('assets.libraryErrorHint'))
 
 function kindLabel(value: Asset['kind']) {
   return t(`assets.${value}`)
@@ -106,22 +87,21 @@ function resolution(asset: Asset) {
 }
 
 function thumbnailSrc(asset: Asset) {
-  return asset.thumbnail ? convertFileSrc(asset.thumbnail) : ''
+  return mediaPreviewUrl(asset.thumbnail)
 }
 
 async function refresh() {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
   try {
-    const result = await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'list', query: query.value, kind: kind.value, limit: 1000 },
+    const result = await mediaLibrary({
+      operation: 'list', query: query.value, kind: kind.value, limit: 1000,
     })
     assets.value = result.assets || []
-    const statsResult = await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'stats' },
-    })
+    const statsResult = await mediaLibrary({ operation: 'stats' })
     stats.value = statsResult.stats || {}
+    libraryError.value = ''
   } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
+    libraryError.value = error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -130,9 +110,7 @@ async function importPaths(paths: string[]) {
   importing.value = true
   busy.value = true
   try {
-    const result = await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'import', paths },
-    })
+    const result = await mediaLibrary({ operation: 'import', paths })
     const count = result.assets?.length || 0
     const errors = result.errors?.length || 0
     message.success(t('assets.imported', { count }))
@@ -148,15 +126,7 @@ async function importPaths(paths: string[]) {
 
 async function pickFiles() {
   try {
-    const selected = await open({
-      multiple: true,
-      filters: [{
-        name: 'Media',
-        extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'jpg', 'jpeg', 'png', 'webp', 'gif'],
-      }],
-    })
-    if (!selected) return
-    await importPaths(Array.isArray(selected) ? selected : [selected])
+    await importPaths(await pickPreviewFiles('library'))
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -164,9 +134,7 @@ async function pickFiles() {
 
 async function pickFolder() {
   try {
-    const selected = await open({ directory: true, multiple: true })
-    if (!selected) return
-    await importPaths(Array.isArray(selected) ? selected : [selected])
+    await importPaths(await pickPreviewFolders())
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -174,9 +142,7 @@ async function pickFolder() {
 
 async function removeAsset(asset: Asset) {
   try {
-    await invoke<LibraryResult>('media_library', {
-      payload: { operation: 'remove', ids: [asset.id] },
-    })
+    await mediaLibrary({ operation: 'remove', ids: [asset.id] })
     await refresh()
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
@@ -185,7 +151,7 @@ async function removeAsset(asset: Asset) {
 
 async function revealAsset(asset: Asset) {
   try {
-    await invoke('reveal_path', { path: asset.path })
+    await revealPath(asset.path)
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -245,6 +211,15 @@ onBeforeUnmount(() => {
         <template #icon><n-icon :component="RefreshOutline" /></template>
       </n-button>
     </MediaPageHeader>
+
+    <n-alert v-if="libraryError" type="error" class="assets-library-alert" :title="libraryErrorTitle">
+      <p class="assets-library-alert__hint">{{ libraryErrorHint }}</p>
+      <details class="assets-library-alert__details">
+        <summary>{{ t('common.technicalDetails') }}</summary>
+        <pre>{{ libraryError }}</pre>
+      </details>
+      <n-button size="small" secondary :loading="busy" @click="refresh">{{ t('common.retry') }}</n-button>
+    </n-alert>
 
     <div class="mf-toolbar">
       <n-input v-model:value="query" clearable :placeholder="t('assets.search')" />
@@ -343,7 +318,22 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.assets-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: auto; color: var(--text-color-3); font-size: 11px; }
+.assets-library-alert { margin-bottom: 14px; }
+.assets-library-alert__hint { margin: 0 0 10px; line-height: 1.5; }
+.assets-library-alert__details { margin: 0 0 10px; }
+.assets-library-alert__details summary { cursor: pointer; font-size: 12px; opacity: 0.8; }
+.assets-library-alert__details pre {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.assets-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: auto; color: var(--on-surface-muted); font-size: 11px; }
 .asset-kind { position: absolute; top: 8px; left: 8px; }
 .assets-db { overflow: hidden; max-width: 52%; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) { .assets-db { max-width: 100%; } }

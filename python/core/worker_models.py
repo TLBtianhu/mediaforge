@@ -7,6 +7,8 @@ import shutil
 import sys
 import traceback
 from dataclasses import dataclass, field
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,21 @@ from core.worker_inference_constraints import chunk_size_constraint
 from shared.worker_protocol import WORKER_VERSION, _as_bool, _as_float, _as_int, emit, emit_error, import_available
 
 from shared import worker_paths
+from shared.asset_references import asset_reference_lock
+from core.user_model_registry import read_registry
+
+
+_REGISTRY_SCOPE: ContextVar[Path | None] = ContextVar("user_model_registry_scope", default=None)
+
+
+@contextmanager
+def user_model_registry_scope(data_root: str | Path):
+    """Request-local lookup; concurrent bridges never rewrite process environment."""
+    token = _REGISTRY_SCOPE.set(worker_paths.data_root(data_root).absolute())
+    try:
+        yield
+    finally:
+        _REGISTRY_SCOPE.reset(token)
 
 
 def package_version(distribution: str) -> str | None:
@@ -806,7 +823,7 @@ def _user_model_import_mode(entry: Any) -> str | None:
         return None
     try:
         from core.worker_custom_models import sidecar_entry
-        return str(sidecar_entry(str(entry.name)).get("importMode") or "reference")
+        return str(sidecar_entry(str(entry.name), data_root=_REGISTRY_SCOPE.get()).get("importMode") or "reference")
     except Exception:
         return "reference"
 
@@ -1006,32 +1023,25 @@ def cmd_env_info(payload: dict | None = None) -> int:
 
 
 def _load_registered_user_models() -> list[RegisteredUserModelEntry]:
-    registry = Path(
-        os.environ.get("PYMSS_USER_MODELS")
-        or Path.home() / ".cache" / "pymss" / "user_models.json"
-    ).expanduser()
-    if not registry.is_file():
-        return []
-    data = json.loads(registry.read_text(encoding="utf-8"))
-    models = data.get("models") if isinstance(data, dict) else None
-    if not isinstance(models, list):
-        raise ValueError(f"Invalid user model registry: {registry}")
-    return [RegisteredUserModelEntry.from_dict(item) for item in models if isinstance(item, dict)]
+    scope = _REGISTRY_SCOPE.get()
+    root = scope or worker_paths.data_root().absolute()
+    registry = worker_paths.user_models_file(root)
+    configured = os.environ.get("PYMSS_USER_MODELS")
+    if scope is None and configured and os.path.normcase(os.path.abspath(Path(configured).expanduser())) != os.path.normcase(str(registry)):
+        raise ValueError("Worker registry does not match the current data root")
+    with asset_reference_lock(root):
+        data = read_registry(registry)
+        return [RegisteredUserModelEntry.from_dict(item) for item in data["models"]]
 
 
 def list_registered_user_models(category: str | None = None) -> list[Any]:
-    """Locally registered custom models, or an empty list when none can be read.
+    """Locally registered custom models; invalid registries are explicit failures.
 
-    Never raises: an unreadable registry must not take the whole model list down with it, since
-    the catalog is what the app primarily needs. Filtering mirrors list_catalog_models() so a
-    category selection applies to both halves of the list.
+    Filtering mirrors list_catalog_models() so a category selection applies to both halves.
 
     `supported` is deliberately not filtered on — pymss registers every user model as supported
     (it has no catalog verdict to consult), so filtering would be a no-op that reads as a check."""
-    try:
-        entries = _load_registered_user_models()
-    except Exception:
-        return []
+    entries = _load_registered_user_models()
     if category:
         wanted = category.lower()
         entries = [
@@ -1243,7 +1253,10 @@ def cmd_list_models(payload: dict[str, Any]) -> int:
     if include_custom:
         # Appended after the catalog so the default ordering keeps imported models together at
         # the end; the UI sorts on top of this anyway.
-        entries.extend(list_registered_user_models(category=category))
+        try:
+            entries.extend(list_registered_user_models(category=category))
+        except Exception as exc:
+            return emit_error("MODEL_REGISTRY_UNAVAILABLE", str(exc))
     models = [model_to_dict(entry, model_dir, include_local_state) for entry in entries]
     if payload.get("includeInterfaces"):
         # 模型列表可以顺带带上槽位接口（UI 用来生成参数表单）。

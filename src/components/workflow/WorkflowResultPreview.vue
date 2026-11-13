@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, type Directive } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 import { FolderOutline, OpenOutline, PauseOutline, PlayOutline } from '@vicons/ionicons5'
 import { isTauriRuntime } from '@/utils/appStore'
 import type { StemOutput } from '@/stores/task'
@@ -85,7 +85,7 @@ function prepareAudio(path: string) {
     for (const [event, handler] of Object.entries(handlers)) player.removeEventListener(event, handler)
   }
   try {
-    player.src = convertFileSrc(path)
+    player.src = mediaPreviewUrl(path)
     player.load()
   } catch { fail() }
   return player
@@ -172,7 +172,7 @@ onBeforeUnmount(releaseAudio)
 .workflow-result-preview { display: grid; gap: 14px; min-width: 0; padding: 2px 0; }
 .result-folders { display: grid; gap: 8px; }
 .result-folder { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--surface-2) 48%, transparent); }
-.result-folder > .n-icon { flex: 0 0 auto; font-size: 18px; color: var(--primary-strong); }
+.result-folder > .n-icon { flex: 0 0 auto; font-size: 18px; color: var(--primary-ink); }
 .result-folder code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--on-surface-muted); }
 .result-preview-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .result-preview-heading strong { font-size: 14px; font-weight: 600; }
@@ -185,7 +185,7 @@ onBeforeUnmount(releaseAudio)
 .result-track--error { border-color: color-mix(in srgb, var(--danger) 35%, var(--outline)); }
 .result-track__title { display: grid; gap: 5px; min-width: 0; }
 .result-track__title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
-.result-track__stem { width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--primary-soft) 58%, transparent); color: var(--primary-strong); font-size: 10px; font-weight: 600; }
+.result-track__stem { width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--primary-soft) 58%, transparent); color: var(--primary-ink); font-size: 10px; font-weight: 600; }
 .result-track__slider { min-width: 0; }
 .result-track__time { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--on-surface-muted); white-space: nowrap; text-align: right; }
 .result-track__error { color: var(--danger); font-size: 11px; }

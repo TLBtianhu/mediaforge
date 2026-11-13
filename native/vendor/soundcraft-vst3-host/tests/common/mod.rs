@@ -2,7 +2,6 @@
 //! and installs it as a `.vst3` bundle in a temp folder.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::OnceLock;
 
 /// Builds the fixture once and returns a folder containing `Fixture.vst3`.
@@ -12,7 +11,7 @@ pub fn fixture_dir() -> &'static Path {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixture/Cargo.toml");
         let target = Path::new(env!("CARGO_TARGET_TMPDIR")).join("vst3-fixture-target");
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-        let st = Command::new(cargo)
+        let st = test_process::command(cargo)
             .args(["build", "--quiet", "--manifest-path"])
             .arg(&manifest)
             .arg("--target-dir")
@@ -39,3 +38,6 @@ pub fn fixture_dir() -> &'static Path {
         dir
     })
 }
+
+#[path = "../../../../test_process.rs"]
+mod test_process;

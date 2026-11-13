@@ -1,5 +1,6 @@
 import type { SeparationTask } from '../stores/task.ts'
 import { detectWorkflowFormat } from '../workflows/formats.ts'
+import { workflowSourceDefinition } from '../workflows/workbench.ts'
 
 export type ResultType = 'model' | 'ensemble' | 'simple' | 'advanced' | 'unknown'
 export const RESULT_TYPE_KEYS: Record<ResultType, string> = {
@@ -12,8 +13,7 @@ export function resultType(task: Pick<SeparationTask, 'runConfig'>): ResultType 
   const config = task.runConfig
   if (!config) return 'model'
   if (config.workbench) {
-    const sourceFormat = detectWorkflowFormat(config.workbench.sourceDefinition)
-    const format = sourceFormat === 'unknown' ? detectWorkflowFormat(config.workflowDefinition) : sourceFormat
+    const format = detectWorkflowFormat(workflowSourceDefinition(config))
     return format === 'graph' || config.workbench.nativeGraph ? 'advanced' : format === 'simple' ? 'simple' : 'unknown'
   }
   const definition = config.workflowDefinition

@@ -48,7 +48,7 @@ describe('app store persistence', () => {
     })
   })
 
-  it('falls back to local storage for update state on an older backend', async () => {
+  it('surfaces an incompatible backend without reading or overwriting preview preferences', async () => {
     const invoke = async () => {
       throw 'worker error: unknown app store: update-state'
     }
@@ -58,10 +58,42 @@ describe('app store persistence', () => {
     })
     values.set('pymss-studio:update-state', JSON.stringify({ deferredVersion: '0.0.14' }))
 
-    assert.deepEqual(await loadAppStore('update-state'), { deferredVersion: '0.0.14' })
-    await saveAppStore('update-state', { lastAcceptedVersion: '0.0.14' })
+    await assert.rejects(loadAppStore('update-state'))
+    await assert.rejects(saveAppStore('update-state', { lastAcceptedVersion: '0.0.14' }))
     assert.deepEqual(JSON.parse(values.get('pymss-studio:update-state') || 'null'), {
-      lastAcceptedVersion: '0.0.14',
+      deferredVersion: '0.0.14',
     })
+  })
+
+  it('rejects corrupt or primitive media workflow preview data instead of treating it as a new empty library', async () => {
+    for (const raw of ['{broken', 'null', '42', 'true', '"old-format"', '', '   ']) {
+      values.set('pymss-studio:media-workflows', raw)
+      await assert.rejects(loadAppStore('media-workflows'), undefined, `stored value ${JSON.stringify(raw)}`)
+      assert.equal(values.get('pymss-studio:media-workflows'), raw)
+    }
+    values.delete('pymss-studio:media-workflows')
+    assert.equal(await loadAppStore('media-workflows'), null)
+    values.set('pymss-studio:media-workflows', JSON.stringify({ version: 1, presets: [] }))
+    assert.deepEqual(await loadAppStore('media-workflows'), { version: 1, presets: [] })
+  })
+
+  it('rejects primitive native media workflow responses while allowing an absent library', async () => {
+    for (const value of [42, true, 'old-format']) {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: { __TAURI_INTERNALS__: { invoke: async () => value } },
+      })
+      await assert.rejects(loadAppStore('media-workflows'))
+    }
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { __TAURI_INTERNALS__: { invoke: async () => null } },
+    })
+    assert.equal(await loadAppStore('media-workflows'), null)
+  })
+
+  it('keeps the established lenient browser fallback for unrelated app stores', async () => {
+    values.set('pymss-studio:model-state', '{broken')
+    assert.equal(await loadAppStore('model-state'), null)
   })
 })
