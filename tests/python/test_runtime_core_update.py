@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import platform
 import shutil
 import sys
 import tempfile
@@ -107,6 +108,7 @@ class RuntimeCoreVersionTests(unittest.TestCase):
 
 class RuntimeOverlayUpdateTests(unittest.TestCase):
     def setUp(self):
+        self.addCleanup(setattr, platform, "_uname_cache", platform._uname_cache)
         # Temporary roots may use Windows short names or macOS /var symlinks.
         self.root = Path(tempfile.mkdtemp()).resolve()
         self.envs = self.root / "runtime-envs"

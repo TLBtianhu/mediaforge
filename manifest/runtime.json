@@ -35,6 +35,33 @@
         "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cuda-py312-2026.11.7.zip",
         "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cuda-py312-2026.11.7.zip"
       ]
+    },
+    {
+      "assetId": "runtime-cpu-py312-2026.11.19",
+      "platform": "windows",
+      "arch": "x86_64",
+      "backend": "cpu",
+      "python": "3.12",
+      "torch": "2.7.1",
+      "capabilities": [
+        "upscale",
+        "watermark_removal",
+        "denoise",
+        "matting",
+        "face_restoration",
+        "depth",
+        "object_detection",
+        "frame_interpolation",
+        "video_super_resolution",
+        "video_inpainting"
+      ],
+      "notes": "Python 3.12.13 自包含 CPU 运行时；解释器、DLL、stdlib与cp312扩展同源，无venv或安装期解释器覆盖。已通过ZIP完整性与真实Real-ESRGAN 2× CPU超分；正式发布前须上传并匿名回读。",
+      "sha256": "84794bab4f0dda668c1b52d42ce5ab5915aabb751e3cc5580ab4ca0d4e8bd0ce",
+      "size": 638052948,
+      "urls": [
+        "https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/runtime-cpu-py312-2026.11.19.zip",
+        "https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/runtime-cpu-py312-2026.11.19.zip"
+      ]
     }
   ]
 }

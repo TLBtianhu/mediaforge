@@ -14,7 +14,7 @@ python scripts/check-media.py --deps
 
 ```powershell
 python scripts/check-media.py --smoke `
-  --python .dev-data/runtime-envs/cpu/Scripts/python.exe `
+  --python .dev-data/runtime-envs/runtime-cpu-py312-2026.11.19/Scripts/python.exe `
   --model-dir .dev-data/models `
   --data-root .tmp/media-model-smoke-profile
 ```

@@ -1,197 +1,107 @@
 # 安装状态与开发/用户隔离
 
-原则：**开发态和用户态不共享任何目录**。没有就创建，不建链接、不复用。
-目的是让"开发者的我"能 100% 复刻"普通用户的我"。
+本文描述当前 Windows 安装、便携和开发布局。原则仍是：**开发态和用户态不共享数据目录，不用 junction/symlink 复用数据，不拿真实用户 profile 做测试。**
 
-## 0. 三种形态（先分清形态，再谈路径）
+详细强制规则见 [DEVELOPMENT.md](../DEVELOPMENT.md)，当前候选与验收边界见 [handoff-2026-11-19.md](handoff-2026-11-19.md)。
 
-| 形态 | 用途 | 程序路径 | 数据路径 | 注册表 / 关联 |
-|---|---|---|---|---|
-| 编译产物 | 生产分发物的中间物，属于开发环境；必须保持纯净，不写设置、缓存或索引 | `<repo>\src-tauri\target\{debug,release}` | 不落在 target 内（开发运行用 `<repo>\.dev-data`） | 不写 |
-| 便携版 | 分发形态；拷到任意位置都能自包含运行 | 用户选定的任意目录 | `<exe 目录>\data` | 不写注册表 |
-| 安装版 | 分发形态；装进程序目录，带注册表指针与卸载 | `%LOCALAPPDATA%\Programs\MediaForge`（per-user，不需要管理员） | `%USERPROFILE%\.mediaforge` | HKCU `Software\MediaForge\InstallDir`；卸载保留数据；文件关联当前未注册 |
+## 1. 三种形态与真实数据根
 
-三种形态的程序目录和数据根互不相同，可以同机并存：开发时用编译产物、日常用安装版、临时验证用便携版，互不污染。
+| 形态 | 程序位置 | 数据根 | 模型与独立运行时 |
+| --- | --- | --- | --- |
+| 开发构建 | `<repo>\src-tauri\target\{debug,release}` | `<repo>\.dev-data` | `<repo>\.dev-data\models`、`<repo>\.dev-data\runtime-envs` |
+| 便携版 | 用户选择的解压目录中的 `MediaForge.exe` | `<exe 目录>\data` | `<exe 目录>\models`、`<exe 目录>\runtime-envs` |
+| 安装版 | 默认 `%LOCALAPPDATA%\Programs\MediaForge\app\MediaForge.exe` | `<安装根>\data` | `<安装根>\models`、`<安装根>\runtime-envs` |
 
-便携版靠程序同目录的 `mediaforge.portable` 标记选择 `<exe>\data`；这个文件名必须和打包脚本、CI 完全一致，改名会让便携版静默落回安装版的数据根。
+安装根可由用户选择，不是必须固定在默认路径。`app` 子目录只放可替换程序，数据、模型和运行时与 `app` 平级。当前 Windows 安装版的默认数据根**不是** `%USERPROFILE%\.mediaforge`。
 
+`~/.mediaforge` 只用于非 Windows 或旧布局的兜底读取。当前版本不迁移、不双写旧目录，也不能把旧目录当成安装版的默认位置；不要根据历史文档自动移动或删除它。
 
-## 0.1 形态边界的两条冒烟
+便携版通过 exe 同目录的 `mediaforge.portable` 标记识别。标记只应进入便携包，不能进入安装版 `app/`。
 
-| 脚本 | 验证什么 | 在 CI 里跑在哪 |
-|---|---|---|
-| `scripts/smoke-installer.ps1` | 安装版：静默安装 → 契约清单/引导解释器/VC 运行库 → 干净数据根跑 worker → 启动应用 → 卸载只删程序、保留数据 | `release-windows.yml` 的 CUDA setup exe job |
-| `scripts/smoke-portable.ps1` | 便携版：带 `mediaforge.portable` 标记解压 → 启动 → 数据根落在 `<exe>\data`，且安装版 `~/.mediaforge` 未被写入 | `release-windows.yml` 的四个便携 7z job |
+## 2. 路径解析与覆盖
 
-旧便携包缺标记时，`smoke-portable.ps1` 会先在 zip 副本里补上标记再测，用来复现"修复前 vs 修复后"的差异；发布产物本身已经带标记，脚本检测到后跳过补写。
+`src-tauri/src/storage.rs` 的优先级为：
 
-本地跑这两条的限制：`smoke-installer.ps1` 会装到 `%LOCALAPPDATA%\Programs\MediaForge` 再卸载，
-所以只适合**没有日常安装**的机器；本机已有 0.0.23 安装时不跑，交给 CI 的 CUDA setup job。
-便携冒烟不受影响，2026-11-01 本地实测通过（归档带标记 → 启动 → 数据根 `<exe>\data` → 安装版数据根未写入）。
+1. 显式环境变量；
+2. 开发构建的 `<repo>\.dev-data`；
+3. 便携版或当前安装布局；
+4. 非 Windows/旧布局的 `~/.mediaforge` 兜底。
 
+支持 `MEDIAFORGE_DATA_ROOT`、`MEDIAFORGE_DATA_DIR` 和 `PYMSS_STUDIO_DATA_ROOT` 显式指定数据根。此时未单独指定的模型和运行时分别位于该根的 `models`、`runtime-envs` 子目录，不会因为目录名叫 `data` 就改取父目录。
 
-## 1. 固定位置（谁都不许改）
+可用 `MEDIAFORGE_MODEL_DIR` / `PYMSS_MODEL_DIR` 和 `MEDIAFORGE_RUNTIME_ENVS_DIR` 分别覆盖模型与运行时根。开发、干净包和长期测试必须使用不同数据根及 WebView2 profile。
 
-| 内容 | 用户态（安装版） | 开发态（仓库） |
-|---|---|---|
-| 程序本体 | `%LOCALAPPDATA%\Programs\MediaForge`（per-user，不需要管理员） | `C:\MediaForge`（exe 在 `src-tauri\target\debug`） |
-| 契约清单 | `<安装目录>\manifest\`（protocol / runtime） | `<repo>\manifest\` |
-| 用户数据根 | `%USERPROFILE%\.mediaforge` | `<repo>\.dev-data` |
-| 运行时环境 | `<数据根>\runtime-envs\<assetId>\` + `active-runtime.json` 指针 | `<repo>\.dev-data\runtime-envs\<assetId>\` |
-| 模型 | `<数据根>\models` | `<repo>\.dev-data\models` |
-| 输出 / 日志 / 设置 | `<数据根>\{outputs,logs,settings}` | `<repo>\.dev-data\{...}` |
-| VC++ 运行库 | `<安装目录>\bin\vcrt`、`<安装目录>\python-runtime`，安装运行时后复制到 `runtime-envs\<assetId>\Scripts` | 同一个（随安装包） |
-| MCP 启动器 | `%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd` | `<repo>\.dev-data\bin\mediaforge-mcp.cmd`（开发态不写注册表、不碰用户数据根） |
-| 安装指针 | `HKCU\Software\MediaForge\InstallDir` + `%LOCALAPPDATA%\Programs\MediaForge\home.txt` | 同一个（指向仓库根） |
+## 3. 当前安装布局
 
-判定依据是 `storage.rs` 的 `resolve_data_root`：
-**环境变量 `MEDIAFORGE_DATA_ROOT` → 开发态 `<repo>\.dev-data` → 便携标记 `<exe>\data` → `~/.mediaforge`**。
+默认安装后，关键路径如下：
 
-## 1.1 VC++ 运行库为什么不装 vc_redist
-
-安装是 per-user（`PrivilegesRequired=lowest`），没有管理员权限跑 `VC_redist.x64.exe`。
-而缺少 `msvcp140.dll` 时，torch/cv2 这类 C++ 扩展会在 import 阶段直接
-`DLL load failed`，用户无从判断。
-
-做法是 **app-local 捆绑**：
-
-```
-安装包 bin\vcrt\           8 个可再发行 DLL（msvcp140 系列 / vcruntime140 系列 /
-                             concrt140 / vcomp140）+ SOURCE.json 记录来源版本
-安装包 python-runtime\     同一组 DLL，保证引导解释器能加载 C++ 扩展
-运行时安装后                runtime-envs\<assetId>\Scripts\ 再复制一份，
-                             并跑 python -c "ctypes.CDLL('msvcp140.dll')…" 自检
+```text
+%LOCALAPPDATA%\Programs\MediaForge\
+├─ app\
+│  ├─ MediaForge.exe
+│  ├─ python\                 worker、Agent 与共享契约代码
+│  ├─ python-runtime\         随包 Python 3.12 bootstrap，不是推理环境
+│  ├─ bin\                    FFmpeg、FFprobe、aria2c 与 VC++ DLL
+│  ├─ manifest\               协议、运行时、配额和素材库契约
+│  └─ README.txt
+├─ integrations\dsh-mediaforge\
+├─ data\                      设置、任务、素材库、输出、日志和编辑器工程
+├─ models\                    按需下载的模型
+├─ runtime-envs\              独立推理资产及 active-runtime.json
+└─ unins000.exe / unins000.dat
 ```
 
-自检失败会让运行时安装直接报错，而不是等到用户点任务。许可与来源写在 `NOTICE`。
+`HKCU\Software\MediaForge\InstallDir` 指向实际的 `<安装根>\app`，用于识别当前安装实例。当前布局不依赖 `home.txt`。不要把整个安装根当成可随意删除的程序目录，因为其中还包含用户资产。
 
-## 2. 三条硬规则
+随包 bootstrap 只负责启动、查询和管理资产。推理使用 `runtime-envs` 中单独安装的自包含 Python 3.12 环境，不能用覆盖解释器的方式修复旧环境。
 
-1. **禁止链接**：开发态与用户态之间不允许 junction / symlink。
-   曾经的教训：`~/.mediaforge/models` 被指向 `.dev-data/models`，安装版扫描时命中
-   `WinError 448（不受信任的装入点）`，整个模型库页面报错。
-2. **用则建**：任何一层目录缺失都自动创建（`mkdir -p` 语义），不依赖安装包预建。
-3. **要复刻用户，就换数据根**：想在开发者机器上扮演"全新用户"，不要清空自己的目录，
-   而是设 `MEDIAFORGE_DATA_ROOT` 指向一个空目录，或用另一个 Windows 账户。
+## 4. 覆盖升级与卸载
 
-## 3. 良性安装状态应该长什么样
+- 覆盖升级替换 `app/` 和随包集成文件，保留 `data`、`models`、`runtime-envs`。
+- 静默卸载删除程序与测试/安装注册信息，默认保留上述资产。
+- 交互卸载会另外提供删除运行时、模型和数据的复选框，默认均不选中；只有用户显式选择后才删除对应目录。因此不能笼统写成“卸载永远不会删除数据”。
+- 独立安装验收使用同一安装器源码和 stage 重编唯一测试 AppId，不覆盖生产 AppId，不执行正式安装包。它核对完整文件、bootstrap health、覆盖升级、静默卸载和 8 项资产样本。
 
-### 3.1 应用侧
+当前 r9 的 CPU/CUDA 证据分别为 `.tmp/r9-cpu-installer-upgrade.json` 和 `.tmp/r9-cuda-installer-upgrade.json`。这些检查不启动 GUI，不等于正式安装包的桌面安装验收。
 
-```
-C:\Program Files\MediaForge\
-├─ MediaForge.exe            ← 程序本体（不是 Pymss Studio.exe）
-├─ python\                   ← worker 代码
-├─ python-runtime\           ← 引导解释器 + runtime-envs
-├─ bin\                      ← ffmpeg / ffprobe / aria2c
-├─ integrations\dsh-mediaforge\   ← DSH 集成包（随安装包分发）
-└─ README.txt
-```
+## 5. VC++ 运行库
 
-数据根：
+安装为 per-user（`PrivilegesRequired=lowest`），不能依赖管理员权限安装 VC++ redistributable。随包在以下位置提供同一组 DLL：
 
-```
-%USERPROFILE%\.mediaforge\
-├─ models\      ← 真目录，不是链接
-├─ outputs\  logs\  settings\
+- `app\bin\vcrt\`
+- `app\python-runtime\`
+
+独立运行时安装后，所需 DLL 也复制到对应 `runtime-envs\<assetId>\Scripts`，并执行加载检查。`SOURCE.json` 记录来源；缺少这些 DLL 会让 torch/cv2 等扩展在导入时失败。
+
+## 6. DSH / MCP 集成
+
+当前唯一支持的方式是加载随包 bundle：
+
+```text
+plugin_manager install_bundle target=link:<安装或解压根>\integrations\dsh-mediaforge
 ```
 
-判定命令：
+- 安装器只分发 bundle，不写 DSH profile 的 `cordis.patch.yml`，不注入或整块替换用户配置。
+- 不再依赖 `mediaforge-mcp.cmd`、`home.txt` 或旧 `verify.ps1`。
+- bundle 从自身位置解析该实例的 bootstrap、Bridge、数据、模型和运行时根。
+- DSH 工具名和数量以当前 MCP `tools/list` 为准，不使用历史固定数量。
+- 加载、移除及配置归 DSH 管理；三次加载或调用的幂等验证必须保持 DSH 自己配置文件的 SHA-256 不变。
 
-```powershell
-# 1) 没有链接
-Get-ChildItem "$env:USERPROFILE\.mediaforge" -Force |
-  Where-Object { $_.Attributes -match 'ReparsePoint' }      # 应为空
+历史遗留的标记区块只能由用户按当前迁移指引审慎处理，不能由安装器自动删除。
 
-# 2) 指针指向安装目录
-Get-Content "$env:LOCALAPPDATA\MediaForge\home.txt"
-Get-ItemProperty HKCU:\Software\MediaForge | Select InstallDir
-```
+## 7. 验证方式与禁止事项
 
-### 3.2 集成侧
+| 入口 | 当前用途 | 边界 |
+| --- | --- | --- |
+| `scripts/smoke-installer.ps1` | 独立身份的完整 stage、安装升级、bootstrap health、静默卸载与资产保留 | 不执行生产安装器，不启动 GUI |
+| `scripts/clean-test.ps1` | 安装后 exe 的首次启动与一次性数据/WebView2 profile | 会启动真实 GUI，必须明确授权并在隔离环境运行 |
+| `scripts/smoke-portable.ps1` | 便携数据根及真实进程检查 | 包含 GUI 启动和进程结束逻辑，禁止在未授权环境运行 |
+| `scripts/smoke-first-install.ps1` / `smoke-runtime-rollback.ps1` | 隔离运行时安装、激活和回滚 | 使用明确打包输入和测试资产，不操作用户运行时 |
 
-```
-%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd   ← 启动器（不含绝对路径）
-DSH profile package.json:  "@local/mediaforge-mcp": "link:<安装目录>\integrations\dsh-mediaforge"
-DSH profile cordis.patch.yml: 一行 serverName: mediaforge
-```
+模型和工具数量不写固定值，以当前随包目录、真实查询和运行时状态为准。fixture、bootstrap health、真实推理、真实 WebView 和跨平台结果是不同证据，不能互相替代。
 
-判定命令（一条就够）：
+不要清空开发缓存、模型、运行时、旧候选或长期测试数据来腾空间。遇到旧、坏或未来 schema 必须保留原文件并明确报错，不能按空数据写回。
 
-```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\verify.ps1"
-```
+## 8. 更新状态
 
-期望输出：
-
-```
-== 1. 启动器 ==     OK
-== 2. 路径解析 ==   home.txt / registry 都指向安装目录；Program Files 兜底 = True
-== 3. MCP 握手 ==   serverInfo.name = mediaforge；tools/list 有 58 条
-== 结果 ==          PASS
-```
-
-### 3.3 DSH 侧
-
-- 重启后新会话里工具名形如 `mcp__mediaforge__agent_contract`
-- Plugins 页面能看到 `@local/mediaforge-mcp`，状态 enabled
-- **只应有一行** `serverName: mediaforge`；重复会导致后加载的那行失败
-- `failOnStartupError: false`（应用没装时 DSH 仍能启动，只是没有这些工具）
-
-## 4. 出问题时的定位顺序
-
-| 现象 | 先查 |
-|---|---|
-| DSH 里没有 `mcp__mediaforge__*` | `verify.ps1`：启动器 → 指针 → 握手 |
-| `cannot find a MediaForge install` | 指针文件与注册表；`MEDIAFORGE_HOME` 是否指错 |
-| 工具在但调用报错 | 运行时：应用内设置页看 cuda/cpu；`active-runtime.json` |
-| 模型库整页报错 | 数据根里是否有 reparse point（见 3.1） |
-| 模型列表为空但已下载 | `MEDIAFORGE_MODEL_DIR` 是否指向别处 |
-
-## 5. 待办（按此文档执行）
-
-1. 安装器：目标目录固定为 `{autopf}\MediaForge`，不继承旧路径（已做，新 AppId）
-2. 启动器/指针：安装结束自动写（已做）
-3. 数据根：缺失时自动创建（需在代码里确认每层都 `mkdir`）
-4. 开发态防呆：开发构建若数据根落到 `~/.mediaforge` 就警告并退出
-5. 去掉一切 junction 用法（已清除现场的链接）
-6. **首装"下载运行时"端到端冒烟（已实现，2026-11-01 本地 PASS）**：
-   入口 `MediaForge.exe --smoke-install-runtime`（dev-only CLI，真实进程**主线程**跑
-   `runtime_assets::install_blocking`），驱动脚本 `scripts/smoke-first-install.ps1`
-   （本地 HTTP 服务托管 runtime zip、隔离数据根、断言解包 + active-runtime.json +
-   .asset-id + 解释器可运行，另含 sha256 不符的负例）。
-   用法：`powershell -File scripts/smoke-first-install.ps1 -AppExe release\stage-<ver>\MediaForge.exe`
-   （必须用**打包的便携版**——`download()` 需要 `bin/aria2c.exe`，开发构建没有打包资源）。
-   为什么不能走别的路：① headless Chromium + mock `__TAURI_INTERNALS__`（diagnostics_ui_smoke 的方式）
-   只能测前端，测不到真实 Rust 下载；② 在 `#[test]` 里 `Builder::build` 起 AppHandle 会 panic——
-   Windows 的 Tao 事件循环要求主线程，而 Rust 测试跑在独立线程（2026-11-01 探针实证）。
-   所以唯一干净的端到端入口是 dev-only CLI 子命令，而不是测试内 build 或前端 mock。
-   目前依赖本机的 runtime zip 与打包 stage，属本地/发布前验证；接 CI 需换成小夹具运行时。
-7. **运行时复用与回滚端到端（已实现，2026-11-02 本地 PASS）**：
-   `scripts/smoke-runtime-rollback.ps1` 现场编译微型解释器，生成 A/B 两个小 zip，
-   经本地 HTTP 完成 A 安装 → B 安装 → ready 分支直接激活 A，断言两资产并存、
-   `active-runtime.json` 可逆切换且 A 内容不被覆盖。完整描述符由
-   `MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR` 注入，复用入口为
-   `MediaForge.exe --smoke-activate-runtime`；不需要外网或真实 3.6 GB 运行时。
-
-## 6. 升级策略：只发安装包
-
-第一版**不做自动更新**，只发布安装包。升级路径是"下载新安装包再装一遍"：
-
-```
-数据在 %USERPROFILE%\.mediaforge，安装器从不碰它
-安装位置固定，重装即覆盖，不会出现两份
-旧版本的快捷方式/注册表项由同一个 AppId 接管，不会残留
-```
-
-代价：用户不会收到"有新版本"的提示。可以接受——比"自动更新验签失败把用户卡住"好得多。
-
-`update.zip` 仍会在打包时产出并签名（[4/6] 步骤），因为：
-- 它是将来启用自动更新的唯一载体，提前验证格式有好处
-- 签名链路现在就跑通，比将来补更便宜
-
-要开启自动更新时，需要三件事同时成立：
-
-1. `update.zip` 与 `.sig` 上传到更新源
-2. 更新清单（`<channel>-<generation>-<platform>-update.json`）里的 `url` 与 `signature` 正确
-3. 客户端二进制内嵌的公钥与签名私钥配对（0.0.14 起已内嵌本项目自己的公钥）
+当前安装升级以手动下载并覆盖安装为主，未启用自动更新。候选可以生成和验证 `update.zip` 及签名，但这不等于更新渠道已发布或启用。发布时必须重新核对目标版本的 ZIP、签名、公钥和远端清单，不能复用其他候选的签名。

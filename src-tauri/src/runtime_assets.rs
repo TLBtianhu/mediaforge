@@ -147,7 +147,7 @@ fn unavailable(host: HostTarget<'_>, backend: Option<&str>) -> String {
 
 fn installer_supports(host: HostTarget<'_>, backend: Option<&str>) -> bool {
     // This installer validates Windows x64 Python/DLLs and launches aria2c.exe.
-    host.platform == "windows" && host.arch == "x86_64" && backend.is_none_or(|value| value == "cuda")
+    host.platform == "windows" && host.arch == "x86_64" && backend.is_none_or(|value| matches!(value, "cuda" | "cpu"))
 }
 
 fn ensure_target(
@@ -1201,6 +1201,16 @@ mod descriptor_tests {
     }
 
     #[test]
+    fn embedded_manifest_resolves_the_cpu_asset() {
+        let host = HostTarget { platform: "windows", arch: "x86_64" };
+        let catalog = parse_catalog(EMBEDDED_MANIFEST).unwrap();
+        let descriptor = select_embedded(&catalog, host, Some("cpu")).unwrap();
+        assert_eq!(descriptor.asset_id, "runtime-cpu-py312-2026.11.19");
+        assert_eq!(descriptor.backend, "cpu");
+        validate_install_target(&descriptor, Some("cpu")).unwrap();
+    }
+
+    #[test]
     fn unsupported_runtime_matrix_stops_before_creating_the_install_root() {
         let temporary = tempfile::tempdir().unwrap();
         let envs = temporary.path().join("runtime-envs");
@@ -1209,7 +1219,6 @@ mod descriptor_tests {
             ("linux", "x86_64", None),
             ("macos", "aarch64", Some("mlx")),
             ("windows", "aarch64", Some("cuda")),
-            ("windows", "x86_64", Some("cpu")),
             ("windows", "x86_64", Some("rocm")),
             ("windows", "x86_64", Some("unknown")),
         ] {

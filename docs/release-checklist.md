@@ -113,6 +113,8 @@ node scripts/test-python.mjs tests.python.test_dsh_integration_layout
 
 `0.0.34 r7` 已完成 Windows 无界面首装、`r6 → r7` 覆盖升级、完整文件比较、bootstrap health 和静默卸载；8 项资产保留，生产注册表与安装包哈希未变。候选未签名，真实 WebView、CPU 变体和跨平台验收尚未完成，不能复用 r6 签名或把 r7 当成已发布版本。 [r7 证据与桌面验收清单](handoff-2026-11-19.md)
 
+当前工作树的 `0.0.34 r9` 新增经过真实超分验证的 CPU 运行时，并修复原生安装只接受 CUDA 的门禁。CPU ZIP 已通过本地下载、解包、激活和坏哈希拒绝；CPU/CUDA 双变体均通过独立安装升级。r9 来自提交前工作树，后续 r10 将从本轮提交干净重建；CPU ZIP 未上传，候选未签名，不能作为正式发布。 [r9 证据](handoff-2026-11-19.md#6-r9-cpu-运行时与双变体验证提交前工作树)
+
 ---
 
 ## 常用命令速查

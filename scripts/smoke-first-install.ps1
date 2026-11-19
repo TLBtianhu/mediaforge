@@ -10,6 +10,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$AppExe,
     [Parameter(Mandatory = $true)][string]$RuntimeZip,
+    [ValidateSet('cuda', 'cpu')][string]$Backend = 'cuda',
     [int]$Port = 8765,
     [string]$HttpPython = ''
 )
@@ -46,11 +47,14 @@ Start-Sleep -Seconds 2
 try {
     $baseUrl = "http://127.0.0.1:$Port"
     $env:MEDIAFORGE_DATA_ROOT = $dataRoot
+    $env:MEDIAFORGE_MODEL_DIR = Join-Path $dataRoot 'models'
+    $env:MEDIAFORGE_RUNTIME_ENVS_DIR = Join-Path $dataRoot 'runtime-envs'
+    $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $work 'webview'
     # 描述符按实际 zip 计算 sha256/size：只设 URL 的话，应用仍会拿内嵌描述符的哈希来校验，
     # 夹具资产必然对不上。这里把本地下载源和真实哈希一起交给应用，夹具与真包都能跑。
     $descriptor = @{
         assetId = $assetId
-        backend = 'cuda'
+        backend = $Backend
         platform = 'windows'
         arch = 'x86_64'
         python = '3.12'
@@ -61,8 +65,17 @@ try {
 
     Write-Host "  [1/2] 正例：本地源下载真运行时"
     $env:MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR = ($descriptor | ConvertTo-Json -Compress)
-    $install = Start-Process -FilePath $exe -ArgumentList '--smoke-install-runtime' -Wait -PassThru -WindowStyle Hidden
+    $installStdout = Join-Path $work 'install.stdout.log'
+    $installStderr = Join-Path $work 'install.stderr.log'
+    $install = Start-Process -FilePath $exe -ArgumentList '--smoke-install-runtime' -Wait -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $installStdout -RedirectStandardError $installStderr
     Check '安装进程退出码为 0' ($install.ExitCode -eq 0) "exit=$($install.ExitCode)"
+    if ($install.ExitCode -ne 0) {
+        foreach ($log in @($installStdout, $installStderr)) {
+            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log | Write-Host }
+        }
+        throw "Native runtime installation failed; retained test root: $work"
+    }
     $envDir = Join-Path $dataRoot "runtime-envs\$assetId"
     Check '运行时解包到隔离数据根' (Test-Path (Join-Path $envDir 'Scripts\python.exe'))
     Check 'active-runtime.json 已写入' (Test-Path (Join-Path $dataRoot 'runtime-envs\active-runtime.json'))
@@ -79,6 +92,9 @@ try {
     Write-Host "  [2/2] 负例：sha256 不符必须拒绝"
     $badData = Join-Path $work 'data-corrupt'
     $env:MEDIAFORGE_DATA_ROOT = $badData
+    $env:MEDIAFORGE_MODEL_DIR = Join-Path $badData 'models'
+    $env:MEDIAFORGE_RUNTIME_ENVS_DIR = Join-Path $badData 'runtime-envs'
+    $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $work 'webview-corrupt'
     $descriptor.urls = @("$baseUrl/corrupted.zip")
     $env:MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR = ($descriptor | ConvertTo-Json -Compress)
     $bad = Start-Process -FilePath $exe -ArgumentList '--smoke-install-runtime' -Wait -PassThru -WindowStyle Hidden
@@ -91,6 +107,9 @@ try {
 } finally {
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
     $env:MEDIAFORGE_DATA_ROOT = $null
+    $env:MEDIAFORGE_MODEL_DIR = $null
+    $env:MEDIAFORGE_RUNTIME_ENVS_DIR = $null
+    $env:WEBVIEW2_USER_DATA_FOLDER = $null
     $env:MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR = $null
     $env:MEDIAFORGE_SMOKE_RUNTIME_URL = $null
 }

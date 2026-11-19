@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import platform
 import tempfile
 import unittest
 from pathlib import Path
@@ -202,6 +203,8 @@ class RuntimeOverlayDeletionTests(unittest.TestCase):
 
 class LegacyRuntimeOverlayTests(unittest.TestCase):
     def setUp(self):
+        # platform.uname() also caches the simulated system after sys.platform is restored.
+        self.addCleanup(setattr, platform, "_uname_cache", platform._uname_cache)
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
         self.user = self.root / "user/runtime-envs"
         self.bundled = self.root / "package/python-runtime/runtime-envs"

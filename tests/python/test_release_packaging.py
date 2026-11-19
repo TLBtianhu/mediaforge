@@ -86,6 +86,19 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertNotIn("$env:USERPROFILE", script)
         self.assertNotIn("runtime-envs\\cuda", script)
 
+    def test_first_install_supports_cpu_and_scopes_all_asset_overrides(self) -> None:
+        script = (ROOT / "scripts/smoke-first-install.ps1").read_text(encoding="utf-8")
+        self.assertIn("[ValidateSet('cuda', 'cpu')][string]$Backend = 'cuda'", script)
+        self.assertIn("backend = $Backend", script)
+        self.assertNotIn("backend = 'cuda'", script)
+        for root in ("dataRoot", "badData"):
+            self.assertIn(f"$env:MEDIAFORGE_MODEL_DIR = Join-Path ${root} 'models'", script)
+            self.assertIn(f"$env:MEDIAFORGE_RUNTIME_ENVS_DIR = Join-Path ${root} 'runtime-envs'", script)
+        for name in ("MEDIAFORGE_MODEL_DIR", "MEDIAFORGE_RUNTIME_ENVS_DIR", "WEBVIEW2_USER_DATA_FOLDER"):
+            self.assertIn(f"$env:{name} = $null", script)
+        self.assertIn("-RedirectStandardOutput $installStdout -RedirectStandardError $installStderr", script)
+        self.assertIn("Get-Content -LiteralPath $log | Write-Host", script)
+
 
 @unittest.skipUnless(os.name == "nt" and POWERSHELL, "Windows packaging helpers")
 class ReleaseStagingFixtureTests(unittest.TestCase):
