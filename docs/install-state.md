@@ -62,7 +62,7 @@
 - 交互卸载会另外提供删除运行时、模型和数据的复选框，默认均不选中；只有用户显式选择后才删除对应目录。因此不能笼统写成“卸载永远不会删除数据”。
 - 独立安装验收使用同一安装器源码和 stage 重编唯一测试 AppId，不覆盖生产 AppId，不执行正式安装包。它核对完整文件、bootstrap health、覆盖升级、静默卸载和 8 项资产样本。
 
-当前 r9 的 CPU/CUDA 证据分别为 `.tmp/r9-cpu-installer-upgrade.json` 和 `.tmp/r9-cuda-installer-upgrade.json`。这些检查不启动 GUI，不等于正式安装包的桌面安装验收。
+当前 r10 的 CPU/CUDA 证据分别为 `.tmp/r10-cpu-installer-upgrade.json` 和 `.tmp/r10-cuda-installer-upgrade.json`。这些检查不启动 GUI，不等于正式安装包的桌面安装验收。
 
 ## 5. VC++ 运行库
 
