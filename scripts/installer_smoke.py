@@ -189,14 +189,17 @@ def cleanup_owned(report_path: Path, report: dict, env: dict[str, str]) -> None:
     uninstaller = install / "unins000.exe"
     before = CANDIDATE.asset_snapshot(install)
     if report.get("installedVersion"):
-        if not uninstaller.is_file() or CANDIDATE.digest(uninstaller) != report.get("uninstallerSha256"):
-            raise RuntimeError("verified test uninstaller is missing or changed; retaining work")
-        CANDIDATE.verify_identity(report, report["installedVersion"])
-        CANDIDATE.run_hidden([str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-                              f"/LOG={work / 'uninstall.log'}"], env=env, log=work / "uninstall-process.log", timeout=180)
-        deadline = time.monotonic() + 10
-        while uninstaller.exists() and time.monotonic() < deadline:
-            time.sleep(0.1)
+        if uninstaller.is_file():
+            if CANDIDATE.digest(uninstaller) != report.get("uninstallerSha256"):
+                raise RuntimeError("verified test uninstaller is missing or changed; retaining work")
+            CANDIDATE.verify_identity(report, report["installedVersion"])
+            CANDIDATE.run_hidden([str(uninstaller), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                                  f"/LOG={work / 'uninstall.log'}"], env=env, log=work / "uninstall-process.log", timeout=180)
+            deadline = time.monotonic() + 10
+            while uninstaller.exists() and time.monotonic() < deadline:
+                time.sleep(0.1)
+        elif uninstaller.exists() or report.get("uninstallPreservedAssets") != before:
+            raise RuntimeError("completed test uninstall is not verified; retaining work")
         CANDIDATE.owned_work(report)
         if uninstaller.exists() or installed_hashes(install) or (install / "MediaForge.exe").exists():
             raise RuntimeError("test uninstall did not remove the application")
@@ -209,8 +212,9 @@ def cleanup_owned(report_path: Path, report: dict, env: dict[str, str]) -> None:
     elif uninstaller.exists() or CANDIDATE.registry_values(report["registryKey"]) is not None or CANDIDATE.registry_values(
             CANDIDATE.UNINSTALL_PREFIX + report["appId"] + "_is1") is not None:
         raise RuntimeError("unverified installation state; retaining work for inspection")
-    if CANDIDATE.running_test_processes(work):
-        raise RuntimeError("owned test processes remain after uninstall")
+    active = CANDIDATE.wait_test_processes(work)
+    if active:
+        raise RuntimeError(f"owned test processes remain after uninstall: {active}")
     if production_registry_snapshot() != report["productionRegistryBefore"]:
         raise RuntimeError("production registry changed; no automatic restoration or work cleanup")
     capture_logs(work, report)
@@ -362,18 +366,65 @@ def execute(args: argparse.Namespace) -> dict:
     return report
 
 
+def resume_cleanup(report_path: Path) -> dict:
+    report_path = report_path.absolute()
+    if not report_path.is_relative_to(ROOT / ".tmp") or report_path.suffix != ".json":
+        raise ValueError("cleanup report must be inside the repository .tmp directory")
+    CANDIDATE.no_reparse(report_path)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if not isinstance(report, dict):
+        raise ValueError("cleanup report must contain a JSON object")
+    if (report.get("productionRegistryUnchanged") is not True
+            or report.get("productionRegistryBefore") != production_registry_snapshot()):
+        raise RuntimeError("production registry changed; refusing automatic cleanup")
+    retained = report.get("status") == "failed-retained" and not report.get("error") and str(
+        report.get("cleanupError", "")).startswith("owned test processes remain after uninstall")
+    if report.get("status") != "uninstalled-pending-temp-cleanup" and not retained:
+        raise ValueError("cleanup recovery requires a completed uninstall or a retained post-uninstall process check")
+    if not report.get("installedVersion") or not report.get("uninstallerSha256"):
+        raise RuntimeError("verified test identity is missing; refusing automatic cleanup")
+    work = CANDIDATE.owned_work(report)
+    cleanup_owned(report_path, report, isolated_environment(work))
+    report.update(status="cleaned", workRootRemoved=True, productionRegistryUnchanged=True)
+    if "cleanupError" in report:
+        report["recoveredFromCleanupError"] = report.pop("cleanupError")
+    installer_input = Path(report["productionInstaller"]) if report.get("productionInstaller") else None
+    if installer_input is not None:
+        report["productionInstallerUnchanged"] = False
+        try:
+            CANDIDATE.no_reparse(installer_input)
+            if CANDIDATE.digest(installer_input) != report.get("productionInstallerSha256"):
+                raise RuntimeError("read-only production installer artifact changed during validation")
+            report["productionInstallerUnchanged"] = True
+        except (OSError, ValueError, RuntimeError) as error:
+            report["status"], report["productionInstallerError"] = "failed-cleaned", str(error)
+            CANDIDATE.write_report(report_path, report)
+            raise
+    CANDIDATE.write_report(report_path, report)
+    print(f"PASS: recovered verified installer-smoke cleanup; report: {report_path}", flush=True)
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", type=Path, required=True)
-    parser.add_argument("--version", required=True)
+    parser.add_argument("--stage", type=Path)
+    parser.add_argument("--version")
     parser.add_argument("--previous-stage", type=Path)
     parser.add_argument("--previous-version")
-    parser.add_argument("--iscc", type=Path, required=True)
+    parser.add_argument("--iscc", type=Path)
     parser.add_argument("--installer", type=Path, help="Read-only production artifact metadata; never executed")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--cleanup-report", type=Path, help="Recover a verified completed uninstall or retained post-uninstall process check")
     args = parser.parse_args(argv)
     try:
-        execute(args)
+        if args.cleanup_report:
+            if any((args.stage, args.version, args.previous_stage, args.previous_version, args.iscc, args.installer, args.report)):
+                parser.error("--cleanup-report cannot be combined with installation arguments")
+            resume_cleanup(args.cleanup_report)
+        else:
+            if not all((args.stage, args.version, args.iscc)):
+                parser.error("--stage, --version and --iscc are required for installer smoke")
+            execute(args)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(error, file=sys.stderr)
         return 1

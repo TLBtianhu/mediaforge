@@ -120,7 +120,7 @@ class CandidateSmokeTests(unittest.TestCase):
         uninstaller.write_bytes(b"uninstaller fixture")
         report = dict(self.identity, installedVersion="0.0.32", uninstallerSha256=SMOKE.digest(uninstaller))
         def fake_uninstall(*args, **kwargs):
-            (install / "app/MediaForge.exe").unlink()
+            shutil.rmtree(install / "app")
             uninstaller.unlink()
             (install / "models/candidate-fixture/preservation-only.bin").write_bytes(b"changed")
         with mock.patch.object(SMOKE, "running_test_processes", return_value=[]), mock.patch.object(SMOKE, "verify_identity"), mock.patch.object(SMOKE, "run_hidden", side_effect=fake_uninstall):
@@ -137,7 +137,7 @@ class CandidateSmokeTests(unittest.TestCase):
         uninstaller.write_bytes(b"uninstaller fixture")
         report = dict(self.identity, installedVersion="0.0.32", uninstallerSha256=SMOKE.digest(uninstaller))
         def fake_uninstall(*args, **kwargs):
-            (install / "app/MediaForge.exe").unlink()
+            shutil.rmtree(install / "app")
             uninstaller.unlink()
         with mock.patch.object(SMOKE, "running_test_processes", return_value=[]), mock.patch.object(SMOKE, "verify_identity"), mock.patch.object(SMOKE, "registry_values", return_value=None), mock.patch.object(SMOKE, "run_hidden", side_effect=fake_uninstall):
             SMOKE.cleanup(self.report, report)
@@ -145,6 +145,34 @@ class CandidateSmokeTests(unittest.TestCase):
         evidence = json.loads(self.report.read_text(encoding="utf-8"))
         self.assertEqual(evidence["status"], "cleaned")
         self.assertEqual(evidence["uninstallPreservedAssets"], preserved)
+
+    def test_uninstall_process_wait_polls_until_the_second_phase_exits(self):
+        with mock.patch.object(SMOKE, "running_test_processes", side_effect=[[321], []]) as active, \
+             mock.patch.object(SMOKE.time, "sleep") as sleep:
+            self.assertEqual(SMOKE.wait_test_processes(self.work), [])
+        self.assertEqual(active.call_count, 2)
+        sleep.assert_called_once_with(0.1)
+
+    def test_uninstall_process_wait_returns_live_pids_at_the_deadline(self):
+        with mock.patch.object(SMOKE, "running_test_processes", return_value=[321]), \
+             mock.patch.object(SMOKE.time, "monotonic", side_effect=[0, 31]), \
+             mock.patch.object(SMOKE.time, "sleep") as sleep:
+            self.assertEqual(SMOKE.wait_test_processes(self.work), [321])
+        sleep.assert_not_called()
+
+    def test_cleanup_recovers_a_verified_uninstall_without_running_another_uninstaller(self):
+        install = Path(self.identity["installDir"])
+        preserved = SMOKE.seed_assets(install, self.identity["nonce"])
+        report = dict(self.identity, installedVersion="0.0.32", uninstallerSha256="a" * 64,
+                      status="failed-retained", uninstallPreservedAssets=preserved)
+        with mock.patch.object(SMOKE, "running_test_processes", return_value=[]), \
+             mock.patch.object(SMOKE, "registry_values", return_value=None), \
+             mock.patch.object(SMOKE, "verify_identity") as verify, mock.patch.object(SMOKE, "run_hidden") as run:
+            SMOKE.cleanup(self.report, report)
+        verify.assert_not_called()
+        run.assert_not_called()
+        self.assertFalse(self.work.exists())
+        self.assertEqual(json.loads(self.report.read_text(encoding="utf-8"))["status"], "cleaned")
 
     def test_temp_removal_failure_does_not_report_cleanup_as_completed(self):
         report = dict(self.identity)

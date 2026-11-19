@@ -292,6 +292,9 @@ uninstall and preservation of seeded assets. It does not launch the application 
 identity, timeout or production registry drift retains evidence instead of killing unknown
 processes, restoring user registry values or deleting an unverified directory.
 
+Inno 的第二阶段卸载进程在删除测试根前最多等待 30 秒；超时保留存活 PID，不终止进程。已经完成卸载、但因此保留的报告可用
+`<Python 3.12> -I -B scripts/installer_smoke.py --cleanup-report <报告.json>` 恢复清理。该入口只复核测试归属、资产和生产注册表后删除对应 owned TEMP root，不重新安装或卸载；编译/安装失败和生产注册表漂移仍需人工检查。
+
 All four Windows CI variants use this common action. Local regression uses fake compiler/
 installer/worker processes in disposable profiles; editing this flow is not proof that real
 Inno Setup, a production installer or remote CI has been executed successfully.

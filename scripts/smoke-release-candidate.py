@@ -251,6 +251,15 @@ def running_test_processes(install: Path) -> list[int]:
     return active
 
 
+def wait_test_processes(install: Path, timeout: float = 30) -> list[int]:
+    deadline = time.monotonic() + timeout
+    while True:
+        active = running_test_processes(install)
+        if not active or time.monotonic() >= deadline:
+            return active
+        time.sleep(0.1)
+
+
 def remove_owned_work(report: dict) -> None:
     work = owned_work(report)
 
@@ -315,15 +324,21 @@ def cleanup(report_path: Path, report: dict) -> None:
         deadline = time.monotonic() + 10
         while uninstaller.exists() and time.monotonic() < deadline:
             time.sleep(0.1)
-        if (install / "app/MediaForge.exe").exists():
-            raise RuntimeError("candidate uninstaller left the application executable")
+        if (install / "app").exists():
+            raise RuntimeError("candidate uninstaller left application payload")
         if asset_snapshot(install) != before:
             raise RuntimeError("candidate silent uninstall changed preserved data/model/runtime assets")
         if registry_values(report["registryKey"]) is not None or registry_values(UNINSTALL_PREFIX + report["appId"] + "_is1") is not None:
             raise RuntimeError("candidate uninstall left its test registration")
         report["uninstallPreservedAssets"] = before
     elif report.get("installedVersion"):
-        raise RuntimeError("candidate uninstaller is missing; refusing automatic work cleanup")
+        if (report.get("uninstallPreservedAssets") != before or uninstaller.exists() or (install / "app").exists()
+                or registry_values(report["registryKey"]) is not None
+                or registry_values(UNINSTALL_PREFIX + report["appId"] + "_is1") is not None):
+            raise RuntimeError("completed candidate uninstall is not verified; refusing automatic work cleanup")
+    active = wait_test_processes(work)
+    if active:
+        raise RuntimeError(f"candidate processes remain after uninstall: {active}")
     # Validate the exact owned root again after the subprocess has exited.
     owned_work(report)
     report["status"] = "uninstalled-pending-temp-cleanup"

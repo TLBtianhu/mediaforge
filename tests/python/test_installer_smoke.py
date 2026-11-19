@@ -78,6 +78,7 @@ elif exe.name=='unins000.exe':
     registry.pop(config['key'],None)
     registry.pop('Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+config['appId']+'_is1',None)
     state.write_text(json.dumps(registry));exe.unlink()
+    if mode in ('transient-uninstall-process','retain-after-uninstall'):(install.parent/'tmp/owned-uninstall-child').write_text('active')
 elif exe.name=='python.exe':
     record('health')
     assert sys.argv[-1]=='health' and Path(sys.argv[-2]).name=='worker.py'
@@ -100,6 +101,17 @@ candidate=scope['CANDIDATE']
 candidate.ROOT=Path(PROJECT)
 candidate.registry_values=lambda key:json.loads(Path(os.environ['INSTALLER_SMOKE_FIXTURE_STATE']).read_text()).get(key)
 candidate.running_test_processes=lambda work:[]
+mode=os.environ.get('INSTALLER_SMOKE_FIXTURE_MODE','')
+if mode=='transient-uninstall-process':
+    def short_lived_uninstall(work):
+        marker=work/'tmp/owned-uninstall-child'
+        if marker.exists():
+            marker.unlink()
+            return [54321]
+        return []
+    candidate.running_test_processes=short_lived_uninstall
+elif mode=='retain-after-uninstall':
+    candidate.wait_test_processes=lambda work:[54321] if (work/'tmp/owned-uninstall-child').exists() else []
 original=candidate.run_hidden
 def run_hidden(command,**kwargs):
     program=Path(command[0])
@@ -254,6 +266,11 @@ exit $result
             self.fail("PowerShell did not return to its caller for environment auditing: " + result.stdout + result.stderr)
         return result
 
+    def run_cleanup(self):
+        return subprocess.run([sys.executable, "-I", "-B", str(self.project / "scripts/installer_smoke.py"),
+                               "--cleanup-report", str(self.report)], env=self.env, capture_output=True, text=True,
+                              timeout=45, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
     def test_real_powershell_entry_runs_only_fake_children_and_preserves_host_environment(self):
         result = self.run_smoke()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -280,6 +297,35 @@ exit $result
         shutil.copytree(self.stage, stage)
         (stage / "MediaForge.exe").write_bytes(b"previous executable")
         return stage
+
+    def test_short_lived_uninstall_second_phase_is_awaited(self):
+        result = self.run_smoke("transient-uninstall-process")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual(report["status"], "cleaned")
+        self.assertTrue(report["workRootRemoved"])
+        trace = [json.loads(line)["kind"] for line in self.trace.read_text().splitlines()]
+        self.assertEqual(trace, ["compile", "install", "health", "uninstall"])
+
+    def test_completed_uninstall_can_be_recovered_without_reinstalling_or_uninstalling_again(self):
+        result = self.run_smoke("retain-after-uninstall")
+        self.assertNotEqual(result.returncode, 0)
+        retained = json.loads(self.report.read_text())
+        self.assertEqual(retained["status"], "failed-retained")
+        self.assertIn("54321", retained["cleanupError"])
+        self.assertTrue(Path(retained["workRoot"]).is_dir())
+        result = self.run_cleanup()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        recovered = json.loads(self.report.read_text())
+        self.assertEqual(recovered["status"], "cleaned")
+        self.assertTrue(recovered["workRootRemoved"])
+        self.assertFalse(Path(recovered["workRoot"]).exists())
+        self.assertEqual(recovered["recoveredFromCleanupError"], retained["cleanupError"])
+        self.assertTrue(recovered["productionRegistryUnchanged"])
+        self.assertTrue(recovered["productionInstallerUnchanged"])
+        self.assertEqual(recovered["installedVersion"], retained["installedVersion"])
+        trace = [json.loads(line)["kind"] for line in self.trace.read_text().splitlines()]
+        self.assertEqual(trace, ["compile", "install", "health", "uninstall"])
 
     def test_upgrade_checks_both_full_payloads_and_assets_before_uninstall(self):
         result = self.run_smoke(previous_stage=self.previous_stage())
@@ -369,6 +415,11 @@ exit $result
         self.assertTrue(Path(report["workRoot"]).exists())
         trace = [json.loads(line)["kind"] for line in self.trace.read_text().splitlines()]
         self.assertNotIn("uninstall", trace)
+        recovery = self.run_cleanup()
+        self.assertNotEqual(recovery.returncode, 0)
+        self.assertIn("production registry", recovery.stderr)
+        self.assertTrue(Path(report["workRoot"]).exists())
+        self.assertEqual(json.loads(self.state.read_text())["Software\\MediaForge"]["InstallDir"], "changed by fake installer")
 
     def test_invalid_stage_and_external_report_are_rejected_before_any_compiler_process(self):
         (self.stage / "models").mkdir()
