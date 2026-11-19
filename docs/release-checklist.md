@@ -111,6 +111,8 @@ node scripts/test-python.mjs tests.python.test_dsh_integration_layout
 
 `0.0.34 r6` 已使用新密钥完成本地签名和验签，静默覆盖升级通过。发布时使用 r6 的 `versions.json` 与 `.sig`，对应的新信任根随 r6 安装包交付。 [r6 交接记录](handoff-2026-11-08.md#64-r6-更换签名密钥2026-11-18)
 
+`0.0.34 r7` 已完成 Windows 无界面首装、`r6 → r7` 覆盖升级、完整文件比较、bootstrap health 和静默卸载；8 项资产保留，生产注册表与安装包哈希未变。候选未签名，真实 WebView、CPU 变体和跨平台验收尚未完成，不能复用 r6 签名或把 r7 当成已发布版本。 [r7 证据与桌面验收清单](handoff-2026-11-19.md)
+
 ---
 
 ## 常用命令速查

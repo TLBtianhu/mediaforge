@@ -2,11 +2,11 @@
 
 Guidance for future OpenCode sessions working on pymss-desktop.
 
-## 当前交接（2026-11-08）
+## 当前交接（2026-11-19）
 
-- DeepSeek Harness/后续 Agent 先读 [docs/handoff-2026-11-08.md](docs/handoff-2026-11-08.md)，其中记录当前修复、测试证据和下一步验收顺序。
+- DeepSeek Harness/后续 Agent 先读 [docs/handoff-2026-11-19.md](docs/handoff-2026-11-19.md)，其中记录当前修复、r7 候选证据和下一步验收顺序。
 - 本次审阅的整改优先级与验收条件见 [docs/roadmap-to-1.0.md](docs/roadmap-to-1.0.md)。
-- 2026-11-09 的协议/运行时收敛已提交（`9c7fc32` 起，含 `f86042c`）；工作区应保持干净。接手先检查 `git status`/`git log`，不得用 reset、clean 或旧包覆盖工作区。
+- 当前产品基线为 `25c93d8`，卸载验收修正为 `89ee511`；r7 是本机未签名 CUDA 候选，尚未完成真实 GUI 或跨平台验收。接手先检查 `git status`/`git log`，不得用 reset、clean 或旧包覆盖工作区。
 
 ## 强制规则：环境与数据隔离
 
