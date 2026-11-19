@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import copy
+from contextlib import ExitStack, contextmanager
 import json
 import math
 import os
 import re
+import stat
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,9 @@ COMMON_FIELDS = {
     "createdAt", "updatedAt", "startedAt", "finishedAt", "owner", "runtime", "logs",
 }
 OPTIONAL_FIELDS = {"payload", "payloadRef", "audio", "presentation", "cancelTaskId"}
+_REMOVAL_PENDING = ".removal-pending"
+_REMOVAL_COMMITTED = ".removal-committed"
+_FLAT_REMOVAL = re.compile(r"\.(.+)\.([0-9]+-[0-9]+|[0-9a-f]{32})\.removing")
 
 
 class JobStoreError(ValueError):
@@ -162,12 +168,12 @@ def _json_object(pairs):
     return result
 
 
-def read_job(path: Path) -> dict[str, Any] | None:
+def read_job(path: Path, *, job_id: str | None = None) -> dict[str, Any] | None:
     try:
         _require(not path.is_symlink(), "job file cannot be a symlink")
         value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_json_object,
                            parse_constant=lambda value: (_ for _ in ()).throw(JobStoreError(f"invalid JSON number: {value}")))
-        return validate_record(value, path.stem)
+        return validate_record(value, path.stem if job_id is None else job_id)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, TypeError) as error:
@@ -176,6 +182,26 @@ def read_job(path: Path) -> dict[str, Any] | None:
 
 def catalog_lock(jobs_root: Path):
     return runtime_lock(jobs_root / ".catalog.lock", timeout=5)
+
+
+def owner_reap_path(jobs_root: Path, job_id: str) -> Path:
+    _require(valid_job_id(job_id), "invalid owner lease job id")
+    return jobs_root / ".owners" / "reaping" / f"{job_id}.lock"
+
+
+@contextmanager
+def owner_lock(jobs_root: Path, job_id: str):
+    """An exited parent is still an active owner while its worker tree is being reaped."""
+    fence = owner_reap_path(jobs_root, job_id)
+    owner = jobs_root / ".owners" / f"{job_id}.lock"
+    _plain_removal_path(owner.parent, directory=True)
+    _plain_removal_path(fence.parent, directory=True)
+    _plain_removal_path(owner)
+    _plain_removal_path(fence)
+    with runtime_lock(owner, timeout=0):
+        with runtime_lock(fence, timeout=0):
+            pass
+        yield
 
 
 # Job files are immutable between atomic replacements, so an unchanged file
@@ -239,11 +265,166 @@ def forget_cached_jobs(jobs_root: Path, present: set[str]) -> None:
             _CACHE.pop(key, None)
 
 
+def _plain_removal_path(path: Path, *, directory: bool = False) -> bool:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    is_expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    _require(is_expected_type(metadata.st_mode) and not (getattr(metadata, "st_file_attributes", 0) & 0x400),
+             f"invalid job removal path {path}; files preserved")
+    return True
+
+
+def _removal_layout(jobs_root: Path) -> None:
+    jobs_root = jobs_root.absolute()
+    for directory in (jobs_root, *jobs_root.parents, jobs_root / ".owners", jobs_root / ".owners" / "reaping", jobs_root / ".writes"):
+        _plain_removal_path(directory, directory=True)
+    _plain_removal_path(jobs_root / ".catalog.lock")
+
+
+def _removal_entries(
+    jobs_root: Path, residues: list[Path],
+) -> tuple[Path | None, dict[str, tuple[Path, str | None]]]:
+    _removal_layout(jobs_root)
+    directory = None
+    if len(residues) == 1 and residues[0].name in {_REMOVAL_PENDING, _REMOVAL_COMMITTED}:
+        directory = residues[0]
+        _require(_plain_removal_path(directory, directory=True),
+                 f"missing job removal directory {directory}; files preserved")
+        paths = sorted(directory.iterdir())
+    else:
+        _require(all(path.name.endswith(".removing") for path in residues),
+                 "conflicting job removal transactions; files preserved")
+        paths = residues
+    entries = {}
+    for path in paths:
+        if directory is not None:
+            _require(path.suffix == ".json", f"unknown job removal entry {path}; files preserved")
+            job_id, nonce = path.stem, None
+        else:
+            match = _FLAT_REMOVAL.fullmatch(path.name)
+            _require(match is not None, f"incomplete job removal transaction {path}; files preserved")
+            job_id, nonce = match.groups()
+            if "-" in nonce:
+                pid, bits = nonce.split("-")
+                _require(int(pid) <= 0xffffffff and int(bits) <= 0xffffffffffffffff,
+                         f"invalid job removal nonce in {path}; files preserved")
+        _require(valid_job_id(job_id) and job_id not in entries,
+                 f"invalid or duplicate staged job id {job_id}; files preserved")
+        _require(_plain_removal_path(path), f"missing staged job {path}; files preserved")
+        _require(not _plain_removal_path(jobs_root / f"{job_id}.json"),
+                 f"staged job {job_id} collides with a live record; files preserved")
+        entries[job_id] = (path, nonce)
+    _require(len({os.path.normcase(job_id) for job_id in entries}) == len(entries),
+             "duplicate staged job paths; files preserved")
+    return directory, entries
+
+
+def _legacy_removed_audio(
+    records: dict[str, dict[str, Any]], staged: dict[str, dict[str, Any]],
+    entries: dict[str, tuple[Path, str | None]],
+) -> set[str]:
+    """Identify flat transactions where the former writer already unlinked part of an audio batch."""
+    combined = {**records, **staged}
+    by_primary: dict[str, dict[str, dict[str, Any]]] = {}
+    for job_id, row in staged.items():
+        if "audio" in row:
+            by_primary.setdefault(row["audio"]["primaryJobId"], {})[job_id] = row
+    removed = set()
+    for primary_id, members in by_primary.items():
+        primary = combined.get(primary_id)
+        expected = primary.get("audio", {}).get("memberJobIds") if primary is not None else None
+        _require(primary is None or expected is not None, "invalid staged audio primary; files preserved")
+        if expected is not None and all(job_id in combined for job_id in expected):
+            continue
+        # Flat files lack a commit marker. Complete removal only if an expected
+        # member is already gone and the survivors all belong to one Rust delete.
+        group_ids = {row["audio"]["groupId"] for row in members.values()}
+        commands = {row["command"] for row in members.values()}
+        indices = {row["audio"]["index"] for row in members.values()}
+        nonces = {entries[job_id][1] for job_id in members}
+        nonce = next(iter(nonces))
+        _require(len(group_ids) == len(commands) == len(nonces) == 1 and len(indices) == len(members)
+                 and nonce is not None and "-" in nonce,
+                 "ambiguous incomplete audio removal; files preserved")
+        _require(not any(job_id not in members
+                         and (row.get("audio", {}).get("primaryJobId") == primary_id
+                              or row.get("audio", {}).get("groupId") in group_ids)
+                         for job_id, row in combined.items()),
+                 "incomplete audio removal has another group member; files preserved")
+        # The previous Rust writer unlinked the transaction in sorted job-ID order.
+        first_survivor = min(job_id for job_id, (_, staged_nonce) in entries.items() if staged_nonce == nonce)
+        missing = (primary_id,) if expected is None else (job_id for job_id in expected if job_id not in combined)
+        _require(all(job_id < first_survivor for job_id in missing),
+                 "flat removal does not match the original cleanup order; files preserved")
+        if expected is not None:
+            _require(all(job_id in members for job_id in expected if job_id in combined),
+                     "staged audio membership does not match the primary; files preserved")
+            for job_id, row in members.items():
+                index = row["audio"]["index"]
+                _require(index < len(expected) and expected[index] == job_id,
+                         "staged audio order does not match the primary; files preserved")
+        removed.update(members)
+    return removed
+
+
+def _validate_catalog(records: dict[str, dict[str, Any]]) -> None:
+    for value in records.values():
+        if "audio" in value:
+            primary = _audio_primary(value, records, validate_members=False)
+            if primary["jobId"] == value["jobId"]:
+                _audio_primary(value, records)
+
+
+def _recover_removal(
+    jobs_root: Path, records: dict[str, dict[str, Any]], directory: Path | None,
+    entries: dict[str, tuple[Path, str | None]],
+) -> dict[str, dict[str, Any]]:
+    with ExitStack() as locks:
+        for job_id in sorted(entries):
+            locks.enter_context(owner_lock(jobs_root, job_id))
+        for job_id in sorted(entries):
+            _plain_removal_path(jobs_root / ".writes" / f"{job_id}.lock")
+            locks.enter_context(write_lock(jobs_root, job_id))
+        staged = {}
+        for job_id, (path, _) in entries.items():
+            _require(_plain_removal_path(path), f"missing staged job {path}; files preserved")
+            row = read_job(path, job_id=job_id)
+            _require(row is not None and row["status"] in TERMINAL_STATES,
+                     f"missing or active staged job {job_id}; files preserved")
+            staged[job_id] = row
+        if directory is None:
+            removed = _legacy_removed_audio(records, staged, entries)
+        else:
+            removed = set(staged) if directory.name == _REMOVAL_COMMITTED else set()
+        restored = {job_id: row for job_id, row in staged.items() if job_id not in removed}
+        recovered = {**records, **restored}
+        _validate_catalog(recovered)
+        for job_id in restored:
+            original = jobs_root / f"{job_id}.json"
+            _require(not _plain_removal_path(original), f"job {job_id} appeared during recovery; files preserved")
+            entries[job_id][0].rename(original)
+        for job_id in sorted(removed):
+            entries[job_id][0].unlink()
+        if directory is not None:
+            directory.rmdir()
+        return recovered
+
+
 def read_jobs_unlocked(jobs_root: Path) -> dict[str, dict[str, Any]]:
-    _require(not any(jobs_root.glob("*.removing")), "incomplete job removal transaction; files preserved")
+    live_paths, residues = [], []
+    for path in sorted(jobs_root.glob("*")):
+        name = os.path.normcase(path.name)
+        if name in {_REMOVAL_PENDING, _REMOVAL_COMMITTED} or name.endswith(".removing"):
+            residues.append(path)
+        elif name.endswith(".json"):
+            live_paths.append(path)
+    if residues:
+        directory, entries = _removal_entries(jobs_root, residues)
     records = {}
     present: set[str] = set()
-    for path in sorted(jobs_root.glob("*.json")):
+    for path in live_paths:
         if not valid_job_id(path.stem):
             # `index.json` is the legacy task-history index, never a job record.
             if path.stem.casefold() == "index":
@@ -251,14 +432,56 @@ def read_jobs_unlocked(jobs_root: Path) -> dict[str, dict[str, Any]]:
             raise JobStoreError(f"Invalid job file {path}: invalid job id")
         # Unchanged files need no open, so a poll does not take a lease per job.
         present.add(str(path))
-        value = cached_job(jobs_root, path)
+        if residues:
+            _require(_plain_removal_path(path), f"missing catalog job {path}; files preserved")
+            _plain_removal_path(jobs_root / ".writes" / f"{path.stem}.lock")
+            with write_lock(jobs_root, path.stem):
+                value = read_job(path)
+            _require(value is not None, f"missing catalog job {path}; files preserved")
+        else:
+            value = cached_job(jobs_root, path)
         if value is not None:
             records[value["jobId"]] = value
     forget_cached_jobs(jobs_root, present)
-    for value in records.values():
-        if "audio" in value:
-            _audio_primary(value, records)
+    if residues:
+        return _recover_removal(jobs_root, records, directory, entries)
+    _validate_catalog(records)
     return records
+
+
+def remove_jobs_unlocked(jobs_root: Path, job_ids: list[str]) -> bool:
+    """Commit removal under the caller's leases. Return whether cleanup finished."""
+    _require(bool(job_ids) and all(valid_job_id(job_id) for job_id in job_ids)
+             and len({os.path.normcase(job_id) for job_id in job_ids}) == len(job_ids),
+             "invalid job removal ids")
+    _removal_layout(jobs_root)
+    pending = jobs_root / _REMOVAL_PENDING
+    committed = jobs_root / _REMOVAL_COMMITTED
+    _require(not _plain_removal_path(committed, directory=True), "job removal cleanup is pending")
+    originals = [jobs_root / f"{job_id}.json" for job_id in job_ids]
+    for path in originals:
+        _require(_plain_removal_path(path), f"job to remove is missing: {path}")
+    pending.mkdir()
+    moved = []
+    try:
+        for original in originals:
+            original.rename(pending / original.name)
+            moved.append(original)
+        pending.rename(committed)
+    except OSError:
+        for original in reversed(moved):
+            _require(not _plain_removal_path(original), f"job appeared during rollback: {original}; files preserved")
+            (pending / original.name).rename(original)
+        pending.rmdir()
+        raise
+    try:
+        for original in originals:
+            (committed / original.name).unlink()
+        committed.rmdir()
+    except OSError as error:
+        print(f"[journal] committed job removal cleanup deferred: {error}", file=sys.stderr)
+        return False
+    return True
 
 
 def read_jobs(jobs_root: Path) -> dict[str, dict[str, Any]]:
@@ -278,7 +501,9 @@ def read_jobs_copy(jobs_root: Path) -> dict[str, dict[str, Any]]:
         return copy.deepcopy(read_jobs_unlocked(jobs_root))
 
 
-def _audio_primary(record: dict[str, Any], records: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _audio_primary(
+    record: dict[str, Any], records: dict[str, dict[str, Any]], *, validate_members: bool = True,
+) -> dict[str, Any]:
     audio = record["audio"]
     primary = records.get(audio["primaryJobId"])
     _require(primary is not None and isinstance(primary.get("audio"), dict), "audio payload primary is missing")
@@ -287,11 +512,12 @@ def _audio_primary(record: dict[str, Any], records: dict[str, dict[str, Any]]) -
              and primary["command"] == record["command"], "audio reference crosses groups")
     members = primary_audio["memberJobIds"]
     _require(audio["index"] < len(members) and members[audio["index"]] == record["jobId"], "audio membership/index mismatch")
-    for index, job_id in enumerate(members):
-        member = records.get(job_id)
-        _require(member is not None and isinstance(member.get("audio"), dict), "audio member job is missing")
-        _require(member["audio"]["primaryJobId"] == primary["jobId"] and member["audio"]["groupId"] == audio["groupId"]
-                 and member["audio"]["index"] == index, "invalid audio group membership")
+    if validate_members:
+        for index, job_id in enumerate(members):
+            member = records.get(job_id)
+            _require(member is not None and isinstance(member.get("audio"), dict), "audio member job is missing")
+            _require(member["audio"]["primaryJobId"] == primary["jobId"] and member["audio"]["groupId"] == audio["groupId"]
+                     and member["audio"]["index"] == index, "invalid audio group membership")
     return primary
 
 

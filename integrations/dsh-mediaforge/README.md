@@ -6,38 +6,31 @@
 
 ## 安装方式
 
-1. 先安装 MediaForge 本体。
-2. 通过 DSH 插件管理器安装这个目录作为 bundle。
-3. DSH 会启动 MCP 并执行 `tools/list`，不需要执行 PS1，也不需要重启整个 DSH。
+1. 安装 MediaForge，或解压便携包。
+2. 用 DSH 插件管理器链接该实例的 `integrations\dsh-mediaforge` 目录。
+3. 如 DSH 尚未加载新的 bundle，重启对应的 DSH profile。加载后可查询 `mcp__mediaforge__mediaforge_status`。
 
-如果工具列表需要刷新，只需重连或重启 MCP 桥接进程。
+```text
+plugin_manager install_bundle target=link:<安装或解压根>\integrations\dsh-mediaforge
+```
 
 ## 原理
 
-`cordis.patch.yml` 只声明 MCP 启动方式：
+DSH 从链接的 bundle 目录加载 `cordis.patch.yml`，并从同一目录加载它声明的 `mcp-plugin.mjs`。适配器把该实例的 Python 3.12 bootstrap 和 bridge 交给 DSH 自带的 MCP 客户端，通过 stdio 连接。
 
-```yaml
-config:
-  command: cmd
-  args: [/c, '%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\mediaforge-mcp.cmd']
-```
-
-启动器负责解析安装路径，并设置安装根下的 `data`、`models`、`runtime-envs`。它按 `MEDIAFORGE_HOME → 注册表 InstallDir → 默认安装位置` 查找应用。
-
-所以正常加载只需要 bundle 配置和启动器，不依赖 PowerShell 注册脚本。
+安装版的程序位于 `<安装根>\app`。便携版的程序和 `mediaforge.portable` 位于解压根。两种分发形态都使用各自根下的 `data`、`models` 和 `runtime-envs`。源码目录的 bundle 使用源码根的 `.dev-data`，并要求先准备 `python-runtime`。需要换实例时，在 DSH 插件管理器中移除旧链接并链接新目录。
 
 ## 文件
 
 ```
 cordis.patch.yml        bundle 配置
-launcher.template.cmd   启动器模板
-mediaforge-mcp.cmd      实际启动器
+mcp-plugin.mjs          解析所链接的程序实例并创建 MCP 连接
 icon.svg                DSH 图标（小于 256 KiB）
 locale/                 插件显示文本
 README.md               本文
 ```
 
-仓库中的 `setup.ps1`、`register.ps1`、`verify.ps1` 只作为开发维护工具保留；
+仓库中的 `register.ps1`、`verify.ps1` 只作为开发维护工具保留；
 安装包与便携包在打包阶段排除这些脚本，用户机器上不会出现它们。
 
 ## 从旧版升级（含 DSH 注入区块）

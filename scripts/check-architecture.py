@@ -309,6 +309,18 @@ def check_execution_manifest(manifest: dict) -> list[str]:
     for name in list(execution.get("backgroundResult") or []):
         if name not in commands:
             problems.append(f"protocol: execution.backgroundResult 的 {name} 不是任何命令的 command")
+    sync_query = execution.get("syncQuery")
+    if sync_query is not None:
+        default_timeout = sync_query.get("defaultTimeoutSeconds")
+        if type(default_timeout) is not int or default_timeout <= 0:
+            problems.append("protocol: execution.syncQuery.defaultTimeoutSeconds 必须是正整数")
+        for name, seconds in (sync_query.get("timeoutOverrides") or {}).items():
+            if name not in commands:
+                problems.append(f"protocol: execution.syncQuery.timeoutOverrides 的 {name} 不是任何命令的 command")
+            elif entries[name].get("kind") != "query":
+                problems.append(f"protocol: execution.syncQuery.timeoutOverrides 的 {name} 不是 query")
+            if type(seconds) is not int or seconds <= 0:
+                problems.append(f"protocol: execution.syncQuery.timeoutOverrides.{name} 必须是正整数")
     terminal_events = execution.get("terminalEvents") or {}
     canonical = set((manifest.get("events") or {}).get("canonical") or [])
     emitted = python_source_text() if terminal_events else ""

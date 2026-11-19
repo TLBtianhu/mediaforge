@@ -1,16 +1,18 @@
 {
   "name": "@local/mediaforge-mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "exports": {
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-mcp-client": "*"
+  },
   "files": [
     "cordis.patch.yml",
-    "launcher.template.cmd",
-    "mediaforge-mcp.cmd",
+    "mcp-plugin.mjs",
     "locale/*.json",
     "icon.svg",
     "README.md"

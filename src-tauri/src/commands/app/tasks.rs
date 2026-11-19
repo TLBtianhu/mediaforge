@@ -11,8 +11,7 @@ use crate::storage;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter, Manager, State};
-use crate::python::worker::kill_process_tree;
+use tauri::{AppHandle, Manager, State};
 use crate::workflow_editors::{RegistrySnapshot, WorkflowEditors};
 
 #[tauri::command]
@@ -68,9 +67,44 @@ pub fn get_workflow_editors(editors: State<'_, WorkflowEditors>) -> RegistrySnap
 pub async fn media_library(app: AppHandle, mut payload: Value) -> AppResult<Value> {
     let root = storage::data_root_dir(&app)?;
     payload = scoped_library_payload(&root, payload)?;
+    validate_library_import(&payload, |path| super::scan::is_selected_input(&app, path))?;
     // The worker's cross-process asset lease owns serialization. Do not hold
     // the editor/settings JSON guard while probing media or making thumbnails.
-    run_worker_with_payload(&app, "media_library", Some(payload))
+    let result = run_worker_with_payload(&app, "media_library", Some(payload))?;
+    let assets = result["assets"].as_array().into_iter().flatten().chain(result.get("asset"));
+    for asset in assets {
+        if asset["id"].as_u64().is_some_and(|id| id > 0) && matches!(asset["kind"].as_str(), Some("image" | "video" | "audio")) {
+            if let Some(source) = asset["path"].as_str() {
+                crate::preview_assets::remember(&app, Path::new(source));
+            }
+            if let Some(thumbnail) = library_thumbnail(&root, asset) {
+                crate::preview_assets::remember(&app, thumbnail);
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn validate_library_import(payload: &Value, selected: impl Fn(&Path) -> bool) -> AppResult<()> {
+    if !payload["operation"].as_str().is_some_and(|op| op.trim().eq_ignore_ascii_case("import")) {
+        return Ok(());
+    }
+    let Some(paths) = payload.get("paths") else { return Ok(()); };
+    if paths.as_array().is_some_and(|paths| paths.iter().all(|value| {
+        value.as_str().is_some_and(|path| selected(Path::new(path)))
+    })) {
+        return Ok(());
+    }
+    Err(AppError::Worker("Select or drop the media files or folders before importing them".into()))
+}
+
+fn library_thumbnail<'a>(root: &Path, asset: &'a Value) -> Option<&'a Path> {
+    let path = Path::new(asset["thumbnail"].as_str()?);
+    let name = path.file_name()?.to_str()?.strip_suffix(".jpg")?;
+    // The library worker checks the exact filename derived from the recorded source.
+    (path.parent()? == root.join("thumbnails") && name.len() == 20
+        && name.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+        .then_some(path)
 }
 
 fn scoped_library_payload(root: &Path, mut payload: Value) -> AppResult<Value> {
@@ -91,6 +125,28 @@ mod library_scope_tests {
         assert_eq!(payload["operation"], "list");
         for invalid in [Value::Null, serde_json::json!([]), serde_json::json!("outside-profile")] {
             assert!(scoped_library_payload(&root, invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn library_import_rejects_any_unselected_path_before_worker_use() {
+        let selected = |path: &Path| path == Path::new("selected");
+        assert!(validate_library_import(&serde_json::json!({"operation":" import ","paths":["selected"]}), selected).is_ok());
+        for paths in [serde_json::json!(["selected", "outside"]), serde_json::json!([5]), serde_json::json!("selected")] {
+            assert!(validate_library_import(&serde_json::json!({"operation":"IMPORT","paths":paths}), selected).is_err());
+        }
+        assert!(validate_library_import(&serde_json::json!({"operation":"list"}), selected).is_ok());
+    }
+
+    #[test]
+    fn library_thumbnail_must_be_a_single_owned_cache_file() {
+        let root = std::env::temp_dir().join("owned-library-profile");
+        let name = "0123456789abcdef0123.jpg";
+        let candidate = root.join("thumbnails").join(name);
+        let asset = serde_json::json!({"thumbnail": candidate});
+        assert_eq!(library_thumbnail(&root, &asset), Some(candidate.as_path()));
+        for path in [root.join(name), root.join("thumbnails/other").join(name), root.join("thumbnails").join("unowned.jpg")] {
+            assert!(library_thumbnail(&root, &serde_json::json!({"thumbnail":path})).is_none());
         }
     }
 }
@@ -116,6 +172,9 @@ pub async fn agent_jobs(app: AppHandle, known: Option<Value>) -> AppResult<Value
     let root = storage::data_root_dir(&app)?;
     let known = parse_known_jobs(known)?;
     let delta = task_journal::read_delta(&root, known.as_ref())?;
+    for row in &delta.jobs {
+        crate::python::result_jobs::remember_previews(&app, row);
+    }
     Ok(serde_json::json!({
         "schemaVersion": 3,
         "full": delta.full,
@@ -272,69 +331,18 @@ pub async fn cancel_task(
     if crate::commands::tempo_key::cancel_native_task(&state, &task_id) {
         return Ok(true);
     }
-    let child = state
-        .tasks
-        .lock()
-        .ok()
-        .and_then(|mut tasks| tasks.remove(&task_id));
-    if let Some(child) = child {
-        let mut cancelled_task_ids = vec![task_id.clone()];
-        if let Ok(mut tasks) = state.tasks.lock() {
-            let linked_ids: Vec<String> = tasks
-                .iter()
-                .filter_map(|(id, registered)| {
-                    if std::sync::Arc::ptr_eq(registered, &child) {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            for id in linked_ids {
-                tasks.remove(&id);
-                cancelled_task_ids.push(id);
-            }
-        }
-        if let Ok(mut cancelled) = state.cancelled_tasks.lock() {
-            cancelled.extend(cancelled_task_ids.iter().cloned());
-        }
-        if let Ok(root) = storage::data_root_dir(&app) {
-            for id in &cancelled_task_ids {
-                if let Err(error) = task_journal::cancel(&root, id) {
-                    session_log::append(&app, "WARN", "worker.journal_failed", vec![("taskId", id.clone()), ("message", error.to_string())]);
-                }
-            }
-        }
-        if let Ok(mut child) = child.lock() {
-            let pid = child.id();
-            #[cfg(unix)]
-            if task_id.starts_with("plugin_manage_") {
-                // Plugin workers get a dedicated process group, including pip build children.
-                unsafe { libc::kill(-(pid as i32), libc::SIGKILL); }
-            }
-            kill_process_tree(pid);
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        for cancelled_task_id in cancelled_task_ids {
-            // Plugin cancellation is emitted by the worker supervisor after releasing
-            // the exclusive runtime lease, so the UI can immediately refresh safely.
-            if cancelled_task_id.starts_with("plugin_manage_") {
-                continue;
-            }
-            session_log::append(&app, "INFO", "task.cancelled", vec![("taskId", cancelled_task_id.clone()), ("message", "Task cancelled".into())]);
-            let _ = app.emit(
-                "pymss://worker-event",
-                serde_json::json!({
-                    "type": "task.cancelled",
-                    "taskId": cancelled_task_id,
-                    "payload": { "message": "Cancelled" }
-                }),
-            );
-        }
-        Ok(true)
-    } else {
-        let root = storage::data_root_dir(&app)?;
-        task_journal::request_cancel(&root, &task_id)
+    let running = {
+        let tasks = state.tasks.lock().map_err(|_| AppError::Worker("task registry lock poisoned".into()))?;
+        tasks.get(&task_id).map(|process| {
+            let linked = tasks.iter()
+                .filter(|(_, candidate)| std::sync::Arc::ptr_eq(candidate, process))
+                .map(|(id, _)| id.clone()).collect::<Vec<_>>();
+            (process.clone(), linked)
+        })
+    };
+    if let Some((process, linked)) = running {
+        return Ok(process.cancel(&state, &linked));
     }
+    let root = storage::data_root_dir(&app)?;
+    task_journal::request_cancel(&root, &task_id)
 }

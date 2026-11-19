@@ -11,6 +11,7 @@ mod log_record;
 mod model_dir_migration;
 mod media_workflows;
 mod plugin_views;
+mod preview_assets;
 mod process_command;
 mod python;
 mod rba;
@@ -69,6 +70,12 @@ fn main() {
         .register_uri_scheme_protocol("pymss-plugin", |ctx, request| {
             plugin_views::serve_view(ctx.app_handle(), &request)
         })
+        .register_asynchronous_uri_scheme_protocol("mediaforge-preview", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(preview_assets::serve(&app, &request));
+            });
+        })
         .on_page_load(|webview, _payload| {
             let window = webview.window();
             if !cfg!(target_os = "macos") {
@@ -78,6 +85,9 @@ fn main() {
             let _ = window.set_focus();
         })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                commands::app::scan::remember_input_selection(window.app_handle(), paths);
+            }
             if matches!(event, tauri::WindowEvent::Destroyed)
                 && (window.label().starts_with("workflow-node-editor")
                     || window.label().starts_with("workflow-simple-editor"))
@@ -91,11 +101,18 @@ fn main() {
                 let _ = window.app_handle().emit_to("main", event, serde_json::json!({ "label": window.label() }));
             }
         })
+        .on_webview_event(|webview, event| {
+            if let tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                commands::app::scan::remember_input_selection(webview.app_handle(), paths);
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(commands::plugin_host::PluginHostState::default())
+        .manage(preview_assets::PreviewAssets::default())
+        .manage(commands::app::scan::SelectedInputFolders::default())
         .manage(AppState::new())
         .manage(workflow_editors::WorkflowEditors::default());
 
@@ -220,6 +237,8 @@ fn main() {
             commands::app::editor::open_workflow_node_editor_window,
             commands::app::editor::open_workflow_simple_editor_window,
             commands::app::dialogs::pick_media_files,
+            commands::app::dialogs::pick_preview_files,
+            commands::app::dialogs::pick_preview_folders,
             commands::app::dialogs::pick_audio_files,
             commands::app::dialogs::pick_single_audio_file,
             commands::app::dialogs::pick_input_folder,
@@ -227,7 +246,6 @@ fn main() {
             commands::app::dialogs::save_text_file_dialog,
             commands::app::migration::prepare_model_dir_change,
             commands::app::scan::reveal_path,
-            commands::app::trash::move_paths_to_trash,
             commands::app::migration::respond_model_dir_migration_conflict,
             commands::app::migration::confirm_model_dir_migration_switch,
             commands::app::migration::cancel_model_dir_migration,
@@ -261,7 +279,7 @@ fn main() {
 
     // 开发数据根冒烟：在真实进程里输出解析结果，不创建或改写用户数据。
     if std::env::args().any(|arg| arg == "--smoke-print-data-root") {
-        match (storage::data_root_dir(&app.handle()), storage::models_dir(&app.handle()), storage::runtime_envs_dir(&app.handle()), runtime_assets::runtime_asset_status(app.handle().clone())) {
+        match (storage::data_root_dir(&app.handle()), storage::models_dir(&app.handle()), storage::runtime_envs_dir(&app.handle()), runtime_assets::runtime_asset_status(app.handle().clone(), None)) {
             (Ok(root), Ok(models), Ok(runtimes), Ok(asset)) => {
                 println!("SMOKE_DATA_ROOT={}", root.display());
                 println!("SMOKE_MODEL_ROOT={}", models.display());

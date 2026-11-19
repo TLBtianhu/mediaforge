@@ -201,6 +201,7 @@ pub async fn finish_editor_recording(
         }
         std::fs::rename(&output_partial_path, &output_path)?;
         std::fs::remove_file(partial_path)?;
+        crate::preview_assets::remember(&app, &output_path);
 
         let duration = data_len as f64 / (sample_rate as f64 * channels as f64 * 2.0);
         Ok(EditorRecordingResult {

@@ -139,6 +139,14 @@ Remove-Item "$env:TEMP\MediaForge-clean-*" -Recurse -Force
 - 实际功能用 Tauri 桌面窗口
 - 打包后的应用**不监听 HTTP 端口**
 
+本地媒体通过 `mediaforge-preview` 读取。原生文件选择、拖放后的输入扫描、当前任务账本、编辑工程和素材库只登记具体文件，登记在本次应用会话内有效。波形 JSON 须属于当前工程的派生缓存。Tauri 通用 `asset` 协议已关闭。插件视图使用独立的 `pymss-plugin` 协议，从已声明的视图入口所在目录和随包 SDK 加载资源，视图 CSP 不开放媒体预览协议。
+
+## 插件市场
+
+市场安装、更新和修复只接收 [随包目录](python/plugin-marketplace.json) 中的插件名。目录锁定官方仓库提交、ZIP 字节数与 SHA-256，以及每个插件目录的 SHA-256。文件树摘要是按相对路径排序的文件名与文件 SHA-256 的紧凑 UTF-8 JSON 对象的 SHA-256，路径分隔符为 `/`。更新目录时核对当前 pymss 插件协议，重新计算归档和文件树摘要，并通过隔离的安装与加载回归。
+
+安装先验证来源和内容，再解析依赖或探测 Python 注册。读取已安装市场插件时重新核对随包内容锁与当前安装记录。旧安装记录、篡改文件和目录以外的包会被保留并显示错误。目录内的插件可用“修复”重新获取已批准的包。独立手动安装的 pymss 插件由外部 pymss 的手动插件机制管理。
+
 ## UI 测试与截图
 
 Windows后台测试必须为每层非交互子进程设置不创建控制台窗口；捕获stdout/stderr并不能阻止弹窗。
@@ -197,7 +205,9 @@ DSH integration:
 integrations/dsh-mediaforge
 ```
 
-It is a configuration-only bundle that registers `@deepseek-ai/dsh-mcp-client`
+Link the bundle from the selected installation or portable extraction with
+`plugin_manager install_bundle target=link:<instance>\integrations\dsh-mediaforge`.
+DSH loads its relative plugin module, which registers `@deepseek-ai/dsh-mcp-client`
 with `serverName: mediaforge`. Once installed, DSH sees:
 
 ```text
@@ -214,15 +224,9 @@ mcp__mediaforge__job_cancel
 mcp__mediaforge__feedback_submit
 ```
 
-The bundle uses the stdio launcher:
-
-```text
-scripts/mediaforge-mcp.cmd
-```
-
-Adjust `command`, `cwd`, and `MEDIAFORGE_DATA_DIR` in
-`integrations/dsh-mediaforge/cordis.patch.yml` when the project is not at
-`C:\MediaForge`.
+The linked module derives the bootstrap interpreter, bridge and explicit
+data, model and runtime roots from its own bundle location. The installer
+ships the bundle, and DSH owns its profile configuration.
 
 ### Shared job ledger
 
@@ -401,8 +405,10 @@ $env:CARGO_BUILD_JOBS = '4'
 `BootstrapDir`明确选择工作区内已准备好的3.12最小解释器，源或旧stage的实际版本不符就拒绝。
 bootstrap准备仅接受全新目录，不自动删除旧内容。工作区当前`python-runtime`已是实际3.12.13；
 若在`release/bootstrap-*`准备另一份新源，使用显式`BootstrapDir`选择，不能默默回退旧源。
-签名仅使用显式路径/进程环境，`-SkipSign`不读取签名凭据；不要在有签名环境变量时
-运行signer的help，某些CLI版本可能把环境默认值打印到终端。禁止记录私钥或密码。
+更新包签名需要显式私钥路径。本机签名可用进程变量 `TAURI_SIGNING_PASSWORD_CREDENTIAL_TARGET` 指定
+Windows 凭据管理器条目（按用途与公钥 ID 命名）。已有默认条目为 `MediaForge/TauriUpdateSigningPassword`。
+签名进程的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 可显式覆盖。签名脚本只把解析出的密码传给
+签名子进程，`-SkipSign` 不读取签名凭据。禁止记录私钥或密码，避免在有签名环境变量时运行 signer help。
 
 当前单stage候选用`scripts/smoke-installer.ps1`显式stage/版本/Python3.12/compiler重编独立AppId，
 核对安装布局、全文件与bootstrap health后静默卸载，校验配置/模型/运行时样本保留。
@@ -419,6 +425,9 @@ bootstrap准备仅接受全新目录，不自动删除旧内容。工作区当�
 解释器、python312.dll、stdlib与cp312扩展必须同源；安装原样验证和发布，不修补旧venv。
 Windows布局按[Python模块搜索路径规则](https://docs.python.org/3.12/library/sys_path_init.html)验证，
 解释器实际prefix必须位于资产内，不能借用源安装或用户site-packages。
+
+托管下载清单与签名版本文档使用 schema 3。运行时描述显式包含 `platform`、`arch`、`backend` 和 Python ABI。
+当前托管 ZIP 对应 Windows x86_64 CUDA。Linux x86_64 的 CUDA 和 Windows/Linux x86_64 的 CPU、ROCm 使用各自的 worker 安装路径，macOS arm64 使用随包 MLX。发布签名版本文档时需用当前生成脚本生成 schema 3。
 
 `pnpm test:python`从当前资产或显式`MEDIAFORGE_RUNTIME_PYTHON`选择解释器，先强制核对3.12，
 再以一次性profile/cache运行测试；不下载依赖。签名测试依赖PyNaCl，仅安装在测试工具目录或CI，

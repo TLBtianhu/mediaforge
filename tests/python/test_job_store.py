@@ -1,6 +1,7 @@
 """Schema-2 storage, queued audio and reference-group lifecycle boundaries."""
 from __future__ import annotations
 
+import copy
 import json
 import io
 import os
@@ -14,7 +15,7 @@ from unittest import mock
 
 from . import _bootstrap as _worker_test_bootstrap
 from ._job_fixtures import audio_group, job_record, write_record
-from core.operation_kernel import OperationKernel
+from core.operation_kernel import READY, OperationKernel
 from core import failure_stats
 from core import job_store
 
@@ -37,6 +38,30 @@ class JobStoreTests(unittest.TestCase):
         second[key]["status"] = "mutated"
         third = job_store.read_jobs_copy(self.jobs)
         self.assertNotEqual(third[key]["status"], "mutated")
+
+    def test_audio_closure_validation_is_linear_per_primary(self):
+        class CountingRecords(dict):
+            lookups = 0
+
+            def get(self, *args):
+                self.lookups += 1
+                return super().get(*args)
+
+        primary, child = audio_group(status="completed")
+        ids = [f"audio_{index:04d}" for index in range(250)]
+        records = CountingRecords()
+        for index, job_id in enumerate(ids):
+            row = copy.deepcopy(primary if index == 0 else child)
+            row["jobId"] = job_id
+            row["audio"]["primaryJobId"] = ids[0]
+            row["audio"]["index"] = index
+            if index == 0:
+                row["audio"]["memberJobIds"] = ids
+            else:
+                row["payloadRef"] = ids[0]
+            records[job_id] = job_store.validate_record(row)
+        job_store._validate_catalog(records)
+        self.assertLess(records.lookups, len(ids) * 8)
 
     def test_legacy_index_json_is_not_a_job_and_is_ignored(self):
         write_record(self.jobs, job_record("real_job"))
@@ -82,10 +107,10 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(job.result, record["result"])
             self.assertEqual(job.logs, record["logs"])
             self.assertTrue(job.cancel_event.is_set())
-            process = mock.Mock()
+            process = mock.Mock(stdin=io.StringIO())
             process.poll.return_value = None
             kernel._watch_cancel(job, process)
-            process.terminate.assert_called_once()
+            self.assertTrue(process.stdin.closed)
             self.assertEqual(path.read_bytes(), before)
         finally:
             job._lease.__exit__(None, None, None)
@@ -151,7 +176,8 @@ class JobStoreTests(unittest.TestCase):
                 payload = job.workdir / "payload.json"
                 if mode == "existing_transport":
                     payload.write_bytes(b"pre-existing transport is not owned by this invocation")
-                process = mock.Mock(stdout=io.StringIO('{"type":"task.result","payload":{"outputs":[]}}\n'))
+                process = mock.Mock(stdin=io.StringIO(), stderr=None,
+                                    stdout=io.StringIO(READY + '{"type":"task.result","payload":{"outputs":[]}}\n'))
                 process.poll.return_value = None
                 def waited(*args, **kwargs):
                     self.assertTrue(payload.exists(), "transport removed before its child was reaped")
@@ -163,7 +189,8 @@ class JobStoreTests(unittest.TestCase):
                         raise OSError("fixture spawn failed")
                     return process
                 with mock.patch("core.operation_kernel.subprocess.Popen", side_effect=spawn) as popen, \
-                     mock.patch("core.operation_kernel.threading.Thread"):
+                     mock.patch("core.operation_kernel.threading.Thread") as thread:
+                    thread.return_value.is_alive.return_value = False
                     if mode == "event_failure":
                         with mock.patch.object(kernel, "_consume", side_effect=ValueError("fixture event failed")):
                             kernel._run(job)
@@ -181,9 +208,8 @@ class JobStoreTests(unittest.TestCase):
                     self.assertTrue((job.workdir / "stderr.log").exists())
                     if mode != "spawn_failure":
                         process.wait.assert_called_once()
+                        self.assertTrue(process.stdin.closed)
                         self.assertTrue(process.stdout.closed)
-                if mode == "event_failure":
-                    process.terminate.assert_called_once()
 
     def test_failed_cleanup_holds_owner_and_payload_until_explicit_cancel_reaps(self):
         kernel = OperationKernel(self.root)
@@ -191,20 +217,22 @@ class JobStoreTests(unittest.TestCase):
              mock.patch("core.operation_kernel.time.time", return_value=time.time() - 100 * 86400):
             job = kernel.start("fixture", {"requestId": "cleanup_retry"})
         lease = job._lease
-        process = mock.Mock(stdout=io.StringIO('{"type":"task.progress","payload":{"fraction":0.5}}\n'))
+        process = mock.Mock(stdin=io.StringIO(), stderr=None,
+                            stdout=io.StringIO(READY + '{"type":"task.progress","payload":{"fraction":0.5}}\n'))
         process.poll.return_value = None
-        process.terminate.side_effect = [OSError("terminate denied"), OSError("terminate still denied"), None]
         process.wait.side_effect = [subprocess.TimeoutExpired("fixture", 5), subprocess.TimeoutExpired("fixture", 5), 0]
-        process.kill.side_effect = [OSError("kill denied"), OSError("kill still denied")]
         payload = job.workdir / "payload.json"
         try:
             with mock.patch("core.operation_kernel.subprocess.Popen", return_value=process), \
-                 mock.patch("core.operation_kernel.threading.Thread"), \
+                 mock.patch("core.operation_kernel.threading.Thread") as thread, \
                  mock.patch.object(kernel, "_consume", side_effect=ValueError("fixture consumer failed")):
+                thread.return_value.is_alive.return_value = False
                 kernel._run(job)
             self.assertEqual(job.status, "failed")
             self.assertTrue(job._cleanup_pending)
             self.assertFalse(job._process_reaped)
+            self.assertTrue(process.stdin.closed)
+            self.assertFalse(process.stdout.closed)
             self.assertIs(job._lease, lease)
             self.assertTrue(payload.exists(), "unreaped worker's transport must stay available")
             before = self.snapshot()
@@ -214,21 +242,20 @@ class JobStoreTests(unittest.TestCase):
             retry = kernel.cancel(job.job_id)
             self.assertFalse(retry["ok"])
             self.assertTrue(retry["cleanupPending"])
-            self.assertIn("kill still denied", retry["error"])
+            self.assertIn("timed out", retry["error"])
             self.assertIs(job._lease, lease)
             self.assertTrue(payload.exists())
             self.assertEqual(self.snapshot(), before)
             self.assertEqual(kernel.cancel(job.job_id), {"ok": True, "cancelled": False, "cleanupPending": False})
             self.assertTrue(job._process_reaped)
             self.assertFalse(job._cleanup_pending)
+            self.assertTrue(process.stdout.closed)
             self.assertIsNone(job._lease)
             self.assertFalse(payload.exists())
             self.assertEqual(self.snapshot(), before, "cleanup must not rewrite the existing terminal")
             self.assertTrue(all(call.kwargs == {"timeout": 5} for call in process.wait.call_args_list))
             self.assertEqual(observer._prune_history(), 1, "retention may proceed only after confirmed reap")
         finally:
-            process.terminate.side_effect = None
-            process.kill.side_effect = None
             process.wait.side_effect = None
             process.wait.return_value = 0
             kernel._cleanup_process(job)
@@ -238,7 +265,7 @@ class JobStoreTests(unittest.TestCase):
         kernel = OperationKernel(self.root)
         with mock.patch("core.operation_kernel.threading.Thread.start"):
             job = kernel.start("fixture", {"requestId": "normal_shutdown"})
-        process = mock.Mock(stdout=io.StringIO())
+        process = mock.Mock(stdin=io.StringIO(), stdout=io.StringIO(), stderr=None)
         process.poll.return_value = 0
         process.wait.return_value = 0
         job.process = process
@@ -252,8 +279,7 @@ class JobStoreTests(unittest.TestCase):
                 self.assertEqual(kernel.cancel(job.job_id), {"ok": True, "cancelled": False})
                 cleanup.assert_not_called()
             process.wait.assert_not_called()
-            process.terminate.assert_not_called()
-            process.kill.assert_not_called()
+            self.assertFalse(process.stdin.closed)
             self.assertIs(job._lease, lease)
         finally:
             kernel._cleanup_process(job)
@@ -344,23 +370,21 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(kernel._prune_history(), 0)
         self.assertEqual(len(job_store.read_jobs(self.jobs)), 2)
 
-    def test_agent_retention_rename_failure_preserves_the_original_record(self):
+    def test_agent_retention_commit_rename_failure_rolls_back_staged_records(self):
         kernel = OperationKernel(self.root)
         write_record(self.jobs, job_record("old_agent", createdAt=time.time() - 100 * 86400))
         before = self.snapshot()
         rename = Path.rename
-        calls = 0
-        def fail_second(path, target):
-            nonlocal calls
-            calls += 1
-            if calls == 1:
-                raise PermissionError("fixture rename failure")
+        def fail_commit(path, target):
+            if path.name == ".removal-pending":
+                raise PermissionError("fixture commit rename failure")
             return rename(path, target)
         with mock.patch("core.operation_kernel._retention_limits", return_value=(30, 0)), \
-             mock.patch.object(Path, "rename", fail_second), self.assertRaises(PermissionError):
+             mock.patch.object(Path, "rename", fail_commit), self.assertRaises(PermissionError):
             kernel._prune_history()
         self.assertEqual(self.snapshot(), before)
-        self.assertFalse(list(self.jobs.glob("*.removing")))
+        self.assertFalse((self.jobs / ".removal-pending").exists())
+        self.assertFalse((self.jobs / ".removal-committed").exists())
 
     def test_incomplete_removal_is_explicit_instead_of_empty(self):
         (self.jobs / ".old.nonce.removing").write_bytes(b"preserved temporary transaction")

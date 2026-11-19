@@ -44,6 +44,17 @@ test('Agent audio duplicates use task/job identities while independent Agent aud
   assert.deepEqual(rows.map(row => row.id), ['independent'])
 })
 
+test('Agent separation batch exposes every input and preserves partial outputs', () => {
+  const [row] = buildJournalResults([job('batch', { command: 'infer', source: 'agent', status: 'failed',
+    payload: { tasks: [{ input: '/input/first.wav' }, { input: '/input/second.wav' }] },
+    result: { outputs: [{ stem: 'vocals', inputIndex: 1, path: '/out/first_vocals.wav' }] },
+  })])
+  assert.equal(row.title, 'first.wav')
+  assert.deepEqual(row.inputs, ['/input/first.wav', '/input/second.wav'])
+  assert.deepEqual(row.outputs.map(output => output.path), ['/out/first_vocals.wav'])
+  assert.deepEqual(filterJournalResults([row], 'second.wav', 'time_desc'), [row])
+})
+
 test('probe, runtime and model operations are not displayed as task output files', () => {
   const jobs = [job('download', { command: 'model_download' }), job('runtime', { command: 'runtime_install' }),
     job('probe', { payload: { operation: 'media_probe' } }), job('inspect', { payload: { operation: 'inspect' } })]

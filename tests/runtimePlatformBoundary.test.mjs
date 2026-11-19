@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
 import ts from 'typescript'
-import { detectRuntimePlatform } from '../src/utils/runtime.ts'
+import { detectRuntimePlatform, runtimeBackendsForTarget } from '../src/utils/runtime.ts'
 import { makeRuntimeState } from '../src/views/settings/runtimeState.ts'
 import { makeRuntimeActions } from '../src/views/settings/runtimeActions.ts'
 
@@ -73,16 +73,19 @@ test('the ASR page only offers removal for removable components', () => {
 for (const [platform, machine, expected] of [
   ['darwin', 'arm64', ['mlx']],
   ['darwin', 'aarch64', ['mlx']],
-  ['darwin', 'x86_64', ['mlx']],
-  ['darwin', '', ['mlx']],
+  ['darwin', 'x86_64', []],
+  ['darwin', '', []],
   ['win32', 'AMD64', ['cpu', 'cuda', 'rocm']],
+  ['win32', 'ARM64', []],
   ['linux', 'x86_64', ['cpu', 'cuda', 'rocm']],
+  ['linux', 'aarch64', []],
 ]) {
   test(`${platform}/${machine} settings and onboarding offer the intended runtime environments`, () => {
     const scope = {
       app: { runtimeInfo: { platform, machine } },
       runtimePlatform: { value: detectRuntimePlatform({ platform, machine }) },
       runtimeBackendName: backend => backend,
+      runtimeBackendsForTarget,
       runtimeBackendDescription: backend => backend,
       t: key => key,
       backendInstalled: () => true,
@@ -103,17 +106,6 @@ for (const [platform, machine, expected] of [
     assert.deepEqual(Array.from(choices, item => item.value), expected)
   })
 }
-
-test('onboarding offers only MLX on Intel and unidentified Macs', () => {
-  for (const machine of ['x86_64', '']) {
-    const choices = componentComputed('../src/components/StartupOnboarding.vue', 'runtimeBackendChoices', {
-      runtimePlatform: { value: detectRuntimePlatform({ platform: 'darwin', machine }) },
-      runtimeBackendName: backend => backend, t: key => key, backendInstalled: () => false,
-      runtimeRecommendedBackend: { value: 'mlx' }, runtimeSizeHint: () => '',
-    })
-    assert.deepEqual(Array.from(choices, item => item.value), ['mlx'])
-  }
-})
 
 for (const platform of ['darwin', 'linux', 'win32']) {
   for (const installed of [false, true]) {

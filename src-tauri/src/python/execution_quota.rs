@@ -2,7 +2,7 @@
 use super::task_journal::FileLock;
 use crate::error::{AppError, AppResult};
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -64,6 +64,7 @@ pub(super) fn read_limit(root: &Path) -> AppResult<usize> {
     let object = settings.as_object().ok_or_else(|| AppError::Worker(
         "invalid application settings for execution quota; original file preserved".into(),
     ))?;
+    crate::storage::validate_app_settings(&settings)?;
     match object.get(&contract.setting_key) {
         None => Ok(contract.default_limit),
         Some(value) => value.as_u64()
@@ -75,6 +76,13 @@ pub(super) fn read_limit(root: &Path) -> AppResult<usize> {
 
 pub(super) struct QuotaLease {
     _slot: FileLock,
+    fence_path: PathBuf,
+}
+
+impl QuotaLease {
+    pub(super) fn fence_path(&self) -> &Path {
+        &self.fence_path
+    }
 }
 
 fn busy(error: &std::io::Error) -> bool {
@@ -90,16 +98,27 @@ pub(super) fn try_acquire(root: &Path) -> AppResult<Option<QuotaLease>> {
     let limit = read_limit(root)?;
     let mut free = Vec::new();
     let mut occupied = 0;
+    let quota_root = root.join("agent-jobs/.quota");
     for index in 0..contract()?.max_slots {
-        let path = root.join("agent-jobs/.quota").join(format!("global-{index}.lock"));
-        match FileLock::acquire(&path, Duration::ZERO) {
-            Ok(slot) => free.push(slot),
+        let slot = match FileLock::acquire(&quota_root.join(format!("global-{index}.lock")), Duration::ZERO) {
+            Ok(slot) => slot,
+            Err(AppError::Io(error)) if busy(&error) => {
+                occupied += 1;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        // The supervisor keeps this lease until the worker tree is empty,
+        // including when the process holding the primary lease has exited.
+        let fence_path = quota_root.join("reaping").join(format!("global-{index}.lock"));
+        match FileLock::acquire_plain(&fence_path, Duration::ZERO) {
+            Ok(_probe) => free.push(QuotaLease { _slot: slot, fence_path }),
             Err(AppError::Io(error)) if busy(&error) => occupied += 1,
             Err(error) => return Err(error),
         }
     }
     if occupied >= limit { return Ok(None); }
-    Ok(free.into_iter().next().map(|slot| QuotaLease { _slot: slot }))
+    Ok(free.into_iter().next())
 }
 
 #[cfg(test)]
@@ -109,7 +128,7 @@ mod tests {
 
     fn set_limit(root: &Path, limit: usize) {
         std::fs::create_dir_all(root.join("settings")).unwrap();
-        std::fs::write(root.join("settings/app.json"), json!({"maxConcurrentSeparations": limit}).to_string()).unwrap();
+        std::fs::write(root.join("settings/app.json"), json!({"version": 1, "maxConcurrentSeparations": limit}).to_string()).unwrap();
     }
 
     fn take(root: &Path) -> Option<QuotaLease> {
@@ -150,9 +169,9 @@ mod tests {
         assert_eq!(read_limit(root.path()).unwrap(), 1);
         std::fs::create_dir_all(root.path().join("settings")).unwrap();
         let path = root.path().join("settings/app.json");
-        for text in ["{", "[]", "{\"maxConcurrentSeparations\":0}", "{\"maxConcurrentSeparations\":5}",
-            "{\"maxConcurrentSeparations\":true}", "{\"maxConcurrentSeparations\":2.0}",
-            "{\"maxConcurrentSeparations\":\"2\"}", "{\"maxConcurrentSeparations\":1,\"maxConcurrentSeparations\":2}"] {
+        for text in ["{", "[]", "{\"version\":1,\"maxConcurrentSeparations\":0}", "{\"version\":1,\"maxConcurrentSeparations\":5}",
+            "{\"version\":1,\"maxConcurrentSeparations\":true}", "{\"version\":1,\"maxConcurrentSeparations\":2.0}",
+            "{\"version\":1,\"maxConcurrentSeparations\":\"2\"}", "{\"version\":1,\"maxConcurrentSeparations\":1,\"maxConcurrentSeparations\":2}"] {
             std::fs::write(&path, text).unwrap();
             assert!(read_limit(root.path()).is_err(), "{text}");
             assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
@@ -192,7 +211,13 @@ assert sys.version_info[:2] == (3, 12), 'quota tests require actual Python 3.12'
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 from core import job_quota, job_store
+from core.worker_runtime_lock import runtime_lock
 root = Path(sys.argv[2])
+if sys.argv[3] == 'hold-fence':
+    with runtime_lock(root / 'agent-jobs/.quota/reaping/global-0.lock', timeout=0):
+        print('acquired', flush=True)
+        sys.stdin.buffer.read(1)
+    sys.exit(0)
 with job_store.catalog_lock(root / 'agent-jobs'):
     lease = job_quota.try_acquire(root / 'agent-jobs', job_quota.read_limit(root))
 print('acquired' if lease is not None else 'blocked', flush=True)
@@ -221,17 +246,19 @@ if lease is not None:
         // fixture process; the OS must release its capacity without deleting locks.
         struct ReapedChild(std::process::Child);
         impl Drop for ReapedChild { fn drop(&mut self) { let _ = self.0.kill(); let _ = self.0.wait(); } }
-        let mut child = ReapedChild(command("hold").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap());
-        let stdout = child.0.stdout.take().unwrap();
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let reader = std::thread::spawn(move || { let mut line = String::new(); let outcome = BufReader::new(stdout).read_line(&mut line).map(|_| line); let _ = sender.send(outcome); });
-        assert_eq!(receiver.recv_timeout(Duration::from_secs(15)).unwrap().unwrap().trim(), "acquired");
-        assert!(take(root.path()).is_none());
-        child.0.stdin.as_mut().unwrap().flush().unwrap();
-        child.0.kill().unwrap();
-        child.0.wait().unwrap();
-        reader.join().unwrap();
-        assert!(take(root.path()).is_some());
+        for mode in ["hold", "hold-fence"] {
+            let mut child = ReapedChild(command(mode).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap());
+            let stdout = child.0.stdout.take().unwrap();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let reader = std::thread::spawn(move || { let mut line = String::new(); let outcome = BufReader::new(stdout).read_line(&mut line).map(|_| line); let _ = sender.send(outcome); });
+            assert_eq!(receiver.recv_timeout(Duration::from_secs(15)).unwrap().unwrap().trim(), "acquired");
+            assert!(take(root.path()).is_none(), "Rust admitted while Python held {mode}");
+            child.0.stdin.as_mut().unwrap().flush().unwrap();
+            child.0.kill().unwrap();
+            child.0.wait().unwrap();
+            reader.join().unwrap();
+            assert!(take(root.path()).is_some());
+        }
         assert!(root.path().join("agent-jobs/.quota/global-0.lock").is_file());
     }
 }

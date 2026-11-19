@@ -1,15 +1,18 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "_comment": [
     "运行时清单：这套运行时能做什么、跑的是什么解释器与 torch。",
     "App 与 worker 在启动/接单时校验，缺能力要明确拒绝，而不是等到调用时才报模块缺失。",
-    "schemaVersion 2必须显式声明Python ABI；程序从本清单读取资产身份，不在代码中重复写assetId/hash。",
+    "schemaVersion 3要求每个资产显式声明平台、架构、后端和 Python ABI。",
+    "fallbackAssetId 只在目标平台、架构和请求后端匹配时使用。",
     "urls 按可用性排序：ModelScope 当前可用（Range 206），hf-mirror 会 302 到 HF 并返回 404，只作兜底。"
   ],
   "fallbackAssetId": "runtime-cuda-py312-2026.11.7",
   "runtimes": [
     {
       "assetId": "runtime-cuda-py312-2026.11.7",
+      "platform": "windows",
+      "arch": "x86_64",
       "backend": "cuda",
       "python": "3.12",
       "torch": "2.7.1",

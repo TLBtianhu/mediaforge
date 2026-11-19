@@ -457,13 +457,6 @@
       "source": "src-tauri/src/commands/app/tasks.rs"
     },
     {
-      "tauri": "move_paths_to_trash",
-      "worker": null,
-      "workerKind": null,
-      "dispatch": "native",
-      "source": "src-tauri/src/commands/app/trash.rs"
-    },
-    {
       "tauri": "mutate_media_workflows",
       "worker": null,
       "workerKind": null,
@@ -549,6 +542,20 @@
     },
     {
       "tauri": "pick_output_folder",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_preview_files",
+      "worker": null,
+      "workerKind": null,
+      "dispatch": "native",
+      "source": "src-tauri/src/commands/app/dialogs.rs"
+    },
+    {
+      "tauri": "pick_preview_folders",
       "worker": null,
       "workerKind": null,
       "dispatch": "native",

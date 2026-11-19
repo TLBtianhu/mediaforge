@@ -179,34 +179,33 @@ pub(super) fn validate_record(value: &Value) -> AppResult<()> {
     Ok(())
 }
 
-/// Validate the complete reference closure before callers recover or modify anything.
-pub(super) fn validate_library(jobs: &[Value]) -> AppResult<()> {
-    let rows: BTreeMap<&str, &Value> = jobs
-        .iter()
-        .map(|v| (v["jobId"].as_str().unwrap(), v))
-        .collect();
-    for job in jobs.iter().filter(|v| v.get("audio").is_some()) {
-        let audio = &job["audio"];
-        let primary_id = audio["primaryJobId"].as_str().unwrap();
-        let primary = rows
-            .get(primary_id)
-            .ok_or_else(|| invalid("missing primary reference"))?;
-        if primary
-            .pointer("/audio/primaryJobId")
-            .and_then(Value::as_str)
-            != Some(primary_id)
-            || primary["command"] != job["command"]
-            || primary["audio"]["groupId"] != audio["groupId"]
-        {
-            return Err(invalid("reference crosses groups"));
-        }
-        let members = primary["audio"]["memberJobIds"]
-            .as_array()
-            .ok_or_else(|| invalid("primary members"))?;
-        let index = audio["index"].as_u64().unwrap() as usize;
-        if members.get(index) != Some(&job["jobId"]) {
-            return Err(invalid("member order"));
-        }
+fn validate_audio_reference(
+    job: &Value,
+    rows: &BTreeMap<&str, &Value>,
+    validate_members: bool,
+) -> AppResult<bool> {
+    let audio = &job["audio"];
+    let primary_id = audio["primaryJobId"].as_str().unwrap();
+    let primary = rows
+        .get(primary_id)
+        .ok_or_else(|| invalid("missing primary reference"))?;
+    if primary
+        .pointer("/audio/primaryJobId")
+        .and_then(Value::as_str)
+        != Some(primary_id)
+        || primary["command"] != job["command"]
+        || primary["audio"]["groupId"] != audio["groupId"]
+    {
+        return Err(invalid("reference crosses groups"));
+    }
+    let members = primary["audio"]["memberJobIds"]
+        .as_array()
+        .ok_or_else(|| invalid("primary members"))?;
+    let index = audio["index"].as_u64().unwrap() as usize;
+    if members.get(index) != Some(&job["jobId"]) {
+        return Err(invalid("member order"));
+    }
+    if validate_members {
         for (index, member) in members.iter().enumerate() {
             let row = rows
                 .get(member.as_str().unwrap())
@@ -217,6 +216,20 @@ pub(super) fn validate_library(jobs: &[Value]) -> AppResult<()> {
             {
                 return Err(invalid("member reference"));
             }
+        }
+    }
+    Ok(primary_id == job["jobId"].as_str().unwrap())
+}
+
+/// Validate the complete reference closure before callers recover or modify anything.
+pub(super) fn validate_library(jobs: &[Value]) -> AppResult<()> {
+    let rows: BTreeMap<&str, &Value> = jobs
+        .iter()
+        .map(|v| (v["jobId"].as_str().unwrap(), v))
+        .collect();
+    for job in jobs.iter().filter(|v| v.get("audio").is_some()) {
+        if validate_audio_reference(job, &rows, false)? {
+            validate_audio_reference(job, &rows, true)?;
         }
     }
     Ok(())

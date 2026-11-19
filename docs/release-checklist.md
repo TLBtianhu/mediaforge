@@ -38,11 +38,13 @@ Inno Setup 6.7+ 不再随安装器分发中文翻译：缺 `Languages\ChineseSim
 □ stage EXE身份/版本、资源清单、归档哈希均已核对，不用EXE体积推断资源正确
 □ 基础Python版本变化时提供完整安装/便携介质；不含bootstrap的update.zip不能独立承担3.11→3.12升级
 □ 默认不含runtime-envs、模型、开发数据、日志和测试截图；数GB资产另行显式打包
-□ 正式签名前确认目标版本与ZIP内EXE一致；仅使用显式密钥路径和进程环境
+□ 正式签名前确认目标版本与ZIP内EXE一致；显式指定私钥路径，本机密码按需从凭据库读取
 □ 不把密码放命令参数，不输出signer原始诊断，不在签名环境中执行signer help
 ```
 
 ## 3. 隔离安装与原生界面验证
+
+Windows 无界面候选使用 `scripts/smoke-installer.ps1`，显式传入 `-Stage`、`-Version`、`-Python`（3.12）、`-Compiler` 和 `.tmp` 内的 `-Report`。使用 `-PreviousStage` 与 `-PreviousVersion` 增加同一测试 AppId 下的覆盖升级。`-Installer` 用于记录并复核候选安装器的 SHA-256。脚本重编唯一测试身份，逐文件核对完整 stage，运行安装内的 bootstrap health，并核对静默卸载及样本文件保留。
 
 在干净机器或新用户账户上：
 
@@ -65,11 +67,14 @@ Inno Setup 6.7+ 不再随安装器分发中文翻译：缺 `Languages\ChineseSim
 ## 4. Harness 集成
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "<安装根>\app\integrations\dsh-mediaforge\verify.ps1"
+node scripts/test-python.mjs tests.python.test_dsh_integration_layout
 ```
 
+在隔离的 Harness profile 中通过插件管理器加载 `link:<安装或解压根>\integrations\dsh-mediaforge`。
+
 ```
-□ PASS，且 tools/list 有 50+ 条
+□ 默认安装、自定义目录和便携版均从各自的实例发现和调用 MCP 工具
+□ 连续三次加载和调用后，隔离 profile 的 cordis.patch.yml SHA-256 一致
 □ 重启 Harness 后，新会话能调用 mcp__mediaforge__*
 □ 首次下模型时 agent 会要求确认（explicit 审批）
 ```
@@ -82,7 +87,7 @@ powershell -ExecutionPolicy Bypass -File "<安装根>\app\integrations\dsh-media
 □ GitHub Release 已发布，正文含魔搭裸链接
 □ update.zip 与其签名已放到更新源（若启用自动更新）
 □ 3.12独立资产已单独上传，匿名回读大小/SHA与manifest一致；本地存在不代表公网可安装
-□ versions文档schemaVersion=2，签名覆盖的runtime包含python、assetId、size、sha256与urls
+□ versions文档schemaVersion=3，签名覆盖的runtime包含platform、arch、backend、python、assetId、size、sha256与urls
 ```
 
 ## 6. 发布后
@@ -97,6 +102,14 @@ powershell -ExecutionPolicy Bypass -File "<安装根>\app\integrations\dsh-media
 真实3.12资产headless安装及CPU两步超分。未签名、未上传资产、未运行远端CI或正式发布；
 完整原生UI与macOS/Linux原生包尚未验收。精确计数、哈希和证据见
 `release/candidates/0.0.33/verification.json`。用户禁止桌面操作，不以CLI检查替代完整UI结论。
+
+2026-11-12 的 `0.0.34 r4` 已通过 Windows 无界面静默首装、`r3 → r4` 同版本覆盖升级和静默卸载。两端完整 stage、bootstrap health 与 8 个保留样本已核对。候选清单见 `release/candidates/0.0.34-20261112-r4/candidate.json`。 [本轮交接](handoff-2026-11-08.md#6-p1-windows-发布候选-r42026-11-12)
+
+同一 r4 候选使用已有 Python 3.12 CUDA 资产完成真实四轨分离和两步图像超分。独立解码和任务账本核对通过。 [推理验收记录](handoff-2026-11-08.md#61-r4-真实-cuda-推理2026-11-12)
+
+`0.0.34 r5` 的本地 ZIP 和 schema 3 待签清单已复核，ModelScope 运行时已通过匿名全量回读。正式签名需要 `TAURI_SIGNING_PRIVATE_KEY_PATH` 与 `VERSIONS_SIGNING_PRIVATE_KEY`，公开渠道暂未提供 r5。 [签名、回读和远端 CI](handoff-2026-11-08.md#63-r5-签名与匿名渠道核对2026-11-12)
+
+`0.0.34 r6` 已使用新密钥完成本地签名和验签，静默覆盖升级通过。发布时使用 r6 的 `versions.json` 与 `.sig`，对应的新信任根随 r6 安装包交付。 [r6 交接记录](handoff-2026-11-08.md#64-r6-更换签名密钥2026-11-18)
 
 ---
 
@@ -113,7 +126,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sign-update.ps1
 python scripts\publish-modelscope.py release\MediaForge-*setup.exe release\MediaForge-*portable.zip
 
 # 集成自检
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\MediaForge\integrations\dsh-mediaforge\verify.ps1"
+node scripts/test-python.mjs tests.python.test_dsh_integration_layout
 ```
 
 ## 更新签名的密钥归属（0.0.16 修正）

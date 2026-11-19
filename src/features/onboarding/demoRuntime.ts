@@ -145,7 +145,8 @@ export function createDemoRuntime(config: DemoConfig) {
     if (command === 'env_info' || command === 'get_env_info') return copy(envInfo)
     if (command === 'start_env_check') { later(() => emit('pymss://worker-event', { type: 'env_info', requestId: args.requestId, payload: envInfo }), 30); return }
     if (command === 'get_build_info') return { version: '0.0.12', variant: 'tutorial', official: false, updateSupported: false }
-      if (['pick_media_files', 'pick_audio_files'].includes(command)) return [input]
+    if (['pick_media_files', 'pick_audio_files', 'pick_preview_files'].includes(command)) return [input]
+    if (command === 'pick_preview_folders') return []
     if (['pick_single_audio_file'].includes(command)) return input
     if (command === 'scan_media_paths') return { files: [input], warnings: [] }
     if (['pick_input_folder', 'pick_output_folder', 'pick_output_dir', 'pick_model_dir'].includes(command)) return output

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { pickInputFolder, pluginHostCachedScanReport, pluginHostCancelScan, pluginHostRemoveScanBlacklist, pluginHostScanBlacklist, pluginHostScanReport, pluginHostScanStatus, pluginHostSkipScan } from '@/api/native'
+import { pluginHostCachedScanReport, pluginHostCancelScan, pluginHostRemoveScanBlacklist, pluginHostScanBlacklist, pluginHostScanReport, pluginHostScanStatus, pluginHostSkipScan } from '@/api/native'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { computed, nextTick, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AddOutline, ArrowDownOutline, ArrowUpOutline, ChevronForwardOutline, CloseOutline, FolderOpenOutline, OpenOutline, OptionsOutline, RefreshOutline, SearchOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
@@ -391,8 +392,8 @@ async function browseDirectory() {
   const project = props.session
   let chosen = false
   await run(async () => {
-    const path = await pickInputFolder()
-    if (path && !disposed) { directoryDraft.value = path; addDirectory(); chosen = true }
+    const path = await openDialog({ directory: true, multiple: false })
+    if (typeof path === 'string' && !disposed) { directoryDraft.value = path; addDirectory(); chosen = true }
   })
   if (chosen && !disposed && props.session === project) { sourcesOpen.value = false; await scan() }
 }

@@ -27,7 +27,7 @@ if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 
 from core.operation_kernel import OperationKernel  # noqa: E402
-from core.job_store import JobStoreError
+from core.job_store import JobStoreError, owner_lock
 from ._job_fixtures import job_record
 
 DAY = 86400.0
@@ -81,13 +81,14 @@ class JobRetentionTests(unittest.TestCase):
         for job_id, status in active.items():
             self.seed(job_id, status=status, age_days=100)
         expired = self.seed("expired", age_days=100)
-        with mock.patch("core.operation_kernel._retention_limits", return_value=(30.0, 0)):
-            self.assertEqual(kernel._prune_history(), 1)
-        for job_id, status in active.items():
-            path = self.jobs / f"{job_id}.json"
-            self.assertTrue(path.is_file())
-            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["status"], status)
-            self.assertEqual(kernel.get(job_id).snapshot()["status"], status)
+        with owner_lock(self.jobs, "alive"):
+            with mock.patch("core.operation_kernel._retention_limits", return_value=(30.0, 0)):
+                self.assertEqual(kernel._prune_history(), 1)
+            for job_id, status in active.items():
+                path = self.jobs / f"{job_id}.json"
+                self.assertTrue(path.is_file())
+                self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["status"], status)
+                self.assertEqual(kernel.get(job_id).snapshot()["status"], status)
         self.assertFalse(expired.exists())
         self.assertIsNone(kernel.get("expired"))
 

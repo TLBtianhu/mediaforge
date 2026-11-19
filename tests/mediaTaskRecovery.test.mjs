@@ -34,13 +34,21 @@ const vite = await createServer({
     load(id) {
       if (id.startsWith('\0media-recovery-stub:')) return stubs[id.slice('\0media-recovery-stub:'.length)]
       if (id === fixtureId) return `
+        import { reactive } from 'vue'
         export const calls = [], messages = [], listeners = new Map()
+        export const windowsNvidia = { platform: 'win32', machine: 'AMD64', ready: false, gpuVendors: ['nvidia'] }
+        export const cudaOffer = { available: true, platform: 'windows', arch: 'x86_64', backend: 'cuda', size: 123, installed: false }
+        const app = reactive({ runtimeInfo: windowsNvidia, checkRuntimeInfo: async () => {}, ensureRuntimeInfo: async () => {} })
+        export const useAppStore = () => app
         let hook, listenHook
-        export function reset(nextHook, nextListenHook) { calls.length = messages.length = 0; listeners.clear(); hook = nextHook; listenHook = nextListenHook }
+        export function reset(nextHook, nextListenHook, runtimeInfo = windowsNvidia) {
+          calls.length = messages.length = 0; listeners.clear(); hook = nextHook; listenHook = nextListenHook
+          app.runtimeInfo = runtimeInfo
+        }
         export async function invoke(command, args) {
           calls.push({ command, args })
           if (hook) return hook(command, args)
-          if (command === 'runtime_asset_status') return { installed: false, size: 0 }
+          if (command === 'runtime_asset_status') return cudaOffer
           if (command === 'agent_jobs') return {schemaVersion:3,full:true,removed:[],jobs:[],dataRoot:'/fixture',jobsDir:'/fixture/agent-jobs'}
           return {}
         }
@@ -59,7 +67,7 @@ const vite = await createServer({
       }
       if (path.endsWith('.vue')) return 'export default { render: () => null }'
       if (path.endsWith('/src/composables/useMediaDrop.ts')) return 'export const useMediaDrop = () => ({})'
-      if (path.endsWith('/src/stores/app.ts')) return 'export const useAppStore = () => ({ checkRuntimeInfo: async () => {} })'
+      if (path.endsWith('/src/stores/app.ts')) return `export { useAppStore } from '${fixtureId}'`
       if (path.endsWith('/src/stores/settings.ts')) return 'export const useSettingsStore = () => ({ developerMode: false })'
       if (path.endsWith('/src/stores/model.ts')) return 'export const useModelStore = () => ({ loadModels: async () => {} })'
       return null
@@ -82,8 +90,8 @@ const renderer = createRenderer({
   setText(node, text) { node.text = text }, setElementText(node, text) { node.text = text }, patchProp() {},
 })
 const flush = async () => { await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick() }
-async function mount(t, Component, hook, listenHook) {
-  fixture.reset(hook, listenHook)
+async function mount(t, Component, hook, listenHook, runtimeInfo) {
+  fixture.reset(hook, listenHook, runtimeInfo)
   const app = renderer.createApp(Component)
   const pinia = createPinia()
   app.use(pinia)
@@ -186,7 +194,7 @@ test('media workflow survives route unmount and restores outputs and the submitt
 test('runtime preparation can retry after IPC failure and blocks duplicate starts while running', async t => {
   let attempts = 0
   const state = await mount(t, Banner, command => {
-    if (command === 'runtime_asset_status') return { installed: false, size: 0 }
+    if (command === 'runtime_asset_status') return fixture.cudaOffer
     if (command === 'runtime_asset_install' && ++attempts === 1) throw new Error('network unavailable')
     return {}
   })
@@ -216,7 +224,7 @@ test('runtime preparation retries after an asynchronous download failure with re
 test('remote runtime acceptance can retry after a failed acceptance request', async t => {
   let attempts = 0
   const state = await mount(t, Banner, command => {
-    if (command === 'runtime_asset_status') return { installed: false, size: 0 }
+    if (command === 'runtime_asset_status') return fixture.cudaOffer
     if (command === 'versions_accept_runtime' && ++attempts === 1) throw new Error('accept failed')
     return {}
   })
@@ -235,7 +243,7 @@ test('runtime event listener and local status stay ready during a pending versio
   const pending = new Promise(resolve => { resolveVersions = resolve })
   t.after(() => resolveVersions({}))
   const state = await mount(t, Banner, command => {
-    if (command === 'runtime_asset_status') return { installed: true, size: 123 }
+    if (command === 'runtime_asset_status') return { ...fixture.cudaOffer, installed: true, activeAssetId: 'cuda-current' }
     if (command === 'versions_check') return pending
     return {}
   })
@@ -251,7 +259,7 @@ test('runtime event listener and local status stay ready during a pending versio
 test('runtime listener failure keeps local status available and retries subscription before installing', async t => {
   let bridgeReady = false
   const state = await mount(t, Banner, command => {
-    if (command === 'runtime_asset_status') return { installed: false, size: 0 }
+    if (command === 'runtime_asset_status') return fixture.cudaOffer
     return {}
   }, async () => { if (!bridgeReady) throw new Error('event bridge unavailable') })
   assert.equal(state.checked, true)
@@ -281,6 +289,35 @@ test('unmount during listener registration releases the late subscription withou
   await flush()
   assert.equal(fixture.listeners.has('mediaforge://runtime-asset'), false)
   assert.equal(fixture.calls.length, 0)
+})
+
+for (const [label, info, status, backend] of [
+  ['Linux CUDA', { platform: 'linux', machine: 'x86_64', ready: false, gpuVendors: ['nvidia'] }, { available: false }, 'cuda'],
+  ['Windows ARM', { platform: 'win32', machine: 'ARM64', ready: false, gpuVendors: ['nvidia'] }, null, null],
+  ['Windows without GPU detection', { platform: 'win32', machine: 'AMD64', ready: false }, null, null],
+  ['working Windows CPU', { ...fixture.windowsNvidia, ready: true, installedBackend: 'cpu' }, fixture.cudaOffer, 'cpu'],
+  ['working Windows ROCm', { ...fixture.windowsNvidia, ready: true, installedBackend: 'rocm' }, fixture.cudaOffer, 'rocm'],
+  ['working CUDA without a managed asset', { ...fixture.windowsNvidia, ready: true, installedBackend: 'cuda' }, fixture.cudaOffer, 'cuda'],
+  ['bundled macOS MLX', { platform: 'darwin', machine: 'arm64', ready: true, installedBackend: 'mlx' }, { available: false }, 'mlx'],
+]) {
+  test(`the startup banner does not suggest a Windows CUDA install for ${label}`, async t => {
+    const state = await mount(t, Banner, command => command === 'runtime_asset_status' ? status : {}, undefined, info)
+    assert.equal(state.checked, true)
+    assert.equal(state.visible, false)
+    const calls = fixture.calls.filter(call => call.command === 'runtime_asset_status')
+    assert.deepEqual(calls.map(call => call.args.backend), backend ? [backend] : [])
+    assert.equal(fixture.calls.some(call => call.command === 'versions_check'), false)
+  })
+}
+
+test('a settings-initiated managed download remains visible while a CPU runtime is active', async t => {
+  const info = { ...fixture.windowsNvidia, ready: true, installedBackend: 'cpu' }
+  const state = await mount(t, Banner, () => ({ available: false }), undefined, info)
+  assert.equal(state.visible, false)
+  await runtimeEvent({ stage: 'download', backend: 'cuda', percent: 10, total: 1024 * 1024 * 100 })
+  assert.equal(state.running, true)
+  assert.equal(state.visible, true)
+  assert.equal(state.totalMb, 100)
 })
 
 test('a failed manual version recheck clears the previous success instead of reporting up to date', async t => {

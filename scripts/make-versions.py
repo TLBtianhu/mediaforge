@@ -27,20 +27,29 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# The published 0.0.31 stable notice is the only previous document eligible
+# for verification with the retired key during the signing-key rotation.
+PREVIOUS_STABLE_SHA256 = "00c380b5692496f5f2b74066aba15a9ef520a48e128fa639de224cb8166548b7"
+PREVIOUS_STABLE_PUBKEY = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk3OTE1MTQyQjEyNzYxMzYKUldRMllTZXhRbEdSbHdKclg2RzBGbmo0ZGJZYzZMNzY1a1d3a3hFN3JXbWs3SkxOK21HTkI4RFMK"
+
 
 def load_runtime() -> dict:
     manifest = json.loads((ROOT / "manifest" / "runtime.json").read_text(encoding="utf-8"))
     expected_python = json.loads((ROOT / "python/runtime-manifest.json").read_text(encoding="utf-8"))["python"]
-    if manifest.get("schemaVersion") != 2:
-        raise ValueError("Runtime manifest must use the current schemaVersion 2")
+    if type(manifest.get("schemaVersion")) is not int or manifest["schemaVersion"] != 3:
+        raise ValueError("Runtime manifest must use the current schemaVersion 3")
     fallback = manifest.get("fallbackAssetId")
     for item in manifest["runtimes"]:
         if item["assetId"] == fallback:
             if item.get("python") != expected_python:
                 raise ValueError("Runtime asset Python differs from the application runtime manifest")
+            if item.get("platform") not in ("windows", "linux", "macos") or item.get("arch") not in ("x86_64", "aarch64"):
+                raise ValueError("Runtime asset needs an explicit supported platform and architecture")
             return {
                 "assetId": item["assetId"],
                 "backend": item["backend"],
+                "platform": item["platform"],
+                "arch": item["arch"],
                 "python": item["python"],
                 "sha256": item["sha256"],
                 "size": item["size"],
@@ -54,7 +63,7 @@ def build(version: str | None = None) -> dict:
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?", app_version):
         raise ValueError("Invalid application version")
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "app": {"version": app_version},
         "runtime": load_runtime(),
     }
@@ -107,7 +116,8 @@ def verify_previous(previous: Path, version: str) -> None:
     if not document.exists() and not signature.exists():
         return
     content = document.read_bytes()
-    verify_signature(content, signature.read_text(encoding="utf-8"))
+    public_key = PREVIOUS_STABLE_PUBKEY if hashlib.sha256(content).hexdigest() == PREVIOUS_STABLE_SHA256 else None
+    verify_signature(content, signature.read_text(encoding="utf-8"), public_key)
     previous_version = json.loads(content)["app"]["version"]
     def stable_order(value: str) -> tuple[int, int, int]:
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?", value):

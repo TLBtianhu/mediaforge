@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 /// The protocol manifest is embedded at compile time: the event vocabulary has
 /// exactly one source, and a mismatch fails the build's tests, not production.
@@ -46,6 +47,17 @@ struct ManifestOutputScope {
     operations: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestSyncQuery {
+    #[serde(default = "default_sync_query_seconds")]
+    default_timeout_seconds: u64,
+    #[serde(default)]
+    timeout_overrides: BTreeMap<String, u64>,
+}
+
+fn default_sync_query_seconds() -> u64 { 60 }
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestExecution {
@@ -58,7 +70,20 @@ struct ManifestExecution {
     #[serde(default)]
     background_result: Vec<String>,
     #[serde(default)]
+    sync_query: Option<ManifestSyncQuery>,
+    #[serde(default)]
     terminal_events: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestDomain {
+    commands: BTreeMap<String, ManifestCommand>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestCommand {
+    command: String,
+    kind: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +91,8 @@ struct Manifest {
     events: ManifestEvents,
     #[serde(default)]
     execution: ManifestExecution,
+    #[serde(default)]
+    domains: BTreeMap<String, ManifestDomain>,
 }
 
 fn manifest() -> &'static Manifest {
@@ -122,6 +149,21 @@ pub fn needs_audio_output_scope(command: &str, operation: Option<&str>) -> bool 
 /// exit code alone is not a result.
 pub fn requires_background_result(command: &str) -> bool {
     manifest().execution.background_result.iter().any(|item| item == command)
+}
+
+pub fn is_query_command(command: &str) -> bool {
+    manifest().domains.values().any(|domain| {
+        domain.commands.values().any(|entry| entry.command == command && entry.kind == "query")
+    })
+}
+
+pub fn sync_query_timeout(command: &str) -> Option<Duration> {
+    if !is_query_command(command) { return None; }
+    let defaults = default_sync_query_seconds();
+    let config = manifest().execution.sync_query.as_ref();
+    let seconds = config.and_then(|config| config.timeout_overrides.get(command).copied())
+        .unwrap_or_else(|| config.map_or(defaults, |config| config.default_timeout_seconds));
+    Some(Duration::from_secs(if seconds > 0 { seconds } else { defaults }))
 }
 
 /// Result-bearing job commands: worker commands plus media operation aliases.
@@ -249,6 +291,19 @@ mod tests {
             assert!(requires_background_result(command));
         }
         assert!(!requires_background_result("list_operations"));
+    }
+
+    #[test]
+    fn sync_query_timeouts_only_cover_queries_with_long_running_overrides() {
+        assert_eq!(sync_query_timeout("health"), Some(Duration::from_secs(60)));
+        assert_eq!(sync_query_timeout("media_library"), Some(Duration::from_secs(300)));
+        assert_eq!(sync_query_timeout("inspect_custom_model"), Some(Duration::from_secs(300)));
+        assert_eq!(sync_query_timeout("waveform_peaks"), Some(Duration::from_secs(300)));
+        assert_eq!(sync_query_timeout("runtime_info"), Some(Duration::from_secs(120)));
+        assert_eq!(sync_query_timeout("runtime_env_sizes"), Some(Duration::from_secs(120)));
+        assert_eq!(sync_query_timeout("model_storage_summary"), Some(Duration::from_secs(120)));
+        assert_eq!(sync_query_timeout("delete_runtime"), None);
+        assert_eq!(sync_query_timeout("infer"), None);
     }
 
     #[test]

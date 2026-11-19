@@ -10,7 +10,7 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         source = (ROOT / "src-tauri/src/runtime_assets.rs").read_text(encoding="utf-8")
         self.assertIn("MEDIAFORGE_SMOKE_RUNTIME_DESCRIPTOR", source)
         self.assertIn("pub fn smoke_activate", source)
-        self.assertIn("runtime_asset_install(app.clone())", source)
+        self.assertIn("runtime_asset_install(app.clone(), None)", source)
         main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
         self.assertIn('"--smoke-activate-runtime"', main)
 
@@ -25,12 +25,16 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:$Port", script)
         self.assertIn("python = '3.12'", script)
         self.assertIn("backend = 'cuda'", script)
+        self.assertIn("platform = 'windows'", script)
+        self.assertIn("arch = 'x86_64'", script)
         self.assertNotIn("backend = 'fixture'", script)
 
     def test_fixture_satisfies_real_probe_schema_without_production_bypass(self) -> None:
         source = (ROOT / "scripts/make-fixture-runtime.ps1").read_text(encoding="utf-8")
         for required in ("python312.dll", "Lib/encodings/__init__.py", "Lib/site-packages", "torchBackend", "basePrefix"):
             self.assertIn(required, source)
+        for key in ("platform", "arch"):
+            self.assertIn(r'\"' + key + r'\"', source)
         installer = (ROOT / "src-tauri/src/runtime_assets.rs").read_text(encoding="utf-8")
         self.assertNotIn("repair_embedded_python_from", installer)
         self.assertNotIn('backend == "fixture"', installer)

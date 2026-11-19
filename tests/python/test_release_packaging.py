@@ -179,7 +179,10 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             "src-tauri/resources/plugin-sdk/pymss-sdk.js": b"SDK JS",
             "src-tauri/resources/plugin-sdk/pymss-sdk.css": b"SDK CSS",
             "python/worker.py": b"never executed worker", "python/core/runtime_audio_probe.py": b"probe",
-            "python/shared/safe_fs.py": b"safe fs", "python/runtime-manifest.json": b'{"python":"3.12"}',
+            "python/core/plugin_marketplace_trust.py": b"plugin trust fixture",
+            "python/plugin-marketplace.json": (ROOT / "python/plugin-marketplace.json").read_bytes(),
+            "python/shared/safe_fs.py": b"safe fs", "python/core/worker_supervisor.py": b"worker supervisor fixture",
+            "python/runtime-manifest.json": b'{"python":"3.12"}',
             "manifest/protocol.json": b"{}", "manifest/runtime.json": b"{}",
             "manifest/execution-quota.json": (ROOT / "manifest/execution-quota.json").read_bytes(),
             "manifest/library-schema.json": (ROOT / "manifest/library-schema.json").read_bytes(),
@@ -189,6 +192,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
             "release/bin/ffmpeg.exe": b"tool", "release/bin/ffprobe.exe": b"tool",
             "release/bin/aria2c.exe": b"tool", "release/bin/vcrt/msvcp140.dll": b"vcrt",
             "integrations/dsh-mediaforge/cordis.patch.yml": b"bridge",
+            "integrations/dsh-mediaforge/mcp-plugin.mjs": (ROOT / "integrations/dsh-mediaforge/mcp-plugin.mjs").read_bytes(),
             "release/stage-0.0.31/keep.bin": b"previous stage",
             "release/local/previous-setup.exe": b"previous local installer",
             "release/runtime/runtime-cuda-2026.11.4.zip": b"existing runtime asset",
@@ -227,13 +231,16 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
         self.assertEqual((stage / "python-runtime/python.exe").read_bytes(), b"explicit selected bootstrap")
         self.assertEqual((project / "python-runtime/python.exe").read_bytes(), b"never executed bootstrap")
         with zipfile.ZipFile(candidate / "MediaForge-0.0.32-windows-x64-portable.zip") as archive:
-            self.assertIn("mediaforge.portable", archive.namelist())
+            names = {name.replace("\\", "/") for name in archive.namelist()}
+            self.assertIn("mediaforge.portable", names)
+            self.assertIn("integrations/dsh-mediaforge/mcp-plugin.mjs", names)
         with zipfile.ZipFile(candidate / "MediaForge-0.0.32-windows-x64-update.zip") as archive:
             names = {name.replace("\\", "/") for name in archive.namelist()}
             self.assertIn("manifest/protocol.json", names)
             self.assertIn("manifest/runtime.json", names)
             self.assertIn("manifest/execution-quota.json", names)
             self.assertIn("python/plugin-sdk/pymss-sdk.js", names)
+            self.assertIn("integrations/dsh-mediaforge/mcp-plugin.mjs", names)
             self.assertFalse(any(name.startswith("python-runtime/") for name in names))
         # A later invocation with the wrong bootstrap must preserve this exact
         # already-produced candidate before staging or signing can change it.
@@ -266,6 +273,7 @@ Copy-ReleaseTree -Source (Join-Path $FixtureRoot 'source') -Destination (Join-Pa
         self.write_files("source", {
             "python/shared/safe_fs.py": b"worker fixture",
             "integrations/dsh-mediaforge/cordis.patch.yml": b"bridge fixture",
+            "integrations/dsh-mediaforge/mcp-plugin.mjs": b"adapter fixture",
             "manifest/protocol.json": b"{}", "manifest/runtime.json": b"{}",
             "manifest/execution-quota.json": (ROOT / "manifest/execution-quota.json").read_bytes(),
             "manifest/library-schema.json": (ROOT / "manifest/library-schema.json").read_bytes(),
@@ -283,6 +291,7 @@ Assert-ReleaseContract $stage
         self.assertFalse((self.root / "stage/python-runtime/runtime-envs").exists())
         self.assertFalse((self.root / "stage/python-runtime/Lib/__pycache__").exists())
         self.assertTrue((self.root / "stage/python/shared/safe_fs.py").is_file())
+        self.assertEqual((self.root / "stage/integrations/dsh-mediaforge/mcp-plugin.mjs").read_bytes(), b"adapter fixture")
 
     def test_candidate_paths_are_separate_and_versions_cannot_escape(self) -> None:
         result = self.run_fixture("""
@@ -335,12 +344,17 @@ Remove-ReleaseOwnedPath -Path (Join-Path $FixtureRoot 'release/stage-0.0.32') -O
 
     def test_full_stage_contract_requires_bootstrap_sources_sdk_tools_and_no_user_assets(self) -> None:
         names = ["MediaForge.exe", "manifest/protocol.json", "manifest/runtime.json", "manifest/execution-quota.json", "manifest/library-schema.json", "python/worker.py",
-                 "python/core/runtime_audio_probe.py", "python/shared/safe_fs.py", "python/runtime-manifest.json",
+                 "python/core/runtime_audio_probe.py", "python/shared/safe_fs.py", "python/core/worker_supervisor.py", "python/runtime-manifest.json",
+                 "python/core/plugin_marketplace_trust.py", "python/plugin-marketplace.json",
                  "python/plugin-sdk/pymss-sdk.js", "python/plugin-sdk/pymss-sdk.css", "python-runtime/python.exe",
                  "bin/ffmpeg.exe", "bin/ffprobe.exe", "bin/aria2c.exe", "bin/vcrt/msvcp140.dll",
-                 "integrations/dsh-mediaforge/cordis.patch.yml"]
+                 "integrations/dsh-mediaforge/cordis.patch.yml", "integrations/dsh-mediaforge/mcp-plugin.mjs"]
         self.write_files("stage", {name: b"fixture" for name in names})
         self.run_fixture("Assert-ReleaseStage (Join-Path $FixtureRoot 'stage')")
+        (self.root / "stage/python/plugin-marketplace.json").unlink()
+        result = self.run_fixture("Assert-ReleaseStage (Join-Path $FixtureRoot 'stage')", ok=False)
+        self.assertIn("python/plugin-marketplace.json", result.stderr)
+        self.write_files("stage", {"python/plugin-marketplace.json": b"fixture"})
         self.write_files("stage", {"models/unwanted-weight.bin": b"must not ship"})
         result = self.run_fixture("Assert-ReleaseStage (Join-Path $FixtureRoot 'stage')", ok=False)
         self.assertIn("mutable user assets: models", result.stderr)

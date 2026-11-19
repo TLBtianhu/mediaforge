@@ -16,12 +16,25 @@
   var nextId = 1
   var readyResolvers = []
   var hostReady = false
+  var channel = null
+  var outbound = []
+  var sessionId = (function () {
+    var match = window.location.hash.match(/^#pymss-session=([^&]+)/)
+    if (!match) return ''
+    try { return decodeURIComponent(match[1]) } catch (e) { return '' }
+  })()
 
-  function post(message) { window.parent.postMessage(message, '*') }
+  function post(message) {
+    if (!channel) {
+      outbound.push(message)
+      return
+    }
+    channel.postMessage(Object.assign({}, message, { sessionId: sessionId }))
+  }
 
-  window.addEventListener('message', function (event) {
+  function handleMessage(event) {
     var data = event.data
-    if (!data || typeof data !== 'object') return
+    if (!data || typeof data !== 'object' || data.sessionId !== sessionId) return
 
     // Host pushes theme tokens; apply them to :root immediately.
     if (data.method === 'host.theme' && data.params) { applyTheme(data.params); return }
@@ -48,7 +61,7 @@
     pending.delete(data.id)
     if (data.error) entry.reject(new Error(String(data.error.message || 'RPC error')))
     else entry.resolve(data.result)
-  })
+  }
 
   function applyTheme(params) {
     var root = document.documentElement
@@ -69,9 +82,15 @@
     })
   }
 
-  // Handshake: tell the host this page is alive; it replies host.ready (and
-  // typically follows with host.theme).
-  post({ jsonrpc: '2.0', method: 'pymss.ready' })
+  // Only the URL fragment carries the bootstrap credential. The port itself is
+  // created by this document, so a delayed handshake cannot grant it to the next one.
+  var pair = new MessageChannel()
+  channel = pair.port2
+  channel.onmessage = handleMessage
+  channel.start()
+  var queue = outbound; outbound = []
+  queue.forEach(post)
+  window.parent.postMessage({ jsonrpc: '2.0', method: 'pymss.ready', sessionId: sessionId }, '*', [pair.port1])
 
   window.pymss = {
     call: call,

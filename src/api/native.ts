@@ -45,6 +45,14 @@ export function pickMediaFiles(): Promise<string[]> {
   return invoke('pick_media_files')
 }
 
+export function pickPreviewFiles(kind: 'image' | 'video' | 'library'): Promise<string[]> {
+  return invoke('pick_preview_files', { kind })
+}
+
+export function pickPreviewFolders(): Promise<string[]> {
+  return invoke('pick_preview_folders')
+}
+
 export function pickSingleAudioFile(): Promise<string | null> {
   return invoke('pick_single_audio_file')
 }
@@ -70,7 +78,7 @@ export function saveTextFileDialog(defaultName: string, content: string): Promis
   return invoke('save_text_file_dialog', { defaultName, content })
 }
 
-// ─── 路径扫描与回收 ────────────────────────────────────────────────────────
+// ─── 路径扫描 ──────────────────────────────────────────────────────────────
 
 export type ScanPathsResult = {
   files: string[]
@@ -94,15 +102,6 @@ export function scanAudioPathsWithOptions(
     recursive: options.recursive ?? true,
     sortFiles: options.sortFiles ?? true,
   })
-}
-
-export type TrashResult = {
-  trashed: string[]
-  failed: string[]
-}
-
-export function movePathsToTrash(paths: string[], emptyDirs: string[] = []): Promise<TrashResult> {
-  return invoke('move_paths_to_trash', { paths, emptyDirs })
 }
 
 // ─── 窗口与构建信息 ────────────────────────────────────────────────────────
@@ -361,20 +360,33 @@ export function setPluginViewRoot(root: string): Promise<unknown> {
 
 // ─── 版本、运行时资产与可选组件 ────────────────────────────────────────────
 
-export function versionsCheck<T = unknown>(): Promise<T> {
-  return invoke('versions_check')
+export type RuntimeAssetStatus = {
+  available: boolean
+  reason: string | null
+  platform: string
+  arch: string
+  backend: string | null
+  assetId: string | null
+  activeAssetId: string | null
+  installed: boolean
+  stale: boolean
+  size: number
 }
 
-export function versionsAcceptRuntime(): Promise<unknown> {
-  return invoke('versions_accept_runtime')
+export function versionsCheck<T = unknown>(backend?: string): Promise<T> {
+  return invoke('versions_check', { backend })
 }
 
-export function runtimeAssetInstall(): Promise<unknown> {
-  return invoke('runtime_asset_install')
+export function versionsAcceptRuntime(backend: string): Promise<unknown> {
+  return invoke('versions_accept_runtime', { backend })
 }
 
-export function runtimeAssetStatus<T>(): Promise<T> {
-  return invoke('runtime_asset_status')
+export function runtimeAssetInstall(backend: string): Promise<unknown> {
+  return invoke('runtime_asset_install', { backend })
+}
+
+export function runtimeAssetStatus(backend: string): Promise<RuntimeAssetStatus> {
+  return invoke('runtime_asset_status', { backend })
 }
 
 export function optionalRuntimePackageStatus<T>(pkg: string): Promise<T> {

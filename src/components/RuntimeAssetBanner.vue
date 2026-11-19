@@ -1,20 +1,23 @@
 <script setup lang="ts">
 // 首次运行时：应用本身能开（界面不依赖 Python），但处理能力还没就绪。
 // 这里负责把"缺运行时"变成一条可操作的引导，并在装好后原地刷新状态。
-import { runtimeAssetInstall, runtimeAssetStatus, versionsAcceptRuntime, versionsCheck } from '@/api/native'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { runtimeAssetInstall, runtimeAssetStatus, versionsAcceptRuntime, versionsCheck, type RuntimeAssetStatus } from '@/api/native'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useModelStore } from '@/stores/model'
+import { runtimeAssetOfferBackend } from '@/utils/runtime'
 import RuntimePreparationProgress from '@/components/RuntimePreparationProgress.vue'
 
 const { t } = useI18n()
 const app = useAppStore()
 const models = useModelStore()
 
-const installed = ref(true)
-const stale = ref(false)
+const offer = ref<RuntimeAssetStatus | null>(null)
+const selectedBackend = computed(() => runtimeAssetOfferBackend(app.runtimeInfo))
+const installed = computed(() => offer.value?.installed === true)
+const stale = computed(() => offer.value?.stale === true)
 const checked = ref(false)
 const running = ref(false)
 const percent = ref(0)
@@ -27,10 +30,14 @@ const remoteRuntime = ref('')
 let unlisten: UnlistenFn | null = null
 let disposed = false
 let listenerRequest: Promise<void> | null = null
+let stopStatusWatch: (() => void) | undefined
+let request = 0
 
-const visible = computed(() => checked.value && (!installed.value || Boolean(remoteRuntime.value)))
-const canStart = computed(() => !running.value)
 const remoteAvailable = computed(() => Boolean(remoteRuntime.value))
+const needsSetup = computed(() => app.runtimeInfo?.ready === false && !installed.value)
+const canStart = computed(() => !running.value && offer.value !== null && offer.value.backend === selectedBackend.value)
+const visible = computed(() => running.value || Boolean(error.value)
+  || (checked.value && offer.value !== null && (needsSetup.value || remoteAvailable.value)))
 
 async function ensureProgressListener() {
   if (unlisten || disposed) return
@@ -47,75 +54,62 @@ async function ensureProgressListener() {
 }
 
 async function refreshStatus() {
+  const generation = ++request
+  const backend = selectedBackend.value
+  offer.value = null
+  remoteRuntime.value = ''
+  checked.value = false
   try {
-    const status = await runtimeAssetStatus<{
-      installed: boolean
-      stale?: boolean
-      size: number
-      sha256: string
-    }>()
-    if (disposed) return
-    installed.value = Boolean(status.installed)
-    // stale=true 表示本地那份运行时存在但不是当前版本（缺依赖或版本不符），
-    // 这时的文案要说"需要更新"，否则用户会以为要重装整个应用。
-    stale.value = Boolean(status.stale)
-    totalMb.value = Math.round((status.size || 0) / 1024 / 1024)
-  } catch (err) {
-    if (disposed) return
-    // 命令不存在（旧版本）时不要打扰用户
-    installed.value = true
-    error.value = ''
+    if (!backend) return
+    const status = await runtimeAssetStatus(backend)
+    if (disposed || generation !== request || !status.available || status.backend !== backend) return
+    offer.value = status
+    if (!running.value) totalMb.value = Math.round(status.size / 1024 / 1024)
+  } catch {
+    // An unavailable status is not an install offer.
+    return
   } finally {
-    if (!disposed) checked.value = true
+    if (!disposed && generation === request) checked.value = true
   }
-}
-
-async function checkVersions() {
+  if (!offer.value?.activeAssetId) return
   try {
     const result = await versionsCheck<{
       available?: { runtime?: boolean }
       remote?: { runtime?: string }
-    }>()
-    if (disposed) return
+    }>(backend)
+    if (disposed || generation !== request) return
     remoteRuntime.value = result?.available?.runtime ? String(result?.remote?.runtime || '') : ''
   } catch {
-    // 检查失败表示远端状态未知；暂不展示更新提示，不据此宣称已是最新。
-    if (!disposed) remoteRuntime.value = ''
+    // Local status stays usable when the signed version check fails.
   }
 }
 
-async function acceptRemoteRuntime() {
-  if (!canStart.value) return
-  error.value = ''
-  try {
-    await versionsAcceptRuntime()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-    return
-  }
-  remoteRuntime.value = ''
-  await startInstall()
-}
-
-async function startInstall() {
-  if (!canStart.value) return
+async function startInstall(acceptRemote = false) {
+  const backend = selectedBackend.value
+  if (!canStart.value || !backend) return
   running.value = true
   error.value = ''
   percent.value = 0
   downloadedMb.value = 0
   stage.value = ''
   try {
-    // Retry a failed subscription before starting work whose progress would be lost.
     await ensureProgressListener()
     if (disposed) return
-    await runtimeAssetInstall()
+    if (acceptRemote) {
+      await versionsAcceptRuntime(backend)
+      remoteRuntime.value = ''
+    }
+    await runtimeAssetInstall(backend)
   } catch (err) {
     running.value = false
     error.value = err instanceof Error ? err.message : String(err)
   }
 }
 
-async function onProgress(payload: { stage?: string; percent?: number; downloaded?: number; message?: string }) {
+const acceptRemoteRuntime = () => startInstall(true)
+
+async function onProgress(payload: { stage?: string; percent?: number; downloaded?: number; total?: number; message?: string }) {
+  if (typeof payload.total === 'number') totalMb.value = Math.round(payload.total / 1024 / 1024)
   stage.value = payload.stage || stage.value
   if (typeof payload.percent === 'number') percent.value = Math.round(payload.percent)
   if (typeof payload.downloaded === 'number') downloadedMb.value = Math.round(payload.downloaded / 1024 / 1024)
@@ -126,13 +120,18 @@ async function onProgress(payload: { stage?: string; percent?: number; downloade
   }
   if (payload.stage === 'done') {
     running.value = false
-    installed.value = true
+    error.value = ''
     remoteRuntime.value = ''
-    // worker 每条命令都会重读 active-runtime.json，所以这里只需刷新状态，不用重启应用。
     await Promise.all([
       app.checkRuntimeInfo().catch(() => {}),
       models.loadModels().catch(() => {}),
     ])
+    if (!disposed) await refreshStatus()
+    return
+  }
+  if (payload.stage) {
+    running.value = true
+    error.value = ''
   }
 }
 
@@ -143,13 +142,17 @@ onMounted(async () => {
     // 浏览器预览没有 Tauri 事件桥
   }
   if (disposed) return
-  await refreshStatus()
-  // 本地状态与事件监听先就绪，远端版本查询即使超时也不会漏掉安装进度。
-  if (!disposed && installed.value) await checkVersions()
+  stopStatusWatch = watch(
+    [selectedBackend, () => app.runtimeInfo?.ready, () => app.runtimeInfo?.installState?.pythonPath],
+    () => { void refreshStatus() },
+    { immediate: true },
+  )
+  if (!app.runtimeInfo) void app.ensureRuntimeInfo().catch(() => {})
 })
 
 onBeforeUnmount(() => {
   disposed = true
+  stopStatusWatch?.()
   unlisten?.()
   unlisten = null
 })
@@ -159,7 +162,7 @@ onBeforeUnmount(() => {
   <div v-if="visible" class="runtime-asset-banner" role="status">
     <div class="runtime-asset-banner__head">
       <strong>{{ remoteAvailable ? t('runtimeAsset.newRuntimeTitle') : stale ? t('runtimeAsset.staleTitle') : t('runtimeAsset.title') }}</strong>
-      <span class="runtime-asset-banner__size">{{ totalMb }} MB</span>
+      <span v-if="totalMb > 0" class="runtime-asset-banner__size">{{ totalMb }} MB</span>
     </div>
     <p class="runtime-asset-banner__body">{{ remoteAvailable ? t('runtimeAsset.newRuntimeBody', { asset: remoteRuntime }) : stale ? t('runtimeAsset.staleBody') : t('runtimeAsset.body') }}</p>
     <RuntimePreparationProgress

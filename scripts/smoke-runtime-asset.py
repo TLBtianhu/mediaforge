@@ -35,8 +35,10 @@ def main() -> None:
     if not app.is_relative_to(release) or not descriptor_file.is_relative_to(release / "runtime"):
         raise ValueError("Use the packaged release EXE and a local release/runtime asset descriptor")
     descriptor = json.loads(descriptor_file.read_text(encoding="utf-8"))
-    if set(descriptor) != {"assetId", "backend", "python", "sha256", "size", "urls"} or descriptor["python"] != "3.12":
-        raise ValueError("The runtime descriptor must have the exact current Python 3.12 schema")
+    if (set(descriptor) != {"assetId", "backend", "platform", "arch", "python", "sha256", "size", "urls"}
+            or (descriptor["platform"], descriptor["arch"], descriptor["backend"], descriptor["python"])
+            != ("windows", "x86_64", "cuda", "3.12")):
+        raise ValueError("The runtime descriptor must declare the current Windows x64 CUDA Python 3.12 asset")
     archive = descriptor_file.with_suffix(".zip")
     if archive.stat().st_size != descriptor["size"] or digest(archive) != descriptor["sha256"]:
         raise ValueError("The local archive differs from its descriptor")
@@ -96,6 +98,9 @@ def main() -> None:
         assert digest(runtime / "Scripts/python.exe") == interpreter_hash
         pointer_hash, desired_hash = digest(active), digest(desired)
         invoke("--smoke-install-runtime", {**local, "python": "3.11"}, False)
+        assert digest(active) == pointer_hash and digest(desired) == desired_hash
+        invoke("--smoke-install-runtime", {**local, "platform": "linux"}, False)
+        invoke("--smoke-activate-runtime", {**local, "arch": "aarch64"}, False)
         assert digest(active) == pointer_hash and digest(desired) == desired_hash
         bad = {**local, "assetId": descriptor["assetId"] + "-bad", "size": corrupt.stat().st_size,
                "sha256": "0" * 64, "urls": [f"http://127.0.0.1:{server.server_port}/corrupt.zip"]}

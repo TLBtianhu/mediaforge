@@ -392,6 +392,22 @@ class LibraryReferenceTests(unittest.TestCase):
         self.assertFalse(owned.exists())
         self.assertTrue(source.exists())
 
+    def test_library_rows_expose_only_the_source_derived_thumbnail(self):
+        source = self.asset("source.png")
+        item = self.import_asset(source)
+        directory = self.data / "thumbnails"
+        directory.mkdir()
+        expected = directory / library._thumbnail_filename(str(source.resolve()))
+        wrong = directory / library._thumbnail_filename(str(self.root / "different.png"))
+        for stored, visible in ((wrong, ""), (self.root / expected.name, ""), (expected, str(expected))):
+            with self.subTest(stored=stored):
+                with fixture_database(self.data / "library.db") as connection:
+                    connection.execute("UPDATE assets SET kind='image', thumbnail=? WHERE id=?", (str(stored), item["id"]))
+                rows = library.list_assets(data_root=self.data)["assets"]
+                self.assertEqual(rows[0]["thumbnail"], visible)
+                with fixture_database(self.data / "library.db") as connection:
+                    self.assertEqual(connection.execute("SELECT thumbnail FROM assets").fetchone()[0], str(stored))
+
     def test_shared_schema_contract_parser_rejects_unknown_and_duplicate_keys(self):
         contract = copy.deepcopy(library_schema.CONTRACT)
         path = self.root / "schema.json"

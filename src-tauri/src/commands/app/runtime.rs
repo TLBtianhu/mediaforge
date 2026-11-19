@@ -78,6 +78,18 @@ pub async fn manage_optional_runtime_package(
     Ok(serde_json::json!({ "taskId": task_id, "started": true }))
 }
 
+fn runtime_management_target_supported(platform: &str) -> bool {
+    matches!(platform, "windows" | "linux")
+}
+
+fn require_supported_runtime_management() -> AppResult<()> {
+    if runtime_management_target_supported(std::env::consts::OS) {
+        Ok(())
+    } else {
+        Err(AppError::Worker("runtime management is only available on Windows and Linux".into()))
+    }
+}
+
 pub(crate) fn require_windows_runtime_management() -> AppResult<()> {
     if cfg!(windows) {
         Ok(())
@@ -92,7 +104,7 @@ pub async fn start_runtime_install(
     state: State<'_, AppState>,
     payload: Value,
 ) -> AppResult<Value> {
-    require_windows_runtime_management()?;
+    require_supported_runtime_management()?;
     if let Ok(tasks) = state.tasks.lock() {
         if tasks.keys().any(|id| id.starts_with("runtime_install_")) {
             return Err(AppError::Worker("runtime installation is already running".into()));
@@ -129,12 +141,35 @@ pub async fn cancel_runtime_install(
 
 #[tauri::command]
 pub async fn activate_runtime(app: AppHandle, payload: Value) -> AppResult<Value> {
-    require_windows_runtime_management()?;
+    require_supported_runtime_management()?;
     run_worker_with_payload(&app, "activate_runtime", Some(payload))
 }
 
 #[tauri::command]
 pub async fn delete_runtime(app: AppHandle, payload: Value) -> AppResult<Value> {
-    require_windows_runtime_management()?;
+    require_supported_runtime_management()?;
     run_worker_with_payload(&app, "delete_runtime", Some(payload))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_management_accepts_only_native_worker_targets() {
+        assert!(runtime_management_target_supported("windows"));
+        assert!(runtime_management_target_supported("linux"));
+        for platform in ["macos", "freebsd", "android", "ios"] {
+            assert!(!runtime_management_target_supported(platform));
+        }
+        assert_eq!(
+            require_supported_runtime_management().is_ok(),
+            runtime_management_target_supported(std::env::consts::OS),
+        );
+    }
+
+    #[test]
+    fn debug_file_management_remains_windows_only() {
+        assert_eq!(require_windows_runtime_management().is_ok(), cfg!(windows));
+    }
 }

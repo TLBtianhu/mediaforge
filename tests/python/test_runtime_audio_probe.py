@@ -44,13 +44,19 @@ class RuntimeAudioProbeTests(unittest.TestCase):
 
     def test_audio_decode_and_resampling_keep_both_channels(self) -> None:
         completed = subprocess.run(
-            [sys.executable, str(_worker_test_bootstrap.WORKER_DIR / "core" / "runtime_audio_probe.py")],
+            [sys.executable, "-X", "faulthandler", str(_worker_test_bootstrap.WORKER_DIR / "core" / "runtime_audio_probe.py")],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
-            check=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
+        exit_hex = f"0x{completed.returncode & 0xFFFFFFFF:08X}"
+        self.assertEqual(completed.returncode, 0, (
+            f"Audio probe exited with {completed.returncode} ({exit_hex})\n"
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        ))
         self.assertEqual(json.loads(completed.stdout), {"sampleRate": 8000, "channels": 2, "frames": 160})
 
     def test_top_level_librosa_import_hides_missing_decoder_but_probe_rejects_it(self) -> None:

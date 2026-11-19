@@ -1,7 +1,7 @@
 import { debugEditorPlayback } from '@/api/native'
 import { onBeforeUnmount, type Ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 import i18n from '@/i18n'
 import { normalizeMasterLimiter } from '@/utils/masterLimiter'
 import masterLimiterWorkletUrl from '@/audio/masterLimiterProcessor.js?url'
@@ -36,7 +36,6 @@ type ManagedAudio = {
   metadataPromise: Promise<void>
   playPromise: Promise<void> | null
   lastSeekAt: number
-  fallbackUrl?: string | null
   graphEnabled?: boolean
   channelMode?: 'mono' | 'stereo'
   sourceNode?: AudioNode | null
@@ -118,22 +117,6 @@ export function useEditorPlayback(options: PlaybackOptions) {
     if (audioParamValueCache.get(param) === value) return
     param.value = value
     audioParamValueCache.set(param, value)
-  }
-
-  function resolveAudioUrl(path: string) {
-    try {
-      return convertFileSrc(path)
-    } catch {
-      const normalized = path.replace(/\\/g, '/')
-      if (/^[a-zA-Z]:\//.test(normalized)) return `file:///${normalized}`
-      return path
-    }
-  }
-
-  function resolveFileFallbackUrl(path: string) {
-    const normalized = path.replace(/\\/g, '/')
-    if (/^[a-zA-Z]:\//.test(normalized)) return `file:///${normalized}`
-    return null
   }
 
   function ensureAudioContext() {
@@ -504,13 +487,11 @@ export function useEditorPlayback(options: PlaybackOptions) {
       audioEntries.delete(clip.id)
     }
 
-    const primaryUrl = resolveAudioUrl(source.path)
-    const fallbackUrl = resolveFileFallbackUrl(source.path)
     const ctx = ensureAudioContext()
     const isScheduled = Boolean(ctx && useScheduledAudio)
     // Scheduled audio connects directly to the graph; only the media transport
     // owns an HTMLAudioElement.
-    const audio = isScheduled ? null : createEditorAudioElement(primaryUrl)
+    const audio = isScheduled ? null : createEditorAudioElement(mediaPreviewUrl(source.path))
 
     const entry: ManagedAudio = {
       clipId: clip.id,
@@ -518,7 +499,6 @@ export function useEditorPlayback(options: PlaybackOptions) {
       sourceId: source.id,
       sourcePath: source.path,
       audio,
-      fallbackUrl: fallbackUrl && fallbackUrl !== primaryUrl ? fallbackUrl : null,
       graphEnabled: undefined,
       metadataReady: !audio || audio.readyState >= 1,
       metadataPromise: Promise.resolve(),
@@ -528,12 +508,6 @@ export function useEditorPlayback(options: PlaybackOptions) {
 
     audio?.addEventListener('error', () => {
       if (audioEntries.get(entry.clipId) !== entry) return
-      if (entry.fallbackUrl && audio.currentSrc !== entry.fallbackUrl && audio.src !== entry.fallbackUrl) {
-        entry.metadataReady = false
-        audio.src = entry.fallbackUrl
-        audio.load()
-        return
-      }
       if (intent.value === 'play' && activeClips().some(({ clip }) => (
         clip.id === entry.clipId && clipIsActive(clip, currentTime.value)
       ))) {

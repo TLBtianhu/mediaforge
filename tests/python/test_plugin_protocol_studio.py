@@ -6,7 +6,6 @@ import contextlib
 import io
 import json
 import os
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,8 +13,10 @@ from unittest import mock
 
 if __package__:
     from . import _bootstrap as _worker_test_bootstrap
+    from ._plugin_marketplace_fixture import MarketplaceFixture
 else:
     import _bootstrap as _worker_test_bootstrap
+    from _plugin_marketplace_fixture import MarketplaceFixture
 
 from core import worker_plugins as plugins
 
@@ -36,8 +37,9 @@ class ContributionTests(unittest.TestCase):
         self.addCleanup(self.environment.stop)
         (self.work / "active.json").write_text('{"backend":"cpu"}')
         self.root = plugins._root()
+        self.marketplace = MarketplaceFixture(self)
 
-    def managed(self, name: str, *, views: str = "", graphs: str = "") -> Path:
+    def managed(self, name: str) -> Path:
         source = self.work / "sources" / name
         source.mkdir(parents=True)
         (source / "ui").mkdir()
@@ -76,11 +78,12 @@ modes = ["rendered_preview"]
             f"    plugin.register_operation(id='author.{name}.process', title='P', inputs={{}},\n"
             f"        params={{'type':'object','properties':{{}}}}, outputs={{}}, run=lambda c,i,p: {{}})\n"
         )
+        self.marketplace.pin(source)
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            code = plugins.cmd_manage_plugin({"action": "install", "target": str(source), "taskId": "plugin_protocol_test", "mirror": "pypi"})
+            code = plugins.cmd_manage_plugin({"action": "install", "name": name, "taskId": "plugin_protocol_test", "mirror": "pypi"})
         events = [json.loads(line) for line in output.getvalue().splitlines() if line]
-        assert code == 0, events
+        self.assertEqual(code, 0, events)
         return source
 
     def test_manifest_contributions_surface_views_graphs_player(self):

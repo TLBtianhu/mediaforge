@@ -60,6 +60,18 @@ test('a terminal event delivered before invoke returns completes installation', 
   assert.equal(pluginRevision.value, before + 1)
 })
 
+test('marketplace forwards a catalog name and drops injected source overrides', async () => {
+  await reset()
+  const completion = market.manage('install', { name: 'hello', target: 'https://example.invalid/code', sha256: 'fake' })
+  await nextTurn()
+  const request = requests.find(entry => entry.command === 'manage_plugin')
+  assert.equal(request.payload.name, 'hello')
+  assert.equal('target' in request.payload, false)
+  assert.equal('sha256' in request.payload, false)
+  event('plugin_manage_result', { ...empty(), updates: {} }, request.payload.taskId)
+  await completion
+})
+
 test('a server-assigned id is accepted even when its event arrives before acknowledgement', async () => {
   await reset()
   globalThis.__pluginInvoke = async (command, args) => {

@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { revealPath } from '@/api/native'
+import { pickPreviewFiles, revealPath } from '@/api/native'
 import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onMounted, ref } from 'vue'
 
@@ -81,15 +81,7 @@ useMediaDrop({
 
 async function pickFiles() {
   try {
-    const selected = await open({
-      multiple: true,
-      filters: [{
-        name: 'Media',
-        extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'jpg', 'jpeg', 'png', 'webp', 'gif'],
-      }],
-    })
-    if (!selected) return
-    addInputs(Array.isArray(selected) ? selected : [selected])
+    addInputs(await pickPreviewFiles('library'))
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }

@@ -22,6 +22,7 @@ from ._job_fixtures import audio_group, job_record, write_record
 from core import job_quota, job_store
 from core.operation_kernel import OperationKernel, _atomic_write
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core.worker_supervisor import READY
 from shared.worker_subprocess import hidden_subprocess_kwargs
 
 
@@ -61,7 +62,7 @@ class QuotaTests(unittest.TestCase):
         path = self.root / "settings" / "app.json"
         path.parent.mkdir(exist_ok=True)
         temporary = path.with_suffix(".writing")
-        temporary.write_text(json.dumps({"maxConcurrentSeparations": limit}), encoding="utf-8")
+        temporary.write_text(json.dumps({"version": 1, "maxConcurrentSeparations": limit}), encoding="utf-8")
         temporary.replace(path)
 
     def hold_slot(self, index=0):
@@ -110,6 +111,32 @@ class QuotaTests(unittest.TestCase):
                     self.assertEqual(job_quota.read_limit(self.root), case["expected"])
                 self.assertEqual(settings.read_bytes() if settings.exists() else None, before)
 
+    def test_full_current_settings_schema_is_enforced(self):
+        path = self.root / "settings" / "app.json"
+        path.parent.mkdir()
+        current = {
+            "version": 1, "themeMode": "dark", "themeAccent": "teal", "scaleFactor": 1.25,
+            "locale": "zh-CN", "animationsEnabled": True, "developerMode": False,
+            "modelDir": "models", "outputDir": "outputs", "defaultDevice": "cuda",
+            "defaultFormat": "wav", "downloadSource": "modelscope", "downloadMethod": "aria2c",
+            "maxConcurrentSeparations": 4, "clearInputAfterSubmit": True,
+            "wavBitDepth": "FLOAT", "flacBitDepth": "PCM_24", "mp3BitRate": "320k",
+            "m4aBitRate": "256k", "m4aCodec": "aac", "startupOnboardingSeen": True,
+            "beginnerGuideInvitationSeen": True, "beginnerGuideProgress": {"status": "pending"},
+            "proxyMode": "system", "proxyUrl": "", "proxyBypass": "",
+            "updateChannel": "stable", "updateSource": "auto", "updateEndpointOverride": "",
+        }
+        path.write_text(json.dumps(current), encoding="utf-8")
+        self.assertEqual(job_quota.read_limit(self.root), 4)
+        for name, value in [
+            ("themeMode", "neon"), ("scaleFactor", "wide"), ("beginnerGuideProgress", []),
+            ("downloadSource", 1), ("updateChannel", "nightly"), ("animationsEnabled", 1),
+        ]:
+            with self.subTest(field=name):
+                path.write_text(json.dumps({**current, name: value}), encoding="utf-8")
+                with self.assertRaises(job_store.JobStoreError):
+                    job_quota.read_limit(self.root)
+
     def test_only_manifest_compute_commands_reserve_capacity(self):
         contract = json.loads(job_quota.CONTRACT_PATH.read_text(encoding="utf-8"))
         self.assertEqual(job_quota.MAX_COMPUTE_WORKERS, 4)
@@ -121,7 +148,7 @@ class QuotaTests(unittest.TestCase):
     def test_reparse_settings_are_rejected_before_reading(self):
         path = self.root / "settings" / "app.json"
         path.parent.mkdir()
-        original = b'{"maxConcurrentSeparations": 4}'
+        original = b'{"version": 1, "maxConcurrentSeparations": 4}'
         path.write_bytes(original)
         metadata = mock.Mock(st_mode=0, st_file_attributes=0x400)
         with mock.patch.object(Path, "lstat", return_value=metadata):
@@ -145,6 +172,29 @@ class QuotaTests(unittest.TestCase):
             again.release()
         self.assertEqual(len(list((self.jobs / ".quota").glob("global-*.lock"))), 4)
 
+    def test_reaping_guard_keeps_occupancy_after_owner_exit_without_counting_twice(self):
+        with job_store.catalog_lock(self.jobs):
+            owner = job_quota.try_acquire(self.jobs, 2)
+        self.assertIsNotNone(owner)
+        try:
+            with runtime_lock(owner.fence_path, timeout=0):
+                with job_store.catalog_lock(self.jobs):
+                    other = job_quota.try_acquire(self.jobs, 2)
+                self.assertIsNotNone(other)
+                try:
+                    self.assertEqual(other.index, 1)
+                finally:
+                    other.release()
+                owner.release()
+                with job_store.catalog_lock(self.jobs):
+                    self.assertIsNone(job_quota.try_acquire(self.jobs, 1))
+            with job_store.catalog_lock(self.jobs):
+                replacement = job_quota.try_acquire(self.jobs, 1)
+            self.assertIsNotNone(replacement)
+            replacement.release()
+        finally:
+            owner.release()
+
     def test_windows_sharing_conflict_is_busy_but_acl_denial_releases_prior_probes(self):
         for winerror in (32, 33, 5):
             with self.subTest(winerror=winerror):
@@ -160,17 +210,17 @@ class QuotaTests(unittest.TestCase):
                     try:
                         yield True
                     finally:
-                        released.append(index)
+                        released.append((path.parent.name, index))
 
                 with mock.patch.object(job_quota, "runtime_lock", side_effect=fake_lock):
                     if winerror == 5:
                         with self.assertRaises(PermissionError) as raised:
                             job_quota.try_acquire(self.jobs, 1)
                         self.assertIs(raised.exception, error)
-                        self.assertEqual(released, [0])
+                        self.assertEqual(released, [("reaping", 0), (".quota", 0)])
                     else:
                         self.assertIsNone(job_quota.try_acquire(self.jobs, 1))
-                        self.assertCountEqual(released, [0, 2, 3])
+                        self.assertCountEqual(released, [(directory, index) for directory in (".quota", "reaping") for index in (0, 2, 3)])
 
     @unittest.skipUnless(os.name == "nt", "Windows CRT/Win32 error classification")
     def test_crt_permission_error_probes_native_sharing_without_swallowing_acl_or_missing(self):
@@ -410,7 +460,7 @@ finally:
         kernel = self.kernel()
         path = self.root / "settings" / "app.json"
         path.parent.mkdir()
-        original = b'{"maxConcurrentSeparations": false}'
+        original = b'{"version": 1, "maxConcurrentSeparations": false}'
         path.write_bytes(original)
         with self.assertRaises(job_store.JobStoreError):
             kernel.start("run_operation", {"requestId": "invalid_settings"})
@@ -473,7 +523,7 @@ finally:
             with self.assertRaises(OSError):
                 kernel._try_claim_next()
         self.assertEqual((self.jobs / f"{job.job_id}.json").read_bytes(), original)
-        with runtime_lock(kernel._lease_path(job.job_id), timeout=0):
+        with job_store.owner_lock(self.jobs, job.job_id):
             pass
         with job_store.catalog_lock(self.jobs):
             lease = job_quota.try_acquire(self.jobs, 1)
@@ -499,16 +549,18 @@ finally:
             queued = kernel.start("run_operation", {"requestId": "cleanup_pending"})
         job = kernel._try_claim_next()
         self.assertIs(job, queued)
-        process = mock.Mock(stdout=io.StringIO('{"type":"task.progress","payload":{"fraction":0.5}}\n'))
+        process = mock.Mock(stdin=io.StringIO(), stdout=io.StringIO(READY + '{"type":"task.progress","payload":{"fraction":0.5}}\n'), stderr=None)
         process.poll.return_value = None
         process.wait.side_effect = [subprocess.TimeoutExpired("fixture", 5), 0]
-        process.kill.side_effect = OSError("isolated kill denied")
         try:
             with mock.patch("core.operation_kernel.subprocess.Popen", return_value=process), \
-                 mock.patch("core.operation_kernel.threading.Thread"), \
+                 mock.patch("core.operation_kernel.threading.Thread") as thread, \
                  mock.patch.object(kernel, "_consume", side_effect=ValueError("isolated callback failed")):
+                thread.return_value.is_alive.return_value = False
                 kernel._run(job)
             self.assertTrue(job._cleanup_pending)
+            self.assertTrue(process.stdin.closed)
+            process.kill.assert_not_called()
             self.assertIsNotNone(job._lease)
             self.assertIsNotNone(job._quota_lease)
             self.assertTrue((job.workdir / "payload.json").exists())
@@ -523,7 +575,6 @@ finally:
                 self.assertIsNotNone(lease)
                 lease.release()
         finally:
-            process.kill.side_effect = None
             process.wait.side_effect = None
             process.wait.return_value = 0
             kernel._cleanup_process(job)
@@ -543,7 +594,7 @@ finally:
             {"type": "task.progress", "payload": {"fraction": 0.75}},
             {"type": "task.result", "payload": {"outputs": [{"path": "finished.wav"}]}},
         ]
-        process = mock.Mock(stdout=io.StringIO("\n".join(json.dumps(event) for event in events)))
+        process = mock.Mock(stdin=io.StringIO(), stdout=io.StringIO(READY + "\n".join(json.dumps(event) for event in events)), stderr=None)
         process.poll.return_value = None
         consumed = kernel._consume
         observations = []
@@ -567,7 +618,8 @@ finally:
                     kernel._watch_cancel(job, process)
                 if mode != "complete":
                     self.assertEqual(job.status, "cancelled")
-                    process.terminate.assert_called_once()
+                    self.assertTrue(process.stdin.closed)
+                    process.terminate.assert_not_called()
                 with job_store.catalog_lock(self.jobs):
                     self.assertIsNone(job_quota.try_acquire(self.jobs, 1))
 
@@ -583,8 +635,9 @@ finally:
 
         process.wait.side_effect = waited
         with mock.patch("core.operation_kernel.subprocess.Popen", return_value=process), \
-             mock.patch("core.operation_kernel.threading.Thread"), \
+             mock.patch("core.operation_kernel.threading.Thread") as thread, \
              mock.patch.object(kernel, "_consume", side_effect=observe):
+            thread.return_value.is_alive.return_value = False
             kernel._run(job)
         self.assertEqual(len(observations), 1)
         record = job_store.read_jobs(self.jobs)[job_id]
@@ -596,6 +649,7 @@ finally:
         self.assertTrue(job._process_reaped)
         self.assertIsNone(job._lease)
         self.assertIsNone(job._quota_lease)
+        self.assertTrue(process.stdin.closed)
         self.assertTrue(process.stdout.closed)
         process.wait.assert_called_once()
         with job_store.catalog_lock(self.jobs):

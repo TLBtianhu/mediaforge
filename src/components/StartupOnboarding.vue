@@ -16,6 +16,7 @@ import {
   detectRuntimePlatform,
   preferredInstalledRuntimeBackend,
   recommendedRuntimeBackend,
+  runtimeBackendsForTarget,
   runtimeEnvironmentForBackend,
   runtimeBackendLabel as runtimeBackendName,
   runtimeSizeHint,
@@ -69,22 +70,20 @@ function backendInstalled(backend: RuntimeBackend) {
 }
 
 const runtimeBackendChoices = computed(() => {
-  const { isMac } = runtimePlatform.value
-  const backend: RuntimeBackend = isMac ? 'mlx' : 'cpu'
-  const items: Array<{ value: RuntimeBackend; label: string; hint: string }> = [
-    { value: backend, label: runtimeBackendName(backend), hint: t(isMac ? 'onboarding.runtimeMlx' : 'onboarding.runtimeCpu') },
-  ]
-  if (!isMac) {
-    items.push(
-      { value: 'cuda', label: runtimeBackendName('cuda'), hint: t('onboarding.runtimeCuda') },
-      { value: 'rocm', label: runtimeBackendName('rocm'), hint: t(app.runtimeInfo?.platform === 'linux' ? 'onboarding.runtimeRocmLinux' : 'onboarding.runtimeRocm') },
-    )
+  const platform = app.runtimeInfo?.platform
+  const descriptions: Record<RuntimeBackend, string> = {
+    cpu: 'onboarding.runtimeCpu',
+    cuda: 'onboarding.runtimeCuda',
+    rocm: platform === 'linux' ? 'onboarding.runtimeRocmLinux' : 'onboarding.runtimeRocm',
+    mlx: 'onboarding.runtimeMlx',
   }
-  return items.map((item) => ({
-    ...item,
-    installed: backendInstalled(item.value),
-    recommended: runtimeRecommendedBackend.value === item.value,
-    size: runtimeSizeHint(item.value),
+  return runtimeBackendsForTarget(platform, app.runtimeInfo?.machine).map((backend) => ({
+    value: backend,
+    label: runtimeBackendName(backend),
+    hint: t(descriptions[backend]),
+    installed: backendInstalled(backend),
+    recommended: runtimeRecommendedBackend.value === backend,
+    size: runtimeSizeHint(backend),
   }))
 })
 

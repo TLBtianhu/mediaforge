@@ -271,19 +271,19 @@ fn unresolved_generic_input(command: &str, payload: &Value) -> bool {
     false
 }
 
-fn candidates(row: &Value) -> Vec<(String, Option<&'static str>)> {
+fn candidates(row: &Value) -> Vec<(&str, Option<&'static str>)> {
     let result = &row["result"];
     let command = row["command"].as_str().unwrap();
     let mut paths = Vec::new();
     if command == "export_editor_mix" {
-        if let Some(path) = result["path"].as_str().filter(|path| !path.trim().is_empty()) { paths.push((path.into(), None)); }
+        if let Some(path) = result["path"].as_str().filter(|path| !path.trim().is_empty()) { paths.push((path, None)); }
         return paths;
     }
     if command == "run_operation" {
         if let Some(outputs) = result["outputs"].as_object() {
             for output in outputs.values() {
                 if output["kind"] == "audio_file" {
-                    if let Some(path) = output["path"].as_str() { paths.push((path.into(), None)); }
+                    if let Some(path) = output["path"].as_str() { paths.push((path, None)); }
                 }
             }
         }
@@ -293,7 +293,7 @@ fn candidates(row: &Value) -> Vec<(String, Option<&'static str>)> {
         for output in outputs {
             if let Some(path) = output["path"].as_str() {
                 let not_file = output.get("kind").is_some_and(|kind| !matches!(kind.as_str(), Some("file" | "audio_file" | "image_file" | "video_file")));
-                paths.push((path.into(), not_file.then_some("output_descriptor_not_file")));
+                paths.push((path, not_file.then_some("output_descriptor_not_file")));
             }
         }
     }
@@ -301,15 +301,45 @@ fn candidates(row: &Value) -> Vec<(String, Option<&'static str>)> {
         let operation = row.pointer("/payload/operation").and_then(Value::as_str).unwrap_or("");
         if matches!(operation, "convert" | "slicer" | "asr" | "loudness") {
             if let Some(outputs) = result["outputPaths"].as_array() {
-                for output in outputs { if let Some(path) = output.as_str() { paths.push((path.into(), None)); } }
+                for output in outputs { if let Some(path) = output.as_str() { paths.push((path, None)); } }
             }
         } else if matches!(operation, "merge" | "midi") {
             if let Some(path) = result["outputPath"].as_str() {
-                paths.push((path.into(), (operation == "midi").then_some("output_ownership_uncertain")));
+                paths.push((path, (operation == "midi").then_some("output_ownership_uncertain")));
             }
         }
     }
     paths
+}
+
+pub(crate) fn preview_result_paths(row: &Value) -> impl Iterator<Item = &Path> {
+    let is_result = row["command"].as_str().is_some_and(super::protocol::is_result_job_command);
+    is_result.then(|| candidates(row)).into_iter().flatten()
+        .filter_map(|(path, reason)| reason.is_none().then_some(Path::new(path)))
+}
+
+pub(crate) fn remember_previews(app: &tauri::AppHandle, row: &Value) {
+    for path in preview_result_paths(row) {
+        crate::preview_assets::remember(app, path);
+    }
+    for path in preview_image_originals(row) {
+        crate::preview_assets::remember_image(app, path);
+    }
+}
+
+/// Restore the image comparison's original only when the accepted result
+/// identifies an actual input of the same manual image task.
+fn preview_image_originals(row: &Value) -> impl Iterator<Item = &Path> {
+    let is_image_job = row["source"] == "manual"
+        && row["result"]["operation"] == "media_image"
+        && (row["command"] == "media_image"
+            || (row["command"] == "audio_tools" && row["payload"]["operation"] == "media_image"));
+    let inputs = row["payload"]["inputs"].as_array().filter(|_| is_image_job);
+    row["result"]["outputs"].as_array().into_iter().flatten()
+        .filter_map(|output| output["source"].as_str().map(Path::new))
+        .filter(move |source| source.is_absolute() && inputs.is_some_and(|inputs| {
+            inputs.iter().filter_map(Value::as_str).map(Path::new).any(|input| input == *source)
+        }))
 }
 
 pub(crate) fn remove(root: &Path, ids: &[String], delete_files: bool, check_only: bool, protection: &Protection,
@@ -331,7 +361,7 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
     let mut response = RemovalResult { schema_version: 2, checked_job_ids: vec![],
         removed_job_ids: vec![], trashed: vec![], failed: vec![], retained: vec![] };
     if requested.is_empty() { return Ok(response); }
-    for path in [root.to_path_buf(), root.join("agent-jobs"), root.join("agent-jobs/.owners"), root.join("agent-jobs/.writes")] {
+    for path in [root.to_path_buf(), root.join("agent-jobs"), root.join("agent-jobs/.owners"), root.join("agent-jobs/.owners/reaping"), root.join("agent-jobs/.writes")] {
         plain_path(&path).map_err(invalid)?;
     }
     let _catalog = task_journal::catalog_lock(root)?;
@@ -402,10 +432,10 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
             let mut outputs = BTreeMap::new();
             let mut managed_exports = BTreeSet::new();
             for row in &rows { for (path, reason) in candidates(row) {
-                if managed_editor_export(root, row, Path::new(&path)) { managed_exports.insert(key(Path::new(&path))); }
-                outputs.entry(key(Path::new(&path))).and_modify(|entry: &mut (String, Option<&'static str>)| {
+                if managed_editor_export(root, row, Path::new(path)) { managed_exports.insert(key(Path::new(path))); }
+                outputs.entry(key(Path::new(path))).and_modify(|entry: &mut (String, Option<&'static str>)| {
                     if reason.is_some() { entry.1 = reason; }
-                }).or_insert((path, reason));
+                }).or_insert_with(|| (path.to_owned(), reason));
             } }
             for (_, (path, forced)) in outputs {
                 let target = Path::new(&path);
@@ -455,19 +485,7 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
                 Err(error) => return Err(error.into()),
             }
         }
-        let nonce = format!("{}-{}", std::process::id(), task_journal::now().to_bits());
-        let mut renamed = Vec::new();
-        for id in &selected {
-            let original = task_journal::job_path(root, id)?;
-            let pending = original.with_file_name(format!(".{id}.{nonce}.removing"));
-            if let Err(error) = fs::rename(&original, &pending) {
-                for (original, pending) in renamed.iter().rev() { let _ = fs::rename(pending, original); }
-                return Err(error.into());
-            }
-            renamed.push((original, pending));
-        }
-        // These are only our exact journal transaction files, never output paths.
-        for (_, pending) in renamed { fs::remove_file(pending)?; }
+        super::job_removal::remove_unlocked(root, &selected)?;
         response.removed_job_ids = response.checked_job_ids.clone();
         Ok(response)
     })
@@ -477,6 +495,45 @@ fn remove_with(root: &Path, ids: &[String], kind: RemovalKind, delete_files: boo
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn preview_result_paths_exclude_inputs_and_unknown_output_shapes() {
+        let result = json!({
+            "command": "media_image", "payload": {"inputs": ["source.png"]},
+            "result": {"outputs": [
+                {"path": "out.png", "source": "source.png"},
+                {"path": "preview.png", "kind": "image_file"},
+                {"path": "metadata.png", "kind": "scalar"}
+            ], "failed": [{"path": "failed.png"}]}
+        });
+        assert_eq!(preview_result_paths(&result).collect::<Vec<_>>(), [Path::new("out.png"), Path::new("preview.png")]);
+
+        let mut unknown = result;
+        unknown["command"] = json!("media_library");
+        assert!(preview_result_paths(&unknown).next().is_none());
+        let exported = json!({"command": "export_editor_mix", "result": {"path": "mix.wav", "outputs": [{"path": "other.wav"}]}});
+        assert_eq!(preview_result_paths(&exported).collect::<Vec<_>>(), [Path::new("mix.wav")]);
+    }
+
+    #[test]
+    fn image_comparison_uses_only_the_matched_original_from_the_durable_job() {
+        let temp = tempfile::tempdir().unwrap();
+        let original = temp.path().join("original.png");
+        let unused = temp.path().join("unused.png");
+        let foreign = temp.path().join("foreign.png");
+        let mut row = json!({
+            "source": "manual", "command": "audio_tools",
+            "payload": {"operation": "media_image", "inputs": [original, unused, "relative.png"]},
+            "result": {"operation": "media_image", "outputs": [
+                {"path": "restored.png", "source": original},
+                {"path": "other.png", "source": foreign},
+                {"path": "relative-restored.png", "source": "relative.png"}
+            ]}
+        });
+        assert_eq!(preview_image_originals(&row).collect::<Vec<_>>(), [original.as_path()]);
+        row["payload"]["operation"] = json!("media_video");
+        assert!(preview_image_originals(&row).next().is_none());
+    }
 
     struct Fixture { _temp: tempfile::TempDir, root: PathBuf, output: PathBuf, _serial: std::sync::MutexGuard<'static, ()> }
     impl Fixture {

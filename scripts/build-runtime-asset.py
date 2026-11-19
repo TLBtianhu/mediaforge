@@ -75,9 +75,10 @@ def run(python: Path, args: list[str], stage: Path, *, capture: bool = False) ->
 
 
 def python_info(python: Path, stage: Path) -> dict:
-    return json.loads(run(python, ["-I", "-c", "import json,sys; print(json.dumps({"
+    return json.loads(run(python, ["-I", "-c", "import json,sys,sysconfig; print(json.dumps({"
         "'version':'.'.join(map(str,sys.version_info[:2])), 'fullVersion':sys.version.split()[0],"
-        "'prefix':sys.prefix, 'basePrefix':sys.base_prefix, 'path':sys.path}))"], stage, capture=True))
+        "'prefix':sys.prefix, 'basePrefix':sys.base_prefix, 'platform':sysconfig.get_platform(),"
+        "'path':sys.path}))"], stage, capture=True))
 
 
 def checked_stage(asset_id: str, stage: Path) -> Path:
@@ -95,8 +96,8 @@ def checked_stage(asset_id: str, stage: Path) -> Path:
 
 def copy_base(python: Path, stage: Path, expected: str) -> None:
     info = python_info(python, stage)
-    if info["version"] != expected or info["prefix"] != info["basePrefix"]:
-        raise ValueError(f"A non-venv Python {expected} host is required")
+    if info["version"] != expected or info["prefix"] != info["basePrefix"] or info.get("platform") != "win-amd64":
+        raise ValueError(f"A non-venv Windows x64 Python {expected} host is required")
     base = Path(info["basePrefix"])
     if stage.exists():
         raise FileExistsError("Refusing to overwrite an existing runtime stage")
@@ -115,7 +116,8 @@ def copy_base(python: Path, stage: Path, expected: str) -> None:
         "site-packages", "EXTERNALLY-MANAGED", "__pycache__", "*.pyc", "test", "tests", "idlelib", "tkinter"))
     (stage / "Lib/site-packages").mkdir()
     actual = python_info(scripts / "python.exe", stage)
-    if actual["version"] != expected or Path(actual["prefix"]) != stage or actual["prefix"] != actual["basePrefix"]:
+    if (actual["version"] != expected or Path(actual["prefix"]) != stage
+            or actual["prefix"] != actual["basePrefix"] or actual.get("platform") != "win-amd64"):
         raise ValueError("The staged interpreter did not discover its own standard library")
     (stage / OWNER).write_text(json.dumps({"schemaVersion": 1, "python": expected,
                                          "hostVersion": info["fullVersion"]}), encoding="utf-8")
@@ -127,6 +129,7 @@ def install(stage: Path, backend: str, manifest: dict) -> None:
     actual = python_info(python, stage)
     if (owned.get("schemaVersion") != 1 or owned.get("python") != manifest["python"]
             or actual["version"] != manifest["python"] or actual["prefix"] != actual["basePrefix"]
+            or actual.get("platform") != "win-amd64"
             or Path(actual["prefix"]) != stage):
         raise ValueError("Owned runtime stage no longer matches the declared interpreter")
     # This fresh application-owned copy is not the uv-managed source installation.
@@ -154,10 +157,11 @@ def install(stage: Path, backend: str, manifest: dict) -> None:
 
 def verify(stage: Path, backend: str, expected: str) -> dict:
     python = stage / "Scripts/python.exe"
-    code = """import importlib,json,sys,torch
+    code = """import importlib,json,sys,sysconfig,torch
 from pathlib import Path
 root=Path(sys.argv[1]).resolve()
 assert sys.version_info[:2]==(3,12),sys.version
+assert sysconfig.get_platform()=='win-amd64',sysconfig.get_platform()
 assert sys.prefix==sys.base_prefix and Path(sys.prefix).resolve()==root
 assert not (root/'pyvenv.cfg').exists() and not (root/'Scripts/pyvenv.cfg').exists()
 for module in ('pymss','pymss_core','pymss.graph','av','librosa','cv2','spandrel','propainter'):
@@ -205,7 +209,7 @@ def package(stage: Path, asset_id: str, backend: str, info: dict) -> dict:
         os.link(pending, archive)
     finally:
         pending.unlink(missing_ok=True)
-    descriptor = {"assetId": asset_id, "backend": backend, "python": "3.12",
+    descriptor = {"assetId": asset_id, "backend": backend, "platform": "windows", "arch": "x86_64", "python": "3.12",
                   "size": archive.stat().st_size, "sha256": digest, "urls": [
                       f"https://hf-mirror.com/datasets/TLBtianhu/MediaForge-Dist/resolve/main/runtime/{asset_id}.zip",
                       f"https://www.modelscope.cn/datasets/TLBtianhu/MediaForge-Dist/resolve/master/runtime/{asset_id}.zip"]}

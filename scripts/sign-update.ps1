@@ -1,5 +1,5 @@
-# Sign an existing release update with an explicit key path. Passwords are read
-# only from the current process environment and injected into the signer child.
+# Sign an existing release update with an explicit key path. The signing helper
+# resolves the password and injects it into the signer child.
 param(
     [string]$Version = '',
     [string]$OutputDir = '',
@@ -24,6 +24,5 @@ if ($output -ne $releaseRoot -and -not $output.StartsWith($releaseRoot + [IO.Pat
 $zip = Join-Path $output "MediaForge-$Version-windows-x64-update.zip"
 if (-not $KeyPath) { $KeyPath = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PATH', 'Process') }
 if (-not $KeyPath) { throw 'Set TAURI_SIGNING_PRIVATE_KEY_PATH or pass -KeyPath explicitly' }
-Invoke-ReleaseArchiveSigning -Archive $zip -ExpectedVersion $Version -Root $root -KeyPath $KeyPath `
-    -Password ([Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'Process'))
+Invoke-ReleaseArchiveSigning -Archive $zip -ExpectedVersion $Version -Root $root -KeyPath $KeyPath
 Write-Host 'Update archive signed'

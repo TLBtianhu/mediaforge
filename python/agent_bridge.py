@@ -619,7 +619,14 @@ class Bridge:
         from core.job_store import resolve_payload
 
         used = self._retry_counts.get(job_id, 0)
-        plan = plan_retry(resolve_payload(snapshot, self.jobs.jobs_root), snapshot.get("result"), attempts_used=used)
+        request = resolve_payload(snapshot, self.jobs.jobs_root)
+        result = snapshot.get("result")
+        tasks = request.get("tasks")
+        if (snapshot.get("source") == "agent" and snapshot.get("command") == "infer"
+                and isinstance(tasks, list) and len(tasks) > 1 and isinstance(result, dict) and result.get("outputs")):
+            return {"ok": False, "jobId": job_id, "attemptsUsed": used,
+                    "error": "some inputs produced outputs; submit only the failed inputs to retry"}
+        plan = plan_retry(request, result, attempts_used=used)
         if not plan["ok"]:
             return {**plan, "jobId": job_id, "attemptsUsed": used}
         self._retry_counts[job_id] = used + 1
@@ -658,6 +665,11 @@ class Bridge:
         if not tool["available"]:
             return {"ok": False, "tool": name, "code": "TOOL_UNAVAILABLE", "error": "This tool is not available in the current runtime"}
         payload = dict(arguments)
+        if tool["name"] == "audio.separate":
+            try:
+                payload = self._separation_payload(arguments)
+            except ValueError as error:
+                return {"ok": False, "tool": name, "code": "INPUT_NOT_FOUND", "error": str(error)}
         if tool["operation"]:
             payload.setdefault("operation", tool["operation"])
         if tool["command"] == "media_tool" and tool["operation"] != "media_probe":
@@ -683,6 +695,36 @@ class Bridge:
         terminal = outcome.get("result") or {}
         body = terminal.get("payload") if isinstance(terminal.get("payload"), dict) else {}
         return {"ok": outcome["ok"], "tool": name, **body}
+
+    def _separation_payload(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        inputs: list[str] = []
+        for index, value in enumerate(arguments["inputs"]):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"inputs[{index}] must be a non-empty file path")
+            try:
+                path = Path(value).resolve(strict=True)
+                if not path.is_file():
+                    raise FileNotFoundError(value)
+            except (OSError, RuntimeError, ValueError) as error:
+                raise ValueError(f"inputs[{index}] is not an available file: {value!r}") from error
+            inputs.append(str(path))
+        job_id = f"job_{uuid.uuid4().hex[:12]}"
+        payload = {
+            "model": arguments["model"],
+            "modelDir": str(self.model_root.absolute()),
+            "output": str(self.data_root.absolute() / "outputs" / job_id),
+            "download": False,
+            "requestId": job_id,
+            "taskId": job_id,
+        }
+        if len(inputs) == 1:
+            payload["input"] = inputs[0]
+        else:
+            payload["tasks"] = [
+                {"taskId": f"{job_id}-t{index}", "input": path, "inputIndex": index}
+                for index, path in enumerate(inputs, 1)
+            ]
+        return payload
 
     # ---- JSON-RPC ------------------------------------------------------------
 

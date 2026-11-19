@@ -11,8 +11,9 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -223,10 +224,11 @@ struct ActiveRuntimeRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ActiveRuntimeSelection {
-    python: String,
+pub(crate) struct ActiveRuntimeSelection {
+    pub(crate) python: String,
     source: Option<String>,
-    asset_id: Option<String>,
+    pub(crate) asset_id: Option<String>,
+    pub(crate) backend: Option<String>,
 }
 
 fn worker_path(app: &AppHandle) -> AppResult<PathBuf> {
@@ -446,6 +448,7 @@ fn resolve_active_runtime_record(file: &Path) -> AppResult<Option<ActiveRuntimeS
         python: executable.to_string_lossy().to_string(),
         source: record.source,
         asset_id: record.asset_id.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+        backend: record.backend.map(|value| value.trim().to_ascii_lowercase()).filter(|value| !value.is_empty()),
     }))
 }
 
@@ -527,17 +530,18 @@ fn select_active_record(candidates: &[PathBuf], development: bool) -> AppResult<
     Ok(None)
 }
 
-fn active_runtime_selection(app: &AppHandle) -> AppResult<Option<ActiveRuntimeSelection>> {
+pub(crate) fn active_runtime_selection(app: &AppHandle) -> AppResult<Option<ActiveRuntimeSelection>> {
     select_active_record(
         &runtime_envs_candidates(app),
         storage::is_development_executable(),
     )
 }
 
-fn runtime_asset_for_worker(active: Option<&ActiveRuntimeSelection>, desired: Option<String>) -> Option<String> {
+fn runtime_asset_for_worker(active: Option<&ActiveRuntimeSelection>, desired: Option<String>) -> String {
     match active {
-        Some(selection) => selection.asset_id.clone(),
-        None => desired,
+        // An explicit empty value tells Python there is no selected managed asset.
+        Some(selection) => selection.asset_id.clone().unwrap_or_default(),
+        None => desired.unwrap_or_default(),
     }
 }
 
@@ -625,12 +629,13 @@ mod runtime_record_tests {
     #[test]
     fn worker_asset_identity_comes_from_the_active_record_not_the_desired_update() {
         let active = ActiveRuntimeSelection {
-            python: "active-python".into(), source: None, asset_id: Some("runtime-a".into()),
+            python: "active-python".into(), source: None, asset_id: Some("runtime-a".into()), backend: Some("cuda".into()),
         };
-        assert_eq!(runtime_asset_for_worker(Some(&active), Some("runtime-b".into())).as_deref(), Some("runtime-a"));
+        assert_eq!(runtime_asset_for_worker(Some(&active), Some("runtime-b".into())), "runtime-a");
         let without_asset = ActiveRuntimeSelection { asset_id: None, ..active };
-        assert_eq!(runtime_asset_for_worker(Some(&without_asset), Some("runtime-b".into())), None);
-        assert_eq!(runtime_asset_for_worker(None, Some("runtime-b".into())).as_deref(), Some("runtime-b"));
+        assert_eq!(runtime_asset_for_worker(Some(&without_asset), Some("runtime-b".into())), "");
+        assert_eq!(runtime_asset_for_worker(None, Some("runtime-b".into())), "runtime-b");
+        assert_eq!(runtime_asset_for_worker(None, None), "");
     }
 
     #[test]
@@ -935,6 +940,8 @@ fn build_worker_command(
     payload_file: Option<&PathBuf>,
     task_id: Option<&str>,
     operation_id: &str,
+    fence_path: Option<&Path>,
+    owner_fences: &[PathBuf],
 ) -> AppResult<Command> {
     let worker = worker_path(app)?;
     let bootstrap_python = bootstrap_python_path(app)?;
@@ -971,17 +978,10 @@ fn build_worker_command(
     let python_for_log = python.clone();
     let worker_for_log = worker.clone();
     let mut cmd = crate::process_command::hidden_command(&python);
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        // Every worker gets its own process group so the parent-pipe watchdog can
-        // terminate the worker and its FFmpeg/tool children together.
-        cmd.process_group(0);
-    }
+    let supervisor = worker.parent().expect("worker script has a directory").join("core/worker_supervisor.py");
+    configure_worker_supervisor(&mut cmd, &supervisor, fence_path, owner_fences);
     isolate_python_environment(&mut cmd, &storage::temp_dir(app)?);
-    cmd.stdin(Stdio::piped())
-        .env("MEDIAFORGE_PARENT_PIPE", "1")
-        .arg(worker)
+    cmd.arg(worker)
         .arg(command)
         .env("PYTHONIOENCODING", "utf-8")
         .env("PYTHONDONTWRITEBYTECODE", "1")
@@ -1003,13 +1003,11 @@ fn build_worker_command(
     cmd.env_remove("MEDIAFORGE_RUNTIME_ASSET");
     let desired_asset = if active_runtime.is_none() {
         // Queries that intentionally run without an active runtime may describe the desired asset.
-        crate::runtime_assets::desired_runtime(app).ok().map(|descriptor| descriptor.asset_id)
+        crate::runtime_assets::desired_runtime(app, None).ok().map(|descriptor| descriptor.asset_id)
     } else {
         None
     };
-    if let Some(asset_id) = runtime_asset_for_worker(active_runtime.as_ref(), desired_asset) {
-        cmd.env("MEDIAFORGE_RUNTIME_ASSET", asset_id);
-    }
+    cmd.env("MEDIAFORGE_RUNTIME_ASSET", runtime_asset_for_worker(active_runtime.as_ref(), desired_asset));
     if let Some(overlay) = active_overlay {
         cmd.env("PYTHONPATH", overlay.to_string_lossy().to_string());
     }
@@ -1594,6 +1592,96 @@ fn read_lossy_lines<R: Read>(reader: R, mut on_line: impl FnMut(String)) {
     }
 }
 
+const SUPERVISOR_READY: &[u8] = b"MEDIAFORGE_SUPERVISOR_READY\n";
+
+fn configure_worker_supervisor(command: &mut Command, script: &Path, fence: Option<&Path>, owner_fences: &[PathBuf]) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // The supervisor survives the application's group and owns a separate worker group.
+        command.process_group(0);
+    }
+    command.args(["-B", "-S"]).arg(script);
+    if let Some(path) = fence {
+        command.arg("--fence").arg(path);
+    }
+    for path in owner_fences {
+        command.arg("--owner-fence").arg(path);
+    }
+    command.arg("--").env_remove("MEDIAFORGE_PARENT_PIPE");
+}
+
+/// The supervisor stays alive until the worker and its descendants are gone.
+/// Closing its control pipe requests a stop without terminating the process
+/// that owns the reaping fences.
+pub(crate) struct WorkerProcess {
+    child: Mutex<Child>,
+    control: Mutex<Option<ChildStdin>>,
+}
+
+impl WorkerProcess {
+    fn spawn(command: &mut Command) -> std::io::Result<Self> {
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        let control = child.stdin.take();
+        let process = Self { child: Mutex::new(child), control: Mutex::new(control) };
+        if process.control.lock().unwrap_or_else(|error| error.into_inner()).is_none() {
+            return Err(std::io::Error::other("missing worker supervisor control pipe"));
+        }
+        Ok(process)
+    }
+
+    fn child(&self) -> std::sync::MutexGuard<'_, Child> {
+        self.child.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn ready_stdout(mut stdout: ChildStdout) -> std::io::Result<ChildStdout> {
+        let mut ready = [0; SUPERVISOR_READY.len()];
+        stdout.read_exact(&mut ready)?;
+        if ready != SUPERVISOR_READY {
+            return Err(std::io::Error::other("invalid worker supervisor readiness frame"));
+        }
+        Ok(stdout)
+    }
+
+    fn start(&self) -> std::io::Result<()> {
+        if let Some(control) = self.control.lock().unwrap_or_else(|error| error.into_inner()).as_mut() {
+            control.write_all(b"\x01")?;
+        }
+        Ok(())
+    }
+
+    fn request_stop(&self) {
+        drop(self.control.lock().unwrap_or_else(|error| error.into_inner()).take());
+    }
+
+    pub(crate) fn cancel(&self, state: &AppState, ids: &[String]) -> bool {
+        let mut cancelled = state.cancelled_tasks.lock().unwrap_or_else(|error| error.into_inner());
+        if matches!(self.child().try_wait(), Ok(Some(_))) || ids.iter().all(|id| cancelled.contains(id)) {
+            return false;
+        }
+        cancelled.extend(ids.iter().cloned());
+        self.request_stop();
+        true
+    }
+}
+
+impl Drop for WorkerProcess {
+    fn drop(&mut self) {
+        self.request_stop();
+        wait_reaped_child(self, |error| session_log::early("ERROR", "worker.supervisor_reap", &error.to_string()));
+    }
+}
+
+struct WorkerPayload(Option<PathBuf>);
+
+impl Drop for WorkerPayload {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.as_ref() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 fn emit_worker_stdout(app: &AppHandle, line: String) {
     let _ = app.emit(
         "pymss://worker-event",
@@ -1619,6 +1707,71 @@ fn is_rocm_offload_arch_diagnostic(line: &str) -> bool {
         || message.starts_with("[rocm_sdk] offload-arch")
 }
 
+enum SyncWorkerOutput {
+    Ready(Result<(), String>),
+    Line(String),
+    Eof,
+}
+
+fn consume_sync_worker_output(
+    process: &WorkerProcess,
+    stdout: ChildStdout,
+    timeout: Option<Duration>,
+    mut on_line: impl FnMut(String),
+) -> AppResult<()> {
+    let (sender, receiver) = mpsc::channel::<SyncWorkerOutput>();
+    let reader = std::thread::spawn(move || {
+        let mut stdout = stdout;
+        let readiness = (|| {
+            let mut ready = [0; SUPERVISOR_READY.len()];
+            stdout.read_exact(&mut ready).map_err(|error| error.to_string())?;
+            if ready != SUPERVISOR_READY {
+                return Err("invalid worker supervisor readiness frame".to_string());
+            }
+            Ok(())
+        })();
+        let ready = readiness.is_ok();
+        if sender.send(SyncWorkerOutput::Ready(readiness)).is_err() { return; }
+        if !ready { let _ = sender.send(SyncWorkerOutput::Eof); return; }
+        read_lossy_lines(stdout, |line| { let _ = sender.send(SyncWorkerOutput::Line(line)); });
+        let _ = sender.send(SyncWorkerOutput::Eof);
+    });
+    let deadline = timeout.map(|duration| Instant::now() + duration);
+    let mut outcome = Ok(());
+    loop {
+        let event = match deadline {
+            Some(deadline) => receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+            None => receiver.recv().map_err(|_| RecvTimeoutError::Disconnected),
+        };
+        match event {
+            Ok(SyncWorkerOutput::Ready(Ok(()))) => {
+                if let Err(error) = process.start() {
+                    outcome = Err(error.into());
+                    break;
+                }
+            }
+            Ok(SyncWorkerOutput::Ready(Err(error))) => {
+                outcome = Err(AppError::Worker(error));
+                break;
+            }
+            Ok(SyncWorkerOutput::Line(line)) => on_line(line),
+            Ok(SyncWorkerOutput::Eof) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                outcome = Err(AppError::Worker("WORKER_QUERY_TIMEOUT: worker query timed out".into()));
+                break;
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                outcome = Err(AppError::Worker("worker stdout closed without a result".into()));
+                break;
+            }
+        }
+    }
+    if outcome.is_err() { process.request_stop(); }
+    drop(receiver);
+    let _ = reader.join();
+    outcome
+}
+
 pub fn run_worker_once(app: &AppHandle, command: &str) -> AppResult<Value> {
     run_worker_with_payload(app, command, None)
 }
@@ -1629,7 +1782,7 @@ pub fn run_worker_with_payload(
     payload: Option<Value>,
 ) -> AppResult<Value> {
     let operation_id = session_log::record_operation_request(app, command, payload.as_ref().unwrap_or(&Value::Null), None);
-    let result = run_worker_with_payload_inner(app, command, payload, &operation_id);
+    let result = run_worker_with_payload_inner(app, command, payload, &operation_id, crate::python::protocol::sync_query_timeout(command));
     match &result {
         Ok(value) => session_log::record_environment_probe(command, value),
         Err(error) => session_log::record_operation_failure(app, command, &operation_id, &error.to_string()),
@@ -1642,24 +1795,17 @@ fn run_worker_with_payload_inner(
     command: &str,
     payload: Option<Value>,
     operation_id: &str,
+    timeout: Option<Duration>,
 ) -> AppResult<Value> {
     let mut reference_mutation = storage::model_reference_mutation(command);
     let _application_access = acquire_application_operation()?;
     let _runtime_access = acquire_runtime_access(&RUNTIME_ACCESS, command)?;
     let _runtime_file_lease = acquire_runtime_file_lease(app, command)?;
-    let payload_file = match payload {
+    let payload_file = WorkerPayload(match payload {
         Some(value) => Some(make_payload_file(command, None, value)?),
         None => None,
-    };
-    let mut cmd = match build_worker_command(app, command, payload_file.as_ref(), None, operation_id) {
-        Ok(command) => command,
-        Err(error) => {
-            if let Some(path) = payload_file.as_ref() {
-                let _ = std::fs::remove_file(path);
-            }
-            return Err(error);
-        }
-    };
+    });
+    let mut cmd = build_worker_command(app, command, payload_file.0.as_ref(), None, operation_id, None, &[])?;
     let started_at = std::time::Instant::now();
     session_log::append(
         app,
@@ -1667,47 +1813,12 @@ fn run_worker_with_payload_inner(
         "worker.spawn",
         vec![("command", command.to_string())],
     );
-    let mut child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            if let Some(path) = payload_file.as_ref() {
-                let _ = std::fs::remove_file(path);
-            }
-            return Err(error.into());
-        }
-    };
-
-    let parent_pipe = match child.stdin.take() {
-        Some(pipe) => pipe,
-        None => {
-            let _ = child.kill();
-            let _ = child.wait();
-            if let Some(path) = payload_file.as_ref() {
-                let _ = std::fs::remove_file(path);
-            }
-            return Err(AppError::Worker("worker stdin pipe is unavailable".into()));
-        }
-    };
-    #[cfg(windows)]
-    let _worker_job = match crate::process_job::ProcessJob::attach(&child) {
-        Ok(job) => job,
-        Err(error) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            if let Some(path) = payload_file.as_ref() {
-                let _ = std::fs::remove_file(path);
-            }
-            return Err(AppError::Worker(format!("无法绑定 worker 进程生命周期：{error}")));
-        }
-    };
-
-    let _keep_parent_pipe = parent_pipe;
+    let process = WorkerProcess::spawn(&mut cmd)?;
     if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
-    let stderr = child.stderr.take();
+    let (stdout, stderr) = {
+        let mut child = process.child();
+        (child.stdout.take(), child.stderr.take())
+    };
     let stderr_app = app.clone();
     let stderr_operation_id = operation_id.to_string();
     let stderr_command = command.to_string();
@@ -1731,7 +1842,8 @@ fn run_worker_with_payload_inner(
     });
     let mut last_payload = Value::Null;
     let mut worker_error: Option<AppError> = None;
-    read_lossy_lines(stdout, |line| {
+    let stdout = stdout.ok_or_else(|| std::io::Error::other("missing worker stdout"))?;
+    let startup = consume_sync_worker_output(&process, stdout, timeout, |line| {
         if line.trim().is_empty() || worker_error.is_some() {
             return;
         }
@@ -1748,14 +1860,8 @@ fn run_worker_with_payload_inner(
                     let _ = app.emit("pymss://worker-event", &envelope);
                 }
                 if envelope.event_type == "error" {
-                    worker_error = Some(AppError::Worker(
-                        envelope
-                            .payload
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("worker error")
-                            .to_string(),
-                    ));
+                    worker_error = Some(AppError::Worker(envelope.payload.get("message")
+                        .and_then(Value::as_str).unwrap_or("worker error").to_string()));
                 }
             }
             Err(err) => {
@@ -1771,7 +1877,16 @@ fn run_worker_with_payload_inner(
             }
         }
     });
-    let status = child.wait()?;
+    if let Err(error) = startup {
+        worker_error = Some(error);
+    }
+    process.request_stop();
+    let status = wait_reaped_child(&process, |error| {
+        session_log::append(app, "ERROR", "worker.reap_pending", vec![("message", error.to_string())]);
+    });
+    if let Some(handle) = stderr_handle {
+        let _ = handle.join();
+    }
     if let Some(mutation) = reference_mutation.as_mut() { mutation.reaped(); }
     session_log::append(
         app,
@@ -1788,12 +1903,6 @@ fn run_worker_with_payload_inner(
             ("durationMs", started_at.elapsed().as_millis().to_string()),
         ],
     );
-    if let Some(handle) = stderr_handle {
-        let _ = handle.join();
-    }
-    if let Some(path) = payload_file.as_ref() {
-        let _ = std::fs::remove_file(path);
-    }
     if let Some(err) = worker_error {
         return Err(err);
     }
@@ -2019,22 +2128,16 @@ impl Drop for ManualCancelWatch {
     }
 }
 
-fn watch_manual_cancel(app: &AppHandle, child: &Arc<Mutex<Child>>, ids: &[String], root: PathBuf, enabled: bool) -> AppResult<ManualCancelWatch> {
+fn watch_manual_cancel(app: &AppHandle, process: &Arc<WorkerProcess>, ids: &[String], root: PathBuf, enabled: bool) -> AppResult<ManualCancelWatch> {
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let thread = if enabled {
-        let stopped = stop.clone(); let child = child.clone(); let ids = ids.to_vec(); let app = app.clone();
+        let stopped = stop.clone(); let process = process.clone(); let ids = ids.to_vec(); let app = app.clone();
         Some(spawn_worker_thread("mediaforge-worker-cancel", move || {
             while !stopped.load(std::sync::atomic::Ordering::Acquire) {
                 if ids.iter().any(|id| root.join("agent-jobs").join(format!("{id}.cancel")).is_file()) {
-                    if let Ok(mut owned) = child.try_lock() {
-                        if matches!(owned.try_wait(), Ok(None)) {
-                            if let Ok(mut cancelled) = app.state::<AppState>().cancelled_tasks.lock() { cancelled.extend(ids.iter().cloned()); }
-                            for id in &ids { let _ = task_journal::cancel(&root, id); }
-                            kill_process_tree(owned.id()); let _ = owned.kill(); let _ = owned.wait();
-                        }
-                        for id in &ids { let _ = std::fs::remove_file(root.join("agent-jobs").join(format!("{id}.cancel"))); }
-                        break;
-                    }
+                    process.cancel(&app.state::<AppState>(), &ids);
+                    for id in &ids { let _ = std::fs::remove_file(root.join("agent-jobs").join(format!("{id}.cancel"))); }
+                    break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
@@ -2043,15 +2146,12 @@ fn watch_manual_cancel(app: &AppHandle, child: &Arc<Mutex<Child>>, ids: &[String
     Ok(ManualCancelWatch { stop, thread })
 }
 
-fn wait_reaped_child(child: &Arc<Mutex<Child>>, mut report: impl FnMut(&std::io::Error)) -> std::process::ExitStatus {
+fn wait_reaped_child(process: &WorkerProcess, mut report: impl FnMut(&std::io::Error)) -> std::process::ExitStatus {
     let mut reported = false;
     loop {
         // Do not hold the child mutex in a blocking wait: cancellation must still
         // be able to terminate a worker that closed stdout before it exited.
-        let result = match child.lock() {
-            Ok(mut child) => child.try_wait(),
-            Err(poisoned) => poisoned.into_inner().try_wait(),
-        };
+        let result = process.child().try_wait();
         match result {
             Ok(Some(status)) => return status,
             Ok(None) => {}
@@ -2069,9 +2169,6 @@ struct WorkerStartResources {
     audio_scope: Option<audio_output::AudioOutputScope>,
     runtime_access: Option<RuntimeAccessGuard<'static>>,
     runtime_file_lease: Option<RuntimeLease>,
-    #[cfg(windows)]
-    process_job: Option<crate::process_job::ProcessJob>,
-    parent_pipe: Option<std::process::ChildStdin>,
     application_access: Option<Box<dyn Send>>,
     stderr: Option<std::thread::JoinHandle<()>>,
     cancel: Option<ManualCancelWatch>,
@@ -2085,9 +2182,6 @@ impl WorkerStartResources {
         if let Some(mut mutation) = self.reference_mutation.take() { mutation.reaped(); }
         drop(self.runtime_access.take());
         drop(self.runtime_file_lease.take());
-        #[cfg(windows)]
-        drop(self.process_job.take());
-        drop(self.parent_pipe.take());
         drop(self.application_access.take());
     }
 }
@@ -2103,7 +2197,7 @@ struct WorkerStartCleanup {
 /// Builder drops its closure on failure before returning Err, so resources must
 /// stay shared until whichever guard handles failure has killed and reaped Child.
 struct WorkerStartGuard {
-    child: Arc<Mutex<Child>>,
+    child: Arc<WorkerProcess>,
     resources: Arc<Mutex<WorkerStartResources>>,
     _journal: Option<JournalHandle>,
     cleanup: Option<WorkerStartCleanup>,
@@ -2121,6 +2215,7 @@ impl WorkerStartGuard {
 
     fn finish_reaped(&mut self) {
         self.reaped = true;
+        self.child.request_stop();
         self.resources.lock().unwrap_or_else(|error| error.into_inner()).finish();
     }
 }
@@ -2129,13 +2224,7 @@ impl Drop for WorkerStartGuard {
     fn drop(&mut self) {
         if !self.owns_cleanup { return; }
         if !self.reaped {
-            {
-                let mut child = self.child.lock().unwrap_or_else(|error| error.into_inner());
-                if !matches!(child.try_wait(), Ok(Some(_))) {
-                    kill_process_tree(child.id());
-                    let _ = child.kill();
-                }
-            }
+            self.child.request_stop();
             wait_reaped_child(&self.child, |error| session_log::early("ERROR", "worker.startup_reap", &error.to_string()));
         }
         // These guards cannot leave scope before a real successful reap, even
@@ -2149,6 +2238,9 @@ impl Drop for WorkerStartGuard {
             drop(tasks);
             let mut terminal = state.terminal_tasks.lock().unwrap_or_else(|error| error.into_inner());
             for id in &owned { terminal.remove(id); }
+            drop(terminal);
+            let mut cancelled = state.cancelled_tasks.lock().unwrap_or_else(|error| error.into_inner());
+            for id in &owned { cancelled.remove(id); }
             let _ = std::fs::remove_file(&cleanup.payload);
         }
     }
@@ -2210,14 +2302,16 @@ fn spawn_worker_background_inner(
                 .map(PathBuf::from)
         })
         .flatten();
-    let payload_file = make_payload_file(command, Some(&task_id), payload)?;
-    let mut cmd = match build_worker_command(&app, command, Some(&payload_file), Some(&task_id), &operation_id) {
-        Ok(command) => command,
-        Err(error) => {
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(error);
-        }
+    let mut payload_file = WorkerPayload(Some(make_payload_file(command, Some(&task_id), payload)?));
+    let (fence, owner_fences) = if let Some(journal) = &journal {
+        let journal = journal.lock().map_err(|_| AppError::Worker("task journal lock poisoned".into()))?;
+        let (fence, owner_fences) = journal.reap_fences();
+        (fence.map(Path::to_path_buf), owner_fences)
+    } else {
+        (None, Vec::new())
     };
+    let mut cmd = build_worker_command(&app, command, payload_file.0.as_ref(), Some(&task_id), &operation_id,
+        fence.as_deref(), &owner_fences)?;
     if let Some(scope) = &audio_scope { scope.configure(&mut cmd); }
     let started_at = std::time::Instant::now();
     session_log::append(
@@ -2236,34 +2330,8 @@ fn spawn_worker_background_inner(
     for id in &registered_task_ids {
         if task_registry.contains_key(id) { return Err(AppError::Worker(format!("task already running: {id}"))); }
     }
-    let mut child: Child = match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(error.into());
-        }
-    };
-    let parent_pipe = match child.stdin.take() {
-        Some(pipe) => pipe,
-        None => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(AppError::Worker("worker stdin pipe is unavailable".into()));
-        }
-    };
-    #[cfg(windows)]
-    let process_job = match crate::process_job::ProcessJob::attach(&child) {
-        Ok(job) => Some(job),
-        Err(error) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(&payload_file);
-            return Err(AppError::Worker(format!("无法绑定 worker 进程生命周期：{error}")));
-        }
-    };
+    let shared_child = Arc::new(WorkerProcess::spawn(&mut cmd)?);
     if let Some(mutation) = reference_mutation.as_mut() { mutation.spawned(); }
-    let shared_child = Arc::new(Mutex::new(child));
     for registered_task_id in &registered_task_ids {
         task_registry.insert(registered_task_id.clone(), shared_child.clone());
     }
@@ -2273,21 +2341,20 @@ fn spawn_worker_background_inner(
         resources: Arc::new(Mutex::new(WorkerStartResources {
             reference_mutation,
             audio_scope: audio_scope.take(), runtime_access: runtime_access.take(), runtime_file_lease,
-            #[cfg(windows)]
-            process_job,
-            parent_pipe: Some(parent_pipe),
             application_access: application_access.take().map(|guard| Box::new(guard) as Box<dyn Send>), stderr: None, cancel: None,
         })),
-        cleanup: Some(WorkerStartCleanup { app: app.clone(), ids: registered_task_ids.clone(), payload: payload_file.clone() }),
+        cleanup: Some(WorkerStartCleanup { app: app.clone(), ids: registered_task_ids.clone(), payload: payload_file.0.take().unwrap() }),
     };
-    let worker_pid = shared_child.lock().unwrap_or_else(|error| error.into_inner()).id();
+    let worker_pid = shared_child.child().id();
     {
         let mut resources = startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner());
         if let Some(scope) = resources.audio_scope.as_mut() { scope.attach(worker_pid)?; }
     }
-    update_task_journal(&app, &journal, |journal| journal.running(worker_pid));
+    if let Some(journal) = &journal {
+        journal.lock().map_err(|_| AppError::Worker("task journal lock poisoned".into()))?.running(worker_pid)?;
+    }
     let (stdout, stderr) = {
-        let mut child = shared_child.lock().unwrap_or_else(|error| error.into_inner());
+        let mut child = shared_child.child();
         (child.stdout.take(), child.stderr.take())
     };
     let stdout = stdout.ok_or_else(|| AppError::Worker("missing worker stdout".into()))?;
@@ -2309,6 +2376,8 @@ fn spawn_worker_background_inner(
     let cancel_enabled = cancel_root.is_some();
     let cancel_watch = watch_manual_cancel(&app, &shared_child, &registered_task_ids, cancel_root.unwrap_or_default(), cancel_enabled)?;
     startup_guard.resources.lock().unwrap_or_else(|error| error.into_inner()).cancel = Some(cancel_watch);
+    let stdout = WorkerProcess::ready_stdout(stdout)?;
+    shared_child.start()?;
     let mut supervisor_guard = startup_guard.fork();
     spawn_worker_thread("mediaforge-worker-supervisor", move || {
         let mut terminal_task_ids: HashSet<String> = HashSet::new();
@@ -2320,7 +2389,9 @@ fn spawn_worker_background_inner(
             }
             match serde_json::from_str::<WorkerEnvelope>(&line) {
                 Ok(mut envelope) => {
-                    update_task_journal(&app, &journal, |journal| journal.observe(&envelope));
+                    update_task_journal(&app, &journal, |journal| {
+                        journal.observe_with_result(&envelope, |row| super::result_jobs::remember_previews(&app, row))
+                    });
                     if envelope.event_type == "error" {
                         log_worker_event_with_scope(&app, &command_name, &mut envelope, Some(&operation_id), Some(&task_id));
                     }
@@ -2393,14 +2464,28 @@ fn spawn_worker_background_inner(
                 }
             }
         });
-        let exit_status = Some(wait_reaped_child(&shared_child, |error| {
+        let exit_status = wait_reaped_child(&shared_child, |error| {
             session_log::append(&app, "ERROR", "worker.reap_pending", vec![("taskId", task_id.clone()), ("message", error.to_string())]);
-        }));
+        });
         if let Some(directory) = editor_export_directory.as_deref() {
             cleanup_editor_export_temp_files(directory, &task_id);
         }
         supervisor_guard.finish_reaped();
-        // Finish Python cleanup before the terminal event starts the UI's environment refresh.
+        let cancelled_task_ids = {
+            let state = app.state::<AppState>();
+            let mut cancelled = state.cancelled_tasks.lock().unwrap_or_else(|error| error.into_inner());
+            registered_task_ids.iter().filter(|id| cancelled.remove(*id)).cloned().collect::<Vec<_>>()
+        };
+        let was_cancelled = !cancelled_task_ids.is_empty();
+        let cancelled_events = cancelled_task_ids.into_iter()
+            .filter(|id| terminal_task_ids.insert(id.clone())).collect::<Vec<_>>();
+        update_task_journal(&app, &journal, |journal| journal.exited(
+            exit_status.success(), was_cancelled, &format!("worker exited with {exit_status}"),
+        ));
+        drop(journal);
+        drop(supervisor_guard);
+        // Deferred events may start another operation immediately. All process,
+        // pipe, journal and runtime ownership has finished before dispatching them.
         if let Some((message, record)) = core_terminal_error {
             broadcast_existing_task_error(&app, &registered_task_ids, message, record.as_ref());
         }
@@ -2408,54 +2493,24 @@ fn spawn_worker_background_inner(
             log_worker_event_with_scope(&app, &command_name, &mut envelope, Some(&operation_id), Some(&task_id));
             let _ = app.emit("pymss://worker-event", &envelope);
         }
-        let mut was_cancelled = false;
-        if let Ok(mut cancelled) = app.state::<AppState>().cancelled_tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                if cancelled.remove(registered_task_id) {
-                    was_cancelled = true;
-                    terminal_task_ids.insert(registered_task_id.clone());
-                }
-            }
-        }
-        update_task_journal(&app, &journal, |journal| journal.exited(
-            exit_status.as_ref().is_some_and(|status| status.success()), was_cancelled,
-            &exit_status.as_ref().map(|status| format!("worker exited with {status}")).unwrap_or_else(|| "worker exited unexpectedly".into()),
-        ));
         session_log::append(
             &app,
-            match exit_status.as_ref() {
-                _ if was_cancelled => "INFO",
-                Some(status) if status.success() => worker_lifecycle_level(&command_name),
-                _ => "INFO",
-            },
+            if !was_cancelled && exit_status.success() { worker_lifecycle_level(&command_name) } else { "INFO" },
             "worker.exit",
             vec![
                 ("command", command_name.clone()),
                 ("operationId", operation_id.clone()),
                 ("taskId", task_id.clone()),
                 ("cancelled", was_cancelled.to_string()),
-                (
-                    "status",
-                    exit_status
-                        .as_ref()
-                        .map(|status| status.to_string())
-                        .unwrap_or_else(|| "missing".to_string()),
-                ),
+                ("status", exit_status.to_string()),
                 ("durationMs", started_at.elapsed().as_millis().to_string()),
             ],
         );
-        if let Ok(mut cancelled) = app.state::<AppState>().cancelled_tasks.lock() {
-            for registered_task_id in &registered_task_ids {
-                if cancelled.remove(registered_task_id) {
-                    terminal_task_ids.insert(registered_task_id.clone());
-                    if command_name == "manage_plugin" {
-                        let _ = app.emit("pymss://worker-event", serde_json::json!({
-                            "type": "task.cancelled", "taskId": registered_task_id,
-                            "payload": { "message": "Cancelled" }
-                        }));
-                    }
-                }
-            }
+        for id in cancelled_events {
+            session_log::append(&app, "INFO", "task.cancelled", vec![("taskId", id.clone()), ("message", "Task cancelled".into())]);
+            let _ = app.emit("pymss://worker-event", serde_json::json!({
+                "type": "task.cancelled", "taskId": id, "payload": { "message": "Cancelled" }
+            }));
         }
         let missing_terminal_task_ids = registered_task_ids
             .iter()
@@ -2463,32 +2518,10 @@ fn spawn_worker_background_inner(
             .cloned()
             .collect::<Vec<_>>();
         if !missing_terminal_task_ids.is_empty() {
-            match exit_status {
-                Some(status) if !status.success() => {
-                    emit_task_error_to_all(
-                        &app,
-                        &missing_terminal_task_ids,
-                        format!("worker exited with {status}"),
-                    );
-                }
-                None => {
-                    emit_task_error_to_all(
-                        &app,
-                        &missing_terminal_task_ids,
-                        "worker exited unexpectedly".to_string(),
-                    );
-                }
-                Some(status)
-                    if status.success()
-                        && requires_background_result(&command_name) =>
-                {
-                    emit_task_error_to_all(
-                        &app,
-                        &missing_terminal_task_ids,
-                        "worker exited without a result".to_string(),
-                    );
-                }
-                _ => {}
+            if !exit_status.success() {
+                emit_task_error_to_all(&app, &missing_terminal_task_ids, format!("worker exited with {exit_status}"));
+            } else if requires_background_result(&command_name) {
+                emit_task_error_to_all(&app, &missing_terminal_task_ids, "worker exited without a result".to_string());
             }
         }
     })?;
@@ -2560,7 +2593,7 @@ mod tests {
     }
 
     struct StartupReleaseProbe {
-        child: std::sync::Arc<std::sync::Mutex<std::process::Child>>,
+        child: std::sync::Arc<super::WorkerProcess>,
         root: std::path::PathBuf,
         reaped: std::sync::Arc<std::sync::atomic::AtomicBool>,
         slot_held: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -2569,9 +2602,148 @@ mod tests {
     impl Drop for StartupReleaseProbe {
         fn drop(&mut self) {
             use std::sync::atomic::Ordering;
-            self.reaped.store(matches!(self.child.lock().unwrap().try_wait(), Ok(Some(_))), Ordering::SeqCst);
+            self.reaped.store(matches!(self.child.child().try_wait(), Ok(Some(_))), Ordering::SeqCst);
             self.slot_held.store(matches!(super::task_journal::try_claim_pending(&self.root, "run_operation", "next"),
                 Ok(super::task_journal::ClaimAttempt::Waiting)), Ordering::SeqCst);
+        }
+    }
+
+    fn admit_fixture(root: &Path) -> super::JournalHandle {
+        for id in ["owned", "next"] {
+            super::task_journal::enqueue_manual(root, "run_operation", id, &json!({"operation":"fixture"})).unwrap();
+        }
+        let super::task_journal::ClaimAttempt::Ready(journal, _, _) =
+            super::task_journal::try_claim_pending(root, "run_operation", "owned").unwrap() else { panic!("fixture not admitted") };
+        journal
+    }
+
+    fn launch_fixture(root: &Path, journal: &super::JournalHandle, script: &str) -> (
+        std::sync::Arc<super::WorkerProcess>, std::process::ChildStdout, std::process::ChildStderr,
+    ) {
+        let worker = root.join("fixture_worker.py");
+        fs::write(&worker, script).unwrap();
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let mut command = crate::process_command::isolated_test_python(root);
+        {
+            let journal = journal.lock().unwrap();
+            let (fence, owners) = journal.reap_fences();
+            super::configure_worker_supervisor(&mut command, &project.join("python/core/worker_supervisor.py"), fence, &owners);
+        }
+        command.arg(worker);
+        let child = std::sync::Arc::new(super::WorkerProcess::spawn(&mut command).unwrap());
+        let (pid, stdout, stderr) = {
+            let mut process = child.child();
+            (process.id(), process.stdout.take().unwrap(), process.stderr.take().unwrap())
+        };
+        journal.lock().unwrap().running(pid).unwrap();
+        let stdout = super::WorkerProcess::ready_stdout(stdout).unwrap();
+        child.start().unwrap();
+        (child, stdout, stderr)
+    }
+
+    fn spawn_unready_fixture(
+        root: &Path,
+        journal: &super::JournalHandle,
+        supervisor: &Path,
+        worker: &Path,
+    ) -> (
+        std::sync::Arc<super::WorkerProcess>, std::process::ChildStdout, std::process::ChildStderr,
+    ) {
+        let mut command = crate::process_command::isolated_test_python(root);
+        {
+            let journal = journal.lock().unwrap();
+            let (fence, owners) = journal.reap_fences();
+            super::configure_worker_supervisor(&mut command, supervisor, fence, &owners);
+        }
+        command.arg(worker);
+        let child = std::sync::Arc::new(super::WorkerProcess::spawn(&mut command).unwrap());
+        let (pid, stdout, stderr) = {
+            let mut process = child.child();
+            (process.id(), process.stdout.take().unwrap(), process.stderr.take().unwrap())
+        };
+        journal.lock().unwrap().running(pid).unwrap();
+        (child, stdout, stderr)
+    }
+
+    #[test]
+    fn sync_query_timeout_after_ready_reaps_before_releasing_quota() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = admit_fixture(root.path());
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let worker = root.path().join("fixture_worker.py");
+        fs::write(&worker, "import sys,time; assert sys.version_info[:2]==(3,12), 'Python 3.12 required'; time.sleep(60)").unwrap();
+        let (process, stdout, stderr) = spawn_unready_fixture(
+            root.path(), &journal, &project.join("python/core/worker_supervisor.py"), &worker,
+        );
+        let error = super::consume_sync_worker_output(
+            &process, stdout, Some(std::time::Duration::from_millis(50)), |_| {},
+        ).unwrap_err();
+        assert!(error.to_string().contains("WORKER_QUERY_TIMEOUT"), "{error}");
+        let status = super::wait_reaped_child(&process, |_| {});
+        assert!(!status.success());
+        drop(stderr);
+        assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+            super::task_journal::ClaimAttempt::Waiting));
+        drop(journal);
+        assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+            super::task_journal::ClaimAttempt::Ready(_, _, _)));
+    }
+
+    #[test]
+    fn sync_query_timeout_before_ready_reaps_before_releasing_quota() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = admit_fixture(root.path());
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let supervisor = root.path().join("real_supervisor.py");
+        fs::copy(project.join("python/core/worker_supervisor.py"), &supervisor).unwrap();
+        let delayed = root.path().join("delayed_supervisor.py");
+        fs::write(&delayed, concat!(
+            "import runpy,time\n",
+            "from pathlib import Path\n",
+            "time.sleep(0.2)\n",
+            "runpy.run_path(str(Path(__file__).with_name('real_supervisor.py')), run_name='__main__')\n",
+        )).unwrap();
+        let worker = root.path().join("fixture_worker.py");
+        fs::write(&worker, "import sys,time; assert sys.version_info[:2]==(3,12), 'Python 3.12 required'; time.sleep(60)").unwrap();
+        let (process, stdout, stderr) = spawn_unready_fixture(root.path(), &journal, &delayed, &worker);
+        let error = super::consume_sync_worker_output(
+            &process, stdout, Some(std::time::Duration::from_millis(50)), |_| {},
+        ).unwrap_err();
+        assert!(error.to_string().contains("WORKER_QUERY_TIMEOUT"), "{error}");
+        let status = super::wait_reaped_child(&process, |_| {});
+        assert!(!status.success());
+        drop(stderr);
+        assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+            super::task_journal::ClaimAttempt::Waiting));
+        drop(journal);
+        assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+            super::task_journal::ClaimAttempt::Ready(_, _, _)));
+    }
+
+    #[test]
+    fn sync_query_output_finishes_normally() {
+        for timeout in [Some(std::time::Duration::from_secs(1)), None] {
+            let root = tempfile::tempdir().unwrap();
+            let journal = admit_fixture(root.path());
+            let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+            let worker = root.path().join("fixture_worker.py");
+            fs::write(&worker, concat!(
+                "import json,sys\n",
+                "assert sys.version_info[:2]==(3,12), 'Python 3.12 required'\n",
+                "print(json.dumps({'type':'health','payload':{'ok':True,'workerVersion':'fixture'}}),flush=True)\n",
+            )).unwrap();
+            let (process, stdout, stderr) = spawn_unready_fixture(
+                root.path(), &journal, &project.join("python/core/worker_supervisor.py"), &worker,
+            );
+            let mut lines = Vec::new();
+            super::consume_sync_worker_output(&process, stdout, timeout, |line| lines.push(line)).unwrap();
+            assert_eq!(lines.len(), 1);
+            assert!(lines[0].contains("fixture"));
+            assert!(super::wait_reaped_child(&process, |_| {}).success());
+            drop(stderr);
+            drop(journal);
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+                super::task_journal::ClaimAttempt::Ready(_, _, _)));
         }
     }
 
@@ -2580,38 +2752,21 @@ mod tests {
         use std::io::{BufRead, BufReader};
         use std::sync::{Arc, Mutex};
         let root = tempfile::tempdir().unwrap();
-        for id in ["owned", "next"] {
-            super::task_journal::enqueue_manual(root.path(), "run_operation", id, &json!({"operation":"fixture"})).unwrap();
-        }
-        let super::task_journal::ClaimAttempt::Ready(journal, _, _) =
-            super::task_journal::try_claim_pending(root.path(), "run_operation", "owned").unwrap() else { panic!("fixture not admitted") };
-        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let python = std::env::var_os("MEDIAFORGE_RUNTIME_PYTHON").map(std::path::PathBuf::from)
-            .unwrap_or_else(|| project.join(if cfg!(windows) { "python-runtime/python.exe" } else { "python-runtime/bin/python3" }));
-        assert!(python.is_absolute() && python.is_file(), "startup fixtures require explicit Python 3.12: {}", python.display());
+        let journal = admit_fixture(root.path());
         let script = format!("import sys,time; assert sys.version_info[:2]==(3,12), 'Python 3.12 required'; print('ready',flush=True); time.sleep({delay})");
-        let mut command = crate::process_command::hidden_command(python);
-        command.args(["-I", "-B", "-c", &script]).current_dir(root.path())
-            .env("HOME", root.path()).env("USERPROFILE", root.path()).env("APPDATA", root.path())
-            .env("LOCALAPPDATA", root.path()).env("TEMP", root.path()).env("TMP", root.path())
-            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
-        let child = Arc::new(Mutex::new(command.spawn().unwrap()));
+        let (child, stdout, stderr) = launch_fixture(root.path(), &journal, &script);
         let reaped = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let slot_held = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut scope = super::audio_output::AudioOutputScope::create(&root.path().join("receipts"), root.path().join("output")).unwrap();
-        scope.attach(child.lock().unwrap().id()).unwrap();
+        scope.attach(child.child().id()).unwrap();
         let mut reference_mutation = crate::storage::model_reference_mutation("import_custom_model").unwrap();
         reference_mutation.spawned();
         let guard = super::WorkerStartGuard { child: child.clone(), _journal: Some(journal), cleanup: None, reaped: false, owns_cleanup: true,
             resources: Arc::new(Mutex::new(super::WorkerStartResources { audio_scope: Some(scope), runtime_access: None, runtime_file_lease: None,
-        #[cfg(windows)]
-        process_job: None,
-        parent_pipe: None,
-        stderr: None, cancel: None,
+                stderr: Some(std::thread::spawn(move || super::read_lossy_lines(stderr, |_| {}))), cancel: None,
                 reference_mutation: Some(reference_mutation),
                 application_access: Some(Box::new(StartupReleaseProbe { child: child.clone(), root: root.path().into(), reaped: reaped.clone(), slot_held: slot_held.clone() })) })),
         };
-        let stdout = child.lock().unwrap().stdout.take().unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         let reader = super::spawn_worker_thread("mediaforge-startup-fixture-ready", move || {
             let mut line = String::new();
@@ -2637,7 +2792,7 @@ mod tests {
             let spawned = super::spawn_worker_thread(name, move || drop(submitted));
             super::THREAD_SPAWN_FAILURE.with(|failure| *failure.borrow_mut() = None);
             assert!(spawned.is_err(), "{name}");
-            assert!(child.lock().unwrap().try_wait().unwrap().is_some());
+            assert!(child.child().try_wait().unwrap().is_some());
             assert!(reaped.load(Ordering::SeqCst), "resources released before reap: {name}");
             assert!(slot_held.load(Ordering::SeqCst), "quota released before startup cleanup: {name}");
             assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0, "mutation lease retained after reap: {name}");
@@ -2677,9 +2832,180 @@ mod tests {
         }).unwrap();
         guard.handoff(); drop(guard);
         assert!(thread.join().is_err());
-        assert!(child.lock().unwrap().try_wait().unwrap().is_some());
+        assert!(child.child().try_wait().unwrap().is_some());
         assert!(reaped.load(Ordering::SeqCst)); assert!(slot_held.load(Ordering::SeqCst));
         assert_eq!(*crate::storage::model_reference_snapshot_guard(), 0);
+    }
+
+    fn worker_tree_script(wait: bool) -> String {
+        let script = r#"
+import os, subprocess, sys, time
+from pathlib import Path
+
+grandchild = "from pathlib import Path; import os,time; Path('grandchild-pid').write_text(str(os.getpid())); time.sleep(45)"
+child = "from pathlib import Path; import os,subprocess,sys,time; Path('child-pid').write_text(str(os.getpid())); subprocess.Popen([sys.executable,'-B','-c',sys.argv[1]], creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0)); time.sleep(45)"
+Path('worker-pid').write_text(str(os.getpid()))
+subprocess.Popen([sys.executable, '-B', '-c', child, grandchild], creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+until = time.monotonic() + 12
+while not Path('grandchild-pid').exists():
+    if time.monotonic() > until:
+        raise RuntimeError('worker fixture did not launch its descendants')
+    time.sleep(.02)
+print('worker stdout', flush=True)
+print('worker stderr', file=sys.stderr, flush=True)
+"#;
+        if wait { format!("{script}\ntime.sleep(45)\n") } else { script.to_string() }
+    }
+
+    fn tree_pids(root: &Path) -> Vec<u32> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            let pids = ["worker-pid", "child-pid", "grandchild-pid"].iter().map(|name| {
+                fs::read_to_string(root.join(name)).ok()?.parse::<u32>().ok()
+            }).collect::<Option<Vec<_>>>();
+            if let Some(pids) = pids { return pids; }
+            assert!(std::time::Instant::now() < deadline, "worker fixture never started its process tree");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    fn assert_fixture_tree_reaped(pids: &[u32]) {
+        for &pid in pids {
+            assert!(!super::audio_output::process_alive(pid), "worker fixture process {pid} is still running");
+        }
+    }
+
+    #[test]
+    fn supervised_audio_worker_preserves_and_cleans_its_output_scope() {
+        use std::io::{BufRead, BufReader, Read};
+
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("output");
+        let receipts = root.path().join("receipts");
+        fs::create_dir(&output).unwrap();
+        let mut scope = super::audio_output::AudioOutputScope::create(&receipts, output.clone()).unwrap();
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let worker = root.path().join("fixture_audio.py");
+        fs::write(&worker, r#"
+from pathlib import Path
+import sys
+import time
+
+sys.path.insert(0, sys.argv[1])
+from audio_tools.common import _render_output
+
+def render(path):
+    path.write_bytes(b'partial')
+    print('rendering', flush=True)
+    time.sleep(15)
+
+_render_output(Path(sys.argv[2]) / 'final.wav', render)
+"#).unwrap();
+        let mut command = crate::process_command::isolated_test_python(root.path());
+        super::configure_worker_supervisor(&mut command, &project.join("python/core/worker_supervisor.py"), None, &[]);
+        command.arg(worker).arg(project.join("python")).arg(&output);
+        scope.configure(&mut command);
+        let process = super::WorkerProcess::spawn(&mut command).unwrap();
+        let (pid, stdout, mut stderr) = {
+            let mut child = process.child();
+            (child.id(), child.stdout.take().unwrap(), child.stderr.take().unwrap())
+        };
+        scope.attach(pid).unwrap();
+        let mut stdout = BufReader::new(super::WorkerProcess::ready_stdout(stdout).unwrap());
+        process.start().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        process.request_stop();
+        let status = super::wait_reaped_child(&process, |_| {});
+        let mut diagnostics = String::new();
+        stderr.read_to_string(&mut diagnostics).unwrap();
+        assert_eq!(line.trim(), "rendering", "{diagnostics}");
+        assert!(!status.success());
+        assert_eq!(fs::read_dir(&output).unwrap().count(), 1);
+        scope.finish();
+        assert_eq!(fs::read_dir(output).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(receipts).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn worker_supervisor_normal_exit_and_cancel_close_inherited_pipes_before_quota_release() {
+        use std::io::Read;
+
+        for cancel in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let journal = admit_fixture(root.path());
+            let (process, mut stdout, mut stderr) = launch_fixture(root.path(), &journal, &worker_tree_script(cancel));
+            let pids = tree_pids(root.path());
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+                super::task_journal::ClaimAttempt::Waiting));
+            if cancel {
+                assert!(pids.iter().all(|pid| super::audio_output::process_alive(*pid)));
+                assert!(process.cancel(&crate::state::AppState::new(), &["owned".into()]));
+            }
+            let status = super::wait_reaped_child(&process, |_| {});
+            assert_eq!(status.success(), !cancel);
+            assert_fixture_tree_reaped(&pids);
+            let mut output = String::new();
+            stdout.read_to_string(&mut output).unwrap();
+            if !cancel { assert!(output.contains("worker stdout")); }
+            let mut errors = String::new();
+            stderr.read_to_string(&mut errors).unwrap();
+            if !cancel { assert!(errors.contains("worker stderr")); }
+            drop((stdout, stderr));
+            process.request_stop();
+            assert!(process.control.lock().unwrap().is_none());
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+                super::task_journal::ClaimAttempt::Waiting));
+            drop(journal);
+            assert!(matches!(super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap(),
+                super::task_journal::ClaimAttempt::Ready(_, _, _)));
+        }
+    }
+
+    const WORKER_OWNER_FIXTURE: &str = "MEDIAFORGE_RUST_WORKER_OWNER_FIXTURE";
+
+    #[test]
+    fn worker_supervisor_fixture_owner() {
+        let Some(root) = std::env::var_os(WORKER_OWNER_FIXTURE) else { return; };
+        let root = Path::new(&root);
+        let journal = admit_fixture(root);
+        let (_process, _stdout, _stderr) = launch_fixture(root, &journal, &worker_tree_script(true));
+        std::thread::sleep(std::time::Duration::from_secs(45));
+    }
+
+    #[test]
+    fn worker_supervisor_reaps_after_rust_owner_crash_before_admitting_next_job() {
+        struct FixtureOwner(std::process::Child);
+        impl Drop for FixtureOwner {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        let root = tempfile::tempdir().unwrap();
+        let mut owner = FixtureOwner(crate::process_command::hidden_command(std::env::current_exe().unwrap())
+            .args(["--exact", "python::worker::tests::worker_supervisor_fixture_owner", "--nocapture"])
+            .env(WORKER_OWNER_FIXTURE, root.path()).stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap());
+        let pids = tree_pids(root.path());
+        assert!(pids.iter().all(|pid| super::audio_output::process_alive(*pid)));
+        owner.0.kill().unwrap();
+        assert!(!owner.0.wait().unwrap().success());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            match super::task_journal::try_claim_pending(root.path(), "run_operation", "next").unwrap() {
+                super::task_journal::ClaimAttempt::Ready(_, _, _) => break,
+                super::task_journal::ClaimAttempt::Waiting => {
+                    assert!(std::time::Instant::now() < deadline, "reaping fence did not release after parent death");
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                super::task_journal::ClaimAttempt::Finished => panic!("queued fixture disappeared"),
+            }
+        }
+        assert_fixture_tree_reaped(&pids);
+        let recovered = super::task_journal::list(root.path()).unwrap();
+        assert!(recovered.iter().any(|row| row["jobId"] == "owned" && row["status"] == "interrupted"));
     }
 
     #[test]
@@ -3186,6 +3512,7 @@ mod tests {
                     python: python.canonicalize().unwrap().to_string_lossy().to_string(),
                     source: Some("bundled".into()),
                     asset_id: None,
+                    backend: Some("cpu".into()),
                 })
             );
             assert_eq!(fs::read(&pointer).unwrap(), bytes);

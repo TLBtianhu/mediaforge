@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { pickInputFolder, pickOutputFolder, pickSingleAudioFile } from '@/api/native'
+import { pickOutputFolder, pickSingleAudioFile } from '@/api/native'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { createLogger } from '@/utils/logger'
 import TaskLogConsole from '@/components/TaskLogConsole.vue'
 import { normalizeLogRecord } from '@/utils/logRecord'
@@ -119,8 +120,8 @@ async function pickOutput() {
 }
 
 async function pickModel(target: ModelTarget) {
-  const path = await pickInputFolder()
-  if (!path) return
+  const path = await openDialog({ directory: true, multiple: false })
+  if (typeof path !== 'string') return
   if (target === 'model') modelPath.value = path
   else if (target === 'vad') vadModelPath.value = path
   else puncModelPath.value = path

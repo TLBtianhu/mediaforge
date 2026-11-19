@@ -74,10 +74,12 @@ pub(super) fn validate_descriptor(descriptor: &RuntimeDescriptor) -> Result<(), 
         return Err("运行时 SHA-256 格式无效".into());
     }
     if descriptor.size == 0
+        || !matches!(descriptor.platform.as_str(), "windows" | "linux" | "macos")
+        || !matches!(descriptor.arch.as_str(), "x86_64" | "aarch64")
         || !matches!(descriptor.backend.as_str(), "cpu" | "cuda" | "rocm" | "mlx")
         || descriptor.urls.is_empty()
     {
-        return Err("运行时描述符缺少大小、后端或下载源".into());
+        return Err("运行时描述符的大小、平台、架构、后端或下载源无效".into());
     }
     for source in &descriptor.urls {
         let url =
@@ -338,6 +340,8 @@ mod tests {
     fn descriptor() -> RuntimeDescriptor {
         RuntimeDescriptor {
             asset_id: "runtime-fixture".into(),
+            platform: "windows".into(),
+            arch: "x86_64".into(),
             backend: "cuda".into(),
             python: "3.12".into(),
             sha256: "0".repeat(64),

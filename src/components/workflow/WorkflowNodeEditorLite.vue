@@ -12,7 +12,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowR
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { AddOutline, ArrowRedoOutline, ArrowUndoOutline, ExpandOutline, SearchOutline } from '@vicons/ionicons5'
-import { invoke } from '@tauri-apps/api/core'
+import { pickInputFolder, pickSingleAudioFile } from '@/api/native'
 import { invokeWorkerQuery } from '@/api/worker'
 import { LGraph, LGraphCanvas, LiteGraph, createBounds, type LGraphNode } from '@comfyorg/litegraph'
 import '@comfyorg/litegraph/style.css'
@@ -772,7 +772,7 @@ function configureGraphNode(node: LGraphNode) {
         if (picking) return
         picking = true
         try {
-          const path = await invoke<string | null>(batch ? 'pick_input_folder' : 'pick_single_audio_file')
+          const path = await (batch ? pickInputFolder() : pickSingleAudioFile())
           const graph = graphRef.value
           if (!path || !graph || graph.getNodeById(node.id) !== node) return
           graph.beforeChange()

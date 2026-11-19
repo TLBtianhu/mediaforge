@@ -14,6 +14,16 @@ test('plugin view URLs retain the protocol selected by Tauri', () => {
   }
 })
 
+test('session credentials stay in the browser fragment and are encoded', () => {
+  const calls: string[][] = []
+  const url = pluginViewUrl('author.chain', 'editor', 'ui/index.html', (path, protocol) => {
+    calls.push([path, protocol])
+    return 'http://pymss-plugin.localhost/view'
+  }, 'session / #1')
+  assert.deepEqual(calls, [['view', 'pymss-plugin']])
+  assert.equal(url, 'http://pymss-plugin.localhost/view/author.chain/editor/index.html#pymss-session=session%20%2F%20%231')
+})
+
 test('Windows entry paths request the manifest filename inside its resource directory', () => {
   assert.equal(
     pluginViewUrl('audio-tools', 'panel', 'C:\\plugins\\audio-tools\\ui\\controls.html', () => 'http://pymss-plugin.localhost/view'),

@@ -1,15 +1,26 @@
 //! 编辑器音频预览：元数据、PCM 分块解码与波形峰值。
 
 use super::editor_project_dir;
+use crate::commands::app::scan::is_audio_file;
 use crate::error::{AppError, AppResult};
 use crate::python::worker::{bundled_bin_dirs, run_worker_with_payload};
 use serde_json::Value;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 #[tauri::command]
 pub async fn get_audio_metadata(app: AppHandle, payload: Value) -> AppResult<Value> {
+    require_selected_audio(&app, payload["path"].as_str().unwrap_or(""))?;
     run_worker_with_payload(&app, "audio_metadata", Some(payload))
+}
+
+fn require_selected_audio(app: &AppHandle, path: &str) -> AppResult<()> {
+    let path = Path::new(path);
+    if !is_audio_file(path) || !crate::preview_assets::is_allowed(app, path) {
+        return Err(AppError::Worker("editor audio has not been selected or linked".into()));
+    }
+    Ok(())
 }
 
 const EDITOR_PREVIEW_CHUNK_SECONDS: u64 = 4;
@@ -81,6 +92,7 @@ pub async fn editor_preview_chunk(
     sample_rate: u32,
     channels: u32,
 ) -> AppResult<tauri::ipc::Response> {
+    require_selected_audio(&app, &path)?;
     let ffmpeg_name = if cfg!(windows) {
         "ffmpeg.exe"
     } else {
@@ -102,19 +114,81 @@ pub async fn editor_preview_chunk(
 #[tauri::command]
 pub async fn generate_waveform_peaks(app: AppHandle, payload: Value) -> AppResult<Value> {
     let mut payload = payload;
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("dataRoot".into(), serde_json::json!(crate::storage::data_root_dir(&app)?));
-        if !object.contains_key("cacheDir") {
-            let project_id = object
-                .get("projectId")
-                .and_then(Value::as_str)
-                .unwrap_or("shared");
-            let cache_dir = editor_project_dir(&app, project_id)?.join("peaks");
-            object.insert(
-                "cacheDir".into(),
-                Value::String(cache_dir.to_string_lossy().to_string()),
-            );
-        }
+    let source = payload["path"].as_str().unwrap_or("").to_string();
+    require_selected_audio(&app, &source)?;
+    let project_id = payload["projectId"].as_str().unwrap_or("shared").to_string();
+    let cache_dir = editor_project_dir(&app, &project_id)?.join("peaks");
+    let object = payload.as_object_mut().ok_or_else(|| AppError::Worker("invalid waveform request".into()))?;
+    object.insert("dataRoot".into(), serde_json::json!(crate::storage::data_root_dir(&app)?));
+    object.insert("cacheDir".into(), serde_json::json!(cache_dir));
+    let result = run_worker_with_payload(&app, "waveform_peaks", Some(payload))?;
+    if let Some(path) = result["peaksPath"].as_str() {
+        remember_managed_waveform(&app, &project_id, Path::new(path), Path::new(&source));
     }
-    run_worker_with_payload(&app, "waveform_peaks", Some(payload))
+    Ok(result)
+}
+
+pub(super) fn remember_managed_waveform(app: &AppHandle, project_id: &str, path: &Path, source: &Path) {
+    let Ok(project) = editor_project_dir(app, project_id) else { return; };
+    crate::preview_assets::remember_waveform(app, path, |file| {
+        is_managed_waveform_cache(&project.join("peaks"), path, source, file)
+    });
+}
+
+fn is_managed_waveform_cache(directory: &Path, path: &Path, source: &Path, mut file: impl Read) -> bool {
+    let Some(parent) = path.parent() else { return false; };
+    if !source.is_absolute() || !is_audio_file(source) {
+        return false;
+    }
+    let (Ok(parent), Ok(directory)) = (parent.canonicalize(), directory.canonicalize()) else { return false; };
+    if parent != directory { return false; }
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let Some((source_and_digest, resolution)) = name.strip_suffix("_v2.json").and_then(|name| name.rsplit_once('_')) else {
+        return false;
+    };
+    let Some((stem, digest)) = source_and_digest.rsplit_once('_') else { return false; };
+    if source.file_stem().and_then(|stem| stem.to_str()) != Some(stem)
+        || digest.len() != 16 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !resolution.parse::<u64>().is_ok_and(|resolution| (80..=12000).contains(&resolution)) {
+        return false;
+    }
+    let mut content = String::new();
+    if file.read_to_string(&mut content).is_err() { return false; }
+    let Ok(data) = crate::python::result_jobs::parse_reference_json(&content) else { return false; };
+    let same_path = |value: &Value, expected: &Path| {
+        value.as_str().is_some_and(|value| Path::new(value) == expected)
+    };
+    let number_array = |value: &Value| value.as_array().is_some_and(|values| values.iter().all(Value::is_number));
+    data.as_object().is_some_and(|data| data.len() == 8)
+        && same_path(&data["path"], source) && same_path(&data["peaksPath"], path)
+        && number_array(&data["peaks"])
+        && data["channelPeaks"].as_array().is_some_and(|values| values.iter().all(number_array))
+        && data["resolution"].as_u64() == resolution.parse().ok()
+        && ["duration", "sampleRate", "channels"].iter().all(|key| data[*key].is_number())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn only_owned_waveform_cache_for_this_source_is_previewable() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = temp.path().join("editor-projects/owned/peaks");
+        std::fs::create_dir_all(&cache).unwrap();
+        let source = temp.path().join("take.wav");
+        let path = cache.join("take_0123456789abcdef_1400_v2.json");
+        let mut waveform = json!({"path":source, "peaksPath":path, "peaks":[0.2],
+            "channelPeaks":[[0.2]], "resolution":1400, "duration":1.0, "sampleRate":48000, "channels":1});
+        let verify = |directory: &Path, source: &Path, waveform: &Value| {
+            let bytes = serde_json::to_vec(waveform).unwrap();
+            is_managed_waveform_cache(directory, &path, source, bytes.as_slice())
+        };
+        assert!(verify(&cache, &source, &waveform));
+        assert!(!verify(&cache, &temp.path().join("other.wav"), &waveform));
+        assert!(!verify(&temp.path().join("editor-projects/another/peaks"), &source, &waveform));
+        waveform["foreign"] = json!("not waveform data");
+        assert!(!verify(&cache, &source, &waveform));
+    }
 }

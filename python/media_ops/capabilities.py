@@ -114,12 +114,12 @@ def adapter_capability_ids() -> set[str]:
     逐帧管线，所以同一个 planner 同时服务两种模态）。将来出现**只在图像上**的适配器时，
     让它在这里追加，别在别处另起一套判断。
     """
-    from . import image_ops, video_step
+    from . import image_capabilities, video_step
 
     ids = set(video_step.registered())
     # 整段视频模型（如 BasicVSR++）不是逐帧 planner，但必须同样计入已实现能力。
     ids |= set(getattr(video_step, "SEQUENCE_CAPABILITIES", ()))
-    return ids | set(getattr(image_ops, "IMAGE_CAPABILITIES", ()))
+    return ids | set(image_capabilities.IMAGE_CAPABILITIES)
 
 
 def audit_capabilities() -> dict[str, list[str]]:

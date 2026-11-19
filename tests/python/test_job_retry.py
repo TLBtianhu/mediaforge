@@ -156,6 +156,22 @@ class JobRetryToolTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "job did not fail")
 
+    def test_partially_completed_audio_batch_is_not_retried_as_a_whole(self) -> None:
+        job_id = "job_partial_batch"
+        payload = {"model": "test", "tasks": [
+            {"taskId": job_id + "-t1", "input": str(Path(self.root) / "first.wav")},
+            {"taskId": job_id + "-t2", "input": str(Path(self.root) / "second.wav")},
+        ]}
+        result = {**FAILED_RESULT, "outputs": [{"path": str(Path(self.root) / "first_vocals.wav")}]}
+        write_record(self.bridge.jobs.jobs_root, job_record(job_id, command="infer", status="failed",
+                                                           payload=payload, result=result))
+        with mock.patch.object(self.bridge.jobs, "start") as start:
+            retried = self.bridge.job_retry(job_id)
+        self.assertFalse(retried["ok"], retried)
+        self.assertIn("submit only the failed inputs", retried["error"])
+        self.assertEqual(retried["attemptsUsed"], 0)
+        start.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

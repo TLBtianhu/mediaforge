@@ -14,7 +14,7 @@ from . import _bootstrap as _worker_test_bootstrap
 import agent_bridge
 from core import job_quota, job_store
 from core.operation_kernel import Job, OperationKernel
-from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core.worker_runtime_lock import RuntimeLockBusy
 
 
 FAKE_WORKER = r'''
@@ -189,13 +189,14 @@ class EditorKernelLifecycleTests(unittest.TestCase):
             job = kernel.start("export_editor_mix", {"requestId": f"editor_{mode}", "fixtureMode": mode,
                 "fixtureRoot": str(self.root), "fixtureRelease": str(gate), "project": {"sources": [], "tracks": []}})
             self.wait_for(lambda: job.status == mode and kernel.get(job.job_id).status == mode)
-            self.assertIsNotNone(job.process)
-            self.assertIsNone(job.process.poll())
+            process = job.process
+            self.assertIsNotNone(process)
+            self.assertIsNone(process.poll())
             self.assertFalse(job._process_reaped)
             self.assertIsNotNone(job._lease)
             self.assertIsNotNone(job._quota_lease)
             with self.assertRaises(RuntimeLockBusy):
-                with runtime_lock(kernel._lease_path(job.job_id), timeout=0):
+                with job_store.owner_lock(kernel.jobs_root, job.job_id):
                     pass
             with job_store.catalog_lock(kernel.jobs_root):
                 self.assertIsNone(job_quota.try_acquire(kernel.jobs_root, 1))
@@ -216,7 +217,10 @@ class EditorKernelLifecycleTests(unittest.TestCase):
             self.wait_for(lambda: job._lease is None and job._quota_lease is None)
         self.assertTrue(job._process_reaped)
         self.assertIsNone(job._quota_lease)
-        self.assertEqual(job.process.returncode, 7 if mode == "failed" else 0)
+        self.assertIsNone(job.process)
+        self.assertEqual(process.returncode, 7 if mode == "failed" else 0)
+        self.assertTrue(process.stdin.closed)
+        self.assertTrue(process.stdout.closed)
         self.assertEqual(kernel.get(job.job_id).status, mode, "exit code must not replace the canonical event")
         self.assertFalse((job.workdir / "payload.json").exists())
         with job_store.catalog_lock(kernel.jobs_root):

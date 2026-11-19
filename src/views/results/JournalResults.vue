@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 import { useI18n } from 'vue-i18n'
 import { NCheckbox, useDialog, useMessage, type DialogReactive } from 'naive-ui'
 import { FolderOpenOutline, RefreshOutline, TrashOutline } from '@vicons/ionicons5'
@@ -214,9 +214,9 @@ function removeSelected() { handleRemove(props.results.filter(result => selected
             <n-button size="small" secondary :disabled="removing" :aria-label="t('results.journal.openOutput', { name: output.name })" @click="reveal(output.path)"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('results.journal.openLocation') }}</n-button>
           </div>
           <div v-if="previews[result.id] === output.path" class="journal-output__preview">
-            <img v-if="output.preview === 'image'" :src="convertFileSrc(output.path)" :alt="output.name" />
-            <video v-else-if="output.preview === 'video'" :src="convertFileSrc(output.path)" controls preload="metadata" />
-            <audio v-else-if="output.preview === 'audio'" :src="convertFileSrc(output.path)" controls preload="metadata" />
+            <img v-if="output.preview === 'image'" :src="mediaPreviewUrl(output.path)" :alt="output.name" />
+            <video v-else-if="output.preview === 'video'" :src="mediaPreviewUrl(output.path)" controls preload="metadata" />
+            <audio v-else-if="output.preview === 'audio'" :src="mediaPreviewUrl(output.path)" controls preload="metadata" />
           </div>
         </li>
       </ul>

@@ -208,6 +208,25 @@ export function recommendedRuntimeBackend(info: RuntimeInfo | null | undefined):
   return 'cpu'
 }
 
+/** Targets shipped by the app's runtime provisioners. macOS uses bundled MLX. */
+export function runtimeBackendsForTarget(platform: string | undefined, machine: string | undefined): RuntimeBackend[] {
+  const os = platform?.toLowerCase()
+  const arch = machine?.toLowerCase()
+  if (os === 'darwin' || os === 'macos') return arch === 'arm64' || arch === 'aarch64' ? ['mlx'] : []
+  if (os !== 'win32' && os !== 'windows' && os !== 'linux') return []
+  return arch === 'amd64' || arch === 'x86_64' || arch === 'x64' ? ['cpu', 'cuda', 'rocm'] : []
+}
+
+export function runtimeAssetOfferBackend(info: RuntimeInfo | null | undefined): RuntimeBackend | null {
+  if (typeof info?.ready !== 'boolean') return null
+  const recorded = info.installedBackend || info.installState?.backend
+  const backend = recorded || (info.ready
+    ? (info.packages?.mlx ? 'mlx' : info.torchBackend)
+    : recommendedRuntimeBackend(info))
+  if (!backend || !isKnownRuntimeBackend(backend)) return null
+  return runtimeBackendsForTarget(info.platform, info.machine).includes(backend) ? backend : null
+}
+
 export type RuntimeManifestStatus = 'current' | 'older' | 'newer' | 'unknown'
 
 /**

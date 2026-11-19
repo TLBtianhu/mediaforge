@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import sys
 import tempfile
@@ -162,6 +163,24 @@ class ExecutionManifestTests(unittest.TestCase):
         }
         manifest["execution"]["backgroundResult"] = ["runtime_info"]
         self.assertEqual(architecture.check_execution_manifest(manifest), [])
+
+    def test_sync_query_timeout_contract(self) -> None:
+        manifest = self.manifest(["runtime_info"], ["update_runtime_core"])
+        manifest["domains"]["runtime"]["commands"]["info"]["kind"] = "query"
+        manifest["execution"]["syncQuery"] = {
+            "defaultTimeoutSeconds": 60,
+            "timeoutOverrides": {"runtime_info": 120},
+        }
+        self.assertEqual(architecture.check_execution_manifest(manifest), [])
+        for mutate in (
+            lambda value: value["execution"]["syncQuery"].update(defaultTimeoutSeconds=0),
+            lambda value: value["execution"]["syncQuery"].update(timeoutOverrides={"runtime_ghost": 10}),
+            lambda value: value["execution"]["syncQuery"].update(timeoutOverrides={"runtime_info": 0}),
+            lambda value: value["domains"]["runtime"]["commands"]["info"].update(kind="task"),
+        ):
+            invalid = copy.deepcopy(manifest)
+            mutate(invalid)
+            self.assertNotEqual(architecture.check_execution_manifest(invalid), [])
 
     def test_bootstrap_query_and_update_sets_must_be_known(self) -> None:
         manifest = self.manifest(["runtime_info"], ["update_runtime_core"])

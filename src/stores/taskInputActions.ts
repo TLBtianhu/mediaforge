@@ -1,7 +1,6 @@
 import type { Ref } from 'vue'
 import type { ScanMediaPathsResult } from '@/stores/taskTypes'
 import { revealPath as revealNativePath } from '@/api/native'
-import type { TrashResult } from '@/api/native'
 
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus']
 const VIDEO_EXTENSIONS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv']
@@ -16,7 +15,6 @@ export type TaskInputNative = {
   pickMediaFiles: () => Promise<string[]>
   scanMediaPaths: (paths: string[]) => Promise<ScanMediaPathsResult>
   pickInputFolder: () => Promise<string | null>
-  movePathsToTrash: (paths: string[]) => Promise<TrashResult>
 }
 
 type Deps = {
@@ -82,14 +80,8 @@ export function makeTaskInputActions({ inputFiles, native }: Deps) {
     await revealNativePath(path)
   }
 
-  async function trashPaths(paths: string[]) {
-    const valid = paths.filter((p) => p?.trim())
-    if (!valid.length) return { trashed: [] as string[], failed: [] as string[] }
-    return native.movePathsToTrash(valid)
-  }
-
   return {
     addInputFiles, removeInputFile, clearInputFiles, moveInputFile,
-    pickFiles, scanAndAddPaths, pickInputFolder, addPaths, revealPath, trashPaths,
+    pickFiles, scanAndAddPaths, pickInputFolder, addPaths, revealPath,
   }
 }

@@ -34,10 +34,12 @@ class RuntimeAssetBuilderTests(unittest.TestCase):
             BUILDER.checked_stage("../../runtime", self.stage)
 
     def test_wrong_python_or_venv_is_rejected_before_creating_any_output(self):
-        for version, prefix, base in (("3.11", "host", "host"), ("3.12", "venv", "host")):
-            with self.subTest(version=version, prefix=prefix):
+        for version, prefix, base, target in (("3.11", "host", "host", "win-amd64"),
+                                              ("3.12", "venv", "host", "win-amd64"),
+                                              ("3.12", "host", "host", "win-arm64")):
+            with self.subTest(version=version, prefix=prefix, target=target):
                 with mock.patch.object(BUILDER, "python_info", return_value={
-                        "version": version, "prefix": prefix, "basePrefix": base}):
+                        "version": version, "prefix": prefix, "basePrefix": base, "platform": target}):
                     with self.assertRaises(ValueError):
                         BUILDER.copy_base(Path("host/python.exe"), self.stage, "3.12")
                 self.assertFalse(self.stage.exists())
@@ -58,7 +60,8 @@ class RuntimeAssetBuilderTests(unittest.TestCase):
         self.assertEqual(marker["python"], "3.12")
         self.assertEqual(marker["sha256"], descriptor["sha256"])
         self.assertEqual(descriptor["python"], "3.12")
-        self.assertEqual(set(descriptor), {"assetId", "backend", "python", "sha256", "size", "urls"})
+        self.assertEqual((descriptor["platform"], descriptor["arch"]), ("windows", "x86_64"))
+        self.assertEqual(set(descriptor), {"assetId", "backend", "platform", "arch", "python", "sha256", "size", "urls"})
         self.assertEqual(len(descriptor["sha256"]), 64)
 
     def test_existing_archive_is_preserved_instead_of_replaced(self):

@@ -300,15 +300,28 @@ class WorkerChildInvocationTests(unittest.TestCase):
         work.mkdir()
         job = kernel_module.Job("job_hidden_child", "audio_tools", {}, work)
         job.owner = {"kind": "operation-kernel", "kernelId": "fixture", "pid": os.getpid()}
-        process = mock.Mock(stdout=io.StringIO('{"type":"task.progress","payload":{"fraction":0.5}}\n{"type":"task.result","payload":{"outputs":{}}}\n'))
+        output = io.StringIO(kernel_module.READY
+                             + '{"type":"task.progress","payload":{"fraction":0.5}}\n'
+                             + '{"type":"task.result","payload":{"outputs":{}}}\n')
+        control = mock.Mock(wraps=io.StringIO())
+        process = mock.Mock(stdin=control, stdout=output, stderr=None)
         process.wait.return_value = 0
         with mock.patch.object(kernel_module.subprocess, "Popen", return_value=process) as popen, \
-             mock.patch.object(kernel_module.threading, "Thread"):
+             mock.patch.object(kernel_module.threading, "Thread") as thread:
+            thread.return_value.is_alive.return_value = False
             kernel._run_worker(job)
         self.assert_hidden(popen.call_args)
+        command = popen.call_args.args[0]
+        separator = command.index("--")
+        self.assertIn(str(kernel_module.SUPERVISOR), command[:separator])
+        self.assertEqual(command[separator + 1], str(kernel_module.WORKER))
+        self.assertEqual(popen.call_args.kwargs["stdin"], subprocess.PIPE)
         self.assertEqual(popen.call_args.kwargs["stdout"], subprocess.PIPE)
         self.assertTrue(popen.call_args.kwargs["text"])
         self.assertEqual(job.status, "completed")
+        control.write.assert_called_once_with(kernel_module.GO.decode("ascii"))
+        control.close.assert_called_once_with()
+        self.assertTrue(output.closed)
         process.wait.assert_called_once()
 
 

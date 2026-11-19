@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { invokeWorkerQuery } from '@/api/worker'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { registerWindowCloseGuard } from '@/utils/windowCloseGuards'
+import type { WorkerCommandPayload } from '@/types/workerContracts.generated'
 
 export type CatalogPlugin = {
   name: string
@@ -44,7 +45,7 @@ export type PluginMarketplace = PluginInventory & {
   catalog: CatalogPlugin[]
   catalogError: string | null
 }
-export type PluginAction = 'install' | 'update' | 'repair' | 'uninstall' | 'check_updates'
+export type PluginAction = WorkerCommandPayload<'manage_plugin'>['action']
 type WorkerEvent = {
   type: string
   taskId?: string
@@ -153,13 +154,13 @@ async function refresh() {
   }
 }
 
-async function manage(action: PluginAction, options: { name?: string; target?: string; locale?: string; mirror?: string } = {}) {
+async function manage(action: PluginAction, options: { name?: string; locale?: string; mirror?: string } = {}) {
   if (busy.value || loading.value) throw new Error('Plugin management is already running')
   ++sequence
   busy.value = true
   error.value = ''
   currentAction.value = action
-  currentName.value = options.name || options.target || ''
+  currentName.value = options.name || ''
   logs.value = []
   taskId.value = `plugin_manage_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
   const requestedId = taskId.value
@@ -168,7 +169,8 @@ async function manage(action: PluginAction, options: { name?: string; target?: s
   const completion = new Promise<void>((resolve, reject) => { pending = { resolve, reject } })
   try {
     await start()
-    const response = await invoke<{ taskId: string }>('manage_plugin', { payload: { action, ...options, taskId: requestedId } })
+    const { name, locale, mirror } = options
+    const response = await invoke<{ taskId: string }>('manage_plugin', { payload: { action, name, locale, mirror, taskId: requestedId } })
     if (busy.value && acceptedIds.has(requestedId)) {
       taskId.value = response.taskId || requestedId
       acceptedIds.add(taskId.value)

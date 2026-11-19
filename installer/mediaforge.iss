@@ -59,6 +59,8 @@ Name: "dshbridge"; Description: "附带 DSH 集成桥（由 DSH 插件管理器�
 ; Delete them on upgrade so nobody can run the legacy injector by habit.
 Type: files; Name: "{app}\integrations\dsh-mediaforge\*.ps1"
 Type: files; Name: "{app}\integrations\dsh-mediaforge\*.bak*"
+Type: files; Name: "{app}\integrations\dsh-mediaforge\launcher.template.cmd"
+Type: files; Name: "{app}\integrations\dsh-mediaforge\mediaforge-mcp.cmd"
 
 [Files]
 Source: "{#SourceDir}\{#MyAppExeName}"; DestDir: "{app}\app"; Flags: ignoreversion
@@ -77,9 +79,7 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\app\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\app\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-; 安装路径指针：MCP 启动器（%USERPROFILE%\.mediaforge\bin\mediaforge-mcp.cmd）按
-; MEDIAFORGE_HOME → 这个键 → %LOCALAPPDATA%\Programs → Program Files 的顺序找应用。
-; 写在声明区而不是脚本里，脚本失败也不会丢指针。
+; 记录当前安装程序的位置。DSH 按用户链接的 bundle 解析所在实例。
 Root: HKCU; Subkey: "Software\MediaForge"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}\app"; Flags: uninsdeletekey
 
 [Run]

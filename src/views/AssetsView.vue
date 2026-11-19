@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { revealPath } from '@/api/native'
+import { pickPreviewFiles, pickPreviewFolders, revealPath } from '@/api/native'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 import { mediaLibrary } from '@/api/mediaLibrary'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
@@ -88,7 +87,7 @@ function resolution(asset: Asset) {
 }
 
 function thumbnailSrc(asset: Asset) {
-  return asset.thumbnail ? convertFileSrc(asset.thumbnail) : ''
+  return mediaPreviewUrl(asset.thumbnail)
 }
 
 async function refresh() {
@@ -127,15 +126,7 @@ async function importPaths(paths: string[]) {
 
 async function pickFiles() {
   try {
-    const selected = await open({
-      multiple: true,
-      filters: [{
-        name: 'Media',
-        extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'jpg', 'jpeg', 'png', 'webp', 'gif'],
-      }],
-    })
-    if (!selected) return
-    await importPaths(Array.isArray(selected) ? selected : [selected])
+    await importPaths(await pickPreviewFiles('library'))
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }
@@ -143,9 +134,7 @@ async function pickFiles() {
 
 async function pickFolder() {
   try {
-    const selected = await open({ directory: true, multiple: true })
-    if (!selected) return
-    await importPaths(Array.isArray(selected) ? selected : [selected])
+    await importPaths(await pickPreviewFolders())
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }

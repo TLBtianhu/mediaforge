@@ -6,7 +6,6 @@ import { cancelTask as cancelNativeTask } from '@/api/native'
 import {
   pickInputFolder as pickInputFolderDialog,
   pickMediaFiles,
-  movePathsToTrash,
   scanMediaPaths,
 } from '@/api/native'
 import i18n from '@/i18n'
@@ -99,14 +98,13 @@ export const useTaskStore = defineStore('task', () => {
   const inputFiles = ref<string[]>([])
 const {
   addInputFiles, removeInputFile, clearInputFiles, moveInputFile,
-  pickFiles, pickInputFolder, addPaths, revealPath, trashPaths,
+  pickFiles, pickInputFolder, addPaths, revealPath,
 } = makeTaskInputActions({
   inputFiles,
   native: {
     pickMediaFiles,
     scanMediaPaths,
     pickInputFolder: pickInputFolderDialog,
-    movePathsToTrash,
   },
 })
   const separateRunMode = ref<'model' | 'workflow'>('model')
@@ -660,7 +658,6 @@ const {
     removeInputFile,
     clearInputFiles,
     revealPath,
-    trashPaths,
     primaryRevealPath,
     getTaskById,
     getJobById,

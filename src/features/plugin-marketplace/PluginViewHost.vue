@@ -5,8 +5,8 @@
  * (JSON-RPC over postMessage) to Tauri commands.
  *
  * Security posture: the iframe is sandboxed (no same-origin), only manifest
- * allowlisted SDK methods pass, and every incoming message is checked against
- * "source must be this iframe".
+ * allowlisted SDK methods pass, and RPC is bound to a document-specific
+ * MessageChannel. A navigated document inherits neither the session nor the port.
  */
 import { getBuildInfo, setPluginViewRoot, startOperationTask } from '@/api/native'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
@@ -51,6 +51,20 @@ type RunHandlers = {
   reject: (error: Error) => void
 }
 const runRequests = new Map<string, RunHandlers>()
+let channel: MessagePort | undefined
+let sessionId = ''
+let loadedOnce = false
+let recovering = false
+
+function rejectRunRequests(reason: string) {
+  for (const handlers of runRequests.values()) handlers.reject(new Error(reason))
+  runRequests.clear()
+}
+
+function closeChannel() {
+  channel?.close()
+  channel = undefined
+}
 
 async function handleCall(id: number, method: string, params: Record<string, unknown>) {
   if (!allowed(method)) throw new Error(`PERMISSION_DENIED: ${method}`)
@@ -90,8 +104,8 @@ async function handleCall(id: number, method: string, params: Record<string, unk
 }
 
 function postToFrame(message: Record<string, unknown>) {
-  if (disposed) return
-  frame.value?.contentWindow?.postMessage(message, '*')
+  if (disposed || !channel || !sessionId) return
+  channel.postMessage({ ...message, sessionId })
 }
 
 const THEME_TOKENS = [
@@ -123,15 +137,22 @@ function pushTheme() {
 
 function onWindowMessage(event: MessageEvent) {
   const frameWindow = frame.value?.contentWindow
-  if (!frameWindow || event.source !== frameWindow) return
+  if (disposed || !frameWindow || event.source !== frameWindow || channel) return
   const data = event.data
   if (!data || typeof data !== 'object' || data.jsonrpc !== '2.0') return
-  // Page signals readiness; the host may pre-send cached state in response.
-  if (typeof data.method === 'string' && data.method === 'pymss.ready') {
-    postToFrame({ jsonrpc: '2.0', method: 'host.ready' })
-    pushTheme()
-    return
-  }
+  if (data.method !== 'pymss.ready' || data.sessionId !== sessionId || !event.ports?.length) return
+  channel = event.ports[0]
+  channel.onmessage = onChannelMessage
+  channel.start()
+  status.value = 'ready'
+  postToFrame({ jsonrpc: '2.0', method: 'host.ready' })
+  pushTheme()
+}
+
+function onChannelMessage(event: MessageEvent) {
+  if (disposed || !channel) return
+  const data = event.data
+  if (!data || typeof data !== 'object' || data.jsonrpc !== '2.0' || data.sessionId !== sessionId) return
   const id = Number(data.id)
   if (!Number.isFinite(id) || typeof data.method !== 'string') return
   handleCall(id, data.method, data.params || {})
@@ -141,6 +162,26 @@ function onWindowMessage(event: MessageEvent) {
       id,
       error: { code: -32000, message: failure instanceof Error ? failure.message : String(failure) },
     }))
+}
+
+function onFrameLoad() {
+  if (disposed) return
+  if (!loadedOnce) {
+    loadedOnce = true
+    return
+  }
+  if (recovering) {
+    recovering = false
+    return
+  }
+  closeChannel()
+  rejectRunRequests('PLUGIN_VIEW_NAVIGATED')
+  recovering = true
+  sessionId = crypto.randomUUID()
+  status.value = 'loading'
+  src.value = pluginViewUrl(
+    props.pluginName, props.view.id, props.view.entryPath || props.view.entry, convertFileSrc, sessionId,
+  )
 }
 
 let unlistenWorker: UnlistenFn | undefined
@@ -177,8 +218,9 @@ onMounted(async () => {
     )
     if (disposed) { unlisten(); return }
     unlistenWorker = unlisten
+    sessionId = crypto.randomUUID()
     src.value = pluginViewUrl(
-      props.pluginName, props.view.id, props.view.entryPath || props.view.entry, convertFileSrc,
+      props.pluginName, props.view.id, props.view.entryPath || props.view.entry, convertFileSrc, sessionId,
     )
     status.value = 'loading'
   } catch (failure) {
@@ -190,11 +232,11 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true
+  closeChannel()
   window.removeEventListener('message', onWindowMessage)
   unlistenWorker?.()
   themeObserver?.disconnect()
-  for (const handlers of runRequests.values()) handlers.reject(new Error('PLUGIN_VIEW_CLOSED'))
-  runRequests.clear()
+  rejectRunRequests('PLUGIN_VIEW_CLOSED')
 })
 </script>
 
@@ -202,13 +244,13 @@ onBeforeUnmount(() => {
   <div class="plugin-view-host">
     <n-alert v-if="status === 'error'" type="error">{{ errorText }}</n-alert>
     <iframe
-      v-show="status !== 'error'"
+      v-if="status !== 'error' && src"
       ref="frame"
       class="plugin-view-frame"
       :src="src"
       sandbox="allow-scripts allow-forms"
       :title="view.title || pluginName"
-      @load="pushTheme"
+      @load="onFrameLoad"
     />
   </div>
 </template>

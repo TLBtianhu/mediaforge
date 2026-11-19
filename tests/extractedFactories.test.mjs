@@ -116,10 +116,6 @@ test('task input actions filter, dedupe, reorder and scan paths', async () => {
         return { files: ['/b.wav', '/bad.txt'], warnings: ['skipped'] }
       },
       pickInputFolder: async () => { calls.push({ command: 'pick_input_folder' }); return null },
-      movePathsToTrash: async (paths) => {
-        calls.push({ command: 'move_paths_to_trash', paths })
-        return { trashed: paths, failed: [] }
-      },
     },
   })
 

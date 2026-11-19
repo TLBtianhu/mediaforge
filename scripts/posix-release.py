@@ -34,7 +34,8 @@ def check_runtime_version(root: Path) -> None:
 
 
 def verify_resources(resources: Path) -> None:
-    for name in ("python/worker.py", "python/core/__init__.py", "python/shared/protocol_contract.py",
+    for name in ("python/worker.py", "python/core/__init__.py", "python/shared/protocol_contract.py", "python/core/worker_supervisor.py",
+                 "python/core/plugin_marketplace_trust.py", "python/plugin-marketplace.json",
                  "python/surfaces/dispatch.py", "python/runtime-manifest.json", "manifest/runtime.json",
                  "manifest/protocol.json", "manifest/execution-quota.json", "manifest/library-schema.json"):
         if not (resources / name).is_file():

@@ -1,9 +1,9 @@
 ﻿<script setup lang="ts">
-import { pathKinds, revealPath, scanImagePaths } from '@/api/native'
+import { pathKinds, pickPreviewFiles, revealPath, scanImagePaths } from '@/api/native'
 import { dropSkippedSteps, precheckPlan, summarizePrecheck } from '../utils/mediaPrecheck.ts'
 import { DIRECTORY_ZONES, findDropZone, folderToReference, toCssPoint, type PathKind } from '../utils/dropZones.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -79,8 +79,8 @@ const dragging = ref(false)
 const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 const pipelineSteps = computed(() => [planStep.value])
 const firstOutput = computed(() => outputs.value[0] || null)
-const resultSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
-const originalSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.source) : '')
+const resultSrc = computed(() => mediaPreviewUrl(firstOutput.value?.path || ''))
+const originalSrc = computed(() => mediaPreviewUrl(firstOutput.value?.source || ''))
 const resultInfo = computed(() => {
   const info = firstOutput.value?.info
   if (!info) return []
@@ -105,12 +105,7 @@ function addInputs(paths: string[]) {
 
 async function pickFiles() {
   try {
-    const selected = await open({
-      multiple: true,
-      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tif', 'tiff'] }],
-    })
-    if (!selected) return
-    addInputs(Array.isArray(selected) ? selected : [selected])
+    addInputs(await pickPreviewFiles('image'))
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }

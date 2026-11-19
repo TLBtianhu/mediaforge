@@ -16,7 +16,6 @@ import threading
 from shared.worker_protocol import debug_log, emit_error, load_payload, protocol_logging
 from shared.worker_proxy import ProxyConfigError
 from shared import worker_paths
-from shared.worker_subprocess import hidden_subprocess_kwargs
 from shared.runtime_lease import RuntimeLeaseError, runtime_lease
 from surfaces.dispatch import run as dispatch_run
 
@@ -29,36 +28,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _watch_parent_pipe() -> None:
-    """Exit when the Studio closes the stdin pipe, including on an app crash.
-
-    The Rust side sets MEDIAFORGE_PARENT_PIPE only for supervised workers; direct
-    CLI/MCP invocations keep the watchdog disabled so a closed terminal stdin does
-    not kill them. On Unix the worker is its own process-group leader, so this also
-    terminates FFmpeg/tool children.
-    """
+    """Emergency POSIX cleanup if the supervisor itself disappears."""
     try:
-        stream = getattr(sys.stdin, "buffer", sys.stdin)
-        while stream.read(1):
+        while os.read(sys.stdin.fileno(), 1):
             pass
-    except Exception:  # noqa: BLE001 - the parent disappearing is the normal path
+    except (OSError, ValueError):
         pass
-    if os.name == "nt":
+    if os.getpgrp() == os.getpid():
         try:
-            import subprocess
-            subprocess.run(
-                ["taskkill", "/PID", str(os.getpid()), "/T", "/F"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=False,
-                **hidden_subprocess_kwargs(),
-            )
-        except Exception:  # noqa: BLE001
+            os.killpg(os.getpid(), signal.SIGKILL)
+        except OSError:
             pass
-    else:
-        try:
-            os.killpg(os.getpgrp(), signal.SIGTERM)
-        except Exception:  # noqa: BLE001
-            pass
-    os._exit(0)
+    os._exit(1)
 
 
 def _check_python_runtime() -> bool:
@@ -91,7 +72,7 @@ def main(argv: list[str]) -> int:
     # CLI startup is process scope, before any lazy pymss import. Inline dispatch
     # must use an already configured registry rather than change another request's env.
     os.environ["PYMSS_USER_MODELS"] = str(worker_paths.user_models_file())
-    if os.environ.get("MEDIAFORGE_PARENT_PIPE") == "1":
+    if os.name != "nt" and os.environ.get("MEDIAFORGE_PARENT_PIPE") == "1":
         threading.Thread(target=_watch_parent_pipe, name="parent-pipe-watchdog", daemon=True).start()
     debug_log("worker.start", command=args.command)
     try:

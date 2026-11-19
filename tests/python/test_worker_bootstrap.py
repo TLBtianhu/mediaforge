@@ -99,6 +99,39 @@ class RuntimeReadinessTests(unittest.TestCase):
 
 
 class ManifestRequirementTests(unittest.TestCase):
+    def test_worker_install_rejects_unsupported_arch_before_provisioning(self):
+        for platform_name, arch, backend in (
+            ("win32", "aarch64", "cuda"),
+            ("linux", "aarch64", "cuda"),
+            ("darwin", "x86_64", "mlx"),
+        ):
+            with self.subTest(platform=platform_name, arch=arch), tempfile.TemporaryDirectory() as temporary, \
+                 mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", Path(temporary)), \
+                 mock.patch.object(worker_bootstrap, "interpreter_architecture", return_value=arch), \
+                 mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST), \
+                 mock.patch.object(worker_bootstrap, "_validate_install_python_versions") as validate, \
+                 mock.patch.object(worker_bootstrap, "HiddenVenvBuilder") as create, \
+                 mock.patch.object(worker_bootstrap.subprocess, "Popen") as pip, \
+                 mock.patch.object(sys, "platform", platform_name), contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertNotEqual(worker_bootstrap.cmd_install_runtime({"backend": backend}), 0)
+                self.assertEqual(json.loads(output.getvalue())["payload"]["code"], "RUNTIME_PLATFORM_UNSUPPORTED")
+                self.assertIn(f"{platform_name}/{arch}", output.getvalue())
+                validate.assert_not_called()
+                create.assert_not_called()
+                pip.assert_not_called()
+
+    def test_worker_install_keeps_linux_cuda_and_macos_mlx_routes(self):
+        for platform_name, arch, backend in (("linux", "x86_64", "cuda"), ("darwin", "aarch64", "mlx")):
+            with self.subTest(platform=platform_name, arch=arch), tempfile.TemporaryDirectory() as temporary, \
+                 mock.patch.object(worker_bootstrap, "RUNTIME_ENVS_DIR", Path(temporary)), \
+                 mock.patch.object(worker_bootstrap, "interpreter_architecture", return_value=arch), \
+                 mock.patch.object(worker_bootstrap, "_manifest", return_value=MANIFEST), \
+                 mock.patch.object(worker_bootstrap, "_validate_install_python_versions", side_effect=ValueError("fixture stop")) as validate, \
+                 mock.patch.object(sys, "platform", platform_name), contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertNotEqual(worker_bootstrap.cmd_install_runtime({"backend": backend}), 0)
+                self.assertEqual(json.loads(output.getvalue())["payload"]["code"], "RUNTIME_PYTHON_MISMATCH")
+                validate.assert_called_once()
+
     def test_manifest_status_requires_complete_numeric_markers(self):
         for actual, expected, status in (
             ("2026.09.1", "2026.09.1", "current"),

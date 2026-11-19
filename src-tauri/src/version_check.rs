@@ -20,8 +20,8 @@ use crate::error::{AppError, AppResult};
 use crate::runtime_assets::{self, RuntimeDescriptor};
 use crate::storage;
 
-/// 与 `tauri.conf.json` 的 `plugins.updater.pubkey` 是同一把 key（minisign 公钥，base64）。
-const VERSIONS_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk3OTE1MTQyQjEyNzYxMzYKUldRMllTZXhRbEdSbHdKclg2RzBGbmo0ZGJZYzZMNzY1a1d3a3hFN3JXbWs3SkxOK21HTkI4RFMK";
+/// 版本清单专用的 minisign 公钥文件（base64）。
+const VERSIONS_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFOUY5REM1RjJDQTUzMjMKUldRalU4cnl4WjJmM3V1WDdYZG53cWNRMS9OSEFCRVg2c0xLeC9icnFUYVk3WmZkWVZCVzQ0Nm8K";
 
 /// 发布源：版本清单与签名放在同一个目录下（`versions.json` + `versions.json.sig`）。
 /// 环境变量可覆盖，测试与自建镜像都走这一个入口。
@@ -56,7 +56,7 @@ pub struct AppAxis {
 }
 
 /// 比较结论。`*_available` 只说明"远端更新"，是否执行由用户决定。
-fn compare(doc: &VersionsDoc, current_runtime: &str) -> Value {
+fn compare(doc: &VersionsDoc, current_runtime: Option<&str>) -> Value {
     let local_app = env!("CARGO_PKG_VERSION");
     let app_remote = doc.app.version.trim();
     let app_available = match (
@@ -67,14 +67,14 @@ fn compare(doc: &VersionsDoc, current_runtime: &str) -> Value {
         _ => app_remote != local_app,
     };
     json!({
-        "local": { "app": local_app, "runtime": current_runtime },
+        "local": { "app": local_app, "runtime": current_runtime.unwrap_or_default() },
         "remote": {
             "app": app_remote,
             "runtime": doc.runtime.asset_id,
         },
         "available": {
             "app": app_available,
-            "runtime": doc.runtime.asset_id != current_runtime,
+            "runtime": current_runtime.is_some_and(|asset| doc.runtime.asset_id != asset),
         },
         "schemaVersion": doc.schema_version,
     })
@@ -118,9 +118,9 @@ fn parse_and_verify(doc: &str, signature: &str) -> AppResult<VersionsDoc> {
 fn parse_document(doc: &str) -> AppResult<VersionsDoc> {
     let value: Value = serde_json::from_str(doc)
         .map_err(|error| AppError::Worker(format!("versions.json 解析失败：{error}")))?;
-    if value.get("schemaVersion").and_then(Value::as_u64) != Some(2) {
+    if value.get("schemaVersion").and_then(Value::as_u64) != Some(3) {
         return Err(AppError::Worker(format!(
-            "versions.json schemaVersion={}，本程序支持 2",
+            "versions.json schemaVersion={}，本程序支持 3",
             value.get("schemaVersion").unwrap_or(&Value::Null)
         )));
     }
@@ -248,27 +248,45 @@ async fn refresh_versions_validated(
 
 /// 检测两条轴：包括手动检查在内，每次都联网；持久缓存只供后续接受运行时使用。
 #[tauri::command]
-pub async fn versions_check(app: AppHandle) -> AppResult<Value> {
+pub async fn versions_check(app: AppHandle, backend: Option<String>) -> AppResult<Value> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
         .map_err(|error| AppError::Worker(format!("HTTP 客户端初始化失败：{error}")))?;
     let parsed = refresh_versions(&cache_dir(&app)?, &client, &versions_urls()).await?;
-    let current_runtime = runtime_assets::desired_runtime(&app)?.asset_id;
-    let mut result = compare(&parsed, &current_runtime);
+    let current_runtime = backend.as_deref().and_then(|backend| {
+        runtime_assets::validate_install_target(&parsed.runtime, Some(backend)).ok()?;
+        runtime_assets::active_managed_asset(&app, backend).ok().flatten()
+    });
+    let mut result = compare(&parsed, current_runtime.as_deref());
+    if current_runtime.is_some() && backend.as_deref().is_some_and(|backend| {
+        runtime_assets::accepted_runtime(&app, backend)
+            .ok()
+            .flatten()
+            .is_some_and(|desired| desired.asset_id == parsed.runtime.asset_id)
+    }) {
+        result["available"]["runtime"] = json!(false);
+    }
     result["source"] = json!("remote");
     Ok(result)
 }
 
 /// 接受远端运行时：写成 desired，下一次 `runtime_asset_install` 会整包下载并切换指针。
 #[tauri::command]
-pub fn versions_accept_runtime(app: AppHandle) -> AppResult<Value> {
+pub fn versions_accept_runtime(app: AppHandle, backend: Option<String>) -> AppResult<Value> {
+    let backend = backend.as_deref().ok_or_else(|| {
+        AppError::Worker("接受运行时更新时必须指定已激活的托管运行时后端".into())
+    })?;
     let Some(cached) = read_cached(&cache_dir(&app)?) else {
         return Err(AppError::Worker(
             "先调用 versions_check 拉取并校验版本信息".into(),
         ));
     };
     let parsed = parse_and_verify(&cached.document, &cached.signature)?;
+    runtime_assets::validate_install_target(&parsed.runtime, Some(backend)).map_err(AppError::Worker)?;
+    if runtime_assets::active_managed_asset(&app, backend)?.is_none() {
+        return Err(AppError::Worker("当前没有匹配的托管运行时可更新".into()));
+    }
     runtime_assets::write_desired(&app, &parsed.runtime)?;
     Ok(json!({
         "accepted": true,
@@ -289,6 +307,8 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    const HISTORICAL_FIXTURE_KEY: &str = "RWQ2YSexQlGRlwJrX6G0Fnj4dbYc6L765kWwkxE7rWmk7JLN+mGNB8DS";
+
     // Public release bytes and public signature only; no signing key, network,
     // existing installation or user profile is needed by these tests.
     fn signed_fixture() -> SignedVersions {
@@ -306,6 +326,14 @@ mod tests {
                 "W6GrCBXPPGf5FkPMUNz1j7MziJYQyufLt+Fyu0AeRPwU3MDo75f39qxLNC1u02OBKsprrtyjJuPPf4L12wwvDw==\n",
             ).into(),
         }
+    }
+
+    fn verify_signed_fixture(document: &str, signature: &str) -> AppResult<()> {
+        let key = PublicKey::from_base64(HISTORICAL_FIXTURE_KEY).unwrap();
+        let signature = Signature::decode(signature)
+            .map_err(|error| AppError::Worker(format!("invalid fixture signature: {error}")))?;
+        key.verify(document.as_bytes(), &signature, false)
+            .map_err(|error| AppError::Worker(format!("fixture signature mismatch: {error}")))
     }
 
     struct TestServer {
@@ -433,12 +461,14 @@ mod tests {
 
     fn doc(runtime: &str, app: &str) -> VersionsDoc {
         VersionsDoc {
-            schema_version: 2,
+            schema_version: 3,
             app: AppAxis {
                 version: app.into(),
             },
             runtime: RuntimeDescriptor {
                 asset_id: runtime.into(),
+                platform: "windows".into(),
+                arch: "x86_64".into(),
                 backend: "cuda".into(),
                 python: "3.12".into(),
                 sha256: "0".repeat(64),
@@ -452,7 +482,7 @@ mod tests {
     fn newer_app_and_different_runtime_are_reported() {
         let result = compare(
             &doc("runtime-cuda-2026.11.1", "9.9.9"),
-            "runtime-cuda-2026.10.2",
+            Some("runtime-cuda-2026.10.2"),
         );
         assert_eq!(result["available"]["app"], true);
         assert_eq!(result["available"]["runtime"], true);
@@ -463,10 +493,18 @@ mod tests {
         let local_app = env!("CARGO_PKG_VERSION");
         let result = compare(
             &doc("runtime-cuda-2026.10.2", local_app),
-            "runtime-cuda-2026.10.2",
+            Some("runtime-cuda-2026.10.2"),
         );
         assert_eq!(result["available"]["app"], false);
         assert_eq!(result["available"]["runtime"], false);
+    }
+
+    #[test]
+    fn missing_compatible_active_runtime_leaves_app_update_available() {
+        let result = compare(&doc("runtime-cuda-2026.11.1", "9.9.9"), None);
+        assert_eq!(result["available"]["app"], true);
+        assert_eq!(result["available"]["runtime"], false);
+        assert_eq!(result["local"]["runtime"], "");
     }
 
     #[test]
@@ -476,19 +514,20 @@ mod tests {
     }
 
     #[test]
-    fn public_signature_verifies_but_previous_document_schema_is_rejected() {
+    fn historical_fixture_verifies_only_with_historical_key_and_its_schema_is_rejected() {
         let signed = signed_fixture();
-        verify(&signed.document, &signed.signature).unwrap();
-        assert!(parse_and_verify(&signed.document, &signed.signature).unwrap_err().to_string().contains("schemaVersion"));
-        assert!(verify(&signed.document.replace("0.0.31", "0.0.32"), &signed.signature).is_err());
+        verify_signed_fixture(&signed.document, &signed.signature).unwrap();
+        assert!(verify(&signed.document, &signed.signature).is_err());
+        assert!(parse_document(&signed.document).unwrap_err().to_string().contains("schemaVersion"));
+        assert!(verify_signed_fixture(&signed.document.replace("0.0.31", "0.0.32"), &signed.signature).is_err());
     }
 
     // No test creates a signing key or signs new bytes. Public signature
     // verification and current-schema semantics are independent tests. The
-    // transport/cache seam returns a separately validated current document;
-    // production always calls parse_and_verify without this test validator.
+    // transport/cache seam uses the historical fixture key and returns a
+    // separately validated current document. Production uses parse_and_verify.
     fn public_transport_fixture(document: &str, signature: &str) -> AppResult<VersionsDoc> {
-        verify(document, signature)?;
+        verify_signed_fixture(document, signature)?;
         parse_document(&serde_json::to_string(&doc("runtime-cuda-2026.11.5", "0.0.32"))?)
     }
 
@@ -500,7 +539,7 @@ mod tests {
     fn current_document_requires_current_python_and_exact_schema() {
         let value = serde_json::to_value(doc("runtime-cuda-2026.11.5", "0.0.32")).unwrap();
         parse_document(&value.to_string()).unwrap();
-        for field in ["python", "assetId", "sha256", "size", "urls"] {
+        for field in ["python", "assetId", "platform", "arch", "backend", "sha256", "size", "urls"] {
             let mut invalid = value.clone();
             invalid["runtime"].as_object_mut().unwrap().remove(field);
             assert!(parse_document(&invalid.to_string()).is_err(), "missing {field}");
@@ -515,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn production_refresh_rejects_signed_previous_python_descriptor_without_caching_it() {
+    fn production_refresh_rejects_historical_signature_without_caching_it() {
         let dir = tempfile::tempdir().unwrap();
         let server = TestServer::new(routes("", &signed_fixture()));
         assert!(tauri::async_runtime::block_on(refresh_versions(dir.path(), &client(), &[server.url("")])).is_err());
@@ -566,7 +605,7 @@ mod tests {
             ))
             .unwrap();
             let cached = read_cached(dir.path()).unwrap();
-            verify(&cached.document, &cached.signature).unwrap();
+            verify_signed_fixture(&cached.document, &cached.signature).unwrap();
         }
     }
 
@@ -645,7 +684,7 @@ mod tests {
         .unwrap();
         assert_eq!(server.requests.lock().unwrap().len(), 4);
         let cached = read_cached(dir.path()).unwrap();
-        verify(&cached.document, &cached.signature).unwrap();
+        verify_signed_fixture(&cached.document, &cached.signature).unwrap();
     }
 
     #[test]

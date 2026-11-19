@@ -396,7 +396,7 @@ pub fn app_store_path(app: &AppHandle, name: &str) -> AppResult<PathBuf> {
     Ok(settings_dir(app)?.join(store_file_name(name)?))
 }
 
-fn validate_app_settings(data: &Value) -> AppResult<()> {
+pub(crate) fn validate_app_settings(data: &Value) -> AppResult<()> {
     let invalid = || AppError::Worker("unsupported app settings schema; original file preserved".into());
     let object = data.as_object().ok_or_else(invalid)?;
     // Every field is optional except the schema version; unknown fields are not.

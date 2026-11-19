@@ -7,6 +7,7 @@
 //!   * 下载交给随包的 aria2c（4 连接、断点续传、自带重试），Rust 只负责编排与校验；
 //!   * 解压先落临时目录、校验通过后原子改名，避免断电留下半个运行时。
 
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -29,10 +30,12 @@ pub(crate) fn validate_runtime_descriptor(descriptor: &RuntimeDescriptor) -> Res
 }
 
 /// 清单里的运行时描述。字段名与 `manifest/runtime.json` 一致（camelCase）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeDescriptor {
     pub asset_id: String,
+    pub platform: String,
+    pub arch: String,
     pub backend: String,
     pub python: String,
     pub sha256: String,
@@ -41,13 +44,30 @@ pub struct RuntimeDescriptor {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RuntimeManifest {
     schema_version: u64,
-    #[serde(default)]
+    #[serde(default, rename = "_comment")]
+    _comment: Vec<String>,
     fallback_asset_id: String,
     runtimes: Vec<Value>,
 }
+
+struct RuntimeCatalog {
+    fallback_asset_id: String,
+    runtimes: Vec<RuntimeDescriptor>,
+}
+
+#[derive(Clone, Copy)]
+struct HostTarget<'a> {
+    platform: &'a str,
+    arch: &'a str,
+}
+
+const CURRENT_HOST: HostTarget<'static> = HostTarget {
+    platform: std::env::consts::OS,
+    arch: std::env::consts::ARCH,
+};
 
 /// 编译进去的基线清单：它决定"没有任何远程信息时用哪份运行时"。
 const EMBEDDED_MANIFEST: &str = include_str!("../../manifest/runtime.json");
@@ -72,87 +92,187 @@ fn expected_python() -> Result<String, String> {
 
 fn parse_desired_descriptor(text: &str) -> AppResult<RuntimeDescriptor> {
     let descriptor = serde_json::from_str::<RuntimeDescriptor>(text).map_err(|_| {
-        AppError::Worker("期望运行时描述不兼容；请重新选择 Python 3.12 运行时".into())
+        AppError::Worker("期望运行时描述不兼容，需要明确的平台、架构、后端与 Python ABI".into())
     })?;
     validate_descriptor(&descriptor).map_err(AppError::Worker)?;
     Ok(descriptor)
 }
 
-pub fn embedded_descriptor() -> AppResult<RuntimeDescriptor> {
-    let manifest: RuntimeManifest = serde_json::from_str(EMBEDDED_MANIFEST)
+fn parse_catalog(text: &str) -> AppResult<RuntimeCatalog> {
+    let manifest: RuntimeManifest = serde_json::from_str(text)
         .map_err(|error| AppError::Worker(format!("manifest/runtime.json 解析失败：{error}")))?;
-    if manifest.schema_version != 2 {
+    if manifest.schema_version != 3 {
         return Err(AppError::Worker(
-            "运行时清单必须使用 schemaVersion 2 与显式 Python ABI".into(),
+            "运行时清单必须使用 schemaVersion 3 与显式目标和 Python ABI".into(),
         ));
     }
-    let wanted = manifest.fallback_asset_id;
-    let selected = if wanted.is_empty() {
-        manifest.runtimes.first()
-    } else {
-        manifest
-            .runtimes
-            .iter()
-            .find(|item| item.get("assetId").and_then(Value::as_str) == Some(wanted.as_str()))
+    let mut runtimes = Vec::new();
+    let mut ids = HashSet::new();
+    let mut targets = HashSet::new();
+    for item in manifest.runtimes {
+        let Value::Object(mut fields) = item else {
+            return Err(AppError::Worker("运行时清单条目必须是对象".into()));
+        };
+        for name in ["torch", "notes"] {
+            if fields.remove(name).is_some_and(|value| !value.is_string()) {
+                return Err(AppError::Worker(format!("运行时清单 {name} 必须是字符串")));
+            }
+        }
+        if let Some(capabilities) = fields.remove("capabilities") {
+            serde_json::from_value::<Vec<String>>(capabilities)?;
+        }
+        let descriptor = parse_desired_descriptor(&Value::Object(fields).to_string())?;
+        if !ids.insert(descriptor.asset_id.to_ascii_lowercase())
+            || !targets.insert((descriptor.platform.clone(), descriptor.arch.clone(), descriptor.backend.clone()))
+        {
+            return Err(AppError::Worker("运行时清单中的资产 ID 和目标必须唯一".into()));
+        }
+        runtimes.push(descriptor);
     }
-    .ok_or_else(|| AppError::Worker(format!("runtime.json 里找不到 fallbackAssetId={wanted}")))?;
-    // The catalogue also owns display/capability metadata. Desired/remote
-    // descriptors themselves use the strict, required-field schema above.
-    let fields = ["assetId", "backend", "python", "sha256", "size", "urls"];
-    let descriptor = Value::Object(
-        selected
-            .as_object()
-            .ok_or_else(|| AppError::Worker("运行时清单条目必须是对象".into()))?
-            .iter()
-            .filter(|(key, _)| fields.contains(&key.as_str()))
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-    );
-    parse_desired_descriptor(&descriptor.to_string())
+    if !runtimes.iter().any(|item| item.asset_id == manifest.fallback_asset_id) {
+        return Err(AppError::Worker(format!(
+            "runtime.json 里找不到 fallbackAssetId={}",
+            manifest.fallback_asset_id
+        )));
+    }
+    Ok(RuntimeCatalog { fallback_asset_id: manifest.fallback_asset_id, runtimes })
+}
+
+fn unavailable(host: HostTarget<'_>, backend: Option<&str>) -> String {
+    format!(
+        "RUNTIME_ASSET_UNAVAILABLE: 没有适用于 {}/{}/{} 的托管运行时安装包",
+        host.platform, host.arch, backend.unwrap_or("default")
+    )
+}
+
+fn installer_supports(host: HostTarget<'_>, backend: Option<&str>) -> bool {
+    // This installer validates Windows x64 Python/DLLs and launches aria2c.exe.
+    host.platform == "windows" && host.arch == "x86_64" && backend.is_none_or(|value| value == "cuda")
+}
+
+fn ensure_target(
+    descriptor: &RuntimeDescriptor,
+    host: HostTarget<'_>,
+    backend: Option<&str>,
+) -> Result<(), String> {
+    validate_descriptor(descriptor)?;
+    if descriptor.platform != host.platform
+        || descriptor.arch != host.arch
+        || backend.is_some_and(|requested| descriptor.backend != requested)
+        || !installer_supports(host, Some(&descriptor.backend))
+    {
+        return Err(unavailable(host, backend.or(Some(&descriptor.backend))));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_install_target(
+    descriptor: &RuntimeDescriptor,
+    backend: Option<&str>,
+) -> Result<(), String> {
+    ensure_target(descriptor, CURRENT_HOST, backend)?;
+    validate_catalog_identity(&parse_catalog(EMBEDDED_MANIFEST).map_err(|error| error.to_string())?, descriptor)
+}
+
+fn validate_catalog_identity(catalog: &RuntimeCatalog, descriptor: &RuntimeDescriptor) -> Result<(), String> {
+    if let Some(known) = catalog.runtimes.iter().find(|item| item.asset_id.eq_ignore_ascii_case(&descriptor.asset_id)) {
+        // Reordering mirrors does not change the identity of the archive.
+        if known.asset_id != descriptor.asset_id
+            || known.platform != descriptor.platform
+            || known.arch != descriptor.arch
+            || known.backend != descriptor.backend
+            || known.python != descriptor.python
+            || !known.sha256.eq_ignore_ascii_case(&descriptor.sha256)
+            || known.size != descriptor.size
+        {
+            return Err("运行时描述符不能改变现有资产 ID 的目标或内容，请使用新的资产 ID".into());
+        }
+    }
+    Ok(())
+}
+
+fn select_embedded(
+    catalog: &RuntimeCatalog,
+    host: HostTarget<'_>,
+    backend: Option<&str>,
+) -> AppResult<RuntimeDescriptor> {
+    let descriptor = catalog.runtimes.iter().find(|item| {
+        item.platform == host.platform && item.arch == host.arch
+            && match backend {
+                Some(backend) => item.backend == backend,
+                None => item.asset_id == catalog.fallback_asset_id,
+            }
+    })
+    .ok_or_else(|| AppError::Worker(unavailable(host, backend)))?;
+    ensure_target(descriptor, host, backend).map_err(AppError::Worker)?;
+    Ok(descriptor.clone())
 }
 
 fn envs_dir(app: &AppHandle) -> AppResult<PathBuf> {
     storage::runtime_envs_dir(app)
 }
 
-/// 当前应该使用哪份运行时：`versions.json` 接受过就用它，否则用编译进的基线。
-pub fn desired_runtime(app: &AppHandle) -> AppResult<RuntimeDescriptor> {
-    let envs = envs_dir(app)?;
+fn read_desired(envs: &Path, catalog: &RuntimeCatalog) -> AppResult<Option<RuntimeDescriptor>> {
     let file = envs.join(DESIRED_FILE);
-    match fs::read_to_string(&file) {
-        Ok(text) => parse_desired_descriptor(&text),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => embedded_descriptor(),
+    transaction::ensure_plain(&file).map_err(AppError::Worker)?;
+    match fs::read_to_string(file) {
+        Ok(text) => {
+            let descriptor = parse_desired_descriptor(&text)?;
+            validate_catalog_identity(catalog, &descriptor).map_err(AppError::Worker)?;
+            Ok(Some(descriptor))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
 }
 
+fn select_runtime(envs: &Path, host: HostTarget<'_>, backend: Option<&str>) -> AppResult<RuntimeDescriptor> {
+    if !installer_supports(host, backend) {
+        return Err(AppError::Worker(unavailable(host, backend)));
+    }
+    let catalog = parse_catalog(EMBEDDED_MANIFEST)?;
+    if let Some(descriptor) = read_desired(envs, &catalog)? {
+        if backend.is_none_or(|requested| descriptor.backend == requested) {
+            ensure_target(&descriptor, host, backend).map_err(AppError::Worker)?;
+            return Ok(descriptor);
+        }
+    }
+    select_embedded(&catalog, host, backend)
+}
+
+pub(crate) fn desired_runtime(app: &AppHandle, backend: Option<&str>) -> AppResult<RuntimeDescriptor> {
+    select_runtime(&envs_dir(app)?, CURRENT_HOST, backend)
+}
+
+pub(crate) fn accepted_runtime(app: &AppHandle, backend: &str) -> AppResult<Option<RuntimeDescriptor>> {
+    let catalog = parse_catalog(EMBEDDED_MANIFEST)?;
+    let descriptor = read_desired(&envs_dir(app)?, &catalog)?;
+    Ok(descriptor.filter(|descriptor| ensure_target(descriptor, CURRENT_HOST, Some(backend)).is_ok()))
+}
+
 pub fn write_desired(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<()> {
-    validate_descriptor(descriptor).map_err(AppError::Worker)?;
+    validate_install_target(descriptor, None).map_err(AppError::Worker)?;
     let envs = envs_dir(app)?;
+    let catalog = parse_catalog(EMBEDDED_MANIFEST)?;
+    read_desired(&envs, &catalog)?;
     let _lock = InstallLock::acquire(&envs).map_err(AppError::Worker)?;
+    read_desired(&envs, &catalog)?;
     storage::write_json_file(&envs.join(DESIRED_FILE), &serde_json::to_value(descriptor)?)
 }
 
-fn asset_dir(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<PathBuf> {
-    validate_descriptor(descriptor).map_err(AppError::Worker)?;
-    Ok(envs_dir(app)?.join(&descriptor.asset_id))
-}
-
-fn python_path(app: &AppHandle, descriptor: &RuntimeDescriptor) -> AppResult<PathBuf> {
-    Ok(asset_dir(app, descriptor)?
-        .join("Scripts")
-        .join("python.exe"))
+fn read_marker(dir: &Path) -> Option<Value> {
+    let file = dir.join(ASSET_MARKER);
+    transaction::ensure_plain(&file).ok()?;
+    let text = fs::read_to_string(file).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 fn marker_matches(dir: &Path, descriptor: &RuntimeDescriptor) -> bool {
-    let Ok(text) = fs::read_to_string(dir.join(ASSET_MARKER)) else {
-        return false;
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+    let Some(value) = read_marker(dir) else {
         return false;
     };
     value.get("assetId").and_then(Value::as_str) == Some(descriptor.asset_id.as_str())
-        && value.get("sha256").and_then(Value::as_str) == Some(descriptor.sha256.as_str())
+        && value.get("sha256").and_then(Value::as_str).is_some_and(|sha| sha.eq_ignore_ascii_case(&descriptor.sha256))
         && value.get("python").and_then(Value::as_str) == Some(descriptor.python.as_str())
         && value.get("schemaVersion").and_then(Value::as_u64) == Some(2)
 }
@@ -195,6 +315,7 @@ fn emit(
         PROGRESS_EVENT,
         json!({
             "assetId": descriptor.asset_id,
+            "backend": descriptor.backend,
             "stage": stage,
             "downloaded": downloaded,
             "total": descriptor.size,
@@ -205,37 +326,109 @@ fn emit(
 }
 
 #[tauri::command]
-pub fn runtime_asset_status(app: AppHandle) -> AppResult<Value> {
-    let descriptor = desired_runtime(&app)?;
-    let python = python_path(&app, &descriptor)?;
+pub fn runtime_asset_status(app: AppHandle, backend: Option<String>) -> AppResult<Value> {
+    let envs = envs_dir(&app)?;
+    let backend = backend.as_deref();
+    let active = crate::python::worker::active_runtime_selection(&app);
+    let mut status = json!({
+        "available": false,
+        "reason": null,
+        "requestedBackend": backend,
+        "platform": CURRENT_HOST.platform,
+        "arch": CURRENT_HOST.arch,
+        "activeUsable": active.as_ref().is_ok_and(|pointer| pointer.is_some()),
+        "activeError": active.as_ref().err().map(ToString::to_string),
+        "activeAssetId": active.ok().flatten().and_then(|pointer| matching_active_asset(pointer, CURRENT_HOST, backend)),
+        "assetId": null,
+        "sha256": null,
+        "size": 0,
+        "backend": null,
+        "installed": false,
+        "stale": false,
+        "dir": null,
+        "python": null,
+    });
+    let descriptor = match select_runtime(&envs, CURRENT_HOST, backend) {
+        Ok(descriptor) => descriptor,
+        Err(error) => {
+            status["reason"] = json!(error.to_string());
+            return Ok(status);
+        }
+    };
+    let dir = envs.join(&descriptor.asset_id);
+    let python = dir.join("Scripts").join("python.exe");
     let present = python.is_file();
-    let ready = transaction::ready(
-        python
-            .parent()
-            .and_then(Path::parent)
-            .unwrap_or(Path::new("")),
-        &descriptor,
-    );
-    Ok(json!({
-        "assetId": descriptor.asset_id,
-        "sha256": descriptor.sha256,
-        "size": descriptor.size,
-        "backend": descriptor.backend,
-        "installed": ready,
-        "stale": present && !ready,
-        "dir": asset_dir(&app, &descriptor)?.display().to_string(),
-        "python": if ready { Some(python.display().to_string()) } else { None },
-    }))
+    let ready = transaction::ready(&dir, &descriptor);
+    status["available"] = json!(true);
+    status["assetId"] = json!(descriptor.asset_id);
+    status["sha256"] = json!(descriptor.sha256);
+    status["size"] = json!(descriptor.size);
+    status["backend"] = json!(descriptor.backend);
+    status["installed"] = json!(ready);
+    status["stale"] = json!(present && !ready);
+    status["dir"] = json!(dir.display().to_string());
+    status["python"] = json!(ready.then(|| python.display().to_string()));
+    Ok(status)
+}
+
+fn matching_active_asset(
+    pointer: crate::python::worker::ActiveRuntimeSelection,
+    host: HostTarget<'_>,
+    backend: Option<&str>,
+) -> Option<String> {
+    let actual_backend = pointer.backend.as_deref()?;
+    if !installer_supports(host, Some(actual_backend))
+        || backend.is_some_and(|requested| requested != actual_backend)
+    {
+        return None;
+    }
+    let id = pointer.asset_id?;
+    let python = Path::new(&pointer.python);
+    let scripts = python.parent()?;
+    let root = scripts.parent()?;
+    if !python.file_name()?.eq_ignore_ascii_case("python.exe")
+        || !scripts.file_name()?.eq_ignore_ascii_case("Scripts")
+        || root.file_name()?.to_str()? != id
+    {
+        return None;
+    }
+    let marker = read_marker(root)?;
+    let hash = marker.get("sha256")?.as_str()?;
+    if marker.get("schemaVersion")?.as_u64()? != 2
+        || marker.get("assetId")?.as_str()? != id
+        || marker.get("python")?.as_str()? != expected_python().ok()?
+        || hash.len() != 64
+        || !hash.bytes().all(|value| value.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    Some(id)
+}
+
+pub(crate) fn active_managed_asset(app: &AppHandle, backend: &str) -> AppResult<Option<String>> {
+    Ok(crate::python::worker::active_runtime_selection(app)?
+        .and_then(|pointer| matching_active_asset(pointer, CURRENT_HOST, Some(backend))))
+}
+
+fn lock_install(
+    envs: &Path,
+    host: HostTarget<'_>,
+    backend: Option<&str>,
+) -> AppResult<(RuntimeDescriptor, InstallLock)> {
+    // Reject incompatible requests before creating lock files or recovering pointers.
+    select_runtime(envs, host, backend)?;
+    let lock = InstallLock::acquire(envs).map_err(AppError::Worker)?;
+    // A concurrent signed-version acceptance may have changed desired while locking.
+    let descriptor = select_runtime(envs, host, backend)?;
+    Ok((descriptor, lock))
 }
 
 /// 启动下载。立刻返回，进度通过 `mediaforge://runtime-asset` 事件推送。
 #[tauri::command]
-pub fn runtime_asset_install(app: AppHandle) -> AppResult<Value> {
+pub fn runtime_asset_install(app: AppHandle, backend: Option<String>) -> AppResult<Value> {
     let envs = envs_dir(&app)?;
-    let lock = InstallLock::acquire(&envs).map_err(AppError::Worker)?;
+    let (descriptor, lock) = lock_install(&envs, CURRENT_HOST, backend.as_deref())?;
     transaction::recover_pointer(&envs).map_err(AppError::Worker)?;
-    let descriptor = desired_runtime(&app)?;
-    validate_descriptor(&descriptor).map_err(AppError::Worker)?;
     let staging = envs.join(format!(".incoming-{}", descriptor.asset_id));
     transaction::recover_previous(&staging, &envs.join(&descriptor.asset_id))
         .map_err(AppError::Worker)?;
@@ -243,8 +436,9 @@ pub fn runtime_asset_install(app: AppHandle) -> AppResult<Value> {
         transaction::activate_with_rollback(&envs, || write_active_pointer(&envs, &descriptor))
             .map_err(AppError::Worker)?;
         finish_install(&app, &descriptor, &staging);
-        return Ok(json!({ "started": false, "installed": true }));
+        return Ok(install_response(&descriptor, true));
     }
+    let response = install_response(&descriptor, false);
     std::thread::Builder::new()
         .name("runtime-asset-install".into())
         .spawn(move || {
@@ -254,7 +448,17 @@ pub fn runtime_asset_install(app: AppHandle) -> AppResult<Value> {
             }
         })
         .map_err(|error| AppError::Worker(format!("无法启动运行时安装：{error}")))?;
-    Ok(json!({ "started": true, "installed": false }))
+    Ok(response)
+}
+
+fn install_response(descriptor: &RuntimeDescriptor, installed: bool) -> Value {
+    json!({
+        "started": !installed,
+        "installed": installed,
+        "assetId": descriptor.asset_id,
+        "backend": descriptor.backend,
+        "size": descriptor.size,
+    })
 }
 
 fn apply_smoke_descriptor_override(app: &AppHandle) -> Result<(), String> {
@@ -281,7 +485,9 @@ pub fn smoke_install(app: &AppHandle) -> i32 {
     if let Ok(url) = std::env::var("MEDIAFORGE_SMOKE_RUNTIME_URL") {
         let url = url.trim().to_string();
         if !url.is_empty() {
-            match embedded_descriptor() {
+            let fallback = parse_catalog(EMBEDDED_MANIFEST)
+                .and_then(|catalog| select_embedded(&catalog, CURRENT_HOST, None));
+            match fallback {
                 Ok(mut descriptor) => {
                     descriptor.urls = vec![url];
                     if let Err(error) = write_desired(app, &descriptor) {
@@ -314,7 +520,7 @@ pub fn smoke_activate(app: &AppHandle) -> i32 {
         eprintln!("smoke-activate-runtime: 写入本地描述符失败: {error}");
         return 1;
     }
-    match runtime_asset_install(app.clone()) {
+    match runtime_asset_install(app.clone(), None) {
         Ok(value)
             if value.get("started") == Some(&json!(false))
                 && value.get("installed") == Some(&json!(true)) =>
@@ -334,7 +540,7 @@ pub fn smoke_activate(app: &AppHandle) -> i32 {
 }
 
 fn write_active_pointer(envs: &Path, descriptor: &RuntimeDescriptor) -> Result<(), String> {
-    validate_descriptor(descriptor)?;
+    ensure_target(descriptor, CURRENT_HOST, None)?;
     let target = envs.join(&descriptor.asset_id);
     let record = json!({
         "pythonPath": target.join("Scripts").join("python.exe").to_string_lossy(),
@@ -347,10 +553,9 @@ fn write_active_pointer(envs: &Path, descriptor: &RuntimeDescriptor) -> Result<(
 
 fn install_blocking(app: &AppHandle) -> Result<(), String> {
     let envs = envs_dir(app).map_err(|error| error.to_string())?;
-    let _lock = InstallLock::acquire(&envs)?;
+    let (descriptor, _lock) =
+        lock_install(&envs, CURRENT_HOST, None).map_err(|error| error.to_string())?;
     transaction::recover_pointer(&envs)?;
-    let descriptor = desired_runtime(app).map_err(|error| error.to_string())?;
-    validate_descriptor(&descriptor)?;
     install_with_descriptor(app, &envs, &descriptor)
 }
 
@@ -367,6 +572,7 @@ fn install_with_descriptor(
     envs: &Path,
     descriptor: &RuntimeDescriptor,
 ) -> Result<(), String> {
+    ensure_target(descriptor, CURRENT_HOST, None)?;
     let staging = envs.join(format!(".incoming-{}", descriptor.asset_id));
     let target = envs.join(&descriptor.asset_id);
     transaction::recover_previous(&staging, &target)?;
@@ -542,10 +748,12 @@ fn validate_probe(
     descriptor: &RuntimeDescriptor,
 ) -> Result<(), String> {
     if value.get("python").and_then(Value::as_str) != Some(descriptor.python.as_str())
+        || value.get("platform").and_then(Value::as_str) != Some(descriptor.platform.as_str())
+        || value.get("arch").and_then(Value::as_str) != Some(descriptor.arch.as_str())
         || value.get("imports").and_then(Value::as_bool) != Some(true)
         || value.get("torchBackend").and_then(Value::as_str) != Some(descriptor.backend.as_str())
     {
-        return Err("运行时自检的 Python ABI、依赖或 torch 后端与描述符不一致".into());
+        return Err("运行时自检的平台、架构、Python ABI、依赖或 torch 后端与描述符不一致".into());
     }
     let root = root.canonicalize().map_err(|error| error.to_string())?;
     let resolve = |key| {
@@ -575,7 +783,15 @@ fn verify_interpreter(root: &Path, descriptor: &RuntimeDescriptor) -> Result<(),
     let mut command = crate::process_command::hidden_command(root.join("Scripts/python.exe"));
     command.args([
         "-I", "-B", "-c",
-        "import sys,json,ctypes; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); import torch,pymss,pymss_core,pymss.graph; backend='rocm' if getattr(torch.version,'hip',None) else 'cuda' if getattr(torch.version,'cuda',None) else 'cpu'; print(json.dumps({'python':'.'.join(map(str,sys.version_info[:2])),'prefix':sys.prefix,'basePrefix':sys.base_prefix,'imports':True,'torchBackend':backend}))",
+        concat!(
+            "import sys,json,ctypes,sysconfig; ctypes.CDLL('msvcp140.dll'); ctypes.CDLL('vcruntime140.dll'); ",
+            "import torch,pymss,pymss_core,pymss.graph; ",
+            "backend='rocm' if getattr(torch.version,'hip',None) else 'cuda' if getattr(torch.version,'cuda',None) else 'cpu'; ",
+            "target=sysconfig.get_platform(); arch={'win-amd64':'x86_64','win-arm64':'aarch64'}.get(target,target); ",
+            "platform='windows' if sys.platform=='win32' else sys.platform; ",
+            "print(json.dumps({'python':'.'.join(map(str,sys.version_info[:2])),'platform':platform,'arch':arch,",
+            "'prefix':sys.prefix,'basePrefix':sys.base_prefix,'imports':True,'torchBackend':backend}))"
+        ),
     ]);
     for name in [
         "HOME",
@@ -835,6 +1051,8 @@ mod descriptor_tests {
     fn descriptor() -> RuntimeDescriptor {
         RuntimeDescriptor {
             asset_id: "runtime-test312".into(),
+            platform: "windows".into(),
+            arch: "x86_64".into(),
             backend: "cuda".into(),
             python: "3.12".into(),
             sha256: "0".repeat(64),
@@ -906,10 +1124,15 @@ mod descriptor_tests {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         let descriptor = descriptor();
-        let valid = json!({"python":"3.12", "prefix":root.path(), "basePrefix":root.path(), "imports":true, "torchBackend":"cuda"});
+        let valid = json!({
+            "python": "3.12", "platform": "windows", "arch": "x86_64", "prefix": root.path(),
+            "basePrefix": root.path(), "imports": true, "torchBackend": "cuda",
+        });
         validate_probe(&valid, root.path(), &descriptor).unwrap();
         for (field, value) in [
             ("python", json!("3.11")),
+            ("platform", json!("linux")),
+            ("arch", json!("aarch64")),
             ("imports", json!(false)),
             ("torchBackend", json!("cpu")),
             ("basePrefix", json!(outside.path())),
@@ -928,9 +1151,11 @@ mod descriptor_tests {
     fn desired_descriptor_rejects_old_missing_wrong_or_unknown_contract_fields() {
         let valid = serde_json::to_value(descriptor()).unwrap();
         parse_desired_descriptor(&valid.to_string()).unwrap();
-        let mut missing = valid.clone();
-        missing.as_object_mut().unwrap().remove("python");
-        assert!(parse_desired_descriptor(&missing.to_string()).is_err());
+        for field in ["python", "platform", "arch", "backend"] {
+            let mut missing = valid.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(parse_desired_descriptor(&missing.to_string()).is_err(), "{field}");
+        }
         let mut wrong = valid.clone();
         wrong["python"] = json!("3.11");
         assert!(parse_desired_descriptor(&wrong.to_string()).is_err());
@@ -965,9 +1190,94 @@ mod descriptor_tests {
 
     #[test]
     fn embedded_manifest_resolves_the_fallback_asset() {
-        let descriptor =
-            embedded_descriptor().expect("manifest must declare the current Python ABI");
+        let host = HostTarget { platform: "windows", arch: "x86_64" };
+        let catalog = parse_catalog(EMBEDDED_MANIFEST).unwrap();
+        let descriptor = select_embedded(&catalog, host, None).unwrap();
         assert_eq!(descriptor.python, "3.12");
+        assert_eq!(descriptor.platform, "windows");
+        assert_eq!(descriptor.arch, "x86_64");
+        assert_eq!(descriptor.backend, "cuda");
         validate_descriptor(&descriptor).unwrap();
+    }
+
+    #[test]
+    fn unsupported_runtime_matrix_stops_before_creating_the_install_root() {
+        let temporary = tempfile::tempdir().unwrap();
+        let envs = temporary.path().join("runtime-envs");
+        for (platform, arch, backend) in [
+            ("linux", "x86_64", Some("cuda")),
+            ("linux", "x86_64", None),
+            ("macos", "aarch64", Some("mlx")),
+            ("windows", "aarch64", Some("cuda")),
+            ("windows", "x86_64", Some("cpu")),
+            ("windows", "x86_64", Some("rocm")),
+            ("windows", "x86_64", Some("unknown")),
+        ] {
+            let host = HostTarget { platform, arch };
+            let error = lock_install(&envs, host, backend).err().unwrap().to_string();
+            assert!(error.contains("RUNTIME_ASSET_UNAVAILABLE"), "{error}");
+            assert!(!envs.exists(), "{platform}/{arch}/{backend:?}");
+        }
+    }
+
+    #[test]
+    fn desired_runtime_checks_target_and_preserves_incompatible_or_invalid_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        let envs = temporary.path();
+        let host = HostTarget { platform: "windows", arch: "x86_64" };
+        let mut desired = descriptor();
+        let file = envs.join(DESIRED_FILE);
+        let recovery = envs.join("active-runtime.rollback.json");
+        fs::write(&recovery, b"leave this checkpoint alone").unwrap();
+
+        for (platform, arch) in [("linux", "x86_64"), ("windows", "aarch64")] {
+            desired.platform = platform.into();
+            desired.arch = arch.into();
+            let bytes = serde_json::to_vec(&desired).unwrap();
+            fs::write(&file, &bytes).unwrap();
+            assert!(lock_install(envs, host, Some("cuda")).is_err());
+            assert_eq!(fs::read(&file).unwrap(), bytes);
+            assert_eq!(fs::read(&recovery).unwrap(), b"leave this checkpoint alone");
+            assert!(!envs.join(".runtime-asset-install.lock").exists());
+            assert!(!envs.join("active-runtime.json").exists());
+        }
+
+        fs::write(&file, br#"{"assetId":"old-descriptor"}"#).unwrap();
+        assert!(lock_install(envs, host, Some("cuda")).is_err());
+        assert_eq!(fs::read(&file).unwrap(), br#"{"assetId":"old-descriptor"}"#);
+        assert!(!envs.join(".runtime-asset-install.lock").exists());
+
+        desired.platform = "windows".into();
+        desired.arch = "x86_64".into();
+        fs::write(&file, serde_json::to_vec(&desired).unwrap()).unwrap();
+        assert_eq!(select_runtime(envs, host, Some("cuda")).unwrap(), desired);
+    }
+
+    #[test]
+    fn catalogue_rejects_missing_fallback_ambiguous_targets_and_reused_asset_identity() {
+        let raw: Value = serde_json::from_str(EMBEDDED_MANIFEST).unwrap();
+        let mut malformed = raw.clone();
+        malformed["fallbackAssetId"] = json!("missing");
+        assert!(parse_catalog(&malformed.to_string()).is_err());
+
+        let mut duplicate = raw.clone();
+        let mut same_target = raw["runtimes"][0].clone();
+        same_target["assetId"] = json!("another-asset");
+        duplicate["runtimes"].as_array_mut().unwrap().push(same_target);
+        assert!(parse_catalog(&duplicate.to_string()).is_err());
+
+        let mut duplicate = raw;
+        let mut same_id = duplicate["runtimes"][0].clone();
+        same_id["arch"] = json!("aarch64");
+        same_id["assetId"] = json!(same_id["assetId"].as_str().unwrap().to_ascii_uppercase());
+        duplicate["runtimes"].as_array_mut().unwrap().push(same_id);
+        assert!(parse_catalog(&duplicate.to_string()).is_err());
+
+        let catalog = parse_catalog(EMBEDDED_MANIFEST).unwrap();
+        let mut known = catalog.runtimes[0].clone();
+        known.urls.reverse();
+        assert!(validate_catalog_identity(&catalog, &known).is_ok());
+        known.sha256 = "0".repeat(64);
+        assert!(validate_catalog_identity(&catalog, &known).is_err());
     }
 }

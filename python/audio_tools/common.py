@@ -81,6 +81,8 @@ def _render_output(path: Path, render: Callable[[Path], None]) -> Path:
     if token or state:
         if not re.fullmatch(r'[A-Za-z0-9_-]{16,96}', token) or not state:
             raise RuntimeError('Audio temporary-file state is invalid')
+        launcher_pids = {str(os.getpid()), str(os.getppid())}
+        launcher_pids.update(os.environ.get('PYMSS_STUDIO_AUDIO_TEMP_LAUNCHER_PIDS', '').split(','))
         for attempt in range(10):
             try:
                 scope = json.loads(Path(state).read_text(encoding='utf-8'))
@@ -89,7 +91,7 @@ def _render_output(path: Path, render: Callable[[Path], None]) -> Path:
                     scope['token'] == token
                     and type(launcher_pid) is int
                     and launcher_pid > 0
-                    and launcher_pid in {os.getpid(), os.getppid()}
+                    and str(launcher_pid) in launcher_pids
                     and Path(scope['directory']).resolve() == path.parent.resolve()
                 ):
                     prefix = f'.pymss-audio-{token}-{launcher_pid}-'

@@ -24,6 +24,7 @@ from pip._vendor.packaging.version import Version
 
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
 from shared import runtime_pointer, worker_paths
+from shared.runtime_platform import interpreter_architecture
 from shared.worker_subprocess import HiddenVenvBuilder, hidden_subprocess_kwargs
 
 
@@ -1836,7 +1837,7 @@ def _runtime_info_payload(payload: dict[str, Any], *, repair: bool = True) -> di
         "manifestVersion": manifest["manifestVersion"],
         "pythonVersion": platform.python_version(),
         "platform": sys.platform,
-        "machine": platform.machine(),
+        "machine": interpreter_architecture(),
         "bootstrapPython": str(_bootstrap_python_path()),
         "runtimeEnvsDir": str(RUNTIME_ENVS_DIR),
         "activeRuntimeFile": str(ACTIVE_RUNTIME_FILE),
@@ -2111,6 +2112,12 @@ def cmd_install_runtime(payload: dict[str, Any]) -> int:
     if sys.platform not in spec.get("platforms", []):
         from shared.worker_protocol import emit_error
         return emit_error("RUNTIME_PLATFORM_UNSUPPORTED", f"Backend {backend} is not supported on {sys.platform}", task_id=task_id)
+    arch = interpreter_architecture()
+    supported_arch = {"win32": "x86_64", "linux": "x86_64", "darwin": "aarch64"}.get(sys.platform)
+    if arch != supported_arch:
+        from shared.worker_protocol import emit_error
+        return emit_error("RUNTIME_PLATFORM_UNSUPPORTED",
+                          f"Backend {backend} is not supported on {sys.platform}/{arch}", task_id=task_id)
     env_dir = _env_dir(backend)
     try:
         _validate_install_python_versions(env_dir, manifest)

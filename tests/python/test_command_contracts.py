@@ -109,7 +109,9 @@ class CommandContractTests(unittest.TestCase):
 
     def test_plugin_and_workflow_payload_types(self) -> None:
         self.assertEqual(validate_payload("plugin_marketplace", {}), [])
+        self.assertEqual(validate_payload("manage_plugin", {"action": "install", "name": "spectral"}), [])
         self.assertTrue(validate_payload("manage_plugin", {"action": 1}))
+        self.assertTrue(validate_payload("manage_plugin", {"action": "install", "name": "spectral", "target": "https://example.invalid/plugin"}))
         self.assertTrue(validate_payload("infer", {"deviceIds": "0"}))
         self.assertTrue(validate_payload("infer_workflow", {"tasks": "bad"}))
 

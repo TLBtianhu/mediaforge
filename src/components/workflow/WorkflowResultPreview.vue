@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, type Directive } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 import { FolderOutline, OpenOutline, PauseOutline, PlayOutline } from '@vicons/ionicons5'
 import { isTauriRuntime } from '@/utils/appStore'
 import type { StemOutput } from '@/stores/task'
@@ -85,7 +85,7 @@ function prepareAudio(path: string) {
     for (const [event, handler] of Object.entries(handlers)) player.removeEventListener(event, handler)
   }
   try {
-    player.src = convertFileSrc(path)
+    player.src = mediaPreviewUrl(path)
     player.load()
   } catch { fail() }
   return player

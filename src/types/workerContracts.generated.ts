@@ -501,10 +501,12 @@ export interface WorkerCommandContracts {
   }
   "manage_plugin": {
     payload: {
-      action?: string
+      action: "install" | "update" | "repair" | "uninstall" | "check_updates"
       name?: string
+      locale?: string
+      mirror?: string
+      requestId?: string
       taskId?: string | null
-      [key: string]: unknown
     }
     result: {
       installed: Array<Record<string, unknown>>

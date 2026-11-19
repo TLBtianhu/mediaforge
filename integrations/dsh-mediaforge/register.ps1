@@ -1,4 +1,4 @@
-# MediaForge DSH 集成的迁移工具（不再向 cordis.patch.yml 注入配置）。
+﻿# MediaForge DSH 集成的迁移工具（不再向 cordis.patch.yml 注入配置）。
 #
 # 旧安装器会在此维护一段 BEGIN/END 区块，整块替换。问题是 DSH 设置页把新行追加到
 # 文件末尾，于是设置会落进区块内部，下次替换就把用户配置删掉。现在改为 bundle 安装：
@@ -13,8 +13,6 @@
 # 写入只针对显式指定的一个 profile；读取/报告可以扫描全部 profile。
 param(
     [string]$DshHome = '',
-    [string]$AppRoot = '',
-    [string]$LauncherPath = '',
     [string]$Profile = '',
     [switch]$RemoveLegacyBlock,
     [switch]$DryRun
@@ -26,30 +24,6 @@ $BEGIN = '# === mediaforge MCP BEGIN ==='
 $END   = '# === mediaforge MCP END ==='
 
 if (-not $DshHome) { $DshHome = Join-Path $env:USERPROFILE '.dsh' }
-
-# 安装路径指针：安装器自己也会写一次注册表；这里再写一次用于便携版和
-# "先解压后装 DSH" 的情况，让启动器在没有任何安装器参与时也能找到应用。
-$launcher = if ($LauncherPath) { $LauncherPath } else { Join-Path $PSScriptRoot 'mediaforge-mcp.cmd' }
-$binDir = Split-Path -Parent $launcher
-if (-not (Test-Path -LiteralPath $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }
-if (-not (Test-Path -LiteralPath $launcher)) {
-    $template = Join-Path $PSScriptRoot 'launcher.template.cmd'
-    if (Test-Path -LiteralPath $template) {
-        Copy-Item -LiteralPath $template -Destination $launcher -Force
-    }
-}
-if (-not $AppRoot) {
-    $inferredRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $AppRoot = if (Test-Path -LiteralPath (Join-Path $inferredRoot 'app\python\agent_bridge.py')) {
-        Join-Path $inferredRoot 'app'
-    } else {
-        $inferredRoot
-    }
-}
-if (-not $DryRun -and (Test-Path -LiteralPath (Join-Path $AppRoot 'python\agent_bridge.py'))) {
-    New-Item -Path 'HKCU:\Software\MediaForge' -Force | Out-Null
-    New-ItemProperty -Path 'HKCU:\Software\MediaForge' -Name 'InstallDir' -Value $AppRoot -PropertyType String -Force | Out-Null
-}
 
 $profilesDir = Join-Path $DshHome 'profiles'
 if (-not (Test-Path -LiteralPath $profilesDir)) {

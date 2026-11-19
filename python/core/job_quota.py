@@ -13,6 +13,7 @@ from typing import Any
 
 from core.job_store import JobStoreError
 from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from shared.app_settings import validate_app_settings
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "manifest" / "execution-quota.json"
 
@@ -76,6 +77,10 @@ def read_limit(data_root: Path) -> int:
         raise JobStoreError(f"Invalid quota settings {path}: {error}") from error
     if not isinstance(settings, dict):
         raise JobStoreError(f"Invalid quota settings {path}: expected an object")
+    try:
+        validate_app_settings(settings, max_workers=MAX_COMPUTE_WORKERS)
+    except ValueError as error:
+        raise JobStoreError(f"Invalid quota settings {path}: {error}") from error
     limit = settings.get(_CONTRACT["settingKey"], _CONTRACT["defaultLimit"])
     if type(limit) is not int or not 1 <= limit <= MAX_COMPUTE_WORKERS:
         raise JobStoreError(f"Invalid {_CONTRACT['settingKey']}: expected an integer in 1..{MAX_COMPUTE_WORKERS}")
@@ -130,8 +135,9 @@ def is_busy(error: BaseException) -> bool:
 
 
 class QuotaLease:
-    def __init__(self, index: int, guard):
+    def __init__(self, index: int, guard, fence_path: Path):
         self.index = index
+        self.fence_path = fence_path
         self._guard = guard
         self._lock = threading.Lock()
 
@@ -148,21 +154,38 @@ def try_acquire(jobs_root: Path, limit: int) -> QuotaLease | None:
         raise JobStoreError("Invalid compute quota limit")
     free = []
     busy = 0
+    quota_root = jobs_root / ".quota"
     try:
         for index in range(MAX_COMPUTE_WORKERS):
-            guard = runtime_lock(jobs_root / ".quota" / f"global-{index}.lock", timeout=0)
+            guard = runtime_lock(quota_root / f"global-{index}.lock", timeout=0)
             try:
                 guard.__enter__()
             except (OSError, RuntimeLockBusy) as error:
                 if not is_busy(error):
                     raise
                 busy += 1
+                continue
+            # The owner may have exited while its supervisor is still reaping.
+            # Check the second lease while holding the primary so a live pair
+            # occupies one slot, including after the owner's handle closes.
+            fence_path = quota_root / "reaping" / f"global-{index}.lock"
+            try:
+                with runtime_lock(fence_path, timeout=0):
+                    pass
+            except (OSError, RuntimeLockBusy) as error:
+                guard.__exit__(None, None, None)
+                if not is_busy(error):
+                    raise
+                busy += 1
+            except BaseException:
+                guard.__exit__(None, None, None)
+                raise
             else:
-                free.append((index, guard))
+                free.append((index, guard, fence_path))
         if busy >= limit or not free:
             return None
-        index, guard = free.pop(0)
-        return QuotaLease(index, guard)
+        index, guard, fence_path = free.pop(0)
+        return QuotaLease(index, guard, fence_path)
     finally:
-        for _, guard in reversed(free):
+        for _, guard, _ in reversed(free):
             guard.__exit__(None, None, None)

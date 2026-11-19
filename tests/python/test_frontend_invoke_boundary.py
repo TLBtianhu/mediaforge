@@ -37,6 +37,13 @@ def make_tree(files: dict[str, str]) -> Path:
 
 
 class NativeBoundaryTests(unittest.TestCase):
+    def test_native_ipc_keeps_id_based_removal_and_excludes_raw_path_recycling(self) -> None:
+        main = (ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+        self.assertNotRegex(main, r"\bmove_paths_to_trash\b")
+        for command in ("remove_audio_jobs", "remove_result_jobs", "delete_editor_project"):
+            with self.subTest(command=command):
+                self.assertRegex(main, rf"\b{command}\b")
+
     def test_wrapped_commands_are_derived_from_native_api(self) -> None:
         root = make_tree({"src/api/native.ts": NATIVE_FILE})
         self.assertEqual(boundary.wrapped_native_commands(root), {"reveal_path"})

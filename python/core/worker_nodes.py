@@ -15,7 +15,7 @@ from shared.worker_protocol import emit, emit_error
 
 def cmd_list_nodes(payload: dict[str, Any]) -> int:
     try:
-        from core.worker_plugins import _manifest_contributions, _root, operation_runtime
+        from core.worker_plugins import _inventory, _root, operation_runtime
 
         # Ensure plugin node types are registered in the shared graph registry.
         try:
@@ -24,18 +24,8 @@ def cmd_list_nodes(payload: dict[str, Any]) -> int:
             import sys
             print(f"[nodes] plugin runtime unavailable: {error}", file=sys.stderr)
 
-        root = _root()
-        nodes: list[dict[str, Any]] = []
-        installed = root / "installed"
-        if installed.is_dir():
-            for plugin in sorted(installed.iterdir()):
-                if not plugin.is_dir():
-                    continue
-                contributions = _manifest_contributions(plugin)
-                for decl in contributions.get("nodes", []):
-                    decl = dict(decl)
-                    decl["pluginId"] = _manifest_contributions_plugin_id(plugin)
-                    nodes.append(decl)
+        nodes = [node for plugin in _inventory(_root(), verify=False)["installed"]
+                 for node in plugin.get("contributions", {}).get("nodes", [])]
 
         # Live registration state: does the executor exist right now?
         registered: set[str] = set()
@@ -53,13 +43,3 @@ def cmd_list_nodes(payload: dict[str, Any]) -> int:
         return 0
     except Exception as error:  # noqa: BLE001
         return emit_error("NODES_LIST_FAILED", str(error))
-
-
-def _manifest_contributions_plugin_id(plugin) -> str:
-    try:
-        from pymss.plugins.manifest import read_manifest
-
-        manifest = read_manifest(plugin)
-        return manifest.plugin_id if manifest else plugin.name
-    except Exception:
-        return plugin.name

@@ -116,6 +116,9 @@ const { t } = useI18n()
             </div>
           </div>
           <div v-else key="ready" class="runtime-envs-list">
+            <p v-if="app.runtimeInfo && !runtimeBackendCatalog.length" class="runtime-read-error">
+              {{ t('settings.runtimeInstallTargetUnsupported') }}
+            </p>
             <div
               v-for="card in runtimeBackendCards"
               :key="card.key"
@@ -183,7 +186,7 @@ const { t } = useI18n()
 
               <div class="runtime-env-card__actions">
                 <n-button
-                  v-if="app.runtimeManagementSupported && card.state === 'not_installed'"
+                  v-if="app.runtimeManagementSupported && !card.offCatalog && card.state === 'not_installed'"
                   size="tiny"
                   secondary
                   type="primary"

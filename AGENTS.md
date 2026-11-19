@@ -5,6 +5,7 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 ## 当前交接（2026-11-08）
 
 - DeepSeek Harness/后续 Agent 先读 [docs/handoff-2026-11-08.md](docs/handoff-2026-11-08.md)，其中记录当前修复、测试证据和下一步验收顺序。
+- 本次审阅的整改优先级与验收条件见 [docs/roadmap-to-1.0.md](docs/roadmap-to-1.0.md)。
 - 2026-11-09 的协议/运行时收敛已提交（`9c7fc32` 起，含 `f86042c`）；工作区应保持干净。接手先检查 `git status`/`git log`，不得用 reset、clean 或旧包覆盖工作区。
 
 ## 强制规则：环境与数据隔离
@@ -56,7 +57,7 @@ Guidance for future OpenCode sessions working on pymss-desktop.
 
 - worker 契约命令只能经 `src/api/*` 调用；唯一例外是 `src/utils/mediaPrecheck.ts`（Node 测试加载器无法解析别名）与
   `src/features/plugin-marketplace/composable.ts`（Rust 启动命令返回 taskId、结果走事件），例外必须仍命中真实调用点。
-- 原生命令的 invoke 全部收口在 `src/api/native.ts`（当前 91 条）；其它文件不得直接 `invoke` 已包装命令，
+- 原生命令的 invoke 全部收口在 `src/api/native.ts`（当前 92 条）；其它文件不得直接 `invoke` 已包装命令，
   包装名单从该文件派生，新增包装即自动禁止旁路。
 - 需要注入到工厂的原生操作用显式 port 对象（如 `TaskInputNative` / `EditorProjectsNative`），
   不要传通用 `invoke` 依赖；新增原生命令先加 wrapper，再从调用点迁移。

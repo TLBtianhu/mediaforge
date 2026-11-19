@@ -50,8 +50,13 @@ elif exe.name=='candidate-smoke.exe':
     config=json.loads(exe.with_suffix('.fixture.json').read_text())
     install=Path(next(arg[5:] for arg in sys.argv[1:] if arg.startswith('/DIR=')))
     assert install.name=='install' and install.parent.name.startswith('MediaForge-candidate-')
-    shutil.copytree(config['stage'],install/'app')
-    if (install/'app/integrations').exists():shutil.move(str(install/'app/integrations'),str(install/'integrations'))
+    assert '/TASKS=dshbridge' in sys.argv and '/VERYSILENT' in sys.argv
+    upgrading=(install/'unins000.exe').is_file()
+    shutil.copytree(config['stage'],install/'app',dirs_exist_ok=True,ignore=shutil.ignore_patterns('integrations'))
+    integrations=Path(config['stage'])/'integrations'
+    if integrations.is_dir():shutil.copytree(integrations,install/'integrations',dirs_exist_ok=True)
+    if upgrading and mode=='upgrade-data-loss':(install/'data/library.db').unlink()
+    if upgrading and mode=='upgrade-extra-file':(install/'app/unexpected.txt').write_text('stale')
     if mode=='flat-layout':(install/'app/MediaForge.exe').rename(install/'MediaForge.exe')
     uninstaller=install/'unins000.exe'
     uninstaller.write_text(Path(__file__).read_text(),encoding='utf-8')
@@ -61,6 +66,7 @@ elif exe.name=='candidate-smoke.exe':
     registry['Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+config['appId']+'_is1']={
         'DisplayName':config['appName']+' '+config['version'],'DisplayVersion':config['version'],'InstallLocation':str(install)}
     if mode=='production-drift':registry['Software\\MediaForge']={'InstallDir':'changed by fake installer'}
+    if mode=='production-artifact-drift':Path(os.environ['INSTALLER_SMOKE_FIXTURE_PRODUCTION']).write_bytes(b'changed')
     state.write_text(json.dumps(registry))
 elif exe.name=='unins000.exe':
     record('uninstall')
@@ -176,6 +182,8 @@ class InstallerSmokeTests(unittest.TestCase):
         (scripts / "installer_smoke.py").write_text(driver, encoding="utf-8")
         (self.project / "installer").mkdir()
         shutil.copyfile(ROOT / "installer/mediaforge.iss", self.project / "installer/mediaforge.iss")
+        (self.project / "manifest").mkdir()
+        shutil.copyfile(ROOT / "manifest/library-schema.json", self.project / "manifest/library-schema.json")
         self.stage = self.project / "stage with spaces"
         for name in SMOKE.REQUIRED:
             path = self.stage / name
@@ -183,7 +191,7 @@ class InstallerSmokeTests(unittest.TestCase):
             path.write_bytes(b"stage fixture")
         (self.stage / "python/runtime-manifest.json").write_text('{"python":"3.12"}')
         (self.stage / "python-runtime/python.exe").write_text(FAKE_PROGRAM, encoding="utf-8")
-        integration = self.stage / "integrations/dsh-mediaforge/mediaforge-mcp.cmd"
+        integration = self.stage / "integrations/dsh-mediaforge/mcp-plugin.mjs"
         integration.parent.mkdir(parents=True)
         integration.write_bytes(b"integration fixture")
         for index in range(6):
@@ -200,6 +208,7 @@ class InstallerSmokeTests(unittest.TestCase):
                            SMOKE.CANDIDATE.UNINSTALL_PREFIX + SMOKE.CANDIDATE.PRODUCTION_APP_ID + "_is1": {"DisplayName": "untouched production uninstall"}}
         self.state.write_text(json.dumps(self.production))
         self.env = dict(os.environ, INSTALLER_SMOKE_FIXTURE_STATE=str(self.state), INSTALLER_SMOKE_FIXTURE_TRACE=str(self.trace),
+                        INSTALLER_SMOKE_FIXTURE_PRODUCTION=str(self.production_installer),
                         INSTALLER_SMOKE_FIXTURE_ENV=str(self.environment), MEDIAFORGE_DATA_ROOT="C:/DO-NOT-TOUCH/data",
                         PYMSS_MODEL_DIR="C:/DO-NOT-TOUCH/models", WEBVIEW2_USER_DATA_FOLDER="C:/DO-NOT-TOUCH/webview",
                         TAURI_SIGNING_PRIVATE_KEY="fixture-secret", GITHUB_TOKEN="fixture-secret", OPENAI_API_KEY="fixture-secret")
@@ -213,25 +222,30 @@ class InstallerSmokeTests(unittest.TestCase):
                 # All fixture children are finite Python scripts and have exited before this cleanup.
                 SMOKE.CANDIDATE.remove_owned_work(report)
 
-    def run_smoke(self, mode=""):
+    def run_smoke(self, mode="", previous_stage=None):
         env = dict(self.env, INSTALLER_SMOKE_FIXTURE_MODE=mode)
         audit = self.root / "environment-after.json"
         env["INSTALLER_SMOKE_ENV_AUDIT"] = str(audit)
         script = self.root / "invoke.ps1"
         script.write_text(r'''
-param($Smoke,$Stage,$Python,$Compiler,$Installer,$Report)
+param($Smoke,$Stage,$Python,$Compiler,$Installer,$Report,$PreviousStage)
 $names=@('MEDIAFORGE_DATA_ROOT','PYMSS_MODEL_DIR','WEBVIEW2_USER_DATA_FOLDER','TAURI_SIGNING_PRIVATE_KEY','GITHUB_TOKEN','OPENAI_API_KEY')
 $before=@{}; foreach($name in $names){$before[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
-& $Smoke -Stage $Stage -Version '0.0.33' -Python $Python -Compiler $Compiler -Installer $Installer -Report $Report
+$previous = @{}
+if ($PreviousStage) { $previous = @{PreviousStage=$PreviousStage; PreviousVersion='0.0.33'} }
+& $Smoke -Stage $Stage -Version '0.0.33' -Python $Python -Compiler $Compiler -Installer $Installer -Report $Report @previous
 $result=$LASTEXITCODE
 $after=@{}; foreach($name in $names){$after[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 @{before=$before;after=$after}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $env:INSTALLER_SMOKE_ENV_AUDIT -Encoding UTF8
 exit $result
 ''', encoding="utf-8-sig")
-        result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script),
-                                 "-Smoke", str(self.project / "scripts/smoke-installer.ps1"), "-Stage", str(self.stage),
-                                 "-Python", sys.executable, "-Compiler", str(self.compiler), "-Installer", str(self.production_installer),
-                                 "-Report", str(self.report)], env=env, capture_output=True, text=True, timeout=45,
+        command = [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script),
+                   "-Smoke", str(self.project / "scripts/smoke-installer.ps1"), "-Stage", str(self.stage),
+                   "-Python", sys.executable, "-Compiler", str(self.compiler), "-Installer", str(self.production_installer),
+                   "-Report", str(self.report)]
+        if previous_stage is not None:
+            command.extend(("-PreviousStage", str(previous_stage)))
+        result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=45,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if audit.exists():
             observed = json.loads(audit.read_text(encoding="utf-8-sig"))
@@ -249,6 +263,7 @@ exit $result
         self.assertFalse(Path(report["workRoot"]).exists())
         self.assertFalse(report["applicationLaunched"])
         self.assertFalse(report["productionInstallerExecuted"])
+        self.assertTrue(report["productionInstallerUnchanged"])
         self.assertTrue(report["productionRegistryUnchanged"])
         self.assertEqual(report["assetsBeforeUninstall"], report["uninstallPreservedAssets"])
         self.assertEqual(json.loads(self.state.read_text()), self.production)
@@ -259,6 +274,66 @@ exit $result
         self.assertTrue(Path(environment["MEDIAFORGE_DATA_ROOT"]).is_relative_to(Path(report["workRoot"])))
         self.assertEqual(Path(environment["MEDIAFORGE_DATA_ROOT"]), Path(report["installDir"]) / "data")
         self.assertNotIn("TAURI_SIGNING_PRIVATE_KEY", environment)
+
+    def previous_stage(self):
+        stage = self.project / "previous stage with spaces"
+        shutil.copytree(self.stage, stage)
+        (stage / "MediaForge.exe").write_bytes(b"previous executable")
+        return stage
+
+    def test_upgrade_checks_both_full_payloads_and_assets_before_uninstall(self):
+        result = self.run_smoke(previous_stage=self.previous_stage())
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual(report["previousVersion"], report["version"])
+        self.assertTrue(report["upgradePassed"])
+        self.assertEqual(report["previousWorkerHealth"], "passed")
+        self.assertEqual(report["workerHealth"], "passed")
+        self.assertEqual(report["previousInstalledPayload"]["fileCount"], len(report["previousPayloadHashes"]))
+        self.assertEqual(report["installedPayload"]["fileCount"], len(report["sourcePayloadHashes"]))
+        self.assertNotEqual(report["previousInstalledPayload"]["sha256"], report["installedPayload"]["sha256"])
+        assets = report["assetsBeforeUpgrade"]
+        self.assertEqual(assets, report["assetsAfterUpgrade"])
+        self.assertEqual(assets, report["uninstallPreservedAssets"])
+        self.assertIn("data/settings/app.json", assets)
+        self.assertIn("data/library.db", assets)
+        self.assertTrue(any(name.startswith("data/media/") and name.endswith(".wav") for name in assets))
+        self.assertIn("models/candidate-fixture/preservation-only.bin", assets)
+        self.assertIn("runtime-envs/active-runtime.json", assets)
+        self.assertIn("runtime-envs/candidate-preservation-fixture/python312.dll", assets)
+        self.assertTrue(report["productionRegistryUnchanged"])
+        self.assertEqual(report["status"], "cleaned")
+        trace = [json.loads(line)["kind"] for line in self.trace.read_text().splitlines()]
+        self.assertEqual(trace, ["compile", "install", "health", "compile", "install", "health", "uninstall"])
+
+    def test_upgrade_fails_when_the_library_is_lost(self):
+        result = self.run_smoke("upgrade-data-loss", self.previous_stage())
+        self.assertNotEqual(result.returncode, 0)
+        report = json.loads(self.report.read_text())
+        self.assertIn("changed preserved settings, models, media or runtime", report["error"])
+        self.assertEqual(report["status"], "failed-cleaned")
+
+    def test_upgrade_fails_if_an_unexpected_file_survives_in_the_install(self):
+        result = self.run_smoke("upgrade-extra-file", self.previous_stage())
+        self.assertNotEqual(result.returncode, 0)
+        report = json.loads(self.report.read_text())
+        self.assertIn("installed payload contains files outside the stage", report["error"])
+
+    def test_upgrade_requires_distinct_stage_contents_before_starting_the_compiler(self):
+        result = self.run_smoke(previous_stage=self.stage)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("distinct previous stage payload", result.stderr)
+        self.assertFalse(self.trace.exists())
+        self.assertFalse(self.report.exists())
+
+    def test_changed_production_artifact_is_reported_after_test_identity_cleanup(self):
+        result = self.run_smoke("production-artifact-drift")
+        self.assertNotEqual(result.returncode, 0)
+        report = json.loads(self.report.read_text())
+        self.assertFalse(report["productionInstallerUnchanged"])
+        self.assertEqual(report["status"], "failed-cleaned")
+        self.assertIn("read-only production installer artifact changed", report["productionInstallerError"])
+        self.assertEqual(json.loads(self.state.read_text()), self.production)
 
     def test_worker_failure_still_uninstalls_only_test_identity_and_keeps_diagnostics(self):
         result = self.run_smoke("health-failure")
@@ -303,7 +378,7 @@ exit $result
         self.assertFalse(self.report.exists())
         (self.stage / "models").rmdir()
         with mock.patch.object(SMOKE, "ROOT", self.project), mock.patch.object(SMOKE, "production_registry_snapshot") as registry, mock.patch.object(SMOKE.CANDIDATE, "run_hidden") as run:
-            args = type("Args", (), dict(stage=self.stage, version="0.0.33", iscc=self.compiler, installer=None,
+            args = type("Args", (), dict(stage=self.stage, version="0.0.33", previous_stage=None, previous_version=None, iscc=self.compiler, installer=None,
                                          report=self.root / "outside.json"))()
             with self.assertRaisesRegex(ValueError, "report must be"):
                 SMOKE.execute(args)
@@ -330,7 +405,8 @@ exit $result
         self.assertFalse(self.report.exists())
 
     def test_compiler_timeout_retains_owned_work_without_uninstall_or_deletion(self):
-        args = type("Args", (), dict(stage=self.stage, version="0.0.33", iscc=self.compiler, installer=None, report=self.report))()
+        args = type("Args", (), dict(stage=self.stage, version="0.0.33", previous_stage=None, previous_version=None,
+                                     iscc=self.compiler, installer=None, report=self.report))()
         with mock.patch.object(SMOKE, "ROOT", self.project), mock.patch.object(SMOKE.CANDIDATE, "registry_values", return_value=None), \
              mock.patch.object(SMOKE.CANDIDATE, "run_hidden", side_effect=subprocess.TimeoutExpired("fake compiler", 1)), \
              mock.patch.object(SMOKE.CANDIDATE, "remove_owned_work") as remove:

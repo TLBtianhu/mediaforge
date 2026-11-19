@@ -10,34 +10,23 @@
 - 安装包：`MediaForge-<版本>-windows-x64-cuda-setup.exe`（约 85 MB，不含运行时）
 - 便携版：`MediaForge-<版本>-windows-x64-portable.7z`（约 117 MB，解压即用，无需管理员）
 
-安装包**不内置运行时**：首次启动会下载约 3.8 GB 的 CUDA 运行包（解压后约 6.8 GB），
-从 hf-mirror 或魔搭任选其一，校验 sha256 后解压。模型权重也不随包，按需下载。
+轻量安装包附带 Python 3.12 引导解释器。Windows x64 选择 NVIDIA CUDA 时，可下载约 3.8 GB 的推理运行包并校验 SHA-256。模型权重按需下载。
 
 ## 30 秒上手
 
-1. 双击安装包 → SmartScreen 点「更多信息 → 仍要运行」→ 一路下一步（**安装位置固定，不用选**）
-   安装目录是 `%LOCALAPPDATA%\Programs\MediaForge`，不需要管理员权限
-2. 首次启动等运行包下完（右下角卡片有进度），然后到模型库下载一个模型（例如 Real-ESRGAN 2×，约 64 MB）
+1. 运行安装包并选择安装位置。默认安装到 `%LOCALAPPDATA%\Programs\MediaForge`。
+2. 在「设置 → 运行时」检查当前环境并安装适用的后端，然后到模型库下载模型。
 3. 图像处理 → 拖入图片 → 选超分和模型 → 开始转换
 
-数据、模型和运行时放在安装目录旁：`%LOCALAPPDATA%\Programs\MediaForge\data`、`models`、`runtime-envs`（便携版在 exe 同目录）。
+数据、模型和运行时位于所选安装根下的 `data`、`models`、`runtime-envs`，便携版使用 exe 所在目录。
 **卸载不会删除它们**，覆盖升级也会保留；但它们与程序同目录——清理“程序目录”时不要整目录删除，否则数据会一起丢失。
 换掉运行时版本时应用会提示更新。
 
 ## 想用 agent 调它？
 
-安装包自带 DeepSeek Harness 集成（`<安装目录>\integrations\dsh-mediaforge`），**安装时若检测到 Harness 会自动登记**。
-如果你是「先装应用、后装 Harness」，补跑一次即可：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\register.ps1"
-```
-
-然后重启 Harness，新对话里说「用 mediaforge 列一下模型」。自检命令：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\MediaForge\integrations\dsh-mediaforge\verify.ps1"
-```
+- 在 Harness 的插件管理器调用 `install_bundle`，将 `target` 设为 `link:<安装或解压目录>\integrations\dsh-mediaforge`。路径含空格时，将整个目标作为一个参数值。
+- 默认安装、自定义目录和便携版都链接各自的 bundle。MCP 从该 bundle 找解释器，使用同一实例的本地数据、模型和运行时目录。
+- 重连 Harness 后，可调用 `mediaforge_status` 或 `models_list`。安装器只分发集成文件，启用和移除由 Harness 管理。
 
 ## 当前进度
 

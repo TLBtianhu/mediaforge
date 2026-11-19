@@ -31,7 +31,10 @@ def write_fixture(root: Path) -> None:
     files = {
         "python/worker.py": "# fixture worker\n", "python/core/__init__.py": "",
         "python/core/handler.py": "def run(payload): return 0\n",
-        "python/shared/protocol_contract.py": "# fixture protocol\n", "python/surfaces/dispatch.py": "# dispatch\n",
+        "python/core/plugin_marketplace_trust.py": "# plugin trust fixture\n",
+        "python/plugin-marketplace.json": (ROOT / "python/plugin-marketplace.json").read_text(encoding="utf-8"),
+        "python/shared/protocol_contract.py": "# fixture protocol\n", "python/core/worker_supervisor.py": "# fixture worker supervisor\n",
+        "python/surfaces/dispatch.py": "# dispatch\n",
         "python/runtime-manifest.json": json.dumps({"baseGeneration": 1, "manifestVersion": "fixture", "python": "3.12"}),
         "manifest/protocol.json": json.dumps({"domains": {"test": {"commands": {"run": {"handler": "core.handler:run"}}}}}),
         "manifest/runtime.json": '{"schemaVersion":1}', "manifest/future-contract.json": '{"keep":true}',

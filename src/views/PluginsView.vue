@@ -2,9 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useDialog, useMessage } from 'naive-ui'
-import { ExtensionPuzzleOutline, RefreshOutline, SearchOutline, FolderOpenOutline } from '@vicons/ionicons5'
+import { ExtensionPuzzleOutline, RefreshOutline, SearchOutline } from '@vicons/ionicons5'
 import { usePluginMarketplace, type PluginAction } from '@/features/plugin-marketplace/composable'
 import MediaPageHeader from '@/components/media/MediaPageHeader.vue'
 import { useAppStore } from '@/stores/app'
@@ -17,10 +16,9 @@ const app = useAppStore()
 const { snapshot, updates, loading, error, busy, logs, currentName, currentAction, refresh, manage, cancel } = usePluginMarketplace()
 const tab = ref<'browse' | 'installed'>('browse')
 const search = ref('')
-const source = ref('')
-const showSource = ref(false)
 const showLogs = ref(false)
 const installedNames = computed(() => new Set(snapshot.value?.installed.filter(plugin => plugin.managed).map(plugin => plugin.name) || []))
+const approvedNames = computed(() => new Set(snapshot.value?.catalog.map(plugin => plugin.name) || []))
 const catalog = computed(() => (snapshot.value?.catalog || []).filter(plugin =>
   `${plugin.name} ${plugin.description} ${plugin.tags.join(' ')}`.toLowerCase().includes(search.value.trim().toLowerCase()),
 ))
@@ -33,28 +31,24 @@ const disabled = computed(() => busy.value || loading.value)
 onMounted(refresh)
 watch(() => [app.runtimeInfo?.backend, app.runtimeInfo?.installState?.pythonPath], () => { if (!busy.value) void refresh() })
 
-async function perform(action: PluginAction, name?: string, target?: string) {
+async function perform(action: PluginAction, name?: string) {
   if (disabled.value) { message.warning(t('plugins.busyRetry')); return }
   showLogs.value = true
   try {
-    await manage(action, { name, target, locale: locale.value })
+    await manage(action, { name, locale: locale.value })
     message.success(t('plugins.actionComplete'))
-    showSource.value = false
-    source.value = ''
   } catch (failure) {
     // Worker failures retain their detailed error across navigation.
     if (!error.value) message.error(String(failure))
   }
 }
 
-function install(name?: string, target?: string) {
-  const resolved = target?.trim() || name || ''
-  if (!resolved) return
+function install(name: string) {
   dialog.info({
     title: t('plugins.installTitle'),
-    content: t('plugins.installConfirm', { source: resolved }),
+    content: t('plugins.installConfirm', { source: name }),
     positiveText: t('plugins.install'), negativeText: t('common.cancel'),
-    onPositiveClick: () => perform('install', name, resolved),
+    onPositiveClick: () => perform('install', name),
   })
 }
 
@@ -64,11 +58,6 @@ function uninstall(name: string) {
     positiveText: t('plugins.uninstall'), negativeText: t('common.cancel'),
     onPositiveClick: () => perform('uninstall', name),
   })
-}
-
-async function chooseFolder() {
-  const selected = await open({ directory: true, multiple: false, title: t('plugins.chooseFolder') })
-  if (typeof selected === 'string') source.value = selected
 }
 
 function runOperations() {
@@ -89,7 +78,6 @@ function openPluginView(plugin: { name: string }, view: { id: string; placements
   <div class="page mf-page plugins-page" data-tone="blue">
     <MediaPageHeader :title="t('plugins.title')" :subtitle="t('plugins.subtitle')" :icon="ExtensionPuzzleOutline" eyebrow="PLUGINS" tone="blue">
       <div class="plugins-actions">
-        <n-button :disabled="disabled || !snapshot" @click="showSource = true">{{ t('plugins.installSource') }}</n-button>
         <n-button secondary :loading="loading" :disabled="busy" @click="refresh">
           <template #icon><n-icon :component="RefreshOutline" /></template>{{ t('plugins.refresh') }}
         </n-button>
@@ -162,8 +150,8 @@ function openPluginView(plugin: { name: string }, view: { id: string; placements
                 >{{ t('plugins.openView', { title: view.title || view.id }) }}</n-button>
               </div>
               <div v-if="plugin.managed" class="plugin-card-footer plugin-installed-actions">
-                <n-button v-if="plugin.url" :disabled="disabled" @click="perform('update', plugin.name)">{{ t('plugins.update') }}</n-button>
-                <n-button :disabled="disabled" @click="perform('repair', plugin.name)">{{ t('plugins.repair') }}</n-button>
+                <n-button v-if="approvedNames.has(plugin.name)" :disabled="disabled" @click="perform('update', plugin.name)">{{ t('plugins.update') }}</n-button>
+                <n-button v-if="approvedNames.has(plugin.name)" :disabled="disabled" @click="perform('repair', plugin.name)">{{ t('plugins.repair') }}</n-button>
                 <n-button type="error" secondary :disabled="disabled" @click="uninstall(plugin.name)">{{ t('plugins.uninstall') }}</n-button>
               </div>
             </article>
@@ -183,15 +171,6 @@ function openPluginView(plugin: { name: string }, view: { id: string; placements
       <n-progress v-if="busy" type="line" status="info" :percentage="100" :show-indicator="false" processing />
       <pre v-if="showLogs" class="plugins-log">{{ logs.join('\n') }}</pre>
     </section>
-
-    <n-modal v-model:show="showSource" preset="card" :title="t('plugins.installSource')" class="plugin-source-modal" style="width: var(--modal-width-md)">
-      <p class="plugins-help">{{ t('plugins.sourceHint') }}</p>
-      <n-input v-model:value="source" :placeholder="t('plugins.sourcePlaceholder')" :disabled="disabled" />
-      <template #footer><div class="plugins-actions">
-        <n-button :disabled="disabled" @click="chooseFolder"><template #icon><n-icon :component="FolderOpenOutline" /></template>{{ t('plugins.chooseFolder') }}</n-button>
-        <n-button type="primary" :disabled="disabled || !source.trim()" @click="install(undefined, source)">{{ t('plugins.install') }}</n-button>
-      </div></template>
-    </n-modal>
   </div>
 </template>
 

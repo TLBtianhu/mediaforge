@@ -74,7 +74,7 @@ MOCK = """enabled => {
       if(command==='get_runtime_info') return {supported:false,installedEnvironments:[],coreUpdateSupported:false};
       if(command==='load_editor_project')return __savedVstProjects.filter(project=>project.id===args.projectId).at(-1);
       if(command==='save_editor_project'){__savedVstProjects.push(JSON.parse(JSON.stringify(args.project)));return args.project}
-      if(command==='pick_input_folder')return __pickedDirectory;
+      if(command==='plugin:dialog|open')return __pickedDirectory;
       if(command==='list_editor_projects'||command==='list_models'||command==='list_tasks') return [];
       return null;
     }

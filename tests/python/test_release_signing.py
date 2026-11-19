@@ -59,7 +59,7 @@ try { . $Fixture } catch { [Console]::Error.WriteLine($_.Exception.Message); exi
         self.assertEqual(result.returncode == 0, ok, f"fixture exit code {result.returncode}")
         return result
 
-    def mock_signer(self, code):
+    def mock_signer(self, code, *, explicit_password=True):
         archive = self.root / "fixture update.zip"
         with zipfile.ZipFile(archive, "w") as output:
             output.writestr("MediaForge.exe", b"fake PE; version reader is mocked")
@@ -87,14 +87,17 @@ raise SystemExit(config['exitCode'])
 """, encoding="utf-8")
         # Only synthetic values are injected after the inherited environment was cleared.
         self.env.update(GITHUB_TOKEN="fixture-token", TAURI_PRIVATE_KEY="fixture-old-key", TAURI_SIGNING_PRIVATE_KEY="fixture-inline-key")
+        password_argument = ""
+        if explicit_password:
+            password_argument = " -Password ((Get-Content (Join-Path $FixtureRoot 'mock-config.json') -Raw | ConvertFrom-Json).password)"
         body = """
 function Get-ReleaseExecutableInfo { param($Path) [PSCustomObject]@{ProductName='MediaForge'; ProductVersion='0.0.32'} }
 $archive = Join-Path $FixtureRoot 'fixture update.zip'
 Invoke-ReleaseArchiveSigning -Archive $archive -ExpectedVersion '0.0.32' -Root $Repository `
-    -KeyPath (Join-Path $FixtureRoot 'fixture.key') -Password ((Get-Content (Join-Path $FixtureRoot 'mock-config.json') -Raw | ConvertFrom-Json).password) `
+    -KeyPath (Join-Path $FixtureRoot 'fixture.key')%PASSWORD% `
     -Node '%PYTHON%' -Cli (Join-Path $FixtureRoot 'mock-cli.py')
 if ($env:GITHUB_TOKEN -cne 'fixture-token' -or $env:TAURI_SIGNING_PRIVATE_KEY -cne 'fixture-inline-key') { throw 'Parent environment was changed' }
-""".replace("%PYTHON%", sys.executable.replace("'", "''"))
+""".replace("%PYTHON%", sys.executable.replace("'", "''")).replace("%PASSWORD%", password_argument)
         return archive, credential, body
 
     def test_mock_signer_receives_only_child_environment_credentials_and_no_secret_arguments(self):
@@ -116,6 +119,36 @@ if ($env:GITHUB_TOKEN -cne 'fixture-token' -or $env:TAURI_SIGNING_PRIVATE_KEY -c
         self.assertNotIn(credential, result.stdout + result.stderr)
         self.assertFalse(Path(str(archive) + ".sig").exists())
         self.assertFalse(Path(str(archive) + ".signature.b64").exists())
+
+    def test_password_from_credential_manager_is_used_for_signer_child_only(self):
+        _, credential, body = self.mock_signer(0, explicit_password=False)
+        self.env["TAURI_SIGNING_PASSWORD_CREDENTIAL_TARGET"] = "Tauri/UpdateSigningPassword/fixture"
+        result = self.run_fixture(r"""
+function Get-ReleaseSigningPasswordFromCredentialManager {
+    param($Target)
+    if ($Target -ne 'Tauri/UpdateSigningPassword/fixture') { throw 'Wrong credential target' }
+    (Get-Content (Join-Path $FixtureRoot 'mock-config.json') -Raw | ConvertFrom-Json).password
+}
+""" + body + "\nif (Test-Path Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { throw 'Parent environment was changed' }")
+        self.assertNotIn(credential, result.stdout + result.stderr)
+        record = json.loads((self.root / "mock-record.json").read_text())
+        self.assertTrue(record["passwordMatches"])
+
+    def test_process_password_override_skips_credential_manager(self):
+        _, credential, body = self.mock_signer(0, explicit_password=False)
+        self.env["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"] = credential
+        result = self.run_fixture("function Get-ReleaseSigningPasswordFromCredentialManager { throw 'Unexpected credential lookup' }\n" + body)
+        self.assertNotIn(credential, result.stdout + result.stderr)
+        self.assertTrue(json.loads((self.root / "mock-record.json").read_text())["passwordMatches"])
+
+    def test_credential_read_failure_preserves_existing_signature(self):
+        archive, _, body = self.mock_signer(0, explicit_password=False)
+        signature = Path(str(archive) + ".sig")
+        signature.write_text("existing signature")
+        result = self.run_fixture("function Get-ReleaseSigningPasswordFromCredentialManager { throw 'Credential unavailable' }\n" + body, ok=False)
+        self.assertEqual(result.stderr.strip(), "Credential unavailable")
+        self.assertEqual(signature.read_text(), "existing signature")
+        self.assertFalse((self.root / "mock-record.json").exists())
 
     def test_stale_source_is_rejected_before_any_existing_stage_changes(self):
         for name, version in (("MediaForge", "0.0.31"), ("Pymss Studio", "0.0.32")):
@@ -175,6 +208,7 @@ $staging = ($staging -split 'Copy-ReleaseResources -Root', 2)[0]
         self.run_fixture(r"""
 $SkipSign = $true
 function Invoke-ReleaseArchiveSigning { throw 'SkipSign invoked a signer' }
+function Get-ReleaseSigningPasswordFromCredentialManager { throw 'SkipSign read a credential' }
 $text = Get-Content (Join-Path $Repository 'scripts/package-release.ps1') -Raw
 $signing = 'if ($SkipSign) {' + ($text -split 'if \(\$SkipSign\) \{', 2)[1]
 $signing = ($signing -split 'Write-Host "\[5/6\]', 2)[0]

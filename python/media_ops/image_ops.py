@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from . import capabilities
+from .image_capabilities import IMAGE_CAPABILITIES
 
 MAX_OUTPUT_SIDE = 8192
 PRESETS: dict[str, tuple[int, int]] = {
@@ -115,10 +116,6 @@ def feather_composite(original: np.ndarray, repaired: np.ndarray, mask: np.ndarr
     alpha = alpha[:, :, None]
     blended = repaired.astype(np.float32) * alpha + original.astype(np.float32) * (1.0 - alpha)
     return np.clip(blended, 0, 255).round().astype(np.uint8)
-
-
-# 只在图像路径上实现的 capability（视频逐帧管线没有对应 planner）。
-IMAGE_CAPABILITIES: tuple[str, ...] = ("denoise", "object_detection", "depth", "matting", "frame_interpolation", "face_restoration")
 
 
 def run_scale1_model(model_path: str | Path, image: np.ndarray, device: str | None = None, tile: int = 512, overlap: int = 32) -> np.ndarray:

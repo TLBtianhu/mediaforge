@@ -22,14 +22,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from core.worker_runtime_lock import RuntimeLockBusy, runtime_lock
+from core.worker_runtime_lock import RuntimeLockBusy
 from shared.worker_subprocess import hidden_subprocess_kwargs
+from core.worker_supervisor import GO, READY
 from shared import worker_paths
 from core import job_store
 from core import job_quota
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "worker.py"
+SUPERVISOR = ROOT / "core" / "worker_supervisor.py"
 
 TERMINAL_STATES = job_store.TERMINAL_STATES
 JOB_FILE_SECONDS = 0.2
@@ -97,7 +99,15 @@ def _atomic_write(path: Path, text: str) -> None:
             file.write(text)
             file.flush()
             os.fsync(file.fileno())
-        temporary.replace(path)
+        for attempt in range(6):
+            try:
+                temporary.replace(path)
+                break
+            except PermissionError as error:
+                # Windows readers can briefly prevent atomic replacement.
+                if getattr(error, "winerror", None) not in {5, 32, 33} or attempt == 5:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
         _fsync_parent(path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -130,11 +140,14 @@ class Job:
         self.runtime: dict[str, Any] = {"stage": None, "progress": None, "nodes": {}, "order": []}
         self.logs: list[dict[str, Any]] = []
         self.process: subprocess.Popen[str] | None = None
+        self._cancel_thread: threading.Thread | None = None
         self._process_reaped = True
         self._cleanup_pending = False
         self._cleanup_error: str | None = None
         self._cleanup_lock = threading.Lock()
         self._payload_path: Path | None = None
+        self._separation_members: dict[str, int] = {}
+        self._separation_finished: set[str] = set()
         self.cancel_event = threading.Event()
         self._lock = threading.RLock()
         # 节流用的记账；只在 OperationKernel._persist 的锁内读写
@@ -329,7 +342,7 @@ class OperationKernel:
                     if quota is None:
                         capacity_full = True
                         continue
-                lease = runtime_lock(self._lease_path(record["jobId"]), timeout=0)
+                lease = job_store.owner_lock(self.jobs_root, record["jobId"])
                 acquired = False
                 transferred = False
                 try:
@@ -388,15 +401,17 @@ class OperationKernel:
 
     # ── 落盘 ────────────────────────────────────────────────────────────────
 
-    def _recover_from_disk(self) -> int:
+    def _recover_from_disk(self, requested_job: str | None = None) -> int:
         """Validate the full catalog before recovering genuinely abandoned owners."""
         recovered = 0
         with job_store.catalog_lock(self.jobs_root):
             records = job_store.read_jobs_unlocked(self.jobs_root)
             for job_id, value in records.items():
+                if requested_job is not None and job_id != requested_job:
+                    continue
                 if value["status"] not in {"queued", "running"} or value["owner"] is None:
                     continue
-                lease = runtime_lock(self._lease_path(job_id), timeout=0)
+                lease = job_store.owner_lock(self.jobs_root, job_id)
                 try:
                     lease.__enter__()
                 except (RuntimeLockBusy, OSError):
@@ -445,28 +460,18 @@ class OperationKernel:
                     with ExitStack() as stack:
                         ids = sorted(value["jobId"] for value in members)
                         for job_id in ids:
-                            stack.enter_context(runtime_lock(self._lease_path(job_id), timeout=0))
+                            stack.enter_context(job_store.owner_lock(self.jobs_root, job_id))
                         for job_id in ids:
                             stack.enter_context(job_store.write_lock(self.jobs_root, job_id))
                         latest = [_read_job(self.jobs_root / f"{job_id}.json") for job_id in ids]
                         if any(value is None or value["status"] not in TERMINAL_STATES for value in latest):
                             continue
-                        moved: list[tuple[Path, Path]] = []
-                        try:
-                            for job_id in ids:
-                                path = self.jobs_root / f"{job_id}.json"
-                                temporary = self.jobs_root / f".{job_id}.{uuid.uuid4().hex}.removing"
-                                path.rename(temporary)
-                                moved.append((path, temporary))
-                        except OSError:
-                            for path, temporary in reversed(moved):
-                                temporary.rename(path)
-                            raise
-                        for _, temporary in moved:
-                            temporary.unlink()
+                        cleaned = job_store.remove_jobs_unlocked(self.jobs_root, ids)
                         removed += len(ids)
+                        if not cleaned:
+                            break
                 except RuntimeLockBusy:
-                        continue
+                    continue
         if removed:
             print(
                 f"[kernel] 清理 {removed} 个过期作业文件（保留 {days:g} 天 / 最多 {count} 个）",
@@ -541,6 +546,15 @@ class OperationKernel:
             return local
         if local is not None and local.status not in TERMINAL_STATES and value["owner"] == local.owner:
             return local
+        # A new bridge can connect while the old owner's supervisor still holds
+        # the reap fence. Retry on later queries after that fence becomes free.
+        owner = value["owner"]
+        if (owner is not None and owner["kind"] == "operation-kernel"
+                and value["status"] in {"queued", "running"}
+                and self._recover_from_disk(job_id)):
+            value = job_store.read_jobs(self.jobs_root).get(job_id)
+            if value is None:
+                return None
         return Job.from_snapshot(value, self.data_root / "bridge-jobs" / job_id)
 
     # ── 生命周期 ────────────────────────────────────────────────────────────
@@ -565,7 +579,7 @@ class OperationKernel:
                     self._jobs[job_id] = job
                 self._ensure_dispatcher()
                 return job
-            lease = runtime_lock(self._lease_path(job_id), timeout=0)
+            lease = job_store.owner_lock(self.jobs_root, job_id)
             lease.__enter__()
             workdir = self.data_root / "bridge-jobs" / job_id
             try:
@@ -585,10 +599,6 @@ class OperationKernel:
                 lease.__exit__(*sys.exc_info())
                 raise
         return job
-
-    def _lease_path(self, job_id: str) -> Path:
-        # Never unlink lock files: all processes must lock the same inode.
-        return self.jobs_root / ".owners" / f"{job_id}.lock"
 
     def _run(self, job: Job) -> None:
         try:
@@ -618,41 +628,42 @@ class OperationKernel:
                 job._quota_lease.release()
                 job._quota_lease = None
 
-    def _cleanup_process(self, job: Job) -> bool:
-        """One bounded cleanup attempt; retain ownership until wait confirms exit."""
+    @staticmethod
+    def _request_stop(process: subprocess.Popen[str]) -> None:
+        # EOF asks the supervisor to terminate and wait for its entire tree.
+        if process.stdin is not None:
+            try:
+                process.stdin.close()
+            except BrokenPipeError:
+                pass
+
+    def _cleanup_process(self, job: Job, *, waited: bool = False) -> bool:
+        """Retain ownership until the supervisor and all transport handles are closed."""
         if not job._cleanup_lock.acquire(blocking=False):
             return False
         try:
             process = job.process
             if process is not None and not job._process_reaped:
                 try:
-                    if process.poll() is None:
-                        try:
-                            process.terminate()
-                        except OSError:
-                            pass  # wait/kill can still confirm an already exiting child.
-                    try:
+                    self._request_stop(process)
+                    if not waited:
                         process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=5)
+                    if process.stdout is not None:
+                        process.stdout.close()
+                    if process.stderr is not None:
+                        process.stderr.close()
+                    if job._cancel_thread is not None:
+                        job._cancel_thread.join(timeout=5)
+                        if job._cancel_thread.is_alive():
+                            raise OSError("worker cancellation watcher has not stopped")
+                    job._cancel_thread = None
+                    job.process = None
                     job._process_reaped = True
                 except (OSError, subprocess.SubprocessError) as error:
                     job._cleanup_pending = True
                     job._cleanup_error = str(error)
                     print(f"[kernel] worker cleanup failed {job.job_id}: {error}", file=sys.stderr)
                     return False
-                finally:
-                    if process.stdout is not None:
-                        try:
-                            process.stdout.close()
-                        except OSError:
-                            pass
-            elif process is not None and process.stdout is not None:
-                try:
-                    process.stdout.close()
-                except OSError:
-                    pass
             job._cleanup_pending = False
             job._cleanup_error = None
             if job._payload_path is not None:
@@ -666,9 +677,14 @@ class OperationKernel:
             job._cleanup_lock.release()
 
     def _run_worker(self, job: Job) -> None:
+        tasks = job.payload.get("tasks") if job.command == "infer" else None
+        if isinstance(tasks, list) and len(tasks) > 1:
+            job._separation_members = {task["taskId"]: index for index, task in enumerate(tasks, 1)}
+            if len(job._separation_members) != len(tasks):
+                raise ValueError("separation batch has duplicate task IDs")
         job.workdir.mkdir(parents=True, exist_ok=True)
         payload_path = job.workdir / "payload.json"
-        process = None
+        waited = False
         try:
             # Never replace or remove a pre-existing workspace file. This precise
             # transport is ours only after exclusive creation succeeds.
@@ -680,9 +696,15 @@ class OperationKernel:
             job.update(status="running", message="starting worker")
             self._persist(job, force=True)
             try:
+                command = [self.python_path or sys.executable, "-B", "-S", str(SUPERVISOR)]
+                if job._quota_lease is not None:
+                    command.extend(("--fence", str(job._quota_lease.fence_path.absolute())))
+                if job._lease is not None:
+                    command.extend(("--owner-fence", str(job_store.owner_reap_path(self.jobs_root, job.job_id).absolute())))
+                command.extend(("--", str(WORKER), job.command, "--payload", str(payload_path)))
                 with open(stdout_path, "w", encoding="utf-8") as stdout, open(stderr_path, "w", encoding="utf-8") as stderr:
                     process = subprocess.Popen(
-                        [self.python_path or sys.executable, str(WORKER), job.command, "--payload", str(payload_path)],
+                        command,
                         cwd=str(ROOT),
                         stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE,
@@ -691,15 +713,25 @@ class OperationKernel:
                         encoding="utf-8",
                         errors="replace",
                         env={**os.environ, "MEDIAFORGE_DATA_ROOT": str(self.data_root), "MEDIAFORGE_DATA_DIR": str(self.data_root),
-                             "PYMSS_USER_MODELS": str(worker_paths.user_models_file(self.data_root)),
-                             "MEDIAFORGE_PARENT_PIPE": "1"},
+                             "PYMSS_USER_MODELS": str(worker_paths.user_models_file(self.data_root))},
                         **hidden_subprocess_kwargs(),
                         **({"start_new_session": True} if os.name != "nt" else {}),
                     )
                     job.process = process
                     job._process_reaped = False
-                    assert process.stdout is not None
-                    threading.Thread(target=self._watch_cancel, args=(job, process), daemon=True).start()
+                    assert process.stdin is not None and process.stdout is not None
+                    if process.stdout.readline() != READY:
+                        raise RuntimeError("Worker supervisor failed to confirm its startup fences")
+                    watcher = threading.Thread(target=self._watch_cancel, args=(job, process), daemon=True)
+                    watcher.start()
+                    job._cancel_thread = watcher
+                    try:
+                        if not job.cancel_event.is_set():
+                            process.stdin.write(GO.decode("ascii"))
+                            process.stdin.flush()
+                    except (OSError, ValueError):
+                        if not job.cancel_event.is_set():
+                            raise
                     protocol_error = None
                     for line in process.stdout:
                         line = line.strip()
@@ -717,19 +749,14 @@ class OperationKernel:
                             continue
                         self._consume(job, event)
                     code = process.wait()
-                    job._process_reaped = True
-                job.update(finished_at=time.time())
-                if job.status not in TERMINAL_STATES:
-                    message = protocol_error or (
-                        "worker exited without a result" if code == 0 else f"worker exited with code {code}"
-                    )
-                    job.update(status="failed", message=message, error=message)
+                    waited = True
+                self._finish_worker(job, code, protocol_error)
                 self._persist(job, force=True)
             except Exception as exc:  # noqa: BLE001
                 job.update(status="failed", error=f"{exc}\n{traceback.format_exc()}", finished_at=time.time())
                 self._persist(job, force=True)
         finally:
-            self._cleanup_process(job)
+            self._cleanup_process(job, waited=waited)
 
     def _cancel_paths(self, job: Job) -> tuple[Path, Path]:
         # 两套取消通道：本进程约定的 workdir/cancel，和 Rust 侧写的 agent-jobs/<id>.cancel
@@ -751,22 +778,73 @@ class OperationKernel:
         changed = job.update(status="cancelled", message="cancelled by user")
         if not changed and job.status != "cancelled":
             return
-        if changed:
-            self._persist(job, force=True)
         try:
-            process.terminate()
-        except OSError:
-            pass
+            if changed:
+                self._persist(job, force=True)
+        finally:
+            try:
+                self._request_stop(process)
+            except OSError:
+                pass
 
     def _consume(self, job: Job, event: dict[str, Any]) -> None:
         with job._lock:
             self._consume_locked(job, event)
+
+    @staticmethod
+    def _finish_worker(job: Job, code: int, protocol_error: str | None) -> None:
+        with job._lock:
+            if job.status in TERMINAL_STATES:
+                return
+            message = protocol_error or (
+                "worker exited without a result" if code == 0 else f"worker exited with code {code}"
+            )
+            if job._separation_members:
+                failures = (job.result or {}).get("failed", [])
+                if failures:
+                    message = str(failures[0].get("message") or failures[0].get("code") or message)
+                elif code == 0 and protocol_error is None and job._separation_finished == job._separation_members.keys():
+                    job.update(status="completed", message="completed", fraction=1.0)
+                    return
+            job.update(status="failed", message=message, error=message)
+
+    def _consume_separation_member(self, job: Job, task_id: str, kind: str, payload: dict[str, Any]) -> None:
+        if task_id in job._separation_finished:
+            return
+        index = job._separation_members[task_id]
+        total = len(job._separation_members)
+        result = job.result or {
+            "total": total, "completed": 0, "failed": [], "outputs": [],
+            "outputDir": job.payload.get("output"), "outputRoot": job.payload.get("output"),
+            "outputFormat": job.payload.get("outputFormat") or "wav",
+        }
+        outputs = payload.get("outputs")
+        if kind == "task.result" and isinstance(outputs, list) and outputs and all(
+            isinstance(output, dict) and isinstance(output.get("path"), str) and output["path"].strip()
+            for output in outputs
+        ):
+            result = {**result, "completed": result["completed"] + 1,
+                      "outputs": [*result["outputs"], *({**output, "inputIndex": index} for output in outputs)]}
+        else:
+            failure = payload if kind == "error" else {"message": "separation produced no output files"}
+            result = {**result, "failed": [*result["failed"], {**failure, "inputIndex": index}]}
+        job._separation_finished.add(task_id)
+        # Persist each file's result before another file runs or the user cancels.
+        job.update(result=result, fraction=len(job._separation_finished) / total)
+        self._persist(job, force=True)
 
     def _consume_locked(self, job: Job, event: dict[str, Any]) -> None:
         kind = str(event.get("type") or "")
         payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
         if job.status in TERMINAL_STATES:
             return  # Late worker output cannot reverse cancellation/failure.
+        if job._separation_members and (kind == "task.result" or (kind == "error" and payload.get("recoverable") is not True)):
+            task_id = event.get("taskId")
+            if isinstance(task_id, str) and task_id in job._separation_members:
+                self._consume_separation_member(job, task_id, kind, payload)
+                return
+            if kind == "task.result":
+                return  # Batch success requires an identified result for every input.
         if kind in {"task.log", "worker_log"}:
             record = copy.deepcopy(payload.get("record") if isinstance(payload.get("record"), dict) else payload)
             record.setdefault("taskId", job.job_id)
@@ -802,7 +880,7 @@ class OperationKernel:
             if fraction is None and kind == "asset.progress":
                 fraction = float(payload.get("progress") or 0) / 100.0
             job.update(
-                fraction=min(1.0, max(0.0, float(fraction or 0))),
+                fraction=job.fraction if job._separation_members else min(1.0, max(0.0, float(fraction or 0))),
                 message=str(payload.get("current") or payload.get("message") or "running"),
             )
         elif kind in {"task.result", "asset.done", "editor_mix_exported"} or kind == _result_events().get(job.command):
@@ -900,7 +978,7 @@ class OperationKernel:
             if not job.update(status="cancelled", message="cancelled by client"):
                 return {"ok": True, "cancelled": job.status == "cancelled"}
             try:
-                process.terminate()
+                self._request_stop(process)
             except OSError:
                 pass
             self._persist(job, force=True)

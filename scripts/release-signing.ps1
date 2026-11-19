@@ -164,6 +164,63 @@ raise SystemExit(child.wait())
     if ($result.ExitCode -ne 0) { throw "Tauri build failed with exit code $($result.ExitCode)" }
 }
 
+function Initialize-ReleaseSigningCredentialReader {
+    if (-not ('MediaForge.ReleaseSigningCredential' -as [type])) {
+        Add-Type -ErrorAction Stop -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+namespace MediaForge {
+    public static class ReleaseSigningCredential {
+        private const uint GenericCredential = 1;
+        private const int CredentialNotFound = 1168;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Credential {
+            public uint Flags, Type;
+            public IntPtr TargetName, Comment;
+            public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
+            public uint BlobSize;
+            public IntPtr Blob;
+        }
+
+        [DllImport("Advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CredReadW(string target, uint type, uint flags, out IntPtr credential);
+
+        [DllImport("Advapi32.dll", ExactSpelling = true)]
+        private static extern void CredFree(IntPtr credential);
+
+        public static string Read(string target) {
+            IntPtr pointer;
+            if (!CredReadW(target, GenericCredential, 0, out pointer)) {
+                int error = Marshal.GetLastWin32Error();
+                if (error == CredentialNotFound) return null;
+                throw new Win32Exception(error, "Cannot read the MediaForge signing credential (Win32 " + error + ")");
+            }
+            try {
+                var credential = (Credential)Marshal.PtrToStructure(pointer, typeof(Credential));
+                if (credential.BlobSize == 0) return String.Empty;
+                if (credential.Blob == IntPtr.Zero || credential.BlobSize % 2 != 0)
+                    throw new InvalidOperationException("Invalid MediaForge signing credential encoding");
+                return Marshal.PtrToStringUni(credential.Blob, (int)(credential.BlobSize / 2));
+            } finally {
+                CredFree(pointer);
+            }
+        }
+    }
+}
+'@
+    }
+}
+
+function Get-ReleaseSigningPasswordFromCredentialManager {
+    param([string]$Target = 'MediaForge/TauriUpdateSigningPassword')
+    Initialize-ReleaseSigningCredentialReader
+    [MediaForge.ReleaseSigningCredential]::Read($Target)
+}
+
 function New-ReleaseSignerStartInfo {
     param([string]$Node, [string]$Cli, [string]$Archive, [string]$KeyPath, [string]$Password)
     $start = New-Object Diagnostics.ProcessStartInfo
@@ -195,6 +252,19 @@ function Invoke-ReleaseArchiveSigning {
     if (-not $Node) { $Node = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source }
     if (-not $Cli) { $Cli = Join-Path $Root 'node_modules\@tauri-apps\cli\tauri.js' }
     if (-not (Test-Path -LiteralPath $Cli -PathType Leaf)) { throw 'Release signer CLI is missing' }
+    if (-not $PSBoundParameters.ContainsKey('Password')) {
+        $configuredPassword = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'Process')
+        if ($null -eq $configuredPassword) {
+            $target = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PASSWORD_CREDENTIAL_TARGET', 'Process')
+            if ($target) {
+                $configuredPassword = Get-ReleaseSigningPasswordFromCredentialManager -Target $target
+                if ($null -eq $configuredPassword) { throw 'The selected signing credential is missing' }
+            } else {
+                $configuredPassword = Get-ReleaseSigningPasswordFromCredentialManager
+            }
+        }
+        $Password = $configuredPassword
+    }
     $start = New-ReleaseSignerStartInfo -Node $Node -Cli $Cli -Archive ([IO.Path]::GetFullPath($Archive)) -KeyPath $KeyPath -Password $Password
     foreach ($suffix in @('.sig', '.signature.b64')) {
         $target = [IO.Path]::GetFullPath($Archive + $suffix)

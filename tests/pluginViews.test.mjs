@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-// Studio plugin view SDK host bridge logic, mirroring PluginViewHost.vue:
-// origin checks, permission allowlists, JSON-RPC dispatch, progress fanout.
+// Studio plugin view SDK bootstrap logic, mirroring PluginViewHost.vue:
+// source-checked handshakes, per-document channels, permission allowlists and progress fanout.
 
 const listeners = []
 const pending = new Map()
@@ -57,7 +57,7 @@ test('permission allowlist gates methods by exact name or family', () => {
   assert.equal(permission('app.quit', allowed), false)
 })
 
-test('origin check drops messages from foreign frames', () => {
+test('bootstrap source check drops messages from foreign frames', () => {
   const frameWindow = { id: 'frame' }
   let delivered = 0
   const listener = event => {

@@ -15,7 +15,7 @@ import unittest
 from unittest import mock
 
 from . import _bootstrap as _worker_test_bootstrap
-from core import worker_custom_models as custom
+from core import operation_kernel, worker_custom_models as custom
 from core.user_model_registry import read_registry
 from core.operation_kernel import Job, OperationKernel
 from shared.asset_references import AssetReferencesBusy, asset_reference_lock
@@ -212,15 +212,23 @@ class CustomModelAssetLeaseTests(unittest.TestCase):
         kernel.data_root = self.root
         kernel.python_path = sys.executable
         kernel._persist = mock.Mock()
-        process = mock.Mock(stdout=io.StringIO('{"type":"custom_model_import_finished","payload":{"name":"fixture"}}\n'))
+        output = io.StringIO(operation_kernel.READY
+                             + '{"type":"custom_model_import_finished","payload":{"name":"fixture"}}\n')
+        process = mock.Mock(stdin=io.StringIO(), stdout=output, stderr=None)
         process.wait.return_value = 0
         job = Job("fixture", "import_custom_model", {}, self.root / "bridge-jobs/fixture")
         with mock.patch.dict(os.environ, {"PYMSS_USER_MODELS":"foreign"}), \
                 mock.patch("core.operation_kernel.subprocess.Popen", return_value=process) as spawn, \
-                mock.patch("core.operation_kernel.threading.Thread"):
+                mock.patch("core.operation_kernel.threading.Thread") as thread:
+            thread.return_value.is_alive.return_value = False
             kernel._run_worker(job)
-        self.assertEqual(spawn.call_args.kwargs["env"]["PYMSS_USER_MODELS"], str(self.registry))
-        self.assertEqual(spawn.call_args.kwargs["env"]["MEDIAFORGE_PARENT_PIPE"], "1")
+        environment = spawn.call_args.kwargs["env"]
+        self.assertEqual(environment["PYMSS_USER_MODELS"], str(self.registry))
+        self.assertEqual(environment["MEDIAFORGE_DATA_ROOT"], str(self.root))
+        command = spawn.call_args.args[0]
+        separator = command.index("--")
+        self.assertIn(str(operation_kernel.SUPERVISOR), command[:separator])
+        self.assertEqual(command[separator + 1:separator + 3], [str(operation_kernel.WORKER), "import_custom_model"])
         self.assertEqual(spawn.call_args.kwargs["stdin"], subprocess.PIPE)
         self.assertEqual(job.status, "completed")
         self.assertFalse((job.workdir / "payload.json").exists())

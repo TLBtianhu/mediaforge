@@ -158,7 +158,13 @@ pub(super) fn catalog_lock(root: &Path) -> AppResult<FileLock> {
 
 pub(super) fn owner_lock(root: &Path, id: &str) -> AppResult<FileLock> {
     job_path(root, id)?;
-    FileLock::acquire(&root.join("agent-jobs/.owners").join(format!("{id}.lock")), Duration::ZERO)
+    let primary = FileLock::acquire_plain(&root.join("agent-jobs/.owners").join(format!("{id}.lock")), Duration::ZERO)?;
+    let _probe = FileLock::acquire_plain(&owner_reap_path(root, id), Duration::ZERO)?;
+    Ok(primary)
+}
+
+fn owner_reap_path(root: &Path, id: &str) -> PathBuf {
+    root.join("agent-jobs/.owners/reaping").join(format!("{id}.lock"))
 }
 
 /// Identity of one job file revision.
@@ -262,15 +268,18 @@ fn prune_cache(directory: &Path, present: &HashSet<PathBuf>) {
         .retain(|cached, _| !cached.starts_with(directory) || present.contains(cached));
 }
 
-/// Every current catalog member, after rejecting unsupported filenames and links.
-fn catalog_members(root: &Path) -> AppResult<Vec<(String, PathBuf, fs::Metadata)>> {
+pub(super) type CatalogMember = (String, PathBuf, fs::Metadata);
+
+fn scan_catalog(root: &Path) -> AppResult<(Vec<CatalogMember>, Vec<PathBuf>)> {
     let directory = root.join("agent-jobs");
-    if !directory.is_dir() { return Ok(Vec::new()); }
+    if !directory.is_dir() { return Ok((Vec::new(), Vec::new())); }
     let mut members = Vec::new();
+    let mut removal_residues = Vec::new();
     for entry in fs::read_dir(&directory)? {
         let path = entry?.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("removing") {
-            return Err(AppError::Worker("incomplete job removal transaction; original files preserved".into()));
+        if super::job_removal::is_residue(&path) {
+            removal_residues.push(path);
+            continue;
         }
         if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
         let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -291,16 +300,27 @@ fn catalog_members(root: &Path) -> AppResult<Vec<(String, PathBuf, fs::Metadata)
         if metadata.file_type().is_symlink() { return Err(AppError::Worker("job symlink is not allowed".into())); }
         members.push((id.to_string(), path, metadata));
     }
+    Ok((members, removal_residues))
+}
+
+/// The caller holds the catalog lock. Resolve any interrupted removal before
+/// projecting either a full snapshot or an incremental reply.
+fn catalog_members(root: &Path) -> AppResult<Vec<CatalogMember>> {
+    let (members, residues) = scan_catalog(root)?;
+    if residues.is_empty() { return Ok(members); }
+    super::job_removal::recover_unlocked(root, &members, &residues)?;
+    let (members, residues) = scan_catalog(root)?;
+    if !residues.is_empty() {
+        return Err(AppError::Worker("unexpected job removal state after recovery".into()));
+    }
     Ok(members)
 }
 
-pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
+fn read_members(root: &Path, members: &[CatalogMember]) -> AppResult<Vec<Value>> {
     let directory = root.join("agent-jobs");
-    if !directory.is_dir() { return Ok(Vec::new()); }
-    let members = catalog_members(root)?;
     let mut jobs = Vec::new();
     let mut present: HashSet<PathBuf> = HashSet::new();
-    for (id, path, metadata) in &members {
+    for (id, path, metadata) in members {
         present.insert(path.clone());
         if !ensure_cached(root, path, id, metadata)? { continue; }
         let Some(value) = cached_value(path) else { continue };
@@ -308,6 +328,11 @@ pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
         jobs.push(value);
     }
     prune_cache(&directory, &present);
+    Ok(jobs)
+}
+
+pub(super) fn read_all_unlocked(root: &Path) -> AppResult<Vec<Value>> {
+    let jobs = read_members(root, &catalog_members(root)?)?;
     super::audio_jobs::validate_library(&jobs)?;
     Ok(jobs)
 }
@@ -449,6 +474,15 @@ pub(crate) fn fail_unclaimed(root: &Path, command: &str, requested: &str, messag
 }
 
 impl WorkerJournal {
+    pub(super) fn reap_fences(&self) -> (Option<&Path>, Vec<PathBuf>) {
+        let quota = self._quota.as_ref().map(super::execution_quota::QuotaLease::fence_path);
+        let owners = self.jobs.iter().map(|job| {
+            let id = job.snapshot["jobId"].as_str().expect("validated journal job ID");
+            owner_reap_path(&self.root, id)
+        }).collect();
+        (quota, owners)
+    }
+
     pub(crate) fn data_root(&self) -> &Path { &self.root }
     #[cfg(test)]
     pub(crate) fn start(
@@ -472,11 +506,7 @@ impl WorkerJournal {
         let result = (|| -> AppResult<()> {
             for id in registered_ids(primary, payload) {
                 let path = job_path(root, &id)?;
-                let owner = FileLock::acquire(
-                    &root.join("agent-jobs/.owners").join(format!("{id}.lock")),
-                    Duration::ZERO,
-                )
-                .map_err(|error| {
+                let owner = owner_lock(root, &id).map_err(|error| {
                     AppError::Worker(format!("task journal already owned ({id}): {error}"))
                 })?;
                 let _write = write_lock(root, &id)?;
@@ -653,6 +683,10 @@ impl WorkerJournal {
     }
 
     pub(crate) fn observe(&mut self, event: &WorkerEnvelope) -> AppResult<()> {
+        self.observe_with_result(event, |_| {})
+    }
+
+    pub(crate) fn observe_with_result(&mut self, event: &WorkerEnvelope, mut on_result: impl FnMut(&Value)) -> AppResult<()> {
         let kind = event.event_type.as_str();
         if !super::protocol::is_journal_event(kind) {
             return Ok(());
@@ -696,12 +730,14 @@ impl WorkerJournal {
                     continue;
                 }
                 self.finish_job(index, "failed", message, Some(&event.payload))?;
+                if event.payload.get("outputs").is_some() { on_result(&self.jobs[index].snapshot); }
             } else if kind == "task.cancelled" {
                 debug_assert!(
                     super::protocol::is_terminal_event(kind),
                     "manifest must declare task.cancelled as terminal"
                 );
                 self.finish_job(index, "cancelled", message, Some(&event.payload))?;
+                if event.payload.get("outputs").is_some() { on_result(&self.jobs[index].snapshot); }
             } else if matches!(
                 kind,
                 "task.result" | "editor_mix_exported"
@@ -750,6 +786,7 @@ impl WorkerJournal {
                     },
                     Some(&event.payload),
                 )?;
+                on_result(&self.jobs[index].snapshot);
             } else {
                 if event.payload.get("outputs").is_some() {
                     let mut result = event.payload.clone();
@@ -777,7 +814,9 @@ impl WorkerJournal {
                 self.jobs[index].snapshot["message"] = json!(message);
                 // Output discovery is durable immediately, so cancellation cannot
                 // lose a completed file inside the ordinary progress throttle.
-                self.persist(index, event.payload.get("outputs").is_some())?;
+                let discovered_output = event.payload.get("outputs").is_some();
+                self.persist(index, discovered_output)?;
+                if discovered_output { on_result(&self.jobs[index].snapshot); }
             }
         }
         Ok(())
@@ -907,15 +946,12 @@ pub(crate) fn request_cancel(root: &Path, id: &str) -> AppResult<bool> {
     Ok(true)
 }
 
-/// A typed owner is live only while its shared lifetime lease remains held.
+/// Either lifetime lease keeps a typed owner active until its worker tree exits.
 fn recover(root: &Path, id: &str, value: Value) -> AppResult<Value> {
     if value["owner"].is_null() || terminal(&value) {
         return Ok(value);
     }
-    let Ok(_owner) = FileLock::acquire(
-        &root.join("agent-jobs/.owners").join(format!("{id}.lock")),
-        Duration::ZERO,
-    ) else {
+    let Ok(_owner) = owner_lock(root, id) else {
         return Ok(value);
     };
     let _write = write_lock(root, id)?;
@@ -1350,6 +1386,28 @@ mod tests {
     }
 
     #[test]
+    fn preview_publication_observes_only_the_accepted_durable_result() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = started(root.path(), "preview_job");
+        let mut journal = journal.lock().unwrap();
+        let mut publications = Vec::new();
+        let mut publish = |row: &Value| {
+            let persisted = snapshot(root.path(), "preview_job");
+            assert_eq!(row["result"], persisted["result"]);
+            publications.push(row["result"]["outputs"][0]["path"].as_str().unwrap().to_string());
+        };
+        for (kind, id, path) in [
+            ("task.progress", "other_job", "unowned.mp4"),
+            ("task.progress", "preview_job", "partial.mp4"),
+            ("task.result", "preview_job", "final.mp4"),
+            ("task.result", "preview_job", "late.mp4"),
+        ] {
+            journal.observe_with_result(&event(kind, Some(id), json!({"outputs": [{"path": path}]})), &mut publish).unwrap();
+        }
+        assert_eq!(publications, ["partial.mp4", "final.mp4"]);
+    }
+
+    #[test]
     fn native_runtime_nodes_and_structured_logs_survive_without_frontend_snapshots() {
         let root = tempfile::tempdir().unwrap(); let journal = started(root.path(), "runtime_1");
         let mut writer = journal.lock().unwrap(); writer.running(41).unwrap();
@@ -1542,6 +1600,22 @@ mod tests {
         let interrupted = list(root.path()).unwrap();
         assert_eq!(interrupted[0]["status"], "interrupted");
         assert!(interrupted[0]["finishedAt"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn orphan_recovery_waits_for_the_supervisor_after_primary_owner_release() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = started(root.path(), "kernel.reaping");
+        journal.lock().unwrap().running(42).unwrap();
+        let fence = FileLock::acquire_plain(&owner_reap_path(root.path(), "kernel.reaping"), Duration::ZERO).unwrap();
+        drop(journal);
+
+        assert_eq!(list(root.path()).unwrap()[0]["status"], "running");
+        assert!(owner_lock(root.path(), "kernel.reaping").is_err());
+        // Dotted IDs have distinct primary locks and cannot alias the fence.
+        assert!(owner_lock(root.path(), "kernel.reaping.reap").is_ok());
+        drop(fence);
+        assert_eq!(list(root.path()).unwrap()[0]["status"], "interrupted");
     }
 
     #[test]

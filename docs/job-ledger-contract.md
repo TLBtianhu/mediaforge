@@ -162,19 +162,38 @@ catalog读列表时，指纹（长度/修改时间/创建时间/文件索引）�
 不打开文件也不抢写锁；需要重新解析的单文件仍按对应write锁读取，避免Windows原子替换与打开文件相撞；
 已持write锁的内部读取不重复加锁。原子替换不会产生半写状态，因此读取不会看到未发布的中间内容，
 只可能看到上一次已提交的完整版本；替换提交后指纹改变，下一次读取必然重新解析。
-多文件操作失败时只回滚本次明确拥有的路径；遗留不完整事务或损坏引用报错，不能静默重建。
+多文件操作失败时只回滚本次明确拥有的路径。损坏引用和无法判定的事务报错并保留文件。
+
+### 批量记录删除与进程中断恢复
+
+结果删除和 Kernel 历史保留清理共用以下磁盘约定。删除前在 catalog → owner → write 锁序下确认整批记录为终态且无人执行。需要回收产物时先完成原有引用保护和文件回收，回收失败则保留全部记录。应用没有通用路径回收命令，结果和工程继续由原生 ID 入口解析归属。
+
+1. 将选中记录逐个移动到 `agent-jobs/.removal-pending/<jobId>.json`，文件字节保持原样。把整个目录原子改名为 `.removal-committed` 时提交整批删除。
+2. 后续读取持 catalog 锁检查两种阶段。发现 pending 时，先确认归还所有暂存记录后的完整目录合法，再将记录原样归还。发现 committed 时，先校验可见目录、暂存身份和路径，再逐个清理确切的暂存记录。提交后的清理失败会记日志，删除仍按已提交返回，后续全量或增量读取会重试清理。
+3. 此前写出的 `.<jobId>.<nonce>.removing` 也是当前 schema 2 的事务残留。已知命名、合法终态记录和完整引用可核实的记录原样恢复。若旧清理已移除音频组部分成员，只有剩余成员来自同一批 Rust 删除、身份和组内顺序一致、已知缺失成员符合旧实现的按 ID 清理顺序，且无其它组成员或引用时，才清理无法归还的暂存记录。
+
+恢复拒绝未知阶段、坏记录、重名、链接和 reparse，预检失败时保留事务和记录文件。恢复只处理账本文件。目录提交点覆盖进程中断，系统回收站已经完成的操作及断电后的文件系统持久性仍受各自机制约束。
 
 ## 共享处理任务配额
 
 `manifest/execution-quota.json`是覆盖命令、默认1/最大4和配置字段名的唯一来源。
 配额读取同data-root的`settings/app.json`中现有`maxConcurrentSeparations`，不另存调度配置或队列索引。
 Rust/Python共用`.quota/global-0.lock`至`global-3.lock`的无正文OS lease；锁文件保留inode，释放不删除。
-领取时在catalog内检查全部固定slot，包括当前上限之外仍在运行的高位slot，因此4降到1不提前接纳新worker。
+领取时在catalog内检查全部固定slot及其`.quota/reaping/global-N.lock`，包括当前上限之外仍在运行的高位slot。
+同一个slot的两把锁只计一次，因此4降到1也会等待已有worker退出。
 
 音频批次占一个slot。通用手工任务与Agent处理任务先落ownerless queued，成功领取后才写running/startedAt、
 持owner及slot并启动worker。资源不足是正常排队；排队取消不创建payload/进程，取消音频primary仍可执行其余leaf。
-结果先终态也不能提前释slot；正常退出、取消和启动失败均确认reap后才归还。Python清理失败保留两项lease，
-Rust线程接管失败/unwind也由owned child守卫先回收再释锁。
+MCP `audio.separate` 在提交前校验所有输入文件，单文件的 `infer` 请求保存 `payload.input`，多文件保存在同一 Agent 记录的
+`payload.tasks`。整批使用一个worker和一个slot。逐文件结果立即累积到同一记录，`result.outputs` 与 `result.failed`
+的 `inputIndex` 按输入顺序从 1 开始。全部成员成功且worker正常退出后才确认整批完成。失败或取消时保留已登记的产物。
+桌面和Kernel先启动独立监督进程。监督进程持有slot和每个账本成员的`.owners/reaping/<jobId>.lock`后确认就绪，
+执行器确认后才放行worker。结果先终态时仍保留slot与owner。正常结束和取消均在确认worker进程树退出、
+关闭管道和结束取消监视后释放主租约。启动失败和清理失败同样保留租约到回收完成。
+
+取消或执行器进程异常退出时，控制管道EOF通知监督进程。Windows使用Job Object，POSIX使用独立进程组，
+Linux监督进程回收被重新托管的后代。执行器退出后，监督进程的租约继续阻止同槽任务领取、结果删除和中断恢复，
+直到该进程树退出。桌面账本的`workerPid`记录其直接监督进程，仅用于诊断。
 
 Rust以每应用一个内存pending表/dispatcher接回任务，重启仅恢复通用manual queued；音频仍由前端确认后交接。
 Kernel以一个可关闭、弱引用pump恢复Agent queued；双方不代跑另一来源。前端活动任务每2秒串行同步账本，
@@ -182,8 +201,7 @@ Kernel以一个可关闭、弱引用pump恢复Agent queued；双方不代跑另�
 worker必须发出通用或protocol.json resultEvent声明的终态；非法事件、无结果退出均失败，退出码0本身不代表成功。
 
 本阶段只共享同数据根的处理worker上限；各执行器内部FIFO，不承诺全局FIFO、跨数据根配额或物理GPU分区。
-查询、下载、运行时管理不占处理slot；原有运行时/应用互斥机制仍独立。执行器自身崩溃后的孤儿子树监督，
-仍须按跨平台进程生命周期债务继续完善。
+查询、下载、运行时管理不占处理slot；原有运行时/应用互斥机制仍独立。回收边界为监督进程建立的Job Object或进程组。
 
 ## 验证入口
 
@@ -191,7 +209,8 @@ worker必须发出通用或protocol.json resultEvent声明的终态；非法事�
 无外部输入的原生图、无presentation的模型任务、独立Agent记录和紧凑的拒绝案例。
 它仅验证存储契约，不代表其中占位模型或空图可以执行。
 Python conformance、Rust schema/CRUD/owner/ref测试和前端codec/实际store测试共同验证读取及写入边界。
-`tests/fixtures/jobs/quota-contract.json`补充两后端共用的21个配额配置样例；真实Rust/Python进程验证双向互斥与退出释锁。
+`tests/fixtures/jobs/quota-contract.json`补充两后端共用的21个配额配置样例；真实Rust/Python进程验证双向互斥、
+正常退出和取消关闭继承管道、执行器被强制终止后延迟回收期间的配额保护，以及进程树回收后的中断恢复。
 所有验证须遵守DEVELOPMENT隔离与Windows隐藏子进程规则，不启动GUI或使用用户profile。
 
 已删除三个依赖旧task-history、旧事件入口或重复工作流快照的手工UI脚本；其旧实现可从Git历史查看。

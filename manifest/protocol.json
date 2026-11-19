@@ -3729,12 +3729,22 @@
           "summary": "",
           "payload": {
             "type": "object",
-            "additionalProperties": true,
+            "additionalProperties": false,
             "properties": {
               "action": {
-                "type": "string"
+                "type": "string",
+                "enum": ["install", "update", "repair", "uninstall", "check_updates"]
               },
               "name": {
+                "type": "string"
+              },
+              "locale": {
+                "type": "string"
+              },
+              "mirror": {
+                "type": "string"
+              },
+              "requestId": {
                 "type": "string"
               },
               "taskId": {
@@ -3743,7 +3753,8 @@
                   "null"
                 ]
               }
-            }
+            },
+            "required": ["action"]
           },
           "result": {
             "type": "object",
@@ -4177,7 +4188,8 @@
       "resultJobs 是“结果任务”的分类：commands 为 worker 命令，operations 为经 media 路由的操作名。",
       "outputScope 声明需要输出临时作用域的命令/操作；backgroundResult 声明必须有后台结果代理的命令。",
       "bootstrap.withoutRuntime 是没有激活运行时也允许跑的查询/下载命令；updatesRuntime 是会替换运行时并把 bootstrap 使用者排除在外的命令。",
-      "terminalEvents 是后台监督进程的终态词表；未列出的命令只把 error 当终态。"
+      "terminalEvents 是后台监督进程的终态词表；未列出的命令只把 error 当终态。",
+      "syncQuery 是同步查询的总超时（秒）；timeoutOverrides 只覆盖长查询，task 命令不使用该超时。"
     ],
     "bootstrap": {
       "worker": [
@@ -4242,6 +4254,17 @@
       "manage_plugin",
       "run_operation"
     ],
+    "syncQuery": {
+      "defaultTimeoutSeconds": 60,
+      "timeoutOverrides": {
+        "media_library": 300,
+        "inspect_custom_model": 300,
+        "waveform_peaks": 300,
+        "runtime_env_sizes": 120,
+        "runtime_info": 120,
+        "model_storage_summary": 120
+      }
+    },
     "terminalEvents": {
       "model_download": [
         "error",

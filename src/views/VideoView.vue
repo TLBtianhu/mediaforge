@@ -1,8 +1,8 @@
 ﻿<script setup lang="ts">
-import { revealPath } from '@/api/native'
+import { pickPreviewFiles, revealPath } from '@/api/native'
 import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, onMounted, ref } from 'vue'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 
 import { open } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
@@ -79,7 +79,7 @@ const presetOptions = ['ultrafast', 'fast', 'medium', 'slow'].map(value => ({ la
 const pipelineSummary = computed(() => t(`plan.capabilities.${planStep.value.capability}`))
 const pipelineSteps = computed(() => [planStep.value])
 const firstOutput = computed(() => outputs.value[0] || null)
-const videoSrc = computed(() => firstOutput.value ? convertFileSrc(firstOutput.value.path) : '')
+const videoSrc = computed(() => mediaPreviewUrl(firstOutput.value?.path || ''))
 const resultInfo = computed(() => {
   const info = firstOutput.value?.info
   if (!info) return []
@@ -112,12 +112,7 @@ useMediaDrop({
 
 async function pickFiles() {
   try {
-    const selected = await open({
-      multiple: true,
-      filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'flv', 'wmv', 'm4v'] }],
-    })
-    if (!selected) return
-    addInputs(Array.isArray(selected) ? selected : [selected])
+    addInputs(await pickPreviewFiles('video'))
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   }

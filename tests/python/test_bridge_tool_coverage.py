@@ -7,7 +7,10 @@
 from __future__ import annotations
 
 import ast
+import json
+import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -62,6 +65,49 @@ class CurrentStepSubmissionTests(unittest.TestCase):
                 self.assertIn("not available", result["error"])
         models.assert_not_called()
         self.bridge.jobs.start.assert_not_called()
+    def test_real_bootstrap_without_numpy_submits_workflow(self):
+        bootstrap = PYTHON_DIR.parent / "python-runtime" / ("python.exe" if os.name == "nt" else "bin/python3")
+        self.assertTrue(bootstrap.is_file(), bootstrap)
+        script = r"""
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from unittest import mock
+
+assert importlib.util.find_spec("numpy") is None, "this fixture requires the minimal bootstrap"
+sys.path.insert(0, sys.argv[1])
+import agent_bridge
+
+root = Path(sys.argv[2])
+source = root / "input.mp4"
+source.write_bytes(b"fixture")
+model = root / "models" / "media" / "RealESRGAN_x2plus.pth"
+model.parent.mkdir(parents=True, exist_ok=True)
+model.write_bytes(b"fixture")
+bridge = agent_bridge.Bridge.__new__(agent_bridge.Bridge)
+bridge.model_root = root / "models"
+bridge.jobs = mock.Mock()
+bridge.jobs.start.return_value.job_id = "fixture"
+bridge.jobs.start.return_value.snapshot.return_value = {"status": "queued"}
+result = bridge.workflow_start(str(source), str(root / "outputs"), "video", [{
+    "capability": "upscale",
+    "bindings": {"upscaler": "media:real-esrgan-x2"},
+    "params": {"scale": 2, "tile": 0},
+}])
+assert result["ok"], result
+assert bridge.jobs.start.call_args.args[0] == "media_tool"
+assert bridge.jobs.start.call_args.args[1]["operation"] == "media_workflow"
+print(json.dumps(result))
+"""
+        result = subprocess.run(
+            [str(bootstrap), "-I", "-B", "-c", script, str(PYTHON_DIR), str(self.root)],
+            cwd=self.root, env={**os.environ, "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1"},
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertTrue(json.loads(result.stdout)["ok"])
 
 
 def declared_tools() -> set[str]:
@@ -197,20 +243,71 @@ class BridgeContractSurfaceTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertIn("workerVersion", result)
 
-    def test_long_running_contract_tools_go_through_the_job_ledger(self) -> None:
-        from unittest import mock
-
+    def test_audio_separate_admits_single_file_using_the_worker_input_contract(self) -> None:
+        source = Path(self.root) / "single audio.wav"
+        source.write_bytes(b"fixture; never decoded")
+        arguments = {"model": "bs_roformer", "inputs": [str(source)]}
         fake_job = mock.Mock()
         fake_job.job_id = "job_test"
         fake_job.snapshot.return_value = {"jobId": "job_test", "status": "queued"}
         with mock.patch.object(self.bridge.jobs, "start", return_value=fake_job) as start:
-            result = self.bridge.call("audio.separate", {"model": "bs_roformer", "inputs": ["a.wav"]})
+            result = self.bridge.call("audio.separate", arguments)
         self.assertTrue(result["ok"], result)
         self.assertEqual(result["jobId"], "job_test")
+        self.assertEqual(result["status"], {"jobId": "job_test", "status": "queued"})
         start.assert_called_once()
         command, payload = start.call_args[0]
         self.assertEqual(command, "infer")
         self.assertEqual(payload["model"], "bs_roformer")
+        self.assertEqual(payload["input"], str(source.resolve()))
+        self.assertEqual(payload["taskId"], payload["requestId"])
+        self.assertEqual(Path(payload["output"]), Path(self.root) / "outputs" / payload["taskId"])
+        self.assertEqual(payload["modelDir"], str(self.bridge.model_root))
+        self.assertFalse(payload["download"])
+        self.assertNotIn("inputs", payload)
+        self.assertNotIn("tasks", payload)
+        self.assertEqual(arguments, {"model": "bs_roformer", "inputs": [str(source)]})
+
+    def test_audio_separate_admits_all_files_as_one_ordered_batch(self) -> None:
+        inputs = [Path(self.root) / "first.wav", Path(self.root) / "second.wav"]
+        for source in inputs:
+            source.write_bytes(b"fixture; never decoded")
+        fake_job = mock.Mock()
+        fake_job.job_id = "job_batch"
+        fake_job.snapshot.return_value = {"jobId": "job_batch", "status": "queued"}
+        with mock.patch.object(self.bridge.jobs, "start", return_value=fake_job) as start:
+            result = self.bridge.call("audio.separate", {"model": "bs_roformer", "inputs": [str(source) for source in inputs]})
+        self.assertTrue(result["ok"], result)
+        start.assert_called_once()
+        command, payload = start.call_args.args
+        self.assertEqual(command, "infer")
+        job_id = payload["requestId"]
+        self.assertEqual(payload["taskId"], job_id)
+        self.assertEqual(Path(payload["output"]), Path(self.root) / "outputs" / job_id)
+        self.assertEqual(payload["tasks"], [
+            {"taskId": f"{job_id}-t1", "input": str(inputs[0].resolve()), "inputIndex": 1},
+            {"taskId": f"{job_id}-t2", "input": str(inputs[1].resolve()), "inputIndex": 2},
+        ])
+        self.assertNotIn("input", payload)
+        self.assertNotIn("inputs", payload)
+
+    def test_audio_separate_rejects_invalid_inputs_before_job_admission(self) -> None:
+        valid = Path(self.root) / "valid.wav"
+        valid.write_bytes(b"fixture; never decoded")
+        invalid_inputs = (
+            None, [], "wrong.wav", [None], [123], ["  "], ["nul\0.wav"],
+            [str(Path(self.root) / "missing.wav")], [str(self.root)],
+            [str(valid), str(Path(self.root) / "missing.wav")],
+        )
+        with mock.patch.object(self.bridge.jobs, "start") as start:
+            for inputs in invalid_inputs:
+                with self.subTest(inputs=inputs):
+                    result = self.bridge.call("audio.separate", {"model": "bs_roformer", "inputs": inputs})
+                    self.assertFalse(result["ok"], result)
+                    self.assertIn("inputs", result["error"])
+                    self.assertNotIn("jobId", result)
+            start.assert_not_called()
+        self.assertFalse((Path(self.root) / "outputs").exists())
 
     def test_compute_tools_share_the_kernel_and_media_model_scope(self) -> None:
         fake_job = mock.Mock()

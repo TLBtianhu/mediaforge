@@ -421,7 +421,7 @@ def _native_tools() -> list[dict[str, Any]]:
               ),
               produces="file"),
         # 分离
-        _tool("audio.separate", "音频分离", "用一个分离模型把人声/伴奏等拆开。", "audio", "infer",
+        _tool("audio.separate", "音频分离", "用已下载的分离模型处理一个或多个本地文件，产物写入本次任务的输出目录。", "audio", "infer",
               approval="confirm", cost="minutes", long_running=True,
               input_schema=_schema({"model": {"type": "string"}, "inputs": inputs_array}, ["model", "inputs"]),
               produces="file"),

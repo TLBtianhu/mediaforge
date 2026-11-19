@@ -92,9 +92,12 @@ export function buildJournalResults(jobs: readonly JournalResultJob[], audioTask
     const project = job.command === 'export_editor_mix' && record(payload.project) ? payload.project : {}
     const editorInputs = [...new Set([project.assets, project.sources].flatMap(items => Array.isArray(items)
       ? items.flatMap(asset => record(asset) && text(asset.path).trim() ? [text(asset.path)] : []) : []))]
+    const batchInputs = job.command === 'infer' && Array.isArray(payload.tasks)
+      ? payload.tasks.flatMap(task => record(task) && text(task.input).trim() ? [text(task.input)] : [])
+      : null
     const inputs = job.command === 'export_editor_mix' ? editorInputs : Array.isArray(rawInputs) ? rawInputs.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
       : record(rawInputs) ? Object.values(rawInputs).flatMap(value => record(value) && typeof value.path === 'string' ? [value.path] : [])
-        : [text(payload.input) || text(payload.inputPath)].filter(Boolean)
+        : batchInputs ?? [text(payload.input) || text(payload.inputPath)].filter(Boolean)
     const createdAt = timestamp(job.createdAt)
     const updatedAt = timestamp(job.finishedAt) || timestamp(job.updatedAt) || createdAt
     const row: JournalResult = {

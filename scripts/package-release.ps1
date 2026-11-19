@@ -201,9 +201,11 @@ function Copy-ReleaseResources([string]$Root, [string]$Stage, [string]$Bootstrap
 function Assert-ReleaseStage([string]$Stage) {
     Assert-ReleaseContract $Stage
     foreach ($relative in @('MediaForge.exe', 'python/worker.py', 'python/core/runtime_audio_probe.py',
-            'python/shared/safe_fs.py', 'python/plugin-sdk/pymss-sdk.js', 'python/plugin-sdk/pymss-sdk.css',
+            'python/core/plugin_marketplace_trust.py', 'python/plugin-marketplace.json',
+            'python/shared/safe_fs.py', 'python/core/worker_supervisor.py', 'python/plugin-sdk/pymss-sdk.js', 'python/plugin-sdk/pymss-sdk.css',
             'python/runtime-manifest.json', 'python-runtime/python.exe', 'bin/ffmpeg.exe', 'bin/ffprobe.exe',
-            'bin/aria2c.exe', 'bin/vcrt/msvcp140.dll', 'integrations/dsh-mediaforge/cordis.patch.yml')) {
+            'bin/aria2c.exe', 'bin/vcrt/msvcp140.dll', 'integrations/dsh-mediaforge/cordis.patch.yml',
+            'integrations/dsh-mediaforge/mcp-plugin.mjs')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Stage $relative) -PathType Leaf)) { throw "Stage contract is missing $relative" }
     }
     # Developer-only PS1 helpers must never ship; they are removed during staging.
@@ -333,8 +335,7 @@ if ($SkipSign) {
     $keyPath = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PATH', 'Process')
     if ($keyPath) {
         Assert-ReleaseExecutable -Path "$stage\MediaForge.exe" -ExpectedVersion $Version
-        Invoke-ReleaseArchiveSigning -Archive $updateZip -ExpectedVersion $Version -Root $root -KeyPath $keyPath `
-            -Password ([Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'Process'))
+        Invoke-ReleaseArchiveSigning -Archive $updateZip -ExpectedVersion $Version -Root $root -KeyPath $keyPath
         Write-Host '  已签名'
     } else {
         Write-Host '  跳过签名：请显式设置 TAURI_SIGNING_PRIVATE_KEY_PATH 后签名'

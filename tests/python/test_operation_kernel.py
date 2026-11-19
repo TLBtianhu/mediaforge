@@ -24,7 +24,7 @@ if str(PYTHON_DIR) not in sys.path:
 from core import operation_kernel as kernel  # noqa: E402
 from core.operation_kernel import Job, OperationKernel  # noqa: E402
 from core.worker_runtime_lock import RuntimeLockBusy  # noqa: E402
-from core.job_store import JobStoreError
+from core.job_store import JobStoreError, owner_lock
 from ._job_fixtures import job_record
 
 
@@ -36,6 +36,79 @@ def owned_job(*args, **kwargs):
 
 def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+class AgentSeparationBatchTests(unittest.TestCase):
+    def setUp(self) -> None:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.kernel = OperationKernel(root)
+        self.addCleanup(self.kernel.close)
+        self.job = owned_job("batch", "infer", {"output": str(root / "output")}, root / "bridge-jobs" / "batch")
+        self.job._separation_members = {"batch-t1": 1, "batch-t2": 2}
+        self.job.update(status="running")
+        self.ledger = self.kernel.jobs_root / "batch.json"
+
+    def result(self, index: int) -> None:
+        self.kernel._consume(self.job, {"type": "task.result", "taskId": f"batch-t{index}", "payload": {
+            "files": [f"stem-{index}.wav"], "outputs": [{"stem": "vocals", "path": f"stem-{index}.wav"}],
+        }})
+
+    def finish(self, code: int, protocol_error: str | None = None) -> dict:
+        self.kernel._finish_worker(self.job, code, protocol_error)
+        self.kernel._persist(self.job, force=True)
+        return read_json(self.ledger)
+
+    def test_success_waits_for_every_member_and_process_exit(self) -> None:
+        self.result(1)
+        self.result(1)  # Replayed result cannot count as a different member.
+        first = read_json(self.ledger)
+        self.assertEqual((first["status"], first["fraction"], first["result"]["completed"]), ("running", 0.5, 1))
+        self.result(2)
+        self.assertEqual(read_json(self.ledger)["status"], "running")
+        row = self.finish(0)
+        self.assertEqual((row["status"], row["fraction"]), ("completed", 1.0))
+        self.assertEqual(row["result"]["failed"], [])
+        self.assertEqual(row["result"]["completed"], 2)
+        self.assertEqual(row["result"]["outputs"], [
+            {"stem": "vocals", "path": "stem-1.wav", "inputIndex": 1},
+            {"stem": "vocals", "path": "stem-2.wav", "inputIndex": 2},
+        ])
+        self.assertNotIn("files", row["result"])
+
+    def test_a_failed_member_keeps_other_member_output_and_error(self) -> None:
+        self.kernel._consume(self.job, {"type": "error", "taskId": "batch-t1", "payload": {
+            "code": "INFERENCE_FAILED", "message": "could not decode",
+        }})
+        self.assertEqual(read_json(self.ledger)["status"], "running")
+        self.result(2)
+        row = self.finish(1)
+        self.assertEqual((row["status"], row["error"]), ("failed", "could not decode"))
+        self.assertEqual(row["result"]["failed"][0]["inputIndex"], 1)
+        self.assertEqual(row["result"]["outputs"][0]["inputIndex"], 2)
+
+    def test_cancelled_batch_keeps_the_persisted_partial_result(self) -> None:
+        self.result(1)
+        self.job.update(status="cancelled", message="cancelled by client")
+        self.kernel._persist(self.job, force=True)
+        self.result(2)
+        row = self.finish(1)
+        self.assertEqual(row["status"], "cancelled")
+        self.assertEqual(row["result"]["completed"], 1)
+        self.assertEqual(row["result"]["outputs"][0]["inputIndex"], 1)
+
+    def test_zero_exit_with_unknown_or_missing_member_fails(self) -> None:
+        self.result(1)
+        self.result(3)
+        row = self.finish(0)
+        self.assertEqual(row["status"], "failed")
+        self.assertEqual(row["result"]["completed"], 1)
+
+    def test_nonzero_exit_does_not_publish_batch_success(self) -> None:
+        self.result(1)
+        self.result(2)
+        row = self.finish(1)
+        self.assertEqual(row["status"], "failed")
+        self.assertEqual(len(row["result"]["outputs"]), 2)
 
 
 class RecoveryTests(unittest.TestCase):
@@ -267,6 +340,29 @@ class PersistTests(unittest.TestCase):
 
 
 class AtomicWriteTests(unittest.TestCase):
+    def test_atomic_replacement_retries_a_windows_sharing_violation(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "job_atomic.json"
+            target.write_text('{"ok": false}\n', encoding="utf-8")
+            original_replace = type(target).replace
+            sharing_violation = PermissionError("file is in use")
+            sharing_violation.winerror = 32
+            attempts = []
+
+            def replace(source: Path, destination: Path) -> Path:
+                attempts.append(source)
+                if len(attempts) == 1:
+                    raise sharing_violation
+                self.assertEqual(destination.read_text(encoding="utf-8"), '{"ok": false}\n')
+                return original_replace(source, destination)
+
+            with mock.patch.object(type(target), "replace", replace):
+                kernel._atomic_write(target, '{"ok": true}\n')
+
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(target.read_text(encoding="utf-8"), '{"ok": true}\n')
+            self.assertFalse(attempts[0].exists())
+
     def test_payload_is_fsynced_before_the_rename(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             target = Path(raw) / "job_atomic.json"
@@ -362,11 +458,12 @@ class CancelTests(unittest.TestCase):
             kernel = OperationKernel(root)
             path = kernel.jobs_root / "foreign.json"
             path.write_text(json.dumps(job_record("foreign", status="running")), encoding="utf-8")
-            result = kernel.cancel("foreign")
-            self.assertTrue(result["requested"])
-            self.assertFalse(result["cancelled"])
-            self.assertTrue((kernel.jobs_root / "foreign.cancel").is_file())
-            self.assertEqual(read_json(path)["status"], "running")
+            with owner_lock(kernel.jobs_root, "foreign"):
+                result = kernel.cancel("foreign")
+                self.assertTrue(result["requested"])
+                self.assertFalse(result["cancelled"])
+                self.assertTrue((kernel.jobs_root / "foreign.cancel").is_file())
+                self.assertEqual(read_json(path)["status"], "running")
 
     def test_cancel_historical_terminal_does_not_create_a_cancel_request(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

@@ -71,7 +71,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _thumbnail_filename(source: str) -> str:
+    digest = hashlib.sha1(source.encode("utf-8", errors="replace")).hexdigest()[:20]
+    return f"{digest}.jpg"
+
+
 def _row_to_asset(row: sqlite3.Row) -> dict:
+    thumbnail = row["thumbnail"] or ""
+    if thumbnail and (row["kind"] not in {"image", "video"}
+                      or Path(thumbnail) != data_dir() / "thumbnails" / _thumbnail_filename(row["path"])):
+        thumbnail = ""
     return {
         "id": int(row["id"]),
         "path": row["path"],
@@ -83,7 +92,7 @@ def _row_to_asset(row: sqlite3.Row) -> dict:
         "width": int(row["width"] or 0),
         "height": int(row["height"] or 0),
         "fps": float(row["fps"] or 0),
-        "thumbnail": row["thumbnail"] or "",
+        "thumbnail": thumbnail,
         "tags": row["tags"] or "",
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -104,8 +113,7 @@ def _iter_files(paths: Iterable[str | Path]) -> Iterable[Path]:
 def _thumbnail(path: Path, meta: dict, kind: str) -> str:
     if kind == "audio":
         return ""
-    digest = hashlib.sha1(str(path.resolve()).encode("utf-8", errors="replace")).hexdigest()[:20]
-    target = thumbnail_dir() / f"{digest}.jpg"
+    target = thumbnail_dir() / _thumbnail_filename(str(path.resolve()))
     ensure_plain_path(target)
     if target.is_file():
         return str(target)
@@ -133,6 +141,7 @@ def import_paths(paths: Iterable[str | Path], *, data_root: str | Path | None = 
         files = list(_iter_files(paths))
         for path in files:
             try:
+                ensure_plain_path(path)
                 meta = ffmpeg.probe(path)
                 kind = ffmpeg.kind_of(meta)
                 video = meta.get("video") or {}
@@ -216,7 +225,7 @@ def remove_assets(ids: Iterable[int], *, data_root: str | Path | None = None) ->
             if thumbnail:
                 try:
                     target = Path(thumbnail)
-                    expected = thumbnail_dir() / (hashlib.sha1(str(Path(row["path"]).resolve()).encode("utf-8", errors="replace")).hexdigest()[:20] + ".jpg")
+                    expected = thumbnail_dir() / _thumbnail_filename(str(Path(row["path"]).resolve()))
                     ensure_plain_path(target)
                     if target.is_absolute() and target == expected:
                         target.unlink(missing_ok=True)

@@ -1,6 +1,6 @@
 import { getCurrentLocale } from '@/i18n'
 import i18n from '@/i18n'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { mediaPreviewUrl } from '@/utils/mediaPreview'
 import {
   EXACT_STEM_KEYS, LEGACY_STEM_NAMES, STEM_NAME_KEYS, normalizedDefaultName,
   recordingTrackIndex, stemKeyFromOutput,
@@ -177,20 +177,10 @@ export function sourceDisplayGroup(source: EditorSource) {
   return String(i18n.global.t('editor.assetGroupExternal'))
 }
 
-export function resolveAssetUrl(path: string) {
-  try {
-    return convertFileSrc(path)
-  } catch {
-    const normalized = path.replace(/\\/g, '/')
-    if (/^[a-zA-Z]:\//.test(normalized)) return `file:///${normalized}`
-    return path
-  }
-}
-
 export async function loadPeaksFromCache(path?: string | null, sourcePath?: string | null) {
   if (!path) return null
   try {
-    const response = await fetch(resolveAssetUrl(path))
+    const response = await fetch(mediaPreviewUrl(path))
     if (!response.ok) return null
     const data = await response.json() as { path?: unknown, peaks?: unknown, channelPeaks?: unknown }
     if (sourcePath && typeof data.path === 'string' && normalizePathKey(data.path) !== normalizePathKey(sourcePath)) {

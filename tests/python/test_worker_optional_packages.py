@@ -90,6 +90,33 @@ class OptionalRuntimePackageTests(unittest.TestCase):
         environment_version.assert_not_called()
         run_process.assert_not_called()
 
+    def test_apple_silicon_funasr_requires_verified_managed_plugin_without_importing(self) -> None:
+        from core import worker_plugins
+
+        runtime = optional_packages._runtime_context()
+        manual = {"name": "asr", "managed": False, "loaded": True}
+        managed = {"name": "asr", "managed": True, "loaded": None, "verified": False}
+        with mock.patch.object(optional_packages, "_APPLE_SILICON", True), \
+             mock.patch.object(worker_plugins, "_inventory", return_value={"installed": [manual, managed]}) as inventory:
+            status = optional_packages._apple_silicon_plugin_status(runtime)
+            self.assertFalse(status["installed"])
+            self.assertTrue(status["present"])
+            self.assertEqual(status["issue"], "plugin_not_verified")
+            inventory.assert_called_once_with(mock.ANY, verify=False)
+            managed["verified"] = True
+            self.assertTrue(optional_packages._apple_silicon_plugin_status(runtime)["installed"])
+
+    def test_apple_silicon_repair_uses_only_catalog_name(self) -> None:
+        from core import worker_plugins
+
+        runtime = optional_packages._runtime_context()
+        with mock.patch.object(optional_packages, "_apple_silicon_plugin_status", return_value={"installed": False, "present": True}), \
+             mock.patch.object(optional_packages, "optional_package_status", return_value={}), \
+             mock.patch.object(worker_plugins, "cmd_manage_plugin", return_value=0) as manage, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(optional_packages._manage_funasr_via_plugin("install", {"target": "untrusted"}, "asr-task", runtime), 0)
+        manage.assert_called_once_with({"action": "repair", "name": "asr", "mirror": "auto", "locale": "", "taskId": "asr-task"})
+
     def test_status_marks_an_incompatible_version_for_repair(self) -> None:
         with mock.patch.object(optional_packages, "_sidecar_version", return_value=None), \
              mock.patch.object(optional_packages, "_environment_version", return_value="1.2.0"):

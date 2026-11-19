@@ -70,6 +70,7 @@ pub(crate) fn editor_project_id_for_task_id(task_id: &str) -> String {
 }
 
 fn existing_task_project(path: &Path, task_id: &str, project_id: &str) -> AppResult<Option<Value>> {
+    crate::python::result_jobs::plain_path(path).map_err(|reason| AppError::Worker(reason.into()))?;
     let content = match std::fs::read_to_string(path) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -488,6 +489,18 @@ pub async fn create_editor_project_from_task(app: AppHandle, payload: Value) -> 
         .get("taskId")
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::Worker("missing taskId".into()))?;
+    let project_id = editor_project_id_for_task_id(task_id);
+    let _creation = TASK_PROJECT_CREATION_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(project) = existing_task_project(
+        &editor_project_path(&app, &project_id)?,
+        task_id,
+        &project_id,
+    )? {
+        remember_editor_previews(&app, &project);
+        return Ok(project);
+    }
 
     let input = payload
         .get("input")
@@ -502,7 +515,7 @@ pub async fn create_editor_project_from_task(app: AppHandle, payload: Value) -> 
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let mut paths: Vec<(String, String)> = outputs
+    let requested = outputs
         .iter()
         .filter_map(|item| {
             let path = item.get("path").and_then(Value::as_str)?;
@@ -513,33 +526,23 @@ pub async fn create_editor_project_from_task(app: AppHandle, payload: Value) -> 
                 .unwrap_or_else(|| stem_from_path(path));
             Some((stem, path.to_string()))
         })
-        .collect();
-
-    if paths.is_empty() && !output_dir.is_empty() {
-        let scanned = scan_audio_paths(vec![output_dir.to_string()]).await?;
-        paths = scanned
-            .files
-            .into_iter()
-            .map(|path| (stem_from_path(&path), path))
-            .collect();
-    }
+        .collect::<Vec<_>>();
+    let root = storage::data_root_dir(&app)?;
+    let mut paths = crate::python::task_journal::with_catalog_records(&root, |rows| {
+        let row = rows.iter().find(|row| row["jobId"].as_str() == Some(task_id))
+            .ok_or_else(|| AppError::Worker("editor source task was not found".into()))?;
+        let recorded = crate::python::result_jobs::preview_result_paths(row)
+            .filter(|path| is_audio_file(path))
+            .map(path_to_string)
+            .collect::<Vec<_>>();
+        select_task_editor_paths(requested, &recorded)
+    })?;
     paths.sort_by(|a, b| {
         stem_rank(&a.0)
             .cmp(&stem_rank(&b.0))
             .then_with(|| a.0.cmp(&b.0))
     });
 
-    let project_id = editor_project_id_for_task_id(task_id);
-    let _creation = TASK_PROJECT_CREATION_LOCK
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    if let Some(project) = existing_task_project(
-        &editor_project_path(&app, &project_id)?,
-        task_id,
-        &project_id,
-    )? {
-        return Ok(project);
-    }
     let timestamp = now_millis();
     let output_root = if output_dir.trim().is_empty() {
         None
@@ -623,7 +626,22 @@ pub async fn create_editor_project_from_task(app: AppHandle, payload: Value) -> 
         "createdAt": timestamp,
         "updatedAt": timestamp
     });
-    write_editor_project(&app, &project)
+    let saved = write_editor_project(&app, &project)?;
+    remember_editor_previews(&app, &saved);
+    Ok(saved)
+}
+
+fn select_task_editor_paths(
+    requested: Vec<(String, String)>, recorded: &[String],
+) -> AppResult<Vec<(String, String)>> {
+    if requested.is_empty() {
+        return Ok(recorded.iter().map(|path| (stem_from_path(path), path.clone())).collect());
+    }
+    let known = recorded.iter().map(Path::new).collect::<std::collections::HashSet<_>>();
+    if requested.iter().any(|(_, path)| !known.contains(&Path::new(path))) {
+        return Err(AppError::Worker("editor source is not a recorded task output".into()));
+    }
+    Ok(requested)
 }
 
 #[tauri::command]
@@ -780,16 +798,26 @@ pub async fn delete_orphaned_editor_projects(
 
 #[tauri::command]
 pub async fn import_editor_assets(
-    _app: AppHandle,
-    _project_id: String,
+    app: AppHandle,
+    project_id: String,
     paths: Vec<String>,
 ) -> AppResult<ImportEditorAssetsResult> {
+    read_current_editor_project(&app, &project_id)?;
     let mut imported = Vec::new();
     let mut warnings = Vec::new();
     for raw in paths {
         let target = PathBuf::from(&raw);
+        if !super::scan::is_selected_input(&app, &target) {
+            warnings.push(format!("unselected editor input: {}", target.display()));
+            continue;
+        }
         if target.is_file() {
             if is_audio_file(&target) {
+                crate::preview_assets::remember(&app, &target);
+                if !crate::preview_assets::is_allowed(&app, &target) {
+                    warnings.push(format!("unavailable editor input: {}", target.display()));
+                    continue;
+                }
                 let origin_root = target.parent().map(PathBuf::from);
                 imported.push(linked_asset_from_path(
                     &target,
@@ -804,10 +832,11 @@ pub async fn import_editor_assets(
         }
 
         if target.is_dir() {
-            let scanned = scan_audio_paths(vec![raw.clone()]).await?;
+            let scanned = scan_audio_paths(app.clone(), vec![raw.clone()]).await?;
             warnings.extend(scanned.warnings);
             for file in scanned.files {
                 let file_path = PathBuf::from(&file);
+                if !crate::preview_assets::is_allowed(&app, &file_path) { continue; }
                 let relative = file_path.strip_prefix(&target).ok();
                 imported.push(linked_asset_from_path(
                     &file_path,
@@ -829,21 +858,67 @@ pub async fn import_editor_assets(
 #[tauri::command]
 pub async fn save_editor_project(app: AppHandle, project: Value) -> AppResult<Value> {
     let mut project = project;
+    let project_id = project["id"].as_str().ok_or_else(|| AppError::Worker("missing editor project id".into()))?;
+    let previous = match read_current_editor_project(&app, project_id) {
+        Ok(previous) => Some(previous),
+        Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    validate_editor_source_provenance(&project, previous.as_ref(), |path| {
+        crate::preview_assets::is_allowed(&app, path)
+    })?;
     if let Some(object) = project.as_object_mut() {
         object.insert("updatedAt".into(), Value::from(now_millis() as u64));
     }
     write_editor_project(&app, &project)
 }
 
+fn editor_source_paths(project: &Value) -> impl Iterator<Item = &str> {
+    project["sources"].as_array().into_iter().flatten().filter_map(|source| source["path"].as_str())
+}
+
+fn validate_editor_source_provenance(
+    project: &Value, previous: Option<&Value>, allowed: impl Fn(&Path) -> bool,
+) -> AppResult<()> {
+    let known = previous.into_iter().flat_map(editor_source_paths).map(Path::new)
+        .collect::<std::collections::HashSet<_>>();
+    if editor_source_paths(project).any(|path| !known.contains(&Path::new(path))
+        && (!is_audio_file(Path::new(path)) || !allowed(Path::new(path)))) {
+        return Err(AppError::Worker("editor source was not selected, recorded or previously linked".into()));
+    }
+    Ok(())
+}
+
+fn read_current_editor_project(app: &AppHandle, project_id: &str) -> AppResult<Value> {
+    let path = editor_project_path(app, project_id)?;
+    crate::python::result_jobs::plain_path(&path).map_err(|reason| AppError::Worker(reason.into()))?;
+    let project = crate::python::result_jobs::parse_reference_json(&std::fs::read_to_string(path)?)?;
+    storage::validate_editor_project(&project)?;
+    if project["id"].as_str() != Some(project_id) {
+        return Err(AppError::Worker("editor project identity does not match".into()));
+    }
+    Ok(project)
+}
+
+fn remember_editor_previews(app: &AppHandle, project: &Value) {
+    for path in editor_source_paths(project).map(Path::new).filter(|path| is_audio_file(path)) {
+        crate::preview_assets::remember(app, path);
+    }
+    let Some(project_id) = project["id"].as_str() else { return; };
+    for source in project["sources"].as_array().into_iter().flatten() {
+        if let (Some(path), Some(source_path)) = (source["peaksPath"].as_str(), source["path"].as_str()) {
+            preview::remember_managed_waveform(app, project_id, Path::new(path), Path::new(source_path));
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn load_editor_project(app: AppHandle, project_id: String) -> AppResult<Value> {
-    let path = editor_project_path(&app, &project_id)?;
-    let content = std::fs::read_to_string(path)?;
-    let mut project: Value = serde_json::from_str(&content)?;
-    storage::validate_editor_project(&project)?;
+    let mut project = read_current_editor_project(&app, &project_id)?;
     if enrich_editor_project_sources(&mut project) {
         write_editor_project(&app, &project)?;
     }
+    remember_editor_previews(&app, &project);
     session_log::record_editor_project(&project);
     Ok(project)
 }
@@ -866,10 +941,7 @@ pub async fn relink_editor_sources(
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::Worker("missing pickedPath".into()))?;
 
-    let path = editor_project_path(&app, project_id)?;
-    let content = std::fs::read_to_string(&path)?;
-    let mut project: Value = serde_json::from_str(&content)?;
-    storage::validate_editor_project(&project)?;
+    let mut project = read_current_editor_project(&app, project_id)?;
     enrich_editor_project_sources(&mut project);
 
     let sources = project
@@ -884,8 +956,9 @@ pub async fn relink_editor_sources(
 
     let anchor_relative = anchor_source.get("relativePath").and_then(Value::as_str);
     let picked_path_buf = PathBuf::from(picked_path);
-    if !picked_path_buf.is_file() {
-        return Err(AppError::Worker("picked relink file does not exist".into()));
+    if !picked_path_buf.is_file() || !is_audio_file(&picked_path_buf)
+        || !crate::preview_assets::is_allowed(&app, &picked_path_buf) {
+        return Err(AppError::Worker("relink requires a selected audio file".into()));
     }
 
     let relink_root = derive_relink_root(&picked_path_buf, anchor_relative)
@@ -926,7 +999,7 @@ pub async fn relink_editor_sources(
                 }
             });
 
-        let Some(next_path) = candidate else {
+        let Some(next_path) = candidate.filter(|candidate| relink_file_is_contained(&relink_root, candidate)) else {
             if source_object.get("missing").and_then(Value::as_bool).unwrap_or(false) {
                 unresolved.push(
                     source_object
@@ -974,6 +1047,7 @@ pub async fn relink_editor_sources(
 
     enrich_editor_project_sources(&mut project);
     let saved = write_editor_project(&app, &project)?;
+    remember_editor_previews(&app, &saved);
     Ok(RelinkEditorSourcesResult {
         project: saved,
         relinked,
@@ -1223,7 +1297,7 @@ pub(crate) fn build_relink_candidate(
         for part in source_relative_parts(relative) {
             direct.push(part);
         }
-        if direct.is_file() {
+        if relink_file_is_contained(relink_root, &direct) {
             return Some(direct);
         }
     }
@@ -1241,12 +1315,22 @@ pub(crate) fn build_relink_candidate(
     None
 }
 
+fn relink_file_is_contained(root: &Path, candidate: &Path) -> bool {
+    if !candidate.is_file() || !is_audio_file(candidate)
+        || crate::python::result_jobs::plain_path(candidate).is_err() {
+        return false;
+    }
+    match (root.canonicalize(), candidate.canonicalize()) {
+        (Ok(root), Ok(candidate)) => candidate.starts_with(root),
+        _ => false,
+    }
+}
+
 
 
 
 #[cfg(test)]
 mod tests {
-    use crate::commands::app::trash::{is_effectively_empty_dir, normalize_trash_empty_dirs};
     use crate::commands::app::editor::recording::{pcm_wav_header, validate_recording_id};
     use crate::python::worker::cleanup_editor_export_temp_files;
     use crate::commands::app::scan::reveal_target_path;
@@ -1263,6 +1347,43 @@ mod tests {
             .expect("system time should be after unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("pymss-studio-{name}-{unique}"))
+    }
+
+    #[test]
+    fn editor_source_provenance_preserves_existing_missing_paths_and_rejects_new_raw_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("previous.wav");
+        let selected = temp.path().join("chosen.wav");
+        let unselected = temp.path().join("unselected.wav");
+        let previous = serde_json::json!({"sources":[{"path":missing,"missing":true}]});
+        let allowed = |path: &Path| path == selected.as_path();
+        let mut project = serde_json::json!({"sources":[{"path":missing,"missing":true},{"path":selected}]});
+        assert!(validate_editor_source_provenance(&project, Some(&previous), allowed).is_ok());
+        project["sources"][1]["path"] = serde_json::json!(unselected);
+        assert!(validate_editor_source_provenance(&project, Some(&previous), allowed).is_err());
+        assert!(validate_editor_source_provenance(&previous, None, allowed).is_err());
+        let alias = serde_json::json!({"sources":[{"path":temp.path().join("Previous.wav")}]});
+        assert!(validate_editor_source_provenance(&alias, Some(&previous), allowed).is_err());
+    }
+
+    #[test]
+    fn task_project_uses_only_recorded_output_paths_including_missing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("vocals.wav").to_string_lossy().into_owned();
+        let recorded = [missing.clone()];
+        let paths = select_task_editor_paths(Vec::new(), &recorded).unwrap();
+        assert_eq!(paths, [("vocals".to_string(), missing.clone())]);
+        assert!(select_task_editor_paths(vec![("requested-label".into(), missing)], &recorded).is_ok());
+        assert!(select_task_editor_paths(vec![("unowned".into(), "arbitrary.wav".into())], &recorded).is_err());
+    }
+
+    #[test]
+    fn relink_relative_hint_cannot_escape_the_selected_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("chosen");
+        fs::create_dir(&root).unwrap();
+        fs::write(temp.path().join("outside.wav"), b"unselected").unwrap();
+        assert!(build_relink_candidate(&root, Some("../outside.wav"), &Default::default()).is_none());
     }
 
     fn current_orphan_project(root: &Path, project_id: &str, source: Option<&str>) -> PathBuf {
@@ -1487,30 +1608,6 @@ mod tests {
     }
 
     #[test]
-    fn effectively_empty_dir_allows_ds_store_and_empty_children() {
-        let root = temp_test_dir("empty-dir-ds-store");
-        let child = root.join("album").join("track");
-        fs::create_dir_all(&child).expect("create nested test dirs");
-        fs::write(root.join(".DS_Store"), b"finder metadata").expect("write ds store");
-        fs::write(child.join(".DS_Store"), b"finder metadata").expect("write nested ds store");
-
-        assert!(is_effectively_empty_dir(&root));
-
-        fs::remove_dir_all(&root).expect("remove test dir");
-    }
-
-    #[test]
-    fn effectively_empty_dir_rejects_user_files() {
-        let root = temp_test_dir("empty-dir-user-file");
-        fs::create_dir_all(&root).expect("create test dir");
-        fs::write(root.join("vocals.wav"), b"audio").expect("write user file");
-
-        assert!(!is_effectively_empty_dir(&root));
-
-        fs::remove_dir_all(&root).expect("remove test dir");
-    }
-
-    #[test]
     fn editor_export_temp_cleanup_only_removes_the_cancelled_task_files() {
         let root = temp_test_dir("editor-export-temp-cleanup");
         fs::create_dir_all(&root).expect("create export temp root");
@@ -1667,19 +1764,16 @@ mod tests {
         } else {
             assert_ne!(normalize_path_key("/audio/Foo.wav"), normalize_path_key("/audio/foo.wav"));
             assert_ne!(normalize_path_key("/audio/a\\b.wav"), normalize_path_key("/audio/a/b.wav"));
-            assert_eq!(normalize_trash_empty_dirs(vec!["/audio/Foo".into(), "/audio/foo".into()]).len(), 2);
         }
     }
 
     #[test]
-    fn empty_directory_checks_do_not_follow_links_or_directory_cycles() {
+    fn editor_project_cleanup_rejects_directory_cycles() {
         let _model = crate::storage::model_reference_test_guard();
         let data_root = tempfile::tempdir().unwrap();
         let root = data_root.path().join("editor-projects");
         fs::create_dir_all(&root).unwrap();
-        assert!(is_effectively_empty_dir(&root));
         fs::write(root.join(".DS_Store"), b"metadata").unwrap();
-        assert!(is_effectively_empty_dir(&root));
         let link = root.join("loop");
         #[cfg(unix)]
         std::os::unix::fs::symlink(&root, &link).unwrap();
@@ -1691,17 +1785,14 @@ mod tests {
                 .output().expect("create directory junction");
             assert!(status.status.success());
         }
-        assert!(!is_effectively_empty_dir(&link));
-        assert!(!is_effectively_empty_dir(&root));
         let result = cleanup::delete_projects(data_root.path(), &["loop".into()],
             cleanup::Selection::Explicit, &[], |_| vec![]);
         assert!(result.is_err());
-        assert!(root.is_dir());
+        assert_eq!(fs::read(root.join(".DS_Store")).unwrap(), b"metadata");
         #[cfg(unix)]
         fs::remove_file(&link).unwrap();
         #[cfg(windows)]
         fs::remove_dir(&link).unwrap();
-        assert!(is_effectively_empty_dir(&root));
         fs::remove_dir_all(&root).unwrap();
     }
 

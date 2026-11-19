@@ -1,3 +1,4 @@
+use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::RwLock;
 
@@ -36,6 +37,7 @@ fn response(status: u16, mime: &str, bytes: Vec<u8>) -> tauri::http::Response<Ve
         .header("Content-Security-Policy", PLUGIN_VIEW_CSP)
         .header("Access-Control-Allow-Origin", "null")
         .header("Cache-Control", "no-cache")
+        .header("X-Content-Type-Options", "nosniff")
         .body(bytes)
         .expect("static protocol headers are valid")
 }
@@ -87,6 +89,12 @@ fn serve_view_file(
     view_id: &str,
     relative: &[String],
 ) -> tauri::http::Response<Vec<u8>> {
+    if relative.iter().any(|segment| {
+        segment.contains(['/', '\\', ':'])
+            || !matches!(Path::new(segment).components().next(), Some(Component::Normal(_)))
+    }) {
+        return failure(403, "path escapes the plugin view");
+    }
     let entry = match resolve_view(root, plugin_id, view_id) {
         Ok(entry) => entry,
         Err(error) => return failure(404, &error),
@@ -94,17 +102,18 @@ fn serve_view_file(
     let Some(base) = entry.parent() else {
         return failure(500, "view entry has no parent");
     };
-    let resolved = match base.join(relative.join("/")).canonicalize() {
-        Ok(resolved) => resolved,
-        Err(_) => return failure(404, "file not found"),
-    };
-    if !resolved.starts_with(base) {
-        return failure(403, "path escapes the plugin view");
-    }
-    match std::fs::read(&resolved) {
-        Ok(bytes) => response(200, mime_type(&resolved), bytes),
+    let path = base.join(relative.iter().collect::<PathBuf>());
+    match read_file(&path) {
+        Ok(bytes) => response(200, mime_type(&path), bytes),
         Err(_) => failure(404, "file not found"),
     }
+}
+
+fn read_file(path: &Path) -> io::Result<Vec<u8>> {
+    let mut file = crate::preview_assets::open_exact(path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 fn mime_type(path: &Path) -> &'static str {
@@ -143,33 +152,17 @@ pub fn resolve_view(root: &Path, plugin_id: &str, view_id: &str) -> Result<PathB
             ));
         }
     }
-    let plugin_dir = root
-        .join(plugin_id)
-        .canonicalize()
-        .map_err(|_| format!("plugin {plugin_id} is not installed"))?;
-    if !plugin_dir.starts_with(&root) {
-        return Err(format!("plugin {plugin_id} escapes the plugins root"));
-    }
+    let plugin_dir = root.join(plugin_id);
     let manifest = plugin_dir.join("pyproject.toml");
-    if !manifest.is_file() {
-        return Err(format!("plugin {plugin_id} is not installed"));
-    }
     let views = parse_views(&manifest)?;
     let view = views
         .into_iter()
         .find(|v| v.view_id == view_id)
         .ok_or_else(|| format!("plugin {plugin_id} has no view {view_id}"))?;
     let entry = plugin_dir.join(&view.entry);
-    let resolved = entry
-        .canonicalize()
-        .map_err(|_| format!("view entry missing: {}", view.entry))?;
-    if !resolved.starts_with(&plugin_dir) || !resolved.is_file() {
-        return Err(format!(
-            "view entry escapes the plugin directory: {}",
-            view.entry
-        ));
-    }
-    Ok(resolved)
+    crate::preview_assets::open_exact(&entry)
+        .map_err(|_| format!("view entry unavailable: {}", view.entry))?;
+    Ok(entry)
 }
 
 struct RawView {
@@ -179,7 +172,8 @@ struct RawView {
 
 /// Read only view identities and entry paths; Python validates the full protocol.
 fn parse_views(manifest: &Path) -> Result<Vec<RawView>, String> {
-    let text = std::fs::read_to_string(manifest)
+    let mut text = String::new();
+    crate::preview_assets::open_exact(manifest).and_then(|mut file| file.read_to_string(&mut text))
         .map_err(|error| format!("cannot read manifest: {error}"))?;
     let document: toml::Value =
         toml::from_str(&text).map_err(|error| format!("invalid plugin manifest: {error}"))?;
@@ -347,13 +341,13 @@ mod tests {
             .to_str()
             .unwrap()
             .contains("form-action 'none'"));
-        let escaped = serve_view_file(
-            &root,
-            "author.chain",
-            "editor",
-            &["..".into(), "pyproject.toml".into()],
-        );
-        assert_eq!(escaped.status(), 403);
+        assert!(!PLUGIN_VIEW_CSP.contains("mediaforge-preview"));
+        for path in ["../pyproject.toml", "..%2Fpyproject.toml", "..%5Cpyproject.toml", "main.mjs%3Asecret"] {
+            let segments = decode_path(path).unwrap();
+            let escaped = serve_view_file(&root, "author.chain", "editor", &segments);
+            assert_eq!(escaped.status(), 403, "{path}");
+            assert_ne!(escaped.body(), b"export const value = 1");
+        }
     }
 
     #[test]
@@ -438,10 +432,13 @@ fn sdk_asset_path(resource_dir: &Path, name: &str) -> Option<PathBuf> {
 }
 
 fn read_sdk_asset(resource_dir: &Path, name: &str) -> tauri::http::Response<Vec<u8>> {
-    let Some(path) = sdk_asset_path(resource_dir, name) else {
+    let Ok(root) = resource_dir.canonicalize() else {
+        return failure(404, "sdk asset not bundled");
+    };
+    let Some(path) = sdk_asset_path(&root, name) else {
         return failure(404, "unknown sdk asset");
     };
-    match std::fs::read(&path) {
+    match read_file(&path) {
         Ok(bytes) => response(200, mime_type(&path), bytes),
         Err(_) => failure(404, "sdk asset not bundled"),
     }

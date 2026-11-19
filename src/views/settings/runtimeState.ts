@@ -12,6 +12,7 @@ import {
   isKnownRuntimeBackend,
   recommendedRuntimeBackend,
   runtimeBackendLabel as runtimeBackendName,
+  runtimeBackendsForTarget,
   runtimeEnvironmentForBackend,
   runtimeLoadError,
   runtimeManifestStatus,
@@ -101,9 +102,7 @@ export function makeRuntimeState(deps: Deps) {
   }
 
   const runtimeBackendCatalog = computed<BackendCardBase[]>(() => {
-    const { isMac } = runtimePlatform.value
-    const backends: RuntimeBackend[] = isMac ? ['mlx'] : ['cpu']
-    if (!isMac) backends.push('cuda', 'rocm')
+    const backends = runtimeBackendsForTarget(app.runtimeInfo?.platform, app.runtimeInfo?.machine)
     return backends.map((backend) => ({
       backend,
       label: runtimeBackendName(backend),

@@ -49,6 +49,8 @@ foreach ($name in @('runtime-a', 'runtime-b')) {
     $assets[$name] = @{
         assetId = $name
         backend = 'cuda'
+        platform = 'windows'
+        arch = 'x86_64'
         python = '3.12'
         sha256 = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         size = (Get-Item $zip).Length

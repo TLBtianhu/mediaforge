@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pickPreviewFiles } from '@/api/native'
 import { useMediaDrop } from '../composables/useMediaDrop'
 import { computed, ref } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -78,9 +79,7 @@ useMediaDrop({
   scanImages: false,
 })
 async function pickInputs() {
-  const selected = await open({ multiple: true, filters: [{ name: modality.value === 'image' ? 'Images' : 'Videos', extensions: modality.value === 'image' ? ['png', 'jpg', 'jpeg', 'webp', 'gif'] : ['mp4', 'mkv', 'mov', 'webm', 'avi'] }] })
-  if (typeof selected === 'string') addInputs([selected])
-  else if (Array.isArray(selected)) addInputs(selected)
+  addInputs(await pickPreviewFiles(modality.value))
 }
 async function pickOutput() {
   const selected = await open({ directory: true, multiple: false })
