@@ -54,6 +54,12 @@ class RuntimeRollbackSmokeTests(unittest.TestCase):
         fetch = (ROOT / "scripts/fetch-third-party.ps1").read_text(encoding="utf-8")
         self.assertIn("if ($ToolName -and $name -ne $ToolName) { continue }", fetch)
 
+    def test_ci_prepares_real_minimal_bootstrap_before_the_full_suite(self) -> None:
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        prepare = "./scripts/prepare-python-runtime.ps1 -Minimal -Python '${{ steps.python.outputs.python-path }}'"
+        self.assertIn(prepare, workflow)
+        self.assertLess(workflow.index(prepare), workflow.index("- name: Run all tests"))
+
 
 if __name__ == "__main__":
     unittest.main()

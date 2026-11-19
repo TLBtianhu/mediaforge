@@ -137,6 +137,10 @@ jobs:
           python -m pip install --disable-pip-version-check --prefer-binary \
             -r python/requirements-ci.txt
 
+      - name: Prepare minimal bootstrap for bridge coverage
+        shell: pwsh
+        run: ./scripts/prepare-python-runtime.ps1 -Minimal -Python '${{ steps.python.outputs.python-path }}'
+
       - name: Check architecture invariants
         run: python scripts/check-architecture.py
 
